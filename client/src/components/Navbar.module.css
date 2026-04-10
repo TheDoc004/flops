@@ -1,0 +1,17 @@
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 0 24px;
+  height: 56px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.brand { font-size: 18px; font-weight: 700; color: #2563eb; }
+.links { display: flex; gap: 8px; }
+.links a { padding: 6px 12px; border-radius: 6px; color: #6b7280; font-weight: 500; }
+.links a:hover { background: #f3f4f6; color: #1a1a1a; }
+.active { background: #eff6ff !important; color: #2563eb !important; }
