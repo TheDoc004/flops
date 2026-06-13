@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import useDropdownPlacement from '../hooks/useDropdownPlacement';
 
 function preventOptionMouseDown(e) {
   e.preventDefault();
@@ -31,6 +32,7 @@ export default function ExerciseCombobox({
   const listRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const { openUp, maxHeight } = useDropdownPlacement(inputRef, open, 260);
 
   const filtered = useMemo(() => {
     const q = value.toLowerCase().trim();
@@ -107,8 +109,8 @@ export default function ExerciseCombobox({
             zIndex: 20,
             left: 0,
             right: 0,
-            marginTop: 6,
-            maxHeight: 260,
+            ...(openUp ? { bottom: '100%', marginBottom: 6 } : { top: '100%', marginTop: 6 }),
+            maxHeight,
             overflowY: 'auto',
             background: 'white',
             border: '1px solid #e5e7eb',
@@ -144,7 +146,7 @@ export default function ExerciseCombobox({
                 }}
               >
                 <strong style={{ fontSize: 14 }}>{ex.name}</strong>
-                <span style={{ fontSize: 12, color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 12, color: 'var(--color-text-faint)', whiteSpace: 'nowrap' }}>
                   {ex.primary_muscle} · {ex.equipment}
                 </span>
               </button>

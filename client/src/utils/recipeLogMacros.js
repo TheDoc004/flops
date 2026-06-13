@@ -17,10 +17,25 @@ export function adjustPerServingMacrosForResolvedClient(recipe, labelById, resol
   const slots = listLoggingSlotsFromRecipe(recipe);
   if (slots.length === 0) return base;
 
-  function macrosForLabelAmount(ing, gramsUsed) {
+  function macrosForIngredientAmount(ing, amountValue, unit) {
+    if (ing.tracking_type === 'unit') {
+      const count = Number(amountValue);
+      if (!Number.isFinite(count) || count < 0) return null;
+      const sq = Number(ing.serving_quantity);
+      const mult = count / (Number.isFinite(sq) && sq > 0 ? sq : 1);
+      return {
+        calories: Number(ing.calories) * mult,
+        protein_g: Number(ing.protein_g) * mult,
+        carbs_g: Number(ing.carbs_g) * mult,
+        fat_g: Number(ing.fat_g) * mult,
+        fiber_g: ing.fiber_g != null && ing.fiber_g !== '' ? Number(ing.fiber_g) * mult : 0,
+      };
+    }
     const gps = Number(ing.grams_per_serving);
     if (!Number.isFinite(gps) || gps <= 0) return null;
-    const mult = gramsUsed / gps;
+    const grams = gramsFromAmount(amountValue, unit, { allowZero: true });
+    if (grams == null) return null;
+    const mult = grams / gps;
     return {
       calories: Number(ing.calories) * mult,
       protein_g: Number(ing.protein_g) * mult,
@@ -38,11 +53,9 @@ export function adjustPerServingMacrosForResolvedClient(recipe, labelById, resol
     const selId = res.label_ingredient_id;
     const defIng = labelById[String(defId)];
     const selIng = labelById[String(selId)];
-    const templateGrams = gramsFromAmount(slot.amount, slot.unit);
-    const usedGrams = gramsFromAmount(res.amount, res.unit, { allowZero: true });
-    if (!defIng || !selIng || templateGrams == null || usedGrams == null) return null;
-    const mDef = macrosForLabelAmount(defIng, templateGrams);
-    const mSel = macrosForLabelAmount(selIng, usedGrams);
+    if (!defIng || !selIng) return null;
+    const mDef = macrosForIngredientAmount(defIng, slot.amount, slot.unit);
+    const mSel = macrosForIngredientAmount(selIng, res.amount, res.unit);
     if (!mDef || !mSel) return null;
     adj.calories += -mDef.calories + mSel.calories;
     adj.protein_g += -mDef.protein_g + mSel.protein_g;

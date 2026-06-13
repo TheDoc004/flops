@@ -132,7 +132,7 @@ export default function LabelCropModal({ open, imageSrc, onClose, onApply }) {
         <h3 id="label-crop-title" style={{ marginTop: 0 }}>
           Crop to nutrition facts (optional)
         </h3>
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6b7280' }}>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
           Drag a rectangle around the Nutrition Facts panel. This often improves OCR on busy labels (branding, colored
           backgrounds).
         </p>

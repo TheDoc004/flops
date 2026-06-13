@@ -5,8 +5,8 @@ function tabStyle(isActive) {
     padding: '8px 12px',
     borderRadius: 999,
     border: '1px solid #e5e7eb',
-    background: isActive ? '#111827' : '#fff',
-    color: isActive ? '#fff' : '#374151',
+    background: isActive ? 'var(--color-text-strong)' : '#fff',
+    color: isActive ? '#fff' : 'var(--color-text-body)',
     fontSize: 13,
     fontWeight: 700,
     textDecoration: 'none',
@@ -20,17 +20,9 @@ export default function PlanLayout() {
 
   return (
     <div>
-      <div style={{ marginBottom: 16 }}>
-        <h1 style={{
-          margin: '0 0 6px', fontSize: 32, fontWeight: 400,
-          color: '#1e1b4b', letterSpacing: '-0.02em', lineHeight: 1.1,
-          fontFamily: "'DM Serif Display', Georgia, serif",
-        }}>Plan</h1>
-        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
-          Goals, fuel settings, reports, and profile.
-        </p>
-      </div>
-
+      {/* Section sub-nav. The active child page owns the page <h1>, so Plan
+          no longer renders its own heading (avoids a stacked double-header). */}
+      <p className="section-label" style={{ margin: '0 0 8px' }}>Plan</p>
       <div className="card" style={{ marginBottom: 16, padding: 12 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <NavLink to="/plan/goals" style={({ isActive }) => tabStyle(isActive || is('goals'))}>Goals</NavLink>

@@ -4,14 +4,15 @@ export default function DailyTrainingContextBanner({ contextType, onChange, disa
   return (
     <div className="card" style={{ marginBottom: 12, padding: '12px 20px' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-body)' }}>
           Today&apos;s training
         </span>
         <select
           value={contextType}
           disabled={disabled}
           onChange={e => onChange(e.target.value)}
-          style={{ minWidth: 180, padding: '7px 10px', fontSize: 14, width: 'auto' }}
+          className="context-select"
+          style={{ padding: '7px 10px', fontSize: 14 }}
         >
           {TRAINING_CONTEXT_IDS.map(id => (
             <option key={id} value={id}>

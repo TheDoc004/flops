@@ -6,6 +6,8 @@ import { fetchRecipes, deleteRecipe, reactivateLimitedRecipe } from '../api/reci
 import { createLogEntry, createQuickFoodLog } from '../api/log';
 import { filterRecipesByName } from '../utils/recipeSearch';
 import { getLocalDateISO } from '../utils/dateLocal';
+import useMediaQuery from '../hooks/useMediaQuery';
+import usePaginationAnchor from '../hooks/usePaginationAnchor';
 
 export default function Recipes() {
   const navigate = useNavigate();
@@ -16,6 +18,11 @@ export default function Recipes() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [logRecipe, setLogRecipe] = useState(null);
   const [logSaved, setLogSaved] = useState('');
+
+  // Pagination — fewer per page on mobile (recipe cards are tall), more on desktop.
+  const isWide = useMediaQuery('(min-width: 700px)');
+  const pageSize = isWide ? 10 : 6;
+  const { page, setPage, paginationRef, handlePageChange } = usePaginationAnchor();
 
   useEffect(() => { void load(); }, [includeArchived]);
   useEffect(() => {
@@ -52,17 +59,25 @@ export default function Recipes() {
 
   const filtered = useMemo(() => filterRecipesByName(recipes, search), [recipes, search]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = useMemo(
+    () => filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [filtered, currentPage, pageSize]
+  );
+
+  // Reset to page 1 whenever the result set changes (search or archive toggle).
+  useEffect(() => { setPage(1); }, [search, includeArchived]);
+  // Clamp if the page count shrinks (e.g. viewport resize changes pageSize).
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{
-          margin: 0, fontSize: 32, fontWeight: 400,
-          color: '#1e1b4b', letterSpacing: '-0.02em', lineHeight: 1.1,
-          fontFamily: "'DM Serif Display', Georgia, serif",
-        }}>Recipe Library</h1>
+        <h1 className="page-title">Recipe Library</h1>
         <button
           className="btn-primary"
-          onClick={() => navigate('/meal-builder?mode=manual')}
+          onClick={() => navigate('/meal-builder')}
           title="Create recipes in Meal Builder"
         >
           + Add Recipe
@@ -71,13 +86,13 @@ export default function Recipes() {
 
       {error && <p className="error">{error}</p>}
       {logSaved && (
-        <p style={{ marginTop: 0, marginBottom: 12, color: '#059669', fontSize: 14 }}>
+        <p style={{ marginTop: 0, marginBottom: 12, color: 'var(--color-success)', fontSize: 14 }}>
           {logSaved}
         </p>
       )}
 
-      <div style={{ marginBottom: 12, fontSize: 13, color: '#6b7280' }}>
-        Create and edit recipes in <Link to="/meal-builder" style={{ color: '#2563eb' }}>Meal Builder</Link>. Use this library to browse, search, view, and log.
+      <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--color-text-muted)' }}>
+        Create and edit recipes in <Link to="/meal-builder" style={{ color: 'var(--color-link)' }}>Meal Builder</Link>. Use this library to browse, search, view, and log.
       </div>
 
       <div className="card">
@@ -95,19 +110,35 @@ export default function Recipes() {
           autoComplete="off"
           style={{ marginBottom: 12 }}
         />
-        {filtered.length === 0
-          ? <p className="empty-state">{recipes.length === 0 ? 'No recipes yet. Create one in Meal Builder.' : 'No recipes match your search.'}</p>
-          : filtered.map(recipe => (
-              <RecipeRow
-                key={recipe.id}
-                recipe={recipe}
-                onLog={setLogRecipe}
-                onEditInBuilder={() => navigate(`/meal-builder?mode=${recipe.meal_builder_meta?.source === 'meal_builder' ? 'labels' : 'manual'}&recipe_id=${recipe.id}`)}
-                onDelete={handleDelete}
-                onReactivate={handleReactivate}
-              />
-            ))
-        }
+        {filtered.length === 0 ? (
+          <p className="empty-state">{recipes.length === 0 ? 'No recipes yet. Create one in Meal Builder.' : 'No recipes match your search.'}</p>
+        ) : (
+          <>
+            <p style={{ margin: '0 0 6px', fontSize: 12, color: 'var(--color-text-faint)' }}>
+              {filtered.length} recipe{filtered.length !== 1 ? 's' : ''}
+              {search ? ` matching "${search}"` : ''}
+            </p>
+            <div>
+              {paginated.map(recipe => (
+                <RecipeRow
+                  key={recipe.id}
+                  recipe={recipe}
+                  onLog={setLogRecipe}
+                  onEditInBuilder={() => navigate(`/meal-builder?mode=${recipe.meal_builder_meta?.source === 'meal_builder' ? 'labels' : 'manual'}&recipe_id=${recipe.id}`)}
+                  onDelete={handleDelete}
+                  onReactivate={handleReactivate}
+                />
+              ))}
+            </div>
+            {totalPages > 1 && (
+              <div ref={paginationRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--color-divider)' }}>
+                <button type="button" className="btn-secondary" disabled={currentPage <= 1} onClick={() => handlePageChange(currentPage - 1)}>Previous</button>
+                <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Page {currentPage} of {totalPages}</span>
+                <button type="button" className="btn-secondary" disabled={currentPage >= totalPages} onClick={() => handlePageChange(currentPage + 1)}>Next</button>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {logRecipe && (

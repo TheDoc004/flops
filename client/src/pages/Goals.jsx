@@ -113,7 +113,7 @@ export default function Goals() {
   const macroStep = macroUnits === 'us' ? '0.01' : '0.1';
 
   if (loading) {
-    return <p style={{ color: '#6b7280' }}>Loading goals…</p>;
+    return <p style={{ color: 'var(--color-text-muted)' }}>Loading goals…</p>;
   }
 
   if (error) {
@@ -122,19 +122,15 @@ export default function Goals() {
 
   return (
     <div>
-      <h1 style={{
-        margin: '0 0 6px', fontSize: 32, fontWeight: 400,
-        color: '#1e1b4b', letterSpacing: '-0.02em', lineHeight: 1.1,
-        fontFamily: "'DM Serif Display', Georgia, serif",
-      }}>Weekly nutrition goals</h1>
-      <p style={{ margin: '0 0 20px', color: '#6b7280', fontSize: 14 }}>
+      <h1 className="page-title" style={{ marginBottom: 6 }}>Weekly nutrition goals</h1>
+      <p className="page-subtitle">
         Set a min/max range per day — same value on both sides means an exact target.
         Changes apply from <strong>{today}</strong> forward; past days are unaffected.
         Macros are stored in grams; display follows your unit choice in Profile.
       </p>
 
       <form onSubmit={handleSave}>
-        <div className="card" style={{ overflowX: 'auto' }}>
+        <div className="card goals-table-wrap" style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
@@ -183,7 +179,7 @@ export default function Goals() {
                             placeholder="max"
                           />
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 11, color: '#9ca3af' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 11, color: 'var(--color-text-faint)' }}>
                           <span>min</span>
                           <span>max</span>
                         </div>
@@ -196,8 +192,58 @@ export default function Goals() {
           </table>
         </div>
 
+        {/* Mobile-only: vertical day cards (same state/handlers as the table) */}
+        <div className="card goals-cards">
+          {rows.map(row => (
+            <div key={row.weekday} className="goals-day-card">
+              <h3 className="goals-day-title">{row.label}</h3>
+              {FIELD_META.map(field => {
+                const minKey = `${field.key}_min`;
+                const maxKey = `${field.key}_max`;
+                return (
+                  <div key={field.key} className="goals-macro">
+                    <label className="goals-macro-label">
+                      {field.label}{field.isMacro ? ` ${macroSuffix}` : ''}
+                    </label>
+                    <div className="goals-minmax">
+                      <input
+                        type="number"
+                        min="0"
+                        step={field.isMacro ? macroStep : field.step}
+                        inputMode={field.isMacro ? 'decimal' : field.inputMode}
+                        value={field.isMacro ? gramsToInputValue(row[minKey], macroUnits) : row[minKey]}
+                        onChange={e => (
+                          field.isMacro
+                            ? setMacroField(row.weekday, minKey, e.target.value)
+                            : setField(row.weekday, minKey, e.target.value)
+                        )}
+                        placeholder="min"
+                        aria-label={`${row.label} ${field.label} minimum`}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step={field.isMacro ? macroStep : field.step}
+                        inputMode={field.isMacro ? 'decimal' : field.inputMode}
+                        value={field.isMacro ? gramsToInputValue(row[maxKey], macroUnits) : row[maxKey]}
+                        onChange={e => (
+                          field.isMacro
+                            ? setMacroField(row.weekday, maxKey, e.target.value)
+                            : setField(row.weekday, maxKey, e.target.value)
+                        )}
+                        placeholder="max"
+                        aria-label={`${row.label} ${field.label} maximum`}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+
         {saveError && <p className="error" style={{ marginTop: 12 }}>{saveError}</p>}
-        {saved && <p style={{ marginTop: 12, color: '#059669', fontSize: 14 }}>Goals saved from today forward.</p>}
+        {saved && <p style={{ marginTop: 12, color: 'var(--color-success)', fontSize: 14 }}>Goals saved from today forward.</p>}
 
         <div style={{ marginTop: 16 }}>
           <button type="submit" className="btn-primary">Save goals</button>

@@ -3,10 +3,7 @@ import { Link } from 'react-router-dom';
 import { fetchBodyWeights, saveBodyWeight } from '../api/profile';
 import { kgToWeightInputValue, parseWeightInputToKg } from '../utils/bodyUnits';
 
-/**
- * Log or update today's body weight (same API as Profile). Compact row for Dashboard.
- */
-export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved }) {
+export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, noCard = false }) {
   const [storedKg, setStoredKg] = useState(null);
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
@@ -58,20 +55,22 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved }) 
   }
 
   const unitLabel = bodyUnits === 'us' ? 'lb' : 'kg';
-  const label = storedKg != null ? `Update weight (${unitLabel})` : `Weight (${unitLabel})`;
 
-  return (
-    <div className="card" style={{ marginBottom: 16, padding: '14px 20px' }}>
+  const inner = (
+    <>
+      <h3 className="section-title" style={{ marginBottom: 12 }}>
+        Update weight
+      </h3>
       <form
         onSubmit={handleSubmit}
         style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}
       >
         <div style={{ flex: '1 1 140px', maxWidth: 200 }}>
-          <label style={{ marginBottom: 4 }}>{label}</label>
+          <label style={{ marginBottom: 4 }}>Today&apos;s weight ({unitLabel})</label>
           <input
             type="number"
             min="0.1"
-            step={bodyUnits === 'us' ? '0.1' : '0.1'}
+            step="0.1"
             inputMode="decimal"
             value={input}
             onChange={e => setInput(e.target.value)}
@@ -81,14 +80,21 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved }) 
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? 'Saving…' : storedKg != null ? 'Update' : 'Save'}
         </button>
-        <Link to="/profile" style={{ fontSize: 13, color: '#2563eb', paddingBottom: 8 }}>
+        <Link to="/profile" style={{ fontSize: 13, color: 'var(--color-link)', paddingBottom: 8 }}>
           Full history →
         </Link>
       </form>
       {error && <p className="error" style={{ marginTop: 8, marginBottom: 0 }}>{error}</p>}
-      <p style={{ margin: '8px 0 0', fontSize: 12, color: '#9ca3af' }}>
+      <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--color-text-faint)' }}>
         One entry per day; saving again updates today.
       </p>
+    </>
+  );
+
+  if (noCard) return inner;
+  return (
+    <div className="card" style={{ marginBottom: 16, padding: '14px 20px' }}>
+      {inner}
     </div>
   );
 }

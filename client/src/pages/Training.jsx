@@ -105,23 +105,16 @@ export default function Training() {
     }
   }
 
-  if (loading) return <p style={{ color: '#6b7280' }}>Loading…</p>;
+  if (loading) return <p style={{ color: 'var(--color-text-muted)' }}>Loading…</p>;
 
   const H3 = ({ children }) => (
-    <h3 style={{
-      marginTop: 0, marginBottom: 12, fontSize: 18, fontWeight: 400,
-      color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
-    }}>{children}</h3>
+    <h3 className="section-title" style={{ marginBottom: 12 }}>{children}</h3>
   );
 
   return (
     <div>
-      <h1 style={{
-        margin: '0 0 6px', fontSize: 32, fontWeight: 400,
-        color: '#1e1b4b', letterSpacing: '-0.02em', lineHeight: 1.1,
-        fontFamily: "'DM Serif Display', Georgia, serif",
-      }}>Fuel settings</h1>
-      <p style={{ margin: '0 0 20px', color: '#6b7280', fontSize: 14 }}>
+      <h1 className="page-title" style={{ marginBottom: 6 }}>Fuel settings</h1>
+      <p className="page-subtitle">
         Tune digestion preferences and Dashboard quick-log shortcuts.
       </p>
 
@@ -136,7 +129,7 @@ export default function Training() {
           <label style={{
             display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
             padding: '8px 10px', marginBottom: 12, borderRadius: 9,
-            border: `1px solid ${prefs.dash_training_fuel_enabled ? '#c4b5fd' : '#e8e4dc'}`,
+            border: `1px solid ${prefs.dash_training_fuel_enabled ? '#c4b5fd' : 'var(--color-surface-border)'}`,
             background: prefs.dash_training_fuel_enabled ? '#f5f3ff' : 'transparent',
             transition: 'border-color 0.12s, background 0.12s',
           }}>
@@ -150,10 +143,10 @@ export default function Training() {
               style={{ flexShrink: 0, marginTop: 3, width: 'auto' }}
             />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#374151', lineHeight: 1.3 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-body)', lineHeight: 1.3 }}>
                 Show training context &amp; fuel check
               </div>
-              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>
                 Visible on Dashboard
               </div>
             </div>
@@ -191,14 +184,14 @@ export default function Training() {
           </div>
 
           {fuelSaved && (
-            <p style={{ marginTop: 10, fontSize: 12, color: '#059669' }}>Saved.</p>
+            <p style={{ marginTop: 10, fontSize: 12, color: 'var(--color-success)' }}>Saved.</p>
           )}
         </div>
 
         {/* ── Saved quick-log fuel options ── */}
         <div className="card">
           <H3>Saved fuel options</H3>
-          <p style={{ margin: '0 0 12px', color: '#6b7280', fontSize: 13 }}>
+          <p style={{ margin: '0 0 12px', color: 'var(--color-text-muted)', fontSize: 13 }}>
             Quick-log buttons on the Dashboard.
           </p>
 
@@ -212,8 +205,8 @@ export default function Training() {
                 placeholder="Search recipe or meal…"
               />
               {selectedNewRecipe && (
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>
-                  <strong style={{ color: '#111827' }}>{selectedNewRecipe.name}</strong>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  <strong style={{ color: 'var(--color-text-strong)' }}>{selectedNewRecipe.name}</strong>
                   {' · '}{selectedNewRecipe.serving_size}
                 </p>
               )}
@@ -238,8 +231,8 @@ export default function Training() {
                   borderBottom: '1px solid #f0ede8',
                 }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: '#1e1b4b' }}>{o.label || o.name}</div>
-                    <div style={{ color: '#9ca3af', fontSize: 12 }}>{o.name} · {o.serving_size}</div>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-primary-ink)' }}>{o.label || o.name}</div>
+                    <div style={{ color: 'var(--color-text-faint)', fontSize: 12 }}>{o.name} · {o.serving_size}</div>
                   </div>
                   <button
                     type="button" className="btn-danger"

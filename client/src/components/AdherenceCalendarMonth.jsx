@@ -6,15 +6,13 @@ import { addDaysLocal, getLocalDateISO, parseLocalDateISO } from '../utils/dateL
 import { buildWeeklyAdherenceRows, hasAnyTarget } from '../utils/goalAdherence';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '../utils/weekday';
 import GoalAdherenceDayDetailDialog from './GoalAdherenceDayDetailDialog';
+import { STATUS_META } from '../utils/statusMeta';
 
-const STATUS_META = {
-  hit: { bg: '#d1fae5', border: '#6ee7b7', color: '#065f46' },
-  partial: { bg: '#fef3c7', border: '#fcd34d', color: '#92400e' },
-  miss: { bg: '#fee2e2', border: '#fca5a5', color: '#991b1b' },
-  no_data: { bg: '#f3f4f6', border: '#e5e7eb', color: '#6b7280' },
-  upcoming: { bg: '#eff6ff', border: '#bfdbfe', color: '#1d4ed8' },
-  no_target: { bg: 'transparent', border: '#e5e7eb', color: '#6b7280' },
-};
+// Compact metric labels so missed-macro text fits inside small calendar tiles.
+const SHORT_METRIC = { Calories: 'Cal', Protein: 'Pro', Carbs: 'Carb', Fat: 'Fat', Fiber: 'Fib' };
+function shortMetric(label) {
+  return SHORT_METRIC[label] || label;
+}
 
 function monthStartIso(yyyyMm) {
   const [y, m] = yyyyMm.split('-').map(Number);
@@ -119,8 +117,8 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
         <div>
-          <h3 style={{ margin: 0 }}>Adherence calendar</h3>
-          <p style={{ margin: '6px 0 0', color: '#6b7280', fontSize: 13 }}>
+          <h3 className="section-title">Adherence calendar</h3>
+          <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
             Month view. Click a day for details.
           </p>
         </div>
@@ -129,7 +127,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
             <button type="button" className="btn-secondary" onClick={prevMonth} style={{ padding: '6px 10px' }}>
               ←
             </button>
-            <strong style={{ fontSize: 14, color: '#374151', minWidth: 160, textAlign: 'center' }}>
+            <strong style={{ fontSize: 14, color: 'var(--color-text-body)', minWidth: 160, textAlign: 'center' }}>
               {monthLabel(month)}
             </strong>
             <button type="button" className="btn-secondary" onClick={nextMonth} style={{ padding: '6px 10px' }}>
@@ -138,18 +136,18 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
           </div>
         )}
         {!showNav && (
-          <strong style={{ fontSize: 14, color: '#374151' }}>
+          <strong style={{ fontSize: 14, color: 'var(--color-text-body)' }}>
             {monthLabel(month)}
           </strong>
         )}
       </div>
 
       {error && <p className="error">{error}</p>}
-      {loading && <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>Loading…</p>}
+      {loading && <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>Loading…</p>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8, marginTop: 10 }}>
+      <div className="cal-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', marginTop: 10 }}>
         {Object.entries(ISO_WEEKDAY_LABELS).map(([k, v]) => (
-          <div key={k} style={{ fontSize: 11, color: '#6b7280', textAlign: 'center', fontWeight: 600 }}>
+          <div key={k} style={{ fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'center', fontWeight: 600 }}>
             {v.slice(0, 3)}
           </div>
         ))}
@@ -179,15 +177,15 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
                 border: `1px solid ${m.border}`,
                 background: hasTarget ? m.bg : 'transparent',
                 minHeight: 52,
-                padding: 8,
                 cursor: 'pointer',
+                overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <strong style={{ fontSize: 13, color: '#111827' }}>{dayNum}</strong>
+                <strong style={{ fontSize: 13, color: 'var(--color-text-strong)' }}>{dayNum}</strong>
                 {hasTarget && (
                   <span style={{ fontSize: 11, fontWeight: 700, color: m.color }}>
                     {row.status === 'no_target'
@@ -201,11 +199,12 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
                 )}
               </div>
               {hasTarget && row.status !== 'hit' && row.missed?.length ? (
-                <div style={{ fontSize: 10, color: m.color, opacity: 0.9 }}>
-                  {row.missed.map(x => x.label).join(', ')}
+                <div className="cal-day-missed" style={{ color: m.color }}>
+                  {row.missed.slice(0, 3).map(x => shortMetric(x.label)).join(' ')}
+                  {row.missed.length > 3 ? ` +${row.missed.length - 3}` : ''}
                 </div>
               ) : (
-                <div style={{ fontSize: 10, color: '#9ca3af' }}>
+                <div className="cal-day-note">
                   {hasTarget
                     ? row.status === 'hit'
                       ? 'Hit'
@@ -213,9 +212,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
                         ? 'Not logged'
                         : row.status === 'upcoming'
                           ? 'Upcoming'
-                          : row.status === 'no_target'
-                            ? ''
-                            : ''
+                          : ''
                     : ''}
                 </div>
               )}

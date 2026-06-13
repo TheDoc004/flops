@@ -202,10 +202,7 @@ export default function Profile() {
   const heightLabel = bodyUnits === 'us' ? 'Height' : 'Height (cm)';
 
   const H3 = ({ children }) => (
-    <h3 style={{
-      marginTop: 0, marginBottom: 10, fontSize: 18, fontWeight: 400,
-      color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
-    }}>{children}</h3>
+    <h3 className="section-title" style={{ marginBottom: 10 }}>{children}</h3>
   );
 
   const UnitOption = ({ name, value, current, onChange, label, sub }) => (
@@ -233,12 +230,8 @@ export default function Profile() {
 
   return (
     <div>
-      <h1 style={{
-        margin: '0 0 6px', fontSize: 32, fontWeight: 400,
-        color: '#1e1b4b', letterSpacing: '-0.02em', lineHeight: 1.1,
-        fontFamily: "'DM Serif Display', Georgia, serif",
-      }}>Profile &amp; body weight</h1>
-      <p style={{ margin: '0 0 20px', color: '#6b7280', fontSize: 14 }}>
+      <h1 className="page-title" style={{ marginBottom: 6 }}>Profile &amp; body weight</h1>
+      <p className="page-subtitle">
         Single local profile. Height and weight stored in cm/kg; US units are display-only.
       </p>
 
@@ -328,7 +321,7 @@ export default function Profile() {
         <div className="card">
           <H3>Log body weight</H3>
           <form onSubmit={handleSaveWeight}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div className="form-grid-2" style={{ marginBottom: 10 }}>
               <div>
                 <label>Date</label>
                 <input type="date" value={weightDate} max={getLocalDateISO()} onChange={e => setWeightDate(e.target.value)} />
@@ -357,7 +350,7 @@ export default function Profile() {
       {/* ── Row 3: personal stats (full width) ── */}
       <form onSubmit={handleSaveProfile} className="card" style={{ marginBottom: 16 }}>
         <H3>Personal stats</H3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="form-grid-2">
           {bodyUnits === 'us' ? (
             <div style={{ gridColumn: '1 / -1' }}>
               <label>{heightLabel}</label>

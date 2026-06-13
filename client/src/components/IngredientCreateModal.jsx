@@ -92,11 +92,11 @@ export default function IngredientCreateModal({ open, initialName = '', onClose,
         onMouseDown={e => e.stopPropagation()}
       >
         <h3 id="ingredient-create-title" style={{ marginTop: 0 }}>New ingredient</h3>
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6b7280' }}>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
           Saved to your Ingredient Library and selected for this row. Macros are per serving as on the label.
         </p>
         {error && <p className="error">{error}</p>}
-        <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <form onSubmit={submit} className="form-grid-2">
           <div style={{ gridColumn: '1 / -1' }}>
             <label>Display name</label>
             <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required autoFocus />

@@ -1,15 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { buildDayAdherenceDetail } from '../utils/goalAdherence';
 import { ISO_WEEKDAY_LABELS } from '../utils/weekday';
-
-const STATUS_META = {
-  hit:       { label: 'Hit',        bg: '#d1fae5', color: '#065f46' },
-  partial:   { label: 'Partial',    bg: '#fef3c7', color: '#92400e' },
-  miss:      { label: 'Miss',       bg: '#fee2e2', color: '#991b1b' },
-  upcoming:  { label: 'Upcoming',   bg: '#eff6ff', color: '#1d4ed8' },
-  no_data:   { label: 'Not logged', bg: '#f3f4f6', color: '#6b7280' },
-  no_target: { label: 'No target',  bg: '#f3f4f6', color: '#6b7280' },
-};
+import { STATUS_META } from '../utils/statusMeta';
 
 /**
  * @param {object}    props
@@ -46,18 +38,14 @@ export default function GoalAdherenceDayDetailDialog({ row, macroUnits, onClose,
   const showViewButton = onViewDay && !isFuture;
 
   return (
-    <dialog
-      ref={ref}
-      onClose={onClose}
-      style={{ maxWidth: 520, width: 'min(520px, 92vw)' }}
-    >
+    <dialog ref={ref} onClose={onClose}>
       <h2 style={{
         marginTop: 0, marginBottom: 4, fontSize: 20, fontWeight: 400,
-        color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
+        color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
       }}>
         Day summary
       </h2>
-      <p style={{ margin: '0 0 8px', color: '#6b7280', fontSize: 14 }}>
+      <p style={{ margin: '0 0 8px', color: 'var(--color-text-muted)', fontSize: 14 }}>
         <strong>{wdName}</strong>{' · '}{row.date}
       </p>
       <p style={{ margin: '0 0 16px', fontSize: 14 }}>
@@ -71,12 +59,12 @@ export default function GoalAdherenceDayDetailDialog({ row, macroUnits, onClose,
       </p>
 
       {isFuture && (
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6b7280' }}>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
           This day is in the future. No meals logged yet.
         </p>
       )}
       {row.status === 'no_data' && (
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6b7280' }}>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
           No meals were logged for this day.
         </p>
       )}
@@ -86,11 +74,11 @@ export default function GoalAdherenceDayDetailDialog({ row, macroUnits, onClose,
         </p>
       )}
 
-      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#9ca3af' }}>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--color-text-faint)' }}>
         A category is a hit when the actual value is within its min/max goal range.
       </p>
 
-      <div style={{ overflowX: 'auto' }}>
+      <div className="adh-detail-table" style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
@@ -110,13 +98,29 @@ export default function GoalAdherenceDayDetailDialog({ row, macroUnits, onClose,
                 }}
               >
                 <td style={{ padding: '8px 8px 8px 0', fontWeight: 600 }}>{cat.label}</td>
-                <td style={{ padding: 8, color: '#374151' }}>{cat.goalDisplay}</td>
-                <td style={{ padding: 8, color: '#374151' }}>{cat.actualDisplay}</td>
-                <td style={{ padding: 8, color: '#374151' }}>{cat.deltaLabel}</td>
+                <td style={{ padding: 8, color: 'var(--color-text-body)' }}>{cat.goalDisplay}</td>
+                <td style={{ padding: 8, color: 'var(--color-text-body)' }}>{cat.actualDisplay}</td>
+                <td style={{ padding: 8, color: 'var(--color-text-body)' }}>{cat.deltaLabel}</td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile: stacked per-category cards (no horizontal scroll) */}
+      <div className="adh-detail-cards">
+        {detail.categories.map(cat => (
+          <div
+            key={cat.key}
+            className="adh-detail-cat"
+            style={cat.missedTolerance ? { background: '#fffbeb' } : undefined}
+          >
+            <div className="adh-detail-cat-name">{cat.label}</div>
+            <div className="adh-detail-cat-row"><span>Goal</span><span>{cat.goalDisplay}</span></div>
+            <div className="adh-detail-cat-row"><span>Actual</span><span>{cat.actualDisplay}</span></div>
+            <div className="adh-detail-cat-row"><span>vs goal</span><span>{cat.deltaLabel}</span></div>
+          </div>
+        ))}
       </div>
 
       <div style={{

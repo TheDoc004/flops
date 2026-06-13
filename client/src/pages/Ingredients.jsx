@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import usePaginationAnchor from '../hooks/usePaginationAnchor';
 import {
   createLabelIngredient,
   deleteLabelIngredient,
@@ -13,16 +14,16 @@ import { mergeNutritionParseIntoIngredientForm, scanFieldClass } from '../utils/
 function filterByName(items, q) {
   const query = String(q ?? '').trim().toLowerCase();
   const list = Array.isArray(items) ? items : [];
-  if (!query) return [...list].sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
-  return list
-    .filter(x => {
-      const name = String(x.name || '').toLowerCase();
-      const brand = String(x.brand_name || '').toLowerCase();
-      const base = String(x.base_label || '').toLowerCase();
-      return name.includes(query) || brand.includes(query) || base.includes(query);
-    })
-    .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
+  if (!query) return [...list];
+  return list.filter(x => {
+    const name = String(x.name || '').toLowerCase();
+    const brand = String(x.brand_name || '').toLowerCase();
+    const base = String(x.base_label || '').toLowerCase();
+    return name.includes(query) || brand.includes(query) || base.includes(query);
+  });
 }
+
+const PAGE_SIZE = 10;
 
 function emptyForm() {
   return {
@@ -47,9 +48,14 @@ function emptyForm() {
 export default function Ingredients() {
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState('alpha_asc');
+  const { page, setPage, paginationRef, handlePageChange } = usePaginationAnchor();
+
+  const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(null);
+  const formCardRef = useRef(null);
   const [form, setForm] = useState(emptyForm);
   const [labelPhotoPreview, setLabelPhotoPreview] = useState(null);
   const [labelPhotoDataUri, setLabelPhotoDataUri] = useState(null);
@@ -70,6 +76,29 @@ export default function Ingredients() {
   useEffect(() => { void load(); }, []);
 
   const filtered = useMemo(() => filterByName(items, search), [items, search]);
+
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    if (sort === 'recently_added') {
+      arr.sort((a, b) => b.id - a.id);
+    } else if (sort === 'recently_used') {
+      arr.sort((a, b) => {
+        const ta = a.last_used_at ? new Date(a.last_used_at).getTime() : 0;
+        const tb = b.last_used_at ? new Date(b.last_used_at).getTime() : 0;
+        return tb - ta;
+      });
+    } else if (sort === 'alpha_desc') {
+      arr.sort((a, b) => String(b.name).localeCompare(String(a.name), undefined, { sensitivity: 'base' }));
+    } else {
+      arr.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
+    }
+    return arr;
+  }, [filtered, sort]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const paginated = useMemo(() => sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [sorted, page]);
+
+  useEffect(() => { setPage(1); }, [search, sort]);
 
   function clearLabelPhoto() {
     setLabelPhotoPreview(null);
@@ -133,6 +162,7 @@ export default function Ingredients() {
 
   function startEdit(row) {
     setEditing(row);
+    setFormOpen(true);
     clearLabelPhoto();
     setForm({
       name: row.name || '',
@@ -151,6 +181,7 @@ export default function Ingredients() {
       serving_quantity: row.serving_quantity == null ? '1' : String(row.serving_quantity),
       grams_per_unit: row.grams_per_unit == null ? '' : String(row.grams_per_unit),
     });
+    formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function submit(e) {
@@ -187,6 +218,7 @@ export default function Ingredients() {
       }
       setEditing(null);
       setForm(emptyForm());
+      setFormOpen(false);
       clearLabelPhoto();
       await load();
     } catch (e2) {
@@ -199,37 +231,44 @@ export default function Ingredients() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <h1 style={{
-          margin: 0, fontSize: 32, fontWeight: 400,
-          color: '#1e1b4b', letterSpacing: '-0.02em', lineHeight: 1.1,
-          fontFamily: "'DM Serif Display', Georgia, serif",
-        }}>Ingredient Library</h1>
+        <h1 className="page-title">Ingredient Library</h1>
       </div>
 
-      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
+      <p className="page-subtitle" style={{ marginBottom: 16 }}>
         Save ingredients once, then reuse them forever in Meal Builder recipes. Variants (brands) are supported. Add
         items by typing macros manually or by uploading a nutrition-label photo (assisted scan — verify before saving).
       </p>
 
       {error && <p className="error">{error}</p>}
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{
-          margin: '0 0 16px', fontSize: 20, fontWeight: 400,
-          color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
-        }}>{editing ? 'Edit ingredient' : 'New ingredient'}</h3>
+      <div ref={formCardRef} className="card" style={{ marginBottom: 16, scrollMarginTop: 120 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <h3 className="section-title">{editing ? 'Edit ingredient' : 'Add a new ingredient'}</h3>
+          {!editing && (
+            <button type="button" className="btn-secondary" style={{ flexShrink: 0 }} onClick={() => setFormOpen(o => !o)}>
+              {formOpen ? 'Collapse' : '+ Add ingredient'}
+            </button>
+          )}
+        </div>
+        {!formOpen && !editing && (
+          <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            Save ingredients once, then reuse them in meals and recipes.
+          </p>
+        )}
+
+        {(formOpen || editing) && (<>
 
         {/* ── Scan label (optional, new entries only) ── */}
         {!editing && (
           <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #f0ede8' }}>
             <h4 style={{
               margin: '0 0 4px', fontSize: 15, fontWeight: 400,
-              color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
+              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
             }}>
               Scan label{' '}
-              <span style={{ fontSize: 12, color: '#9ca3af', fontFamily: 'inherit' }}>(optional)</span>
+              <span style={{ fontSize: 12, color: 'var(--color-text-faint)', fontFamily: 'inherit' }}>(optional)</span>
             </h4>
-            <p style={{ margin: '0 0 10px', fontSize: 12, color: '#9ca3af' }}>
+            <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--color-text-faint)' }}>
               Upload a nutrition label photo and run OCR to pre-fill the fields below. Always verify before saving.
             </p>
             <label style={{ display: 'block', marginBottom: 6 }}>Nutrition label photo</label>
@@ -284,9 +323,9 @@ export default function Ingredients() {
           <div style={{ marginBottom: 20 }}>
             <h4 style={{
               margin: '0 0 12px', fontSize: 15, fontWeight: 400,
-              color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
+              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
             }}>Basic info</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-grid-2">
               <div style={{ gridColumn: '1 / -1' }}>
                 <label>Display name</label>
                 <input
@@ -300,7 +339,7 @@ export default function Ingredients() {
                 />
               </div>
               <div>
-                <label>Base label / category <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
+                <label>Base label / category <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
                 <input
                   value={form.base_label}
                   onChange={e => {
@@ -311,7 +350,7 @@ export default function Ingredients() {
                 />
               </div>
               <div>
-                <label>Brand / variant <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
+                <label>Brand / variant <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
                 <input
                   value={form.brand_name}
                   onChange={e => {
@@ -328,32 +367,34 @@ export default function Ingredients() {
           <div style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid #f0ede8' }}>
             <h4 style={{
               margin: '0 0 10px', fontSize: 15, fontWeight: 400,
-              color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
+              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
             }}>Logging style</h4>
-            <div style={{ display: 'flex', gap: 20, marginBottom: form.tracking_type === 'unit' ? 14 : 0 }}>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="tracking_type"
-                  value="weight"
-                  checked={form.tracking_type !== 'unit'}
-                  onChange={() => setForm(f => ({ ...f, tracking_type: 'weight' }))}
-                />
-                By weight
-              </label>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="tracking_type"
-                  value="unit"
-                  checked={form.tracking_type === 'unit'}
-                  onChange={() => setForm(f => ({ ...f, tracking_type: 'unit' }))}
-                />
-                By unit
-              </label>
+            <div className="logging-style-group" style={{ marginBottom: form.tracking_type === 'unit' ? 14 : 0 }}>
+              {[
+                { value: 'weight', title: 'By weight', desc: 'Best for foods you weigh in grams or ounces.', examples: 'Yogurt, rice, chicken, fruit' },
+                { value: 'unit',   title: 'By unit',   desc: 'Best for foods you count instead of weigh.',  examples: 'Eggs, slices, bagels, scoops' },
+              ].map(opt => {
+                const selected = form.tracking_type === opt.value || (opt.value === 'weight' && form.tracking_type !== 'unit');
+                return (
+                  <label key={opt.value} className={`logging-style-option${selected ? ' is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="tracking_type"
+                      value={opt.value}
+                      checked={selected}
+                      onChange={() => setForm(f => ({ ...f, tracking_type: opt.value }))}
+                    />
+                    <div className="logging-style-text">
+                      <div className="logging-style-title">{opt.title}</div>
+                      <div className="logging-style-description">{opt.desc}</div>
+                      <div className="logging-style-examples">{opt.examples}</div>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
             {form.tracking_type === 'unit' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="form-grid-2">
                 <div>
                   <label>Unit name</label>
                   <input
@@ -362,12 +403,12 @@ export default function Ingredients() {
                     placeholder="e.g. slice, egg, scoop, bar"
                     required={form.tracking_type === 'unit'}
                   />
-                  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
                     How it will appear when logging (e.g. "2 slices").
                   </p>
                 </div>
                 <div>
-                  <label>Units per serving <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 400 }}>(usually 1)</span></label>
+                  <label>Units per serving <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(usually 1)</span></label>
                   <input
                     type="number"
                     min="0.01"
@@ -378,7 +419,7 @@ export default function Ingredients() {
                   />
                 </div>
                 <div>
-                  <label>Grams per unit <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
+                  <label>Grams per unit <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
                   <input
                     type="number"
                     min="0.01"
@@ -387,7 +428,7 @@ export default function Ingredients() {
                     onChange={e => setForm(f => ({ ...f, grams_per_unit: e.target.value }))}
                     placeholder="e.g. 40"
                   />
-                  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
                     For future weight equivalency. Optional for now.
                   </p>
                 </div>
@@ -399,14 +440,14 @@ export default function Ingredients() {
           <div style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid #f0ede8' }}>
             <h4 style={{
               margin: '0 0 12px', fontSize: 15, fontWeight: 400,
-              color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
+              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
             }}>Serving & scaling</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-grid-2">
               <div style={{ gridColumn: '1 / -1' }}>
                 <label>
                   {form.tracking_type === 'unit'
-                    ? <>Serving label <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 400 }}>(e.g. 1 slice, 1 large egg)</span></>
-                    : <>Serving size <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 400 }}>(as printed)</span></>
+                    ? <>Serving label <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(e.g. 1 slice, 1 large egg)</span></>
+                    : <>Serving size <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(as printed)</span></>
                   }
                 </label>
                 <input
@@ -419,7 +460,7 @@ export default function Ingredients() {
                   placeholder={form.tracking_type === 'unit' ? 'e.g. 1 slice, 1 large egg' : 'e.g. 170g, 1 slice, 1 scoop'}
                   required
                 />
-                <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>
+                <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
                   {form.tracking_type === 'unit'
                     ? 'The human-readable label shown to you when logging.'
                     : 'The human-readable label as printed on the package.'}
@@ -427,7 +468,7 @@ export default function Ingredients() {
               </div>
               {form.tracking_type !== 'unit' && (
                 <div>
-                  <label>Grams per serving <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 400 }}>(for scaling)</span></label>
+                  <label>Grams per serving <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(for scaling)</span></label>
                   <input
                     type="number"
                     min="0.01"
@@ -440,7 +481,7 @@ export default function Ingredients() {
                     }}
                     placeholder="e.g. 170"
                   />
-                  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
                     Used by Meal Builder to scale portions by weight.
                   </p>
                 </div>
@@ -452,9 +493,9 @@ export default function Ingredients() {
           <div style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid #f0ede8' }}>
             <h4 style={{
               margin: '0 0 12px', fontSize: 15, fontWeight: 400,
-              color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
+              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
             }}>Nutrition per serving</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-grid-2">
               <div>
                 <label>Calories</label>
                 <input
@@ -516,7 +557,7 @@ export default function Ingredients() {
                 />
               </div>
               <div>
-                <label>Fiber (g) <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
+                <label>Fiber (g) <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
                 <input
                   type="number"
                   min="0"
@@ -542,6 +583,7 @@ export default function Ingredients() {
                 onClick={() => {
                   setEditing(null);
                   setForm(emptyForm());
+                  setFormOpen(false);
                   clearLabelPhoto();
                 }}
               >
@@ -565,58 +607,92 @@ export default function Ingredients() {
           </div>
 
         </form>
+        </>)}
       </div>
 
       <div className="card">
-        <h3 style={{
-          marginTop: 0, fontSize: 20, fontWeight: 400,
-          color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
-        }}>Your ingredients</h3>
-        <label htmlFor="ingredient-search" style={{ marginBottom: 4 }}>Search</label>
-        <input
-          id="ingredient-search"
-          type="search"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, brand, or base label…"
-          autoComplete="off"
-          style={{ marginBottom: 12 }}
-        />
+        <h3 className="section-title">Your ingredients</h3>
+
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label htmlFor="ingredient-search" style={{ marginBottom: 4, display: 'block' }}>Search</label>
+            <input
+              id="ingredient-search"
+              type="search"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by name, brand, or base label…"
+              autoComplete="off"
+            />
+          </div>
+          <div>
+            <label htmlFor="ingredient-sort" style={{ marginBottom: 4, display: 'block' }}>Sort by</label>
+            <select
+              id="ingredient-sort"
+              value={sort}
+              onChange={e => setSort(e.target.value)}
+              style={{ height: 38 }}
+            >
+              <option value="alpha_asc">A – Z</option>
+              <option value="alpha_desc">Z – A</option>
+              <option value="recently_added">Recently added</option>
+              <option value="recently_used">Recently used</option>
+            </select>
+          </div>
+        </div>
+
         {filtered.length === 0 ? (
           <p className="empty-state">{items.length === 0 ? 'No ingredients yet.' : 'No ingredients match your search.'}</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {filtered.map(i => (
-              <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', borderBottom: '1px solid #f3f4f6', paddingBottom: 10 }}>
-                <div style={{ minWidth: 0 }}>
-                  <strong>{i.name}</strong>
-                  {i.brand_name ? <span style={{ color: '#6b7280', marginLeft: 8 }}>({i.brand_name})</span> : null}
-                  {i.base_label ? <span style={{ color: '#9ca3af', marginLeft: 8 }}>{i.base_label}</span> : null}
-                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
-                    {i.tracking_type === 'unit' && i.unit_name
-                      ? <>per {i.serving_quantity != null ? i.serving_quantity : 1} {i.unit_name}</>
-                      : <>{i.serving_size_text}{i.grams_per_serving != null ? ` · ${i.grams_per_serving}g/serving` : ''}</>
-                    }
-                    {' · '}{i.calories} cal
+          <>
+            <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--color-text-faint)' }}>
+              {filtered.length} ingredient{filtered.length !== 1 ? 's' : ''}
+              {search ? ` matching "${search}"` : ''}
+            </p>
+            <div style={{
+              minHeight: totalPages > 1 ? `${PAGE_SIZE * 54}px` : undefined,
+            }}>
+              {paginated.map(i => (
+                <div key={i.id} className="ingredient-card">
+                  <div className="ingredient-card-main">
+                    <div className="ingredient-card-head">
+                      <strong className="ingredient-card-name">{i.name}</strong>
+                      {i.brand_name ? <span style={{ color: 'var(--color-text-muted)' }}>({i.brand_name})</span> : null}
+                      {i.base_label ? <span style={{ color: 'var(--color-text-faint)' }}>{i.base_label}</span> : null}
+                    </div>
+                    <div className="ingredient-card-meta">
+                      {i.tracking_type === 'unit' && i.unit_name
+                        ? <>per {i.serving_quantity != null ? i.serving_quantity : 1} {i.unit_name}</>
+                        : <>{i.serving_size_text}{i.grams_per_serving != null ? ` · ${i.grams_per_serving}g/serving` : ''}</>
+                      }
+                      {' · '}{i.calories} cal
+                    </div>
+                  </div>
+                  <div className="ingredient-card-actions">
+                    <button type="button" className="btn-secondary" onClick={() => startEdit(i)}>Edit</button>
+                    <button
+                      type="button"
+                      className="btn-danger"
+                      onClick={async () => {
+                        if (!window.confirm(`Delete ingredient "${i.name}"?`)) return;
+                        await deleteLabelIngredient(i.id);
+                        await load();
+                      }}
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button type="button" className="btn-secondary" onClick={() => startEdit(i)}>Edit</button>
-                  <button
-                    type="button"
-                    className="btn-danger"
-                    onClick={async () => {
-                      if (!window.confirm(`Delete ingredient "${i.name}"?`)) return;
-                      await deleteLabelIngredient(i.id);
-                      await load();
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
+              ))}
+            </div>
+            {totalPages > 1 && (
+              <div ref={paginationRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 16, paddingTop: 12, borderTop: '1px solid #f3f4f6' }}>
+                <button type="button" className="btn-secondary" disabled={page <= 1} onClick={() => handlePageChange(page - 1)}>Previous</button>
+                <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Page {page} of {totalPages}</span>
+                <button type="button" className="btn-secondary" disabled={page >= totalPages} onClick={() => handlePageChange(page + 1)}>Next</button>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
 

@@ -37,8 +37,8 @@ export default function MealFuelReadinessCard({ result, mealLabel, onDismiss }) 
         <div>
           <h3 style={{ marginTop: 0, marginBottom: 6, fontSize: 16 }}>Fuel check — {result.contextLabel}</h3>
           {mealLabel && (
-            <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
-              Meal: <strong style={{ color: '#111827' }}>{mealLabel}</strong>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>
+              Meal: <strong style={{ color: 'var(--color-text-strong)' }}>{mealLabel}</strong>
             </p>
           )}
         </div>
@@ -62,10 +62,10 @@ export default function MealFuelReadinessCard({ result, mealLabel, onDismiss }) 
       </div>
 
       {result.summary && (
-        <p style={{ margin: '0 0 6px', fontSize: 13, color: '#374151' }}>{result.summary}</p>
+        <p style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--color-text-body)' }}>{result.summary}</p>
       )}
       {result.note && (
-        <p style={{ margin: '0 0 6px', fontSize: 13, color: '#6b7280' }}>{result.note}</p>
+        <p style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--color-text-muted)' }}>{result.note}</p>
       )}
       {result.suggestion && (
         <p style={{ margin: 0, fontSize: 13, color: '#1e40af' }}>

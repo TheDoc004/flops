@@ -1,10 +1,98 @@
 *, *::before, *::after { box-sizing: border-box; }
 
+/* ============================================================
+   Design tokens — single source of truth for the Flops UI.
+   Values intentionally match the pre-token styles so migrating
+   the global rules below is a zero-visual-change refactor.
+   Pages adopt these incrementally during per-page redesigns.
+   ============================================================ */
+:root {
+  /* ── Color · brand ── */
+  --color-primary: #312e81;          /* primary actions */
+  --color-primary-hover: #1e1b6b;
+  --color-primary-ink: #1e1b4b;      /* darker indigo for headings */
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-secondary-bg: #ede9fe;     /* .btn-secondary */
+  --color-secondary-bg-hover: #ddd6fe;
+  --color-secondary-border: #c4b5fd;
+  --color-link: #2563eb;             /* canonical link blue */
+  --color-success: #059669;
+
+  /* ── Color · surfaces ── */
+  --color-bg: #f3ede3;               /* app background */
+  --color-surface: #faf9f7;          /* card background */
+  --color-surface-border: #e8e4dc;
+  --color-input-border: #d1d5db;
+  --color-border: #e5e7eb;
+  --color-divider: #f3f4f6;
+  --color-divider-warm: #f0ede8;
+
+  /* ── Color · text ── */
+  --color-text: #1a1a1a;             /* body */
+  --color-text-strong: #111827;
+  --color-text-body: #374151;
+  --color-text-muted: #6b7280;
+  --color-text-faint: #9ca3af;
+
+  /* ── Color · status (adherence / calendar) ── */
+  --status-hit-bg: #d1fae5;       --status-hit-border: #6ee7b7;      --status-hit-text: #065f46;
+  --status-partial-bg: #fef3c7;   --status-partial-border: #fcd34d;  --status-partial-text: #92400e;
+  --status-miss-bg: #fee2e2;      --status-miss-border: #fca5a5;     --status-miss-text: #991b1b;
+  --status-none-bg: #f3f4f6;      --status-none-border: #e5e7eb;     --status-none-text: #6b7280;
+  --status-upcoming-bg: #eff6ff;  --status-upcoming-border: #bfdbfe; --status-upcoming-text: #1d4ed8;
+
+  /* ── Typography · families ── */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: 'DM Serif Display', Georgia, serif;
+
+  /* ── Typography · scale (32 / 20 / 16 / 14 / 13 / 12) ── */
+  --text-page-title: 32px;
+  --text-section: 20px;
+  --text-subsection: 16px;
+  --text-body: 14px;
+  --text-secondary: 13px;
+  --text-caption: 12px;
+
+  /* ── Spacing · 2px grid, value-named for 1:1 migration ── */
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-32: 32px;
+
+  /* ── Border radius ── */
+  --radius-sm: 8px;    /* buttons, inputs */
+  --radius-md: 10px;   /* option cards, dropdowns */
+  --radius-lg: 14px;   /* cards, dialogs */
+  --radius-pill: 999px;
+
+  /* ── Interaction ── */
+  --touch-target: 44px;
+
+  /* ── Elevation ── */
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.05);
+  --shadow-pop: 0 10px 28px rgba(0,0,0,0.08);
+  --shadow-modal: 0 20px 60px rgba(0,0,0,0.2);
+}
+
+/* ── Typography ── */
+/* DM Serif Display is loaded via index.html for headings/brand moments */
+.font-display {
+  font-family: var(--font-serif);
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #f5f5f5;
-  color: #1a1a1a;
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 a { color: inherit; text-decoration: none; }
@@ -12,55 +100,684 @@ a { color: inherit; text-decoration: none; }
 button {
   cursor: pointer;
   border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
-  font-size: 14px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-10) var(--space-16);
+  font-size: var(--text-body);
   font-weight: 500;
+  min-height: var(--touch-target);
 }
 
-.btn-primary { background: #2563eb; color: white; }
-.btn-primary:hover { background: #1d4ed8; }
-.btn-danger { background: #dc2626; color: white; }
-.btn-danger:hover { background: #b91c1c; }
-.btn-secondary { background: #e5e7eb; color: #374151; }
-.btn-secondary:hover { background: #d1d5db; }
+/* ── Primary action: deep indigo ── */
+.btn-primary { background: var(--color-primary); color: white; }
+.btn-primary:hover { background: var(--color-primary-hover); }
+.btn-danger { background: var(--color-danger); color: white; }
+.btn-danger:hover { background: var(--color-danger-hover); }
+.btn-secondary { background: var(--color-secondary-bg); color: var(--color-primary); border: 1px solid var(--color-secondary-border); }
+.btn-secondary:hover { background: var(--color-secondary-bg-hover); }
 
 input, select, textarea {
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 14px;
+  border: 1px solid var(--color-input-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-10) var(--space-12);
+  font-size: var(--text-body);
   width: 100%;
+  min-height: var(--touch-target);
+}
+
+/* Checkboxes and radios opt out of the full-width control styling above
+   (otherwise the global input rule stretches them into 44px bordered boxes). */
+input[type="checkbox"], input[type="radio"] {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
 }
 
 input:focus, select:focus, textarea:focus {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--color-primary);
   border-color: transparent;
 }
 
 label {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-secondary);
   font-weight: 500;
-  margin-bottom: 4px;
-  color: #374151;
+  margin-bottom: var(--space-4);
+  color: var(--color-text-body);
 }
 
+/* ── Base card: warm off-white with soft warm border ── */
 .card {
-  background: white;
-  border-radius: 10px;
-  padding: 20px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-20);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-surface-border);
+}
+@media (max-width: 480px) {
+  .card { padding: var(--space-14); }
 }
 
-.error { color: #dc2626; font-size: 13px; margin-top: 4px; }
-.empty-state { text-align: center; color: #9ca3af; padding: 40px 0; }
+/* ============================================================
+   Typography utility classes — the canonical heading scale.
+   Pages migrate their inline serif headers to these so the
+   scale stays consistent (audit finding 1.1).
+   ============================================================ */
+.page-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-page-title);
+  font-weight: 400;
+  color: var(--color-primary-ink);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.section-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-section);
+  font-weight: 400;
+  color: var(--color-primary-ink);
+}
+.subsection-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-subsection);
+  font-weight: 400;
+  color: var(--color-primary-ink);
+}
+.page-subtitle {
+  margin: 0 0 var(--space-20);
+  font-size: var(--text-body);
+  color: var(--color-text-muted);
+}
+
+/* ── Macro grid: 2 cols mobile → 4 cols desktop ── */
+.macro-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-12);
+}
+@media (min-width: 640px) {
+  .macro-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ── Macro ring card (used inside macro-grid) ── */
+.macro-ring-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: 18px var(--space-14);
+  border: 1px solid var(--color-surface-border);
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+@media (max-width: 479px) {
+  .macro-ring-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-8);
+    padding: var(--space-14) var(--space-12);
+  }
+}
+
+.error { color: var(--color-danger); font-size: var(--text-secondary); margin-top: var(--space-4); }
+.empty-state { text-align: center; color: var(--color-text-faint); padding: var(--space-32) 0; font-size: var(--text-body); }
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin: 0 0 var(--space-10);
+}
+
+/* Assisted nutrition scan: highlight fields that need review */
+input.scan-field-missing {
+  border-style: dashed;
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+input.scan-field-review {
+  border-color: #d97706;
+  background: #fffbeb;
+}
 
 dialog {
   border: none;
-  border-radius: 12px;
-  padding: 24px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-24);
   width: min(480px, 90vw);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  box-shadow: var(--shadow-modal);
 }
 dialog::backdrop { background: rgba(0,0,0,0.4); }
+@media (max-width: 480px) {
+  dialog {
+    padding: var(--space-16);
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+}
+
+/* ── Calendar day tile: hover/focus feedback ── */
+.cal-day {
+  padding: 8px;
+  transition: filter 0.1s ease, box-shadow 0.1s ease, transform 0.1s ease;
+}
+.cal-day:hover {
+  filter: brightness(0.93);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  transform: translateY(-1px);
+}
+.cal-day:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ── Adherence calendar grid + in-cell text (never overflow the tile) ── */
+.cal-grid { gap: 8px; }
+
+/* Missed-macro labels: short, clamped to 2 lines, never spill the cell */
+.cal-day-missed {
+  font-size: 10px;
+  line-height: 1.15;
+  opacity: 0.9;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+/* Status word (Hit / Not logged / Upcoming): single line with ellipsis */
+.cal-day-note {
+  font-size: 10px;
+  color: var(--color-text-faint);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 600px) {
+  .cal-grid { gap: 4px; }
+  .cal-day { padding: 5px; }
+  .cal-day-missed { font-size: 9px; line-height: 1.1; }
+  .cal-day-note { font-size: 9px; }
+}
+
+/* ── Logging style selector (Ingredients + Meal Builder) ── */
+.logging-style-group {
+  display: flex;
+  gap: var(--space-12);
+  flex-wrap: wrap;
+}
+
+.logging-style-option {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-10);
+  padding: var(--space-12) var(--space-14);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  /* reset global label defaults */
+  margin-bottom: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+}
+
+.logging-style-option.is-selected {
+  border: 2px solid #7c3aed;
+  background: #f5f3ff;
+}
+
+/* reset global input defaults on the radio button */
+.logging-style-option input[type="radio"] {
+  width: auto;
+  flex-shrink: 0;
+  margin-top: 3px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  accent-color: #7c3aed;
+}
+
+.logging-style-option input[type="radio"]:focus {
+  outline: none;
+}
+
+.logging-style-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.logging-style-title {
+  font-weight: 600;
+  font-size: var(--text-body);
+  color: var(--color-text-strong);
+  margin-bottom: 3px;
+}
+
+.logging-style-option.is-selected .logging-style-title {
+  font-weight: 700;
+  color: #5b21b6;
+}
+
+.logging-style-description {
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-2);
+}
+
+.logging-style-examples {
+  font-size: 11px;
+  color: var(--color-text-faint);
+  margin: 0;
+}
+
+/* ── App main content area ── */
+.app-main {
+  padding: var(--space-24) var(--space-20);
+}
+/* Clear the fixed bottom navigation bar (shown ≤768px) */
+@media (max-width: 768px) {
+  .app-main {
+    padding-bottom: 80px;
+  }
+}
+@media (max-width: 480px) {
+  .app-main {
+    padding: var(--space-16) var(--space-12);
+    padding-bottom: 80px;
+  }
+}
+
+/* ── Meal Builder Step 2: ingredient rows ──
+   Desktop keeps the original 5-column grid with role + substitutes always
+   visible. Mobile (≤699px) becomes a stacked card: search → amount+unit →
+   remove, with role label + substitutes collapsed behind "More options".
+   Recently Used is hidden on mobile so the builder sits higher on screen. */
+.mb-line-row {
+  display: grid;
+  grid-template-columns: 1.4fr 2fr 100px 80px auto;
+  gap: 8px;
+  align-items: end;
+}
+.mb-amount-unit { display: contents; }  /* amount + unit are direct grid cells on desktop */
+.mb-more-toggle { display: none; }       /* mobile-only control */
+.mb-role-mobile { display: none; }       /* desktop uses the in-grid role field */
+.mb-line-header { display: none; }       /* mobile-only card header (title + trash) */
+
+@media (max-width: 699px) {
+  .mb-recently-used { display: none; }
+
+  .mb-line {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-surface-border);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    background: #fff;
+  }
+  .mb-line-header {
+    order: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .mb-line-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-strong);
+  }
+  .mb-trash {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+  .mb-trash:hover { color: var(--color-danger); background: #fef2f2; }
+  .mb-trash:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .mb-line-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    order: 1;
+  }
+  .mb-role-desktop { display: none; }     /* role moves into the collapsed advanced section */
+  .mb-field-ingredient { width: 100%; }
+  .mb-amount-unit {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: end;
+    width: 100%;
+  }
+  .mb-remove { display: none; }            /* replaced by the trash icon in the header */
+
+  .mb-macro { order: 2; }
+
+  .mb-more-toggle {
+    order: 3;
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    min-height: 36px;
+    padding: 6px 0;
+    background: transparent;
+    border: none;
+    color: var(--color-link);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .mb-advanced {
+    order: 4;
+    display: none;
+  }
+  .mb-line.is-expanded .mb-advanced { display: block; }
+  .mb-role-mobile { display: block; }
+}
+
+/* ── Adherence: desktop tables vs mobile stacked cards ── */
+.adh-detail-cards,
+.adh-hist-cards { display: none; }
+
+@media (max-width: 480px) {
+  .adh-detail-table,
+  .adh-hist-table { display: none; }
+  .adh-detail-cards,
+  .adh-hist-cards { display: block; }
+}
+
+/* Day-detail modal: per-macro cards */
+.adh-detail-cat {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+}
+.adh-detail-cat:last-child { border-bottom: none; }
+.adh-detail-cat-name {
+  font-weight: 600;
+  color: var(--color-text-strong);
+  margin-bottom: 4px;
+}
+.adh-detail-cat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--color-text-body);
+}
+.adh-detail-cat-row span:first-child { color: var(--color-text-muted); }
+
+/* History panel: per-day cards */
+.adh-hist-card {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-divider);
+  cursor: pointer;
+}
+.adh-hist-card:last-child { border-bottom: none; }
+.adh-hist-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.adh-hist-card-date {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.adh-hist-card-missed {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+/* ── Weekly Goals: desktop table vs mobile day cards ── */
+.goals-cards { display: none; }            /* desktop uses the table */
+
+@media (max-width: 768px) {
+  .goals-table-wrap { display: none; }     /* table forces horizontal scroll on mobile */
+  .goals-cards { display: block; }
+}
+
+.goals-day-card {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.goals-day-card:first-child { padding-top: 0; }
+.goals-day-card:last-child { padding-bottom: 0; border-bottom: none; }
+.goals-day-title {
+  margin: 0 0 10px;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--color-primary-ink);
+}
+.goals-macro { margin-bottom: 12px; }
+.goals-macro:last-child { margin-bottom: 0; }
+.goals-macro-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-body);
+  margin-bottom: 6px;
+}
+.goals-minmax {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* ── Recipe Library card (Recipes page) ──
+   Mobile-first vertical stack → horizontal at ≥700px. The min-width:0 +
+   wrapping rules are what stop the card from forcing the page wider than the
+   viewport (flex items otherwise refuse to shrink below their content width). */
+.recipe-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-divider);
+  min-width: 0;
+}
+.recipe-card-main {
+  min-width: 0;
+}
+.recipe-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.recipe-card-name {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.recipe-card-ingredients {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--color-text-body);
+  overflow-wrap: anywhere;
+}
+.recipe-card-macros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 13px;
+  color: var(--color-text-body);
+}
+.recipe-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (min-width: 700px) {
+  .recipe-card {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .recipe-card-main { flex: 1; }
+  .recipe-card-macros { flex-shrink: 0; }
+  .recipe-card-actions {
+    flex-shrink: 0;
+    justify-content: flex-end;
+  }
+}
+
+/* ── Ingredient Library card (Ingredients page) ──
+   Same mobile-first pattern as the recipe card: stacked on mobile, horizontal
+   at ≥700px. min-width:0 + wrapping keep the buttons grouped consistently and
+   stop long names from shifting them or overflowing the card. */
+.ingredient-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-divider);
+  min-width: 0;
+}
+.ingredient-card-main {
+  min-width: 0;
+}
+.ingredient-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.ingredient-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ingredient-card-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+.ingredient-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (min-width: 700px) {
+  .ingredient-card {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+  .ingredient-card-main { flex: 1; }
+  .ingredient-card-actions {
+    flex-shrink: 0;
+    justify-content: flex-end;
+  }
+}
+
+/* ── Dashboard "Today's Meals" card ── */
+/* Meal name: up to 2 lines, then ellipsis (no awkward single-line cut-off) */
+.meal-name {
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--color-text-strong);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+/* Macro summary: one compact row that never wraps to a second (orphan) line */
+.meal-macros {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  align-items: baseline;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.meal-macros .meal-cal {
+  font-weight: 600;
+  color: var(--color-text-body);
+  flex-shrink: 0;
+}
+.meal-macros .meal-macro {
+  flex-shrink: 0;
+}
+
+/* Notes: their own muted line, off the macro row */
+.meal-notes {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-text-faint);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ── Two-column form fields: side-by-side on desktop, stacked on mobile ── */
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-12);
+}
+@media (max-width: 520px) {
+  .form-grid-2 { grid-template-columns: 1fr; }
+}
+
+/* ── Dashboard "Today's training" select: inline desktop, full-width mobile ── */
+.context-select {
+  min-width: 180px;
+  width: auto;
+}
+@media (max-width: 520px) {
+  .context-select { min-width: 0; width: 100%; }
+}
+
+/* ── Settings grid: 2-col on desktop, 1-col on mobile ── */
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-16);
+  align-items: start;
+  margin-bottom: var(--space-16);
+}
+@media (max-width: 640px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+}

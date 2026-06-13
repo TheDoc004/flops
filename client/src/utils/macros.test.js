@@ -1,4 +1,4 @@
-import { computeEntryMacros, sumMacros, groupByDate } from './macros';
+import { computeEntryMacros, sumMacros, groupByDate, macroCaloriesFromGrams, mealMacroCalorieBreakdown } from './macros';
 
 const makeEntry = (overrides = {}) => ({
   recipe_calories: 200,
@@ -8,6 +8,24 @@ const makeEntry = (overrides = {}) => ({
   servings: 1,
   date: '2026-04-09',
   ...overrides,
+});
+
+describe('macroCaloriesFromGrams', () => {
+  it('uses 4/4/9 kcal per g for P/C/F', () => {
+    const c = macroCaloriesFromGrams(10, 20, 10);
+    expect(c.protein).toBe(40);
+    expect(c.carbs).toBe(80);
+    expect(c.fat).toBe(90);
+  });
+});
+
+describe('mealMacroCalorieBreakdown', () => {
+  it('matches grams from computeEntryMacros', () => {
+    const entry = makeEntry({ servings: 2 });
+    const m = computeEntryMacros(entry);
+    const cal = mealMacroCalorieBreakdown(entry);
+    expect(cal.protein + cal.carbs + cal.fat).toBeCloseTo(m.protein_g * 4 + m.carbs_g * 4 + m.fat_g * 9);
+  });
 });
 
 describe('computeEntryMacros', () => {

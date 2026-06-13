@@ -472,12 +472,8 @@ export default function TrainingWorkouts() {
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <h1 style={{
-          margin: '0 0 4px', fontSize: 32, fontWeight: 400,
-          color: '#1e1b4b', letterSpacing: '-0.02em', lineHeight: 1.1,
-          fontFamily: "'DM Serif Display', Georgia, serif",
-        }}>Training</h1>
-        <p style={{ margin: 0, fontSize: 14, color: '#6b7280' }}>
+        <h1 className="page-title" style={{ marginBottom: 4 }}>Training</h1>
+        <p className="page-subtitle" style={{ margin: 0 }}>
           Log workouts, manage presets, and track progress.
         </p>
       </div>
@@ -868,10 +864,7 @@ export default function TrainingWorkouts() {
       {activeTab === 'progress' && (
         <div>
           <div className="card" style={{ marginBottom: 16 }}>
-            <h3 style={{
-              marginTop: 0, marginBottom: 12, fontSize: 20, fontWeight: 400,
-              color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
-            }}>Exercise progress</h3>
+            <h3 className="section-title" style={{ marginBottom: 12 }}>Exercise progress</h3>
             <label style={{ fontSize: 13, marginBottom: 6, display: 'block' }}>
               Exercise name
             </label>

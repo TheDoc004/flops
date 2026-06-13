@@ -1,15 +1,7 @@
 import { useState } from 'react';
 import { ISO_WEEKDAY_LABELS } from '../utils/weekday';
 import GoalAdherenceDayDetailDialog from './GoalAdherenceDayDetailDialog';
-
-const STATUS_META = {
-  hit: { label: 'Hit', bg: '#d1fae5', color: '#065f46', border: '#6ee7b7' },
-  partial: { label: 'Partial', bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
-  miss: { label: 'Miss', bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
-  upcoming: { label: 'Upcoming', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
-  no_data: { label: 'Not logged', bg: '#f3f4f6', color: '#6b7280', border: '#e5e7eb' },
-  no_target: { label: 'No target', bg: '#f3f4f6', color: '#6b7280', border: '#e5e7eb' },
-};
+import { STATUS_META } from '../utils/statusMeta';
 
 function StatusBadge({ status }) {
   const m = STATUS_META[status] || STATUS_META.no_target;
@@ -90,12 +82,12 @@ export default function GoalAdherencePanel({ rows, variant = 'dashboard', macroU
   return (
     <div className="card" style={{ marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-body)' }}>
           7-day adherence
         </span>
         {withTargets > 0 && (
-          <span style={{ fontSize: 13, color: '#6b7280' }}>
-            <strong style={{ color: '#111827' }}>{hits}</strong>/{rows.length} days hit
+          <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+            <strong style={{ color: 'var(--color-text-strong)' }}>{hits}</strong>/{rows.length} days hit
           </span>
         )}
       </div>
@@ -107,7 +99,8 @@ export default function GoalAdherencePanel({ rows, variant = 'dashboard', macroU
       </div>
 
       {variant === 'history' && (
-        <div style={{ marginTop: 16, overflowX: 'auto' }}>
+        <>
+        <div className="adh-hist-table" style={{ marginTop: 16, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
@@ -140,7 +133,7 @@ export default function GoalAdherencePanel({ rows, variant = 'dashboard', macroU
                   <td style={{ padding: 8 }}>
                     <StatusBadge status={row.status} />
                   </td>
-                  <td style={{ padding: 8, color: '#374151' }}>
+                  <td style={{ padding: 8, color: 'var(--color-text-body)' }}>
                     {row.status === 'no_target'
                       ? '—'
                       : row.missed?.length
@@ -152,11 +145,40 @@ export default function GoalAdherencePanel({ rows, variant = 'dashboard', macroU
             </tbody>
           </table>
         </div>
+
+        {/* Mobile: stacked day cards (no horizontal scroll) */}
+        <div className="adh-hist-cards" style={{ marginTop: 16 }}>
+          {rows.map(row => (
+            <div
+              key={row.date}
+              className="adh-hist-card"
+              role="button"
+              tabIndex={0}
+              onClick={() => setDetailRow(row)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailRow(row); }
+              }}
+            >
+              <div className="adh-hist-card-top">
+                <span className="adh-hist-card-date">{row.date} · {ISO_WEEKDAY_LABELS[row.weekday] || '—'}</span>
+                <StatusBadge status={row.status} />
+              </div>
+              <div className="adh-hist-card-missed">
+                {row.status === 'no_target'
+                  ? '—'
+                  : row.missed?.length
+                    ? `Missed: ${row.missed.map(m => m.label).join(', ')}`
+                    : 'On target'}
+              </div>
+            </div>
+          ))}
+        </div>
+        </>
       )}
 
       <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
         {['hit', 'partial', 'miss'].map(s => (
-          <span key={s} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280' }}>
+          <span key={s} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-text-muted)' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_META[s].border, display: 'inline-block' }} />
             {STATUS_META[s].label}
           </span>

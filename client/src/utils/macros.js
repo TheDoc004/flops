@@ -1,3 +1,20 @@
+/** Calorie contribution by macro (Atwater): protein 4, carbs 4, fat 9 kcal/g */
+export function macroCaloriesFromGrams(protein_g, carbs_g, fat_g) {
+  const p = Math.max(0, Number(protein_g) || 0);
+  const c = Math.max(0, Number(carbs_g) || 0);
+  const f = Math.max(0, Number(fat_g) || 0);
+  return {
+    protein: p * 4,
+    carbs: c * 4,
+    fat: f * 9,
+  };
+}
+
+export function mealMacroCalorieBreakdown(entry) {
+  const m = computeEntryMacros(entry);
+  return macroCaloriesFromGrams(m.protein_g, m.carbs_g, m.fat_g);
+}
+
 export function computeEntryMacros(entry) {
   return {
     calories: entry.recipe_calories * entry.servings,

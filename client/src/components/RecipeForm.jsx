@@ -259,7 +259,7 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onCancel, submit
         <label>Serving size</label>
         <input value={form.serving_size} onChange={set('serving_size')} required placeholder="e.g. 1 cup, 200g" />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div className="form-grid-2">
         <div><label>Calories</label><input type="number" min="0" step="0.1" value={form.calories} onChange={set('calories')} required /></div>
         <div><label>Fat (g)</label><input type="number" min="0" step="0.1" value={form.fat_g} onChange={set('fat_g')} required /></div>
         <div><label>Carbs (g)</label><input type="number" min="0" step="0.1" value={form.carbs_g} onChange={set('carbs_g')} required /></div>
@@ -278,7 +278,7 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onCancel, submit
             </button>
           </div>
         </div>
-        <p style={{ margin: '0 0 8px', fontSize: 13, color: '#6b7280' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
           <strong>Fixed lines</strong> are free-text notes. <strong>Ingredient slots</strong> use your Ingredient Library: pick a <strong>default</strong> and optional <strong>substitutes</strong>.
           When you log the recipe, you only choose an ingredient if that slot has substitutes; the saved recipe never changes.
         </p>
@@ -294,8 +294,8 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onCancel, submit
                   background: '#f8fafc',
                 }}
               >
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#1d4ed8', marginBottom: 8 }}>Ingredient slot</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-link)', marginBottom: 8 }}>Ingredient slot</div>
+                <div className="form-grid-2">
                   <div>
                     <label style={{ fontSize: 12 }}>Slot label (e.g. Bacon)</label>
                     <input value={row.label} onChange={setIngredient(index, 'label')} placeholder="Shown when logging" />
@@ -332,7 +332,7 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onCancel, submit
                 </div>
                 <div style={{ marginTop: 10 }}>
                   <label style={{ fontSize: 12 }}>Substitutes (optional)</label>
-                  <p style={{ margin: '4px 0 6px', fontSize: 12, color: '#6b7280' }}>
+                  <p style={{ margin: '4px 0 6px', fontSize: 12, color: 'var(--color-text-muted)' }}>
                     If you add substitutes, logging will ask which ingredient you used. Same portion (above) is used for macros.
                   </p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4, alignItems: 'center' }}>

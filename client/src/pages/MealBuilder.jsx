@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import RecipeForm from '../components/RecipeForm';
 import IngredientCombobox from '../components/IngredientCombobox';
-import IngredientCreateModal from '../components/IngredientCreateModal';
 import LabelCropModal from '../components/LabelCropModal';
 import { createRecipe, fetchRecipe, updateRecipe } from '../api/recipes';
-import { createLabelIngredient, deleteLabelIngredient, fetchLabelIngredients, markLabelIngredientsUsed } from '../api/labelIngredients';
+import { createLabelIngredient, fetchLabelIngredients, markLabelIngredientsUsed } from '../api/labelIngredients';
 import { extractTextFromLabelImage } from '../utils/labelOcr';
 import { parseNutritionFactsText } from '../utils/labelParse';
 import { mergeNutritionParseIntoIngredientForm, scanFieldClass } from '../utils/mergeNutritionParseIntoIngredientForm';
@@ -22,6 +21,10 @@ function emptyLabelDraft() {
     carbs_g: '',
     fat_g: '',
     fiber_g: '',
+    tracking_type: 'weight',
+    unit_name: '',
+    serving_quantity: '1',
+    grams_per_unit: '',
     photoPreview: null,
     photoDataUri: null,
   };
@@ -37,6 +40,41 @@ function newLine() {
     substitute_label_ingredient_ids: [],
     slotId: null,
   };
+}
+
+function macroSummaryText(macros, { fiber = false } = {}) {
+  const base = `${Math.round(macros.calories)} cal · P ${macros.protein_g.toFixed(1)}g · C ${macros.carbs_g.toFixed(1)}g · F ${macros.fat_g.toFixed(1)}g`;
+  return fiber && macros.fiber_g > 0
+    ? `${base} · Fiber ${macros.fiber_g.toFixed(1)}g`
+    : base;
+}
+
+function getSuggestedSubstitutes(defaultIng, candidates) {
+  if (!defaultIng || candidates.length === 0) {
+    return [...candidates]
+      .sort((a, b) => new Date(b.last_used_at || 0) - new Date(a.last_used_at || 0))
+      .slice(0, 5);
+  }
+  const defName = (defaultIng.name || '').toLowerCase();
+  const defBase = (defaultIng.base_label || '').toLowerCase();
+  const scored = candidates.map(x => {
+    const xName = (x.name || '').toLowerCase();
+    const xBase = (x.base_label || '').toLowerCase();
+    let score = 0;
+    if (defBase && xBase && xBase === defBase) score += 3;
+    if (defName && xName.includes(defName)) score += 2;
+    if (defName && defName.includes(xName) && xName.length > 3) score += 1;
+    if (x.last_used_at) score += 0.5;
+    return { x, score };
+  });
+  const matched = scored.filter(r => r.score > 0).sort((a, b) => b.score - a.score).map(r => r.x);
+  if (matched.length >= 5) return matched.slice(0, 5);
+  const matchedIds = new Set(matched.map(x => x.id));
+  const filler = [...candidates]
+    .filter(x => !matchedIds.has(x.id))
+    .sort((a, b) => new Date(b.last_used_at || 0) - new Date(a.last_used_at || 0))
+    .slice(0, 5 - matched.length);
+  return [...matched, ...filler];
 }
 
 export default function MealBuilder() {
@@ -66,8 +104,22 @@ export default function MealBuilder() {
   const [limitedUses, setLimitedUses] = useState(5);
   const [mealSaveError, setMealSaveError] = useState('');
   const [mealSaved, setMealSaved] = useState(false);
-  const [ingredientCreateLineId, setIngredientCreateLineId] = useState(null);
-  const [ingredientCreatePrefill, setIngredientCreatePrefill] = useState('');
+  const [libOpen, setLibOpen] = useState(false);
+  // Mobile only: which ingredient rows have the collapsed "More options" (role + substitutes) open.
+  const [expandedLines, setExpandedLines] = useState(() => new Set());
+  function toggleLineExpanded(id) {
+    setExpandedLines(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  const roleLabelRefs = useRef({});
+  const comboboxRefs = useRef({});
+  const amountRefs = useRef({});
+  const [pendingFocusLineId, setPendingFocusLineId] = useState(null);
+  const backToDashboardRef = useRef(null);
+  const libCardRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,31 +152,15 @@ export default function MealBuilder() {
     }
   }, []);
 
-  function openIngredientCreateForLine(lineId, prefillName) {
-    setIngredientCreateLineId(lineId);
-    setIngredientCreatePrefill(prefillName || '');
-  }
-
-  async function handleInlineIngredientSaved(created) {
-    const lineId = ingredientCreateLineId;
-    setIngredientCreateLineId(null);
-    setIngredientCreatePrefill('');
-    if (lineId && created?.id != null) {
-      updateLine(lineId, { labelIngredientId: String(created.id) });
-      setSavedLabels(prev => {
-        const id = String(created.id);
-        if (prev.some(x => String(x.id) === id)) return prev;
-        const row = { ...created, has_photo: created.has_photo ?? 0 };
-        return [...prev, row].sort((a, b) =>
-          String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' })
-        );
-      });
+  function redirectToStep1ForCreate(prefillName) {
+    setLibOpen(true);
+    if (prefillName) {
+      setLabelDraft(d => ({ ...d, name: prefillName }));
+      setLabelSaveError('');
     }
-    try {
-      await reloadLabels();
-    } catch {
-      /* list sync optional; row already uses created id */
-    }
+    requestAnimationFrame(() => {
+      libCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   useEffect(() => {
@@ -164,6 +200,22 @@ export default function MealBuilder() {
       setLimitedUses(Number(loadedRecipe.max_uses) || 5);
     }
   }, [mode, loadedRecipe, recipeId]);
+
+  useEffect(() => {
+    if (!pendingFocusLineId) return;
+    const el = roleLabelRefs.current[pendingFocusLineId];
+    if (el) {
+      el.focus();
+      setPendingFocusLineId(null);
+    }
+  }, [pendingFocusLineId, lines]);
+
+  useEffect(() => {
+    if (!mealSaved) return;
+    requestAnimationFrame(() => {
+      backToDashboardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [mealSaved]);
 
   const lineMacros = useMemo(() => {
     return lines.map(line => {
@@ -242,30 +294,41 @@ export default function MealBuilder() {
   async function saveLabelIngredient(e) {
     e.preventDefault();
     setLabelSaveError('');
+    const isUnit = labelDraft.tracking_type === 'unit';
     const name = labelDraft.name.trim();
     const brand_name = labelDraft.brand_name.trim();
     const serving_size_text = labelDraft.serving_size_text.trim();
     if (!name || !serving_size_text) {
-      setLabelSaveError('Name and serving size (label text) are required.');
+      setLabelSaveError('Name and serving label are required.');
       return;
     }
-    const grams_per_serving =
-      labelDraft.grams_per_serving === '' ? null : Number(labelDraft.grams_per_serving);
-    if (grams_per_serving != null && (!Number.isFinite(grams_per_serving) || grams_per_serving <= 0)) {
-      setLabelSaveError('Grams per serving must be a positive number or left empty.');
-      return;
+    if (isUnit) {
+      if (!labelDraft.unit_name.trim()) {
+        setLabelSaveError('Unit name is required (e.g. "egg", "slice", "bagel").');
+        return;
+      }
+    } else {
+      const gps = labelDraft.grams_per_serving === '' ? null : Number(labelDraft.grams_per_serving);
+      if (gps != null && (!Number.isFinite(gps) || gps <= 0)) {
+        setLabelSaveError('Grams per serving must be a positive number or left empty.');
+        return;
+      }
     }
     try {
       await createLabelIngredient({
         name,
         brand_name: brand_name || undefined,
         serving_size_text,
-        grams_per_serving,
+        grams_per_serving: isUnit ? null : (labelDraft.grams_per_serving === '' ? null : Number(labelDraft.grams_per_serving)),
         calories: Number(labelDraft.calories),
         protein_g: Number(labelDraft.protein_g),
         carbs_g: Number(labelDraft.carbs_g),
         fat_g: Number(labelDraft.fat_g),
         fiber_g: labelDraft.fiber_g === '' ? undefined : Number(labelDraft.fiber_g),
+        tracking_type: labelDraft.tracking_type || 'weight',
+        unit_name: isUnit && labelDraft.unit_name.trim() ? labelDraft.unit_name.trim() : undefined,
+        serving_quantity: isUnit && labelDraft.serving_quantity !== '' ? Number(labelDraft.serving_quantity) : undefined,
+        grams_per_unit: isUnit && labelDraft.grams_per_unit !== '' ? Number(labelDraft.grams_per_unit) : undefined,
         photo_data_uri: labelDraft.photoDataUri && labelDraft.photoDataUri.length < 350_000 ? labelDraft.photoDataUri : undefined,
         source_type: labelDraft.photoDataUri ? 'scanned_label' : 'manual',
       });
@@ -312,6 +375,30 @@ export default function MealBuilder() {
           : l
       )
     );
+  }
+
+  function handleRoleKeyDown(e, lineId) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    comboboxRefs.current[lineId]?.focus();
+  }
+
+  function handleIngredientSelect(lineId) {
+    amountRefs.current[lineId]?.focus();
+  }
+
+  function handleAmountKeyDown(e, lineId, idx) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (!lines[idx]?.labelIngredientId) return;
+    const nextLine = lines[idx + 1];
+    if (nextLine) {
+      roleLabelRefs.current[nextLine.id]?.focus();
+    } else {
+      const newL = newLine();
+      setLines(prev => [...prev, newL]);
+      setPendingFocusLineId(newL.id);
+    }
   }
 
   function newSlotId() {
@@ -429,13 +516,9 @@ export default function MealBuilder() {
 
   return (
     <div>
-      <h1 style={{
-        margin: '0 0 8px', fontSize: 32, fontWeight: 400,
-        color: '#1e1b4b', letterSpacing: '-0.02em', lineHeight: 1.1,
-        fontFamily: "'DM Serif Display', Georgia, serif",
-      }}>Meal Builder</h1>
-      <p style={{ margin: '0 0 14px', color: '#6b7280', fontSize: 14 }}>
-        Create and edit recipes here. Browse and log from the <Link to="/recipes" style={{ color: '#2563eb' }}>Recipe Library</Link>. Use the Common Ingredient Library to reuse and swap ingredients.
+      <h1 className="page-title" style={{ marginBottom: 8 }}>Meal Builder</h1>
+      <p className="page-subtitle" style={{ marginBottom: 14 }}>
+        Build meals and recipes from saved ingredients. Browse and log finished recipes from the <Link to="/recipes" style={{ color: 'var(--color-link)' }}>Recipe Library</Link>.
       </p>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
@@ -448,7 +531,7 @@ export default function MealBuilder() {
             setSearchParams(next);
           }}
         >
-          Label meal builder
+          Smart Meal Builder
         </button>
         <button
           type="button"
@@ -477,17 +560,14 @@ export default function MealBuilder() {
 
       {mode === 'manual' && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <h3 style={{
-            marginTop: 0, fontSize: 20, fontWeight: 400,
-            color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
-          }}>
+          <h3 className="section-title">
             {recipeId ? 'Edit recipe (manual)' : 'New recipe (manual)'}
           </h3>
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6b7280' }}>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
             Use this for recipes you want to enter directly (no label ingredients needed).
           </p>
           {loadingRecipe && recipeId ? (
-            <p style={{ margin: 0, color: '#6b7280', fontSize: 13 }}>Loading…</p>
+            <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>Loading…</p>
           ) : (
             <RecipeForm
               key={recipeId ? `edit-${recipeId}` : 'manual-new'}
@@ -513,15 +593,22 @@ export default function MealBuilder() {
 
       {loadError && <p className="error">{loadError}</p>}
 
-      <div className="card" style={{ marginBottom: 20 }}>
-          <h3 style={{
-            marginTop: 0, fontSize: 20, fontWeight: 400,
-            color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
-          }}>1. Common Ingredient Library (scan or enter once)</h3>
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6b7280' }}>
-          <strong>Assisted scan:</strong> photos are preprocessed (contrast + black/white) and read locally with Tesseract.js.
-          Optional <strong>crop</strong> helps on busy or colored labels. Any values we fill are hints — compare with the package
-          before saving. Dashed borders mark fields we could not read; amber marks values like &lt;1g that need manual entry.
+      <div ref={libCardRef} className="card" style={{ marginBottom: 20, scrollMarginTop: 120 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <h3 className="section-title">1. Add ingredients to your library if you need to</h3>
+          <button type="button" className="btn-secondary" style={{ flexShrink: 0 }} onClick={() => setLibOpen(o => !o)}>
+            {libOpen ? 'Collapse' : '+ Add ingredient'}
+          </button>
+        </div>
+        {!libOpen && (
+          <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            Save an ingredient once, then reuse it whenever you build meals or recipes.
+          </p>
+        )}
+        {libOpen && (<>
+        <p style={{ margin: '12px 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+          Add an ingredient once, then reuse it when building meals and recipes.{' '}
+          <strong>Scan:</strong> photos are preprocessed and read locally with Tesseract.js — values are hints, compare with the package before saving.
         </p>
         <div style={{ marginBottom: 12 }}>
           <label style={{ display: 'block', marginBottom: 6 }}>Label photo</label>
@@ -561,97 +648,137 @@ export default function MealBuilder() {
             </div>
           )}
         </div>
-        <form onSubmit={saveLabelIngredient} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <form onSubmit={saveLabelIngredient} className="form-grid-2">
+          {/* Name + brand */}
           <div style={{ gridColumn: '1 / -1' }}>
             <label>Product / ingredient name</label>
             <input value={labelDraft.name} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, name: e.target.value })); }} placeholder="e.g. Greek yogurt" required />
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <label>Brand (optional)</label>
+            <label>Brand <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(optional)</span></label>
             <input value={labelDraft.brand_name} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, brand_name: e.target.value })); }} placeholder="e.g. Fage, Chobani" />
           </div>
+
+          {/* Logging style */}
+          <div style={{ gridColumn: '1 / -1', paddingTop: 12, borderTop: '1px solid #f0ede8' }}>
+            <div style={{ marginBottom: 10, fontSize: 14, fontWeight: 600, color: 'var(--color-text-body)' }}>Logging style</div>
+            <div className="logging-style-group">
+              {[
+                { value: 'weight', title: 'By weight', desc: 'Best for foods you weigh in grams or ounces.', examples: 'Yogurt, rice, chicken, fruit' },
+                { value: 'unit',   title: 'By unit',   desc: 'Best for foods you count instead of weigh.',  examples: 'Eggs, slices, bagels, scoops' },
+              ].map(opt => {
+                const selected = labelDraft.tracking_type === opt.value;
+                return (
+                  <label key={opt.value} className={`logging-style-option${selected ? ' is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="mb_tracking_type"
+                      checked={selected}
+                      onChange={() => setLabelDraft(d => ({ ...d, tracking_type: opt.value }))}
+                    />
+                    <div className="logging-style-text">
+                      <div className="logging-style-title">{opt.title}</div>
+                      <div className="logging-style-description">{opt.desc}</div>
+                      <div className="logging-style-examples">{opt.examples}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Unit fields — only shown when By unit */}
+          {labelDraft.tracking_type === 'unit' && (<>
+            <div>
+              <label>Unit name</label>
+              <input
+                value={labelDraft.unit_name}
+                onChange={e => setLabelDraft(d => ({ ...d, unit_name: e.target.value }))}
+                placeholder="e.g. egg, slice, bagel"
+                required={labelDraft.tracking_type === 'unit'}
+              />
+              <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>How it appears when logging ("2 eggs").</p>
+            </div>
+            <div>
+              <label>Units per serving <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(usually 1)</span></label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={labelDraft.serving_quantity}
+                onChange={e => setLabelDraft(d => ({ ...d, serving_quantity: e.target.value }))}
+                placeholder="1"
+              />
+            </div>
+            <div>
+              <label>Grams per unit <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(optional)</span></label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={labelDraft.grams_per_unit}
+                onChange={e => setLabelDraft(d => ({ ...d, grams_per_unit: e.target.value }))}
+                placeholder="e.g. 40"
+              />
+            </div>
+          </>)}
+
+          {/* Serving label / size */}
           <div style={{ gridColumn: '1 / -1' }}>
-            <label>Serving size (as printed)</label>
+            <label>
+              {labelDraft.tracking_type === 'unit'
+                ? <>Serving label <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(e.g. 1 large egg)</span></>
+                : <>Serving size <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(as printed)</span></>}
+            </label>
             <input
               className={scanFieldClass(labelScanFieldStatus?.serving_size_text)}
               value={labelDraft.serving_size_text}
               onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, serving_size_text: e.target.value })); }}
-              placeholder='e.g. 2/3 cup (55g)'
+              placeholder={labelDraft.tracking_type === 'unit' ? 'e.g. 1 large egg' : 'e.g. 2/3 cup (55g)'}
               required
             />
           </div>
-          <div>
-            <label>Grams per serving (for scaling)</label>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              className={scanFieldClass(labelScanFieldStatus?.grams_per_serving)}
-              value={labelDraft.grams_per_serving}
-              onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, grams_per_serving: e.target.value })); }}
-              placeholder="e.g. 55"
-            />
+
+          {/* Grams per serving — weight mode only */}
+          {labelDraft.tracking_type !== 'unit' && (
+            <div>
+              <label>Grams per serving <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(for scaling)</span></label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                className={scanFieldClass(labelScanFieldStatus?.grams_per_serving)}
+                value={labelDraft.grams_per_serving}
+                onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, grams_per_serving: e.target.value })); }}
+                placeholder="e.g. 55"
+              />
+            </div>
+          )}
+
+          {/* Macros */}
+          <div className="form-grid-2" style={{ gridColumn: '1 / -1' }}>
+            <div>
+              <label>Calories</label>
+              <input type="number" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.calories)} value={labelDraft.calories} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, calories: e.target.value })); }} required />
+            </div>
+            <div>
+              <label>Protein (g)</label>
+              <input type="number" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.protein_g)} value={labelDraft.protein_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, protein_g: e.target.value })); }} required />
+            </div>
+            <div>
+              <label>Carbs (g)</label>
+              <input type="number" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.carbs_g)} value={labelDraft.carbs_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, carbs_g: e.target.value })); }} required />
+            </div>
+            <div>
+              <label>Fat (g)</label>
+              <input type="number" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.fat_g)} value={labelDraft.fat_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, fat_g: e.target.value })); }} required />
+            </div>
+            <div>
+              <label>Fiber (g) <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(optional)</span></label>
+              <input type="number" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.fiber_g)} value={labelDraft.fiber_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, fiber_g: e.target.value })); }} placeholder="Optional" />
+            </div>
           </div>
-          <div>
-            <label>Calories per serving</label>
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              className={scanFieldClass(labelScanFieldStatus?.calories)}
-              value={labelDraft.calories}
-              onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, calories: e.target.value })); }}
-              required
-            />
-          </div>
-          <div>
-            <label>Fat (g) / serving</label>
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              className={scanFieldClass(labelScanFieldStatus?.fat_g)}
-              value={labelDraft.fat_g}
-              onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, fat_g: e.target.value })); }}
-              required
-            />
-          </div>
-          <div>
-            <label>Carbs (g) / serving</label>
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              className={scanFieldClass(labelScanFieldStatus?.carbs_g)}
-              value={labelDraft.carbs_g}
-              onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, carbs_g: e.target.value })); }}
-              required
-            />
-          </div>
-          <div>
-            <label>Protein (g) / serving</label>
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              className={scanFieldClass(labelScanFieldStatus?.protein_g)}
-              value={labelDraft.protein_g}
-              onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, protein_g: e.target.value })); }}
-              required
-            />
-          </div>
-          <div>
-            <label>Fiber (g) / serving</label>
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              className={scanFieldClass(labelScanFieldStatus?.fiber_g)}
-              value={labelDraft.fiber_g}
-              onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, fiber_g: e.target.value })); }}
-              placeholder="Optional"
-            />
-          </div>
+
           <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
             <button type="submit" className="btn-primary">Save ingredient</button>
             <button
@@ -668,70 +795,125 @@ export default function MealBuilder() {
           </div>
         </form>
         {labelSaveError && <p className="error">{labelSaveError}</p>}
-
-        {savedLabels.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <h4 style={{ margin: '0 0 8px' }}>Common ingredients</h4>
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14 }}>
-              {savedLabels.map(s => (
-                <li key={s.id} style={{ marginBottom: 6 }}>
-                  <strong>{s.name}</strong>
-                  {s.brand_name ? <span style={{ color: '#6b7280' }}> ({s.brand_name})</span> : null}
-                  <span style={{ color: '#6b7280' }}> — {s.serving_size_text}</span>
-                  {s.grams_per_serving != null && <span style={{ color: '#6b7280' }}> · {s.grams_per_serving}g/serving</span>}
-                  {s.has_photo ? <span style={{ color: '#9ca3af' }}> · photo</span> : null}
-                  <button type="button" className="btn-danger" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 12 }} onClick={() => void deleteLabelIngredient(s.id).then(reloadLabels)}>
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        </>)}
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
-        <h3 style={{
-          marginTop: 0, fontSize: 20, fontWeight: 400,
-          color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
-        }}>2. Build meal</h3>
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6b7280' }}>
-          For each row: set a role label (optional), search your Ingredient Library, or use <strong>+ Create new ingredient</strong> at the bottom of the search list to add one inline—it saves to your library and selects it here. Then enter amount (g or oz). Totals update below.
+        <h3 className="section-title">2. Build your meal from saved ingredients</h3>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+          Pick ingredients from your library, enter the amount you're using, and the macros will calculate automatically.
         </p>
+        {savedLabels.length > 0 && (() => {
+          const withHistory = [...savedLabels]
+            .filter(s => s.last_used_at)
+            .sort((a, b) => new Date(b.last_used_at) - new Date(a.last_used_at))
+            .slice(0, 8);
+          const chips = withHistory.length > 0 ? withHistory : sortedLabels.slice(0, 8);
+          const chipLabel = withHistory.length > 0 ? 'Recently Used' : 'Quick Add';
+          return (
+            <div className="mb-recently-used" style={{ marginBottom: 16 }}>
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {chipLabel}
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {chips.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => {
+                      const ingId = String(s.id);
+                      setLines(prev => {
+                        const firstEmpty = prev.findIndex(l => !l.labelIngredientId);
+                        let next;
+                        if (firstEmpty !== -1) {
+                          next = prev.map((l, i) => i === firstEmpty ? { ...l, labelIngredientId: ingId } : l);
+                        } else {
+                          next = [...prev, { ...newLine(), labelIngredientId: ingId }];
+                        }
+                        if (next[next.length - 1].labelIngredientId) {
+                          next = [...next, newLine()];
+                        }
+                        return next;
+                      });
+                    }}
+                    style={{
+                      background: '#eef2ff',
+                      border: '1px solid #c7d2fe',
+                      borderRadius: 20,
+                      padding: '6px 12px',
+                      fontSize: 13,
+                      color: '#3730a3',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
         {lines.map((line, idx) => {
           const m = lineMacros[idx];
-          const defNum = Number(line.labelIngredientId);
           return (
-            <div key={line.id} style={{ marginBottom: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 2fr 100px 80px auto', gap: 8, alignItems: 'end' }}>
-                <div>
+            <div key={line.id} className={`mb-line${expandedLines.has(line.id) ? ' is-expanded' : ''}`} style={{ marginBottom: 12 }}>
+              <div className="mb-line-header">
+                <span className="mb-line-title">Ingredient {idx + 1}</span>
+                <button
+                  type="button"
+                  className="mb-trash"
+                  onClick={() => setLines(prev => prev.filter(l => l.id !== line.id))}
+                  disabled={lines.length <= 1}
+                  aria-label="Remove ingredient"
+                  title="Remove ingredient"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+                  </svg>
+                </button>
+              </div>
+              <div className="mb-line-row">
+                <div className="mb-role-desktop">
                   <label style={{ fontSize: 12 }}>Role label</label>
                   <input
+                    ref={el => { if (el) roleLabelRefs.current[line.id] = el; else delete roleLabelRefs.current[line.id]; }}
                     value={line.roleLabel}
                     onChange={e => updateLine(line.id, { roleLabel: e.target.value })}
+                    onKeyDown={e => handleRoleKeyDown(e, line.id)}
                     placeholder="e.g. Yogurt"
                   />
                 </div>
-                <div>
+                <div className="mb-field-ingredient">
                   <IngredientCombobox
+                    ref={el => { if (el) comboboxRefs.current[line.id] = el; else delete comboboxRefs.current[line.id]; }}
                     label="Ingredient (default)"
                     items={savedLabels}
                     value={line.labelIngredientId}
                     onChange={(next) => updateLine(line.id, { labelIngredientId: next })}
                     placeholder="Search ingredients…"
                     allowCreate
-                    onRequestCreate={q => openIngredientCreateForLine(line.id, q)}
+                    onRequestCreate={q => redirectToStep1ForCreate(q)}
+                    onSelect={() => handleIngredientSelect(line.id)}
                   />
                 </div>
-                <div>
+                <div className="mb-amount-unit">
+                <div className="mb-field-amount">
                   <label style={{ fontSize: 12 }}>Amount</label>
-                  <input type="number" min="0.01" step="0.01" value={line.amount} onChange={e => updateLine(line.id, { amount: e.target.value })} />
+                  <input
+                    ref={el => { if (el) amountRefs.current[line.id] = el; else delete amountRefs.current[line.id]; }}
+                    type="number" min="0.01" step="0.01"
+                    value={line.amount}
+                    onChange={e => updateLine(line.id, { amount: e.target.value })}
+                    onKeyDown={e => handleAmountKeyDown(e, line.id, idx)}
+                  />
                 </div>
-                <div>
+                <div className="mb-field-unit">
                   <label style={{ fontSize: 12 }}>Unit</label>
                   {ingById[line.labelIngredientId]?.tracking_type === 'unit'
                     ? (
-                      <div style={{ height: 38, display: 'flex', alignItems: 'center', fontSize: 14, color: '#374151', paddingLeft: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ height: 38, display: 'flex', alignItems: 'center', fontSize: 14, color: 'var(--color-text-body)', paddingLeft: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {ingById[line.labelIngredientId]?.unit_name || 'unit'}
                       </div>
                     ) : (
@@ -742,70 +924,88 @@ export default function MealBuilder() {
                     )
                   }
                 </div>
-                <button type="button" className="btn-secondary" onClick={() => setLines(prev => prev.filter(l => l.id !== line.id))} disabled={lines.length <= 1}>Remove</button>
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <label style={{ fontSize: 12, color: '#6b7280' }}>Substitutes (optional)</label>
-                <p style={{ margin: '4px 0 6px', fontSize: 12, color: '#9ca3af' }}>
-                  Add library ingredients you might swap in at log time. Logging asks only when substitutes exist.
-                </p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                  {(line.substitute_label_ingredient_ids || []).map(oid => {
-                    const li = ingById[String(oid)];
-                    return (
-                      <span
-                        key={oid}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          padding: '4px 8px',
-                          background: '#eef2ff',
-                          borderRadius: 6,
-                          fontSize: 13,
-                        }}
-                      >
-                        {li ? li.name : `#${oid}`}
-                        <button
-                          type="button"
-                          aria-label="Remove substitute"
-                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}
-                          onClick={() => removeSubstituteFromLine(line.id, oid)}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    );
-                  })}
-                  <select
-                    style={{ maxWidth: 260 }}
-                    value=""
-                    onChange={e => {
-                      addSubstituteToLine(line.id, e.target.value);
-                      e.target.value = '';
-                    }}
-                    disabled={!line.labelIngredientId}
-                  >
-                    <option value="">{line.labelIngredientId ? '+ Add substitute…' : 'Choose default ingredient first…'}</option>
-                    {sortedLabels
-                      .filter(li => {
-                        if (!Number.isInteger(defNum) || defNum <= 0) return false;
-                        if (li.id === defNum) return false;
-                        if ((line.substitute_label_ingredient_ids || []).includes(li.id)) return false;
-                        return true;
-                      })
-                      .map(li => (
-                        <option key={li.id} value={li.id}>
-                          {li.name}
-                          {li.brand_name ? ` (${li.brand_name})` : ''}
-                        </option>
-                      ))}
-                  </select>
                 </div>
+                <button type="button" className="btn-secondary mb-remove" onClick={() => setLines(prev => prev.filter(l => l.id !== line.id))} disabled={lines.length <= 1}>Remove</button>
+              </div>
+
+              <button
+                type="button"
+                className="mb-more-toggle"
+                onClick={() => toggleLineExpanded(line.id)}
+                aria-expanded={expandedLines.has(line.id)}
+              >
+                {expandedLines.has(line.id) ? '▲ Fewer options' : '▾ Role label & substitutes'}
+              </button>
+
+              <div className="mb-advanced" style={{ marginTop: 8 }}>
+                <div className="mb-role-mobile">
+                  <label style={{ fontSize: 12 }}>Role label</label>
+                  <input
+                    value={line.roleLabel}
+                    onChange={e => updateLine(line.id, { roleLabel: e.target.value })}
+                    placeholder="e.g. Yogurt"
+                  />
+                </div>
+                <label style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Substitutes (optional)</label>
+                <p style={{ margin: '4px 0 6px', fontSize: 12, color: 'var(--color-text-faint)' }}>
+                  Add a few ingredients you might swap in later.
+                </p>
+                {(line.substitute_label_ingredient_ids || []).length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {(line.substitute_label_ingredient_ids || []).map(oid => {
+                      const li = ingById[String(oid)];
+                      return (
+                        <span
+                          key={oid}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            padding: '4px 8px',
+                            background: '#eef2ff',
+                            borderRadius: 6,
+                            fontSize: 13,
+                          }}
+                        >
+                          {li ? li.name : `#${oid}`}
+                          <button
+                            type="button"
+                            aria-label="Remove substitute"
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}
+                            onClick={() => removeSubstituteFromLine(line.id, oid)}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                {line.labelIngredientId ? (() => {
+                  const defaultIng = ingById[line.labelIngredientId];
+                  const alreadyAdded = new Set([
+                    Number(line.labelIngredientId),
+                    ...(line.substitute_label_ingredient_ids || []),
+                  ]);
+                  const subCandidates = savedLabels.filter(x => !alreadyAdded.has(x.id));
+                  const subSuggestions = getSuggestedSubstitutes(defaultIng, subCandidates);
+                  return (
+                    <IngredientCombobox
+                      label=""
+                      items={subCandidates}
+                      value=""
+                      onChange={id => addSubstituteToLine(line.id, id)}
+                      placeholder="Search saved ingredients…"
+                      suggestions={subSuggestions}
+                    />
+                  );
+                })() : (
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-faint)' }}>Choose a default ingredient first.</p>
+                )}
               </div>
               {m && (
-                <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
-                  This row: {Math.round(m.calories)} cal · P {m.protein_g.toFixed(1)}g · C {m.carbs_g.toFixed(1)}g · F {m.fat_g.toFixed(1)}g
+                <div className="mb-macro" style={{ marginTop: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  This row: {macroSummaryText(m)}
                 </div>
               )}
             </div>
@@ -816,19 +1016,15 @@ export default function MealBuilder() {
         <div style={{ marginTop: 16, padding: 12, background: '#f9fafb', borderRadius: 8 }}>
           <strong>Meal totals</strong>
           <div style={{ marginTop: 6, fontSize: 14 }}>
-            {Math.round(totals.calories)} cal · P {totals.protein_g.toFixed(1)}g · C {totals.carbs_g.toFixed(1)}g · F {totals.fat_g.toFixed(1)}g
-            {totals.fiber_g > 0 && ` · Fiber ${totals.fiber_g.toFixed(1)}g`}
+            {macroSummaryText(totals, { fiber: true })}
           </div>
         </div>
       </div>
 
       <form className="card" onSubmit={saveMeal}>
-        <h3 style={{
-          marginTop: 0, fontSize: 20, fontWeight: 400,
-          color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
-        }}>3. Save as recipe / template</h3>
+        <h3 className="section-title">3. Save this as a recipe or template</h3>
         {recipeId && (
-          <p style={{ margin: '0 0 10px', fontSize: 13, color: '#6b7280' }}>
+          <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--color-text-muted)' }}>
             Editing recipe #{recipeId}. Saving will update the existing recipe.
           </p>
         )}
@@ -851,16 +1047,49 @@ export default function MealBuilder() {
           <div style={{ marginBottom: 12 }}>
             <label>Number of logs (uses)</label>
             <input type="number" min={1} max={999} step={1} value={limitedUses} onChange={e => setLimitedUses(Number(e.target.value))} style={{ maxWidth: 120 }} />
-            <p style={{ margin: '6px 0 0', fontSize: 12, color: '#6b7280' }}>Each time you log this meal, remaining uses decrease. At 0 it is archived and hidden from quick picks.</p>
+            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>Each time you log this meal, remaining uses decrease. At 0 it is archived and hidden from quick picks.</p>
           </div>
         )}
         {mealSaveError && <p className="error">{mealSaveError}</p>}
         {mealSaved && (
-          <p style={{ color: '#059669', fontSize: 14 }}>
-            Saved. <Link to="/recipes" style={{ color: '#2563eb' }}>Open Recipe Library</Link>
+          <p style={{ color: 'var(--color-success)', fontSize: 14 }}>
+            Saved. <Link to="/recipes" style={{ color: 'var(--color-link)' }}>Open Recipe Library</Link>
           </p>
         )}
-        <button type="submit" className="btn-primary">Save meal</button>
+        <button
+          type="submit"
+          className="btn-primary"
+          style={{
+            width: '100%',
+            minHeight: 72,
+            fontSize: '1.25rem',
+            fontWeight: 700,
+            marginTop: 24,
+            borderRadius: 14,
+            letterSpacing: '-0.01em',
+          }}
+        >
+          {recipeId ? 'Save changes' : 'Save meal'}
+        </button>
+        {mealSaved && (
+          <button
+            ref={backToDashboardRef}
+            type="button"
+            className="btn-secondary"
+            onClick={() => navigate('/', { state: { scrollToTop: true } })}
+            style={{
+              width: '100%',
+              minHeight: 64,
+              fontSize: '1.15rem',
+              fontWeight: 700,
+              marginTop: 12,
+              borderRadius: 14,
+              letterSpacing: '-0.01em',
+            }}
+          >
+            Back to Dashboard
+          </button>
+        )}
       </form>
         </>
       )}
@@ -878,15 +1107,6 @@ export default function MealBuilder() {
         }}
       />
 
-      <IngredientCreateModal
-        open={ingredientCreateLineId != null}
-        initialName={ingredientCreatePrefill}
-        onClose={() => {
-          setIngredientCreateLineId(null);
-          setIngredientCreatePrefill('');
-        }}
-        onSaved={handleInlineIngredientSaved}
-      />
     </div>
   );
 }

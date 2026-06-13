@@ -6,23 +6,25 @@ import { buildWeeklyAdherenceRows, listLocalDatesInclusive } from '../utils/goal
 import { ISO_WEEKDAY_LABELS } from '../utils/weekday';
 import GoalAdherenceDayDetailDialog from './GoalAdherenceDayDetailDialog';
 import AdherenceCalendarMonth from './AdherenceCalendarMonth';
+import { STATUS_META } from '../utils/statusMeta';
 
-const STATUS_META = {
-  hit:       { label: 'Hit',        bg: '#d1fae5', color: '#065f46', border: '#6ee7b7' },
-  partial:   { label: 'Partial',    bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
-  miss:      { label: 'Miss',       bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
-  upcoming:  { label: 'Upcoming',   bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
-  no_data:   { label: 'Not logged', bg: '#f3f4f6', color: '#6b7280', border: '#e5e7eb' },
-  no_target: { label: 'No target',  bg: '#f3f4f6', color: '#6b7280', border: '#e5e7eb' },
-};
+const MAX_CUSTOM_DAYS = 92;
 
 const RANGES = [
   { key: '7d',       label: '7 days',  days: 7  },
   { key: '2w',       label: '2 wks',   days: 14 },
   { key: '3w',       label: '3 wks',   days: 21 },
-  { key: 'month',    label: 'Month',   days: null },
   { key: 'calendar', label: 'Calendar',days: null },
+  { key: 'custom',   label: 'Custom',  days: null },
 ];
+
+function daysBetweenInclusive(startIso, endIso) {
+  const [ay, am, ad] = startIso.split('-').map(Number);
+  const [by, bm, bd] = endIso.split('-').map(Number);
+  const a = new Date(ay, am - 1, ad);
+  const b = new Date(by, bm - 1, bd);
+  return Math.round((b - a) / 86400000) + 1;
+}
 
 function Segment({ row, onOpen }) {
   const m = STATUS_META[row.status] || STATUS_META.no_target;
@@ -64,25 +66,45 @@ export default function DashboardAdherenceSection({ today, goalsPayload, macroUn
   const [extLogEntries, setExtLogEntries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+
+  // Validation for the custom range (incomplete dates are allowed silently).
+  const customError = useMemo(() => {
+    if (range !== 'custom' || !customStart || !customEnd) return '';
+    if (customStart > customEnd) return "Start date can't be after end date.";
+    if (daysBetweenInclusive(customStart, customEnd) > MAX_CUSTOM_DAYS) {
+      return `Please choose a range of ${MAX_CUSTOM_DAYS} days or fewer.`;
+    }
+    return '';
+  }, [range, customStart, customEnd]);
+
+  // Resolved [start, end] used for fetching + row building. null = nothing to show.
+  const bounds = useMemo(() => {
+    if (range === 'custom') {
+      if (!customStart || !customEnd || customStart > customEnd) return null;
+      if (daysBetweenInclusive(customStart, customEnd) > MAX_CUSTOM_DAYS) return null;
+      return { start: customStart, end: customEnd };
+    }
+    const opt = RANGES.find(r => r.key === range);
+    if (!opt?.days || range === '7d') return null; // 7d uses preloaded rows; calendar is separate
+    return { start: addDaysLocal(today, -(opt.days - 1)), end: today };
+  }, [range, customStart, customEnd, today]);
 
   useEffect(() => {
-    const opt = RANGES.find(r => r.key === range);
-    // 7d uses pre-loaded data; month/calendar self-manage their own fetching
-    if (!opt?.days || range === '7d') return;
+    // 7d uses pre-loaded rows; calendar self-manages; invalid/empty custom fetches nothing.
+    if (range === '7d' || range === 'calendar' || !bounds) return undefined;
     let cancelled = false;
     setLoading(true);
-    const start = addDaysLocal(today, -(opt.days - 1));
-    fetchLogRange(start, today)
+    fetchLogRange(bounds.start, bounds.end)
       .then(data => { if (!cancelled) { setExtLogEntries(Array.isArray(data) ? data : []); setLoading(false); } })
       .catch(() => { if (!cancelled) { setExtLogEntries([]); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [range, today]);
+  }, [range, bounds]);
 
   const extRows = useMemo(() => {
-    const opt = RANGES.find(r => r.key === range);
-    if (!opt?.days || range === '7d') return [];
-    const start = addDaysLocal(today, -(opt.days - 1));
-    const dates = listLocalDatesInclusive(start, today);
+    if (range === '7d' || range === 'calendar' || !bounds) return [];
+    const dates = listLocalDatesInclusive(bounds.start, bounds.end);
     const grouped = groupByDate(extLogEntries);
     const dayList = dates.map(d => {
       const g = grouped.find(x => x.date === d);
@@ -91,9 +113,9 @@ export default function DashboardAdherenceSection({ today, goalsPayload, macroUn
         : { date: d, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, hasData: false };
     });
     return buildWeeklyAdherenceRows(goalsPayload, dayList, { todayIso: today });
-  }, [range, extLogEntries, today, goalsPayload]);
+  }, [range, bounds, extLogEntries, today, goalsPayload]);
 
-  const isStrip = ['7d', '2w', '3w'].includes(range);
+  const isStrip = ['7d', '2w', '3w', 'custom'].includes(range);
   const displayRows = range === '7d' ? (rows7d || []) : extRows;
   const hits = displayRows.filter(r => r.status === 'hit').length;
   const withTargets = displayRows.filter(r => r.status !== 'no_target').length;
@@ -106,22 +128,17 @@ export default function DashboardAdherenceSection({ today, goalsPayload, macroUn
         marginBottom: 14, gap: 8, flexWrap: 'wrap',
       }}>
         <div>
-          <p style={{
-            margin: 0, fontSize: 22, fontWeight: 400, color: '#1e1b4b',
-            fontFamily: "'DM Serif Display', Georgia, serif",
-          }}>
-            Goal Adherence
-          </p>
+          <p className="section-title">Goal Adherence</p>
           {isStrip && withTargets > 0 && !loading && (
-            <p style={{ margin: '2px 0 0', fontSize: 13, color: '#6b7280' }}>
-              <strong style={{ color: '#111827' }}>{hits}</strong>/{displayRows.length} days on target
+            <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+              <strong style={{ color: 'var(--color-text-strong)' }}>{hits}</strong>/{displayRows.length} days on target
             </p>
           )}
         </div>
 
         {/* Segmented tab selector */}
         <div style={{
-          display: 'flex', gap: 2, background: '#f0ede8',
+          display: 'flex', flexWrap: 'wrap', gap: 2, background: 'var(--color-divider-warm)',
           borderRadius: 10, padding: 3, flexShrink: 0,
         }}>
           {RANGES.map(opt => {
@@ -138,8 +155,8 @@ export default function DashboardAdherenceSection({ today, goalsPayload, macroUn
                   padding: '5px 9px',
                   borderRadius: 7,
                   border: 'none',
-                  background: isActive ? '#faf9f7' : 'transparent',
-                  color: isActive ? '#1e1b4b' : '#6b7280',
+                  background: isActive ? 'var(--color-surface)' : 'transparent',
+                  color: isActive ? 'var(--color-primary-ink)' : 'var(--color-text-muted)',
                   cursor: 'pointer',
                   boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                   transition: 'all 0.15s ease',
@@ -153,51 +170,89 @@ export default function DashboardAdherenceSection({ today, goalsPayload, macroUn
         </div>
       </div>
 
-      {loading && (
-        <p style={{ margin: 0, fontSize: 13, color: '#9ca3af' }}>Loading…</p>
+      {/* ── Custom range date inputs ── */}
+      {range === 'custom' && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 150px' }}>
+              <label htmlFor="adh-start" style={{ marginBottom: 4 }}>Start date</label>
+              <input
+                id="adh-start"
+                type="date"
+                value={customStart}
+                max={customEnd || today}
+                onChange={e => setCustomStart(e.target.value)}
+              />
+            </div>
+            <div style={{ flex: '1 1 150px' }}>
+              <label htmlFor="adh-end" style={{ marginBottom: 4 }}>End date</label>
+              <input
+                id="adh-end"
+                type="date"
+                value={customEnd}
+                min={customStart || undefined}
+                max={today}
+                onChange={e => setCustomEnd(e.target.value)}
+              />
+            </div>
+          </div>
+          {customError && <p className="error" style={{ marginTop: 8, marginBottom: 0 }}>{customError}</p>}
+        </div>
       )}
 
-      {/* ── Strip view: 7d / 2w / 3w ── */}
+      {loading && (
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>Loading…</p>
+      )}
+
+      {/* ── Strip view: 7d / 2w / 3w / custom ── */}
       {isStrip && !loading && (
         <>
-          {displayRows.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, color: '#9ca3af' }}>
+          {range === 'custom' && (!customStart || !customEnd) ? (
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>
+              Pick a start and end date to view adherence.
+            </p>
+          ) : range === 'custom' && customError ? (
+            /* validation message already shown under the date inputs */
+            null
+          ) : displayRows.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>
               No goal data yet — set goals to start tracking adherence.
             </p>
+          ) : range === 'custom' && extLogEntries.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>
+              No meals logged between {customStart} and {customEnd}.
+            </p>
           ) : (
-            /* 7-column grid: 7d = 1 row, 14d = 2 rows, 21d = 3 rows */
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-              gap: 6,
-            }}>
-              {displayRows.map(row => (
-                <Segment key={row.date} row={row} onOpen={setDetailRow} />
-              ))}
-            </div>
+            <>
+              {/* 7-column grid: rows wrap as needed for the range length */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                gap: 6,
+              }}>
+                {displayRows.map(row => (
+                  <Segment key={row.date} row={row} onOpen={setDetailRow} />
+                ))}
+              </div>
+
+              {/* Legend */}
+              <div style={{ display: 'flex', gap: 14, marginTop: 12 }}>
+                {['hit', 'partial', 'miss'].map(s => (
+                  <span
+                    key={s}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--color-text-muted)' }}
+                  >
+                    <span style={{
+                      width: 8, height: 8, borderRadius: '50%',
+                      background: STATUS_META[s].border, display: 'inline-block', flexShrink: 0,
+                    }} />
+                    {STATUS_META[s].label}
+                  </span>
+                ))}
+              </div>
+            </>
           )}
-
-          {/* Legend */}
-          <div style={{ display: 'flex', gap: 14, marginTop: 12 }}>
-            {['hit', 'partial', 'miss'].map(s => (
-              <span
-                key={s}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6b7280' }}
-              >
-                <span style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: STATUS_META[s].border, display: 'inline-block', flexShrink: 0,
-                }} />
-                {STATUS_META[s].label}
-              </span>
-            ))}
-          </div>
         </>
-      )}
-
-      {/* ── Month view: current month, no prev/next ── */}
-      {range === 'month' && !loading && (
-        <AdherenceCalendarMonth macroUnits={macroUnits} bare showNav={false} />
       )}
 
       {/* ── Calendar view: navigable month grid ── */}

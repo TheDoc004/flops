@@ -276,10 +276,25 @@ function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot) {
   const getIng = id =>
     db.prepare('SELECT * FROM label_ingredients WHERE id = ? AND user_id = ?').get(id, 0);
 
-  function macrosForLabelAmount(ingRow, gramsUsed) {
+  function macrosForIngredientAmount(ingRow, amountValue, unit) {
+    if (ingRow.tracking_type === 'unit') {
+      const count = Number(amountValue);
+      if (!Number.isFinite(count) || count < 0) return null;
+      const sq = Number(ingRow.serving_quantity);
+      const mult = count / (Number.isFinite(sq) && sq > 0 ? sq : 1);
+      return {
+        calories: Number(ingRow.calories) * mult,
+        protein_g: Number(ingRow.protein_g) * mult,
+        carbs_g: Number(ingRow.carbs_g) * mult,
+        fat_g: Number(ingRow.fat_g) * mult,
+        fiber_g: ingRow.fiber_g != null && ingRow.fiber_g !== '' ? Number(ingRow.fiber_g) * mult : 0,
+      };
+    }
     const gps = Number(ingRow.grams_per_serving);
     if (!Number.isFinite(gps) || gps <= 0) return null;
-    const mult = gramsUsed / gps;
+    const grams = gramsFromAmount(amountValue, unit);
+    if (grams == null) return null;
+    const mult = grams / gps;
     return {
       calories: Number(ingRow.calories) * mult,
       protein_g: Number(ingRow.protein_g) * mult,
@@ -299,13 +314,6 @@ function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot) {
     }
     const defId = slot.option_label_ingredient_ids[0];
     const selId = res.label_ingredient_id;
-    const templateGrams = gramsFromAmount(slot.amount, slot.unit);
-    const usedGrams = gramsFromAmount(res.amount, res.unit);
-    if (templateGrams == null || usedGrams == null) {
-      const err = new Error('INVALID_SLOT_AMOUNT');
-      err.code = 'INVALID_SLOT_AMOUNT';
-      throw err;
-    }
     const defIng = getIng(defId);
     const selIng = getIng(selId);
     if (!defIng || !selIng) {
@@ -313,8 +321,8 @@ function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot) {
       err.code = 'LABEL_INGREDIENT_NOT_FOUND';
       throw err;
     }
-    const mDef = macrosForLabelAmount(defIng, templateGrams);
-    const mSel = macrosForLabelAmount(selIng, usedGrams);
+    const mDef = macrosForIngredientAmount(defIng, slot.amount, slot.unit);
+    const mSel = macrosForIngredientAmount(selIng, res.amount, res.unit);
     if (!mDef || !mSel) {
       const err = new Error('LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING');
       err.code = 'LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING';

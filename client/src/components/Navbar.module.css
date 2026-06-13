@@ -1,17 +1,156 @@
 .nav {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  padding: 0 24px;
-  height: 56px;
-  background: white;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  background: #faf9f7;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.08);
   position: sticky;
   top: 0;
   z-index: 10;
 }
-.brand { font-size: 18px; font-weight: 700; color: #2563eb; }
-.links { display: flex; gap: 8px; }
-.links a { padding: 6px 12px; border-radius: 6px; color: #6b7280; font-weight: 500; }
-.links a:hover { background: #f3f4f6; color: #1a1a1a; }
-.active { background: #eff6ff !important; color: #2563eb !important; }
+
+.inner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 1152px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 116px;
+}
+
+/* ── Brand area ── */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+/*
+ * Badge wrapper: clips the large image canvas down to just the logo content.
+ * The badge PNG is 1536×1024 with significant white padding around the icon.
+ * We display the image at 150px height inside a 96×96 box and shift it to
+ * center the visible icon, cropping out the white margins.
+ */
+.badgeWrap {
+  width: 96px;
+  height: 96px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.badge {
+  /* Render at 150px height — image is 1536×1024 so width = 225px */
+  height: 150px;
+  width: auto;
+  /* Small positive offset brings the logo to vertical center of the 96px wrapper.
+     Negative margin was shifting it too high; +4px centers the icon correctly. */
+  margin-top: 4px;
+  display: block;
+}
+
+.brandName {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 28px;
+  font-weight: 400;
+  color: #1e1b4b;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+/* ── Separator ── */
+.divider {
+  width: 1px;
+  height: 32px;
+  background: #e0dbd2;
+  flex-shrink: 0;
+}
+
+/* ── Nav links ── */
+.links {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 1;
+  align-items: center;
+}
+.links::-webkit-scrollbar { display: none; }
+
+.links a {
+  display: inline-block;
+  padding: 16px 22px;
+  border-radius: 12px;
+  border: 1px solid #e8e4dc;
+  background: rgba(255, 255, 255, 0.9);
+  color: #4b5563;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-weight: 400;
+  font-size: 17px;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, box-shadow 0.12s;
+  line-height: 1.3;
+}
+
+.links a:hover {
+  background: #f0eeff;
+  border-color: #c4b5fd;
+  color: #312e81;
+}
+
+.active {
+  background: #312e81 !important;
+  color: #ffffff !important;
+  border-color: #312e81 !important;
+  font-weight: 400 !important;
+  box-shadow: 0 2px 8px rgba(49, 46, 129, 0.28) !important;
+}
+
+/* ── Mobile ── */
+@media (max-width: 768px) {
+  /* Header scrolls away with the page; navigation lives in the fixed bottom bar */
+  .nav {
+    position: static;
+  }
+  .inner {
+    height: 104px;
+    padding: 0 20px;
+    gap: 14px;
+  }
+  /* Masthead: logo pinned left, wordmark absolutely centered across the full header */
+  .brand {
+    flex: 1;
+    position: relative;
+  }
+  .badgeWrap {
+    width: 64px;
+    height: 64px;
+  }
+  .badge {
+    height: 100px;
+    margin-top: 3px;
+  }
+  .brandName {
+    /* Centered across the full header width, independent of the left badge */
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 46px;
+    /* Spread the wordmark so it occupies more of the banner (base is -0.02em) */
+    letter-spacing: 0.06em;
+  }
+  /* Page tabs move to the fixed bottom navigation on mobile */
+  .links,
+  .divider {
+    display: none;
+  }
+}

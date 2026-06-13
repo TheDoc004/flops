@@ -58,21 +58,14 @@ export default function Report() {
 
   return (
     <div>
-      <h1 style={{
-        margin: '0 0 6px', fontSize: 32, fontWeight: 400,
-        color: '#1e1b4b', letterSpacing: '-0.02em', lineHeight: 1.1,
-        fontFamily: "'DM Serif Display', Georgia, serif",
-      }}>Export report</h1>
-      <p style={{ margin: '0 0 20px', color: '#6b7280', fontSize: 14 }}>
+      <h1 className="page-title" style={{ marginBottom: 6 }}>Export report</h1>
+      <p className="page-subtitle">
         Download a PDF summary of your logged intake — useful for a coach or to paste into an AI tool.
       </p>
 
       {/* Cap width so the card doesn't sprawl across the full container */}
       <div className="card" style={{ marginBottom: 16, maxWidth: 540 }}>
-        <h3 style={{
-          marginTop: 0, marginBottom: 14, fontSize: 18, fontWeight: 400,
-          color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
-        }}>Date range</h3>
+        <h3 className="section-title" style={{ marginBottom: 14 }}>Date range</h3>
 
         {/* ── Preset pills ── */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -85,9 +78,9 @@ export default function Report() {
                   display: 'inline-flex', alignItems: 'center', gap: 7,
                   cursor: 'pointer', padding: '9px 14px', borderRadius: 10,
                   whiteSpace: 'nowrap', fontSize: 14,
-                  border: `1px solid ${active ? '#c4b5fd' : '#e8e4dc'}`,
+                  border: `1px solid ${active ? '#c4b5fd' : 'var(--color-surface-border)'}`,
                   background: active ? '#f5f3ff' : 'transparent',
-                  color: active ? '#312e81' : '#4b5563',
+                  color: active ? 'var(--color-primary)' : '#4b5563',
                   fontWeight: active ? 500 : 400,
                   transition: 'border-color 0.12s, background 0.12s, color 0.12s',
                 }}
@@ -108,8 +101,7 @@ export default function Report() {
 
         {/* ── Custom date inputs — inset box, visually connected to Custom pill ── */}
         {preset === 'custom' && (
-          <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
+          <div className="form-grid-2" style={{
             padding: '12px 14px', marginBottom: 16,
             borderRadius: 10, border: '1px solid #c4b5fd', background: '#faf7ff',
           }}>
@@ -135,8 +127,8 @@ export default function Report() {
         )}
 
         {/* ── Summary + download ── */}
-        <p style={{ margin: '0 0 14px', fontSize: 13, color: '#6b7280' }}>
-          <span style={{ fontWeight: 600, color: '#1e1b4b' }}>Selected:</span>{' '}
+        <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+          <span style={{ fontWeight: 600, color: 'var(--color-primary-ink)' }}>Selected:</span>{' '}
           {range.label} — {range.start} → {range.end}
         </p>
 
@@ -147,11 +139,11 @@ export default function Report() {
         </button>
       </div>
 
-      <p style={{ fontSize: 13, color: '#6b7280' }}>
+      <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
         Tip: set your weekly targets on{' '}
-        <Link to="/plan/goals" style={{ color: '#312e81' }}>Goals</Link>{' '}
+        <Link to="/plan/goals" style={{ color: 'var(--color-primary)' }}>Goals</Link>{' '}
         and your stats on{' '}
-        <Link to="/plan/profile" style={{ color: '#312e81' }}>Profile</Link>{' '}
+        <Link to="/plan/profile" style={{ color: 'var(--color-primary)' }}>Profile</Link>{' '}
         so they appear in the report.
       </p>
     </div>

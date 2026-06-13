@@ -14,7 +14,7 @@ import { listLocalDatesInclusive } from '../utils/goalAdherence';
 import { kgToLb } from '../utils/bodyUnits';
 import { addDaysLocal } from '../utils/dateLocal';
 
-export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enabled, refreshKey = 0 }) {
+export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enabled, refreshKey = 0, noCard = false }) {
   const [weightRows, setWeightRows] = useState([]);
   const [loadError, setLoadError] = useState('');
 
@@ -43,30 +43,42 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
     const dates = listLocalDatesInclusive(start, today);
     const weightByDate = {};
     for (const r of weightRows) weightByDate[r.date] = r.weight_kg;
-    return dates.map(date => ({
-      date,
-      weightY:
-        weightByDate[date] != null
-          ? bodyUnits === 'us'
-            ? kgToLb(weightByDate[date])
-            : weightByDate[date]
+    return dates.map(date => {
+      const logged = weightByDate[date] != null;
+      return {
+        date,
+        weightY: logged
+          ? (bodyUnits === 'us' ? kgToLb(weightByDate[date]) : weightByDate[date])
           : null,
-    }));
+        hasEntry: logged,
+      };
+    });
   }, [weightRows, today, rangeDays, bodyUnits]);
+
+  // Padded Y-axis domain — keeps the line away from the chart edges.
+  // Uses 15% of the weight range as breathing room, minimum 0.5 units.
+  const yDomain = useMemo(() => {
+    const values = chartData
+      .filter(d => d.hasEntry && d.weightY != null)
+      .map(d => d.weightY);
+    if (values.length === 0) return ['auto', 'auto'];
+    const minVal = Math.min(...values);
+    const maxVal = Math.max(...values);
+    const range = maxVal - minVal;
+    const padding = Math.max(0.5, range * 0.15);
+    return [minVal - padding, maxVal + padding];
+  }, [chartData]);
 
   const yWeightUnit = bodyUnits === 'us' ? 'lb' : 'kg';
   const hasAnyWeight = weightRows.length > 0;
 
   if (!enabled) return null;
 
-  return (
-    <div className="card" style={{ marginBottom: 16, padding: '16px 20px' }}>
+  const inner = (
+    <>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
         <div>
-          <h3 style={{
-            margin: 0, fontSize: 22, fontWeight: 400, color: '#1e1b4b',
-            fontFamily: "'DM Serif Display', Georgia, serif",
-          }}>
+          <h3 className="section-title">
             Weight trend
           </h3>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6b7280' }}>
@@ -86,7 +98,8 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={200}>
-          <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+          {/* top/right margin gives dots (r=4 + strokeWidth=2) room so they aren't clipped */}
+          <ComposedChart data={chartData} margin={{ top: 16, right: 16, left: 0, bottom: 4 }}>
             <CartesianGrid stroke="#ececec" strokeDasharray="4 4" vertical={false} />
             <XAxis
               dataKey="date"
@@ -102,7 +115,7 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
             <YAxis
               yAxisId="weight"
               orientation="left"
-              domain={['auto', 'auto']}
+              domain={yDomain}
               tick={{ fontSize: 10, fill: '#6b7280' }}
               width={44}
               axisLine={false}
@@ -111,8 +124,9 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
             />
             <Tooltip
               contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
-              formatter={(value, name) => {
-                if (value == null || !Number.isFinite(Number(value))) return ['—', name];
+              formatter={(value, _name, props) => {
+                if (!props.payload?.hasEntry) return ['No weight logged', 'Weight'];
+                if (value == null || !Number.isFinite(Number(value))) return ['—', 'Weight'];
                 return [`${Number(value).toFixed(1)} ${yWeightUnit}`, 'Weight'];
               }}
               labelFormatter={label => label}
@@ -123,7 +137,22 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
               dataKey="weightY"
               stroke="#312e81"
               strokeWidth={2}
-              dot={false}
+              dot={(props) => {
+                const { cx, cy, payload } = props;
+                if (!payload?.hasEntry || !Number.isFinite(cx) || !Number.isFinite(cy)) {
+                  return null;
+                }
+                return (
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={4}
+                    fill="#312e81"
+                    stroke="#fff"
+                    strokeWidth={2}
+                  />
+                );
+              }}
               activeDot={{ r: 5, fill: '#312e81', stroke: '#fff', strokeWidth: 2 }}
               connectNulls
               name="Weight"
@@ -132,6 +161,13 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
           </ComposedChart>
         </ResponsiveContainer>
       )}
+    </>
+  );
+
+  if (noCard) return inner;
+  return (
+    <div className="card" style={{ marginBottom: 16, padding: '16px 20px' }}>
+      {inner}
     </div>
   );
 }

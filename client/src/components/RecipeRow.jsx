@@ -7,22 +7,24 @@ export default function RecipeRow({ recipe, onLog, onEditInBuilder, onDelete, on
   const hasMealBuilderMeta = recipe.meal_builder_meta && typeof recipe.meal_builder_meta === 'object';
 
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 0', borderBottom: '1px solid #f3f4f6' }}>
-      <div style={{ flex: 1 }}>
-        <strong>{recipe.name}</strong>
-        {hasVariableSlots && (
-          <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 600, color: '#1d4ed8', background: '#dbeafe', padding: '2px 8px', borderRadius: 999 }}>
-            Variable ingredients
-          </span>
-        )}
-        {limited && (
-          <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 600, color: archived ? '#9ca3af' : '#b45309', background: archived ? '#f3f4f6' : '#fffbeb', padding: '2px 8px', borderRadius: 999 }}>
-            {archived ? 'Template · archived' : `Template · ${recipe.remaining_uses ?? '—'} left`}
-          </span>
-        )}
-        <span style={{ color: '#6b7280', fontSize: 13, marginLeft: 8 }}>per {recipe.serving_size}</span>
+    <div className="recipe-card">
+      <div className="recipe-card-main">
+        <div className="recipe-card-head">
+          <strong className="recipe-card-name">{recipe.name}</strong>
+          {hasVariableSlots && (
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-link)', background: '#dbeafe', padding: '2px 8px', borderRadius: 999 }}>
+              Variable ingredients
+            </span>
+          )}
+          {limited && (
+            <span style={{ fontSize: 12, fontWeight: 600, color: archived ? 'var(--color-text-faint)' : '#b45309', background: archived ? 'var(--color-divider)' : '#fffbeb', padding: '2px 8px', borderRadius: 999 }}>
+              {archived ? 'Template · archived' : `Template · ${recipe.remaining_uses ?? '—'} left`}
+            </span>
+          )}
+          <span style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>per {recipe.serving_size}</span>
+        </div>
         {ingredients.length > 0 && (
-          <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13, color: '#374151' }}>
+          <ul className="recipe-card-ingredients">
             {ingredients.map((ing, i) => (
               <li key={i}>
                 {ing.kind === 'slot' ? (
@@ -49,14 +51,16 @@ export default function RecipeRow({ recipe, onLog, onEditInBuilder, onDelete, on
           </ul>
         )}
       </div>
-      <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#374151' }}>
+
+      <div className="recipe-card-macros">
         <span><strong>{recipe.calories}</strong> cal</span>
         <span>P: {recipe.protein_g}g</span>
         <span>C: {recipe.carbs_g}g</span>
         <span>F: {recipe.fat_g}g</span>
         {recipe.fiber_g != null && <span>Fiber: {recipe.fiber_g}g</span>}
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+
+      <div className="recipe-card-actions">
         {limited && archived && onReactivate && (
           <button type="button" className="btn-secondary" onClick={() => onReactivate(recipe)}>Reactivate</button>
         )}

@@ -76,7 +76,7 @@ nutrition-tracker/
 ### 1. Dashboard (`/`)
 - Displays today's log entries (meal name, servings, calories, macros per entry)
 - Daily totals: sum of calories, protein, carbs, fat for the day
-- Optional daily targets (set per-macro, stored in localStorage)
+- Optional daily targets stored in localStorage: `{ calories, protein_g, carbs_g, fat_g }` — each nullable; if null, no target indicator is shown for that macro
 - "Log a meal" button → opens a modal to pick a recipe and enter servings
 
 ### 2. Recipe Library (`/recipes`)

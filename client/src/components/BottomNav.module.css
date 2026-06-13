@@ -1,0 +1,127 @@
+/* ── Bottom tab bar: mobile only (≤768px), hidden on desktop ── */
+.bar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-surface-border);
+    box-shadow: 0 -1px 8px rgba(0, 0, 0, 0.04);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 56px;
+  padding: 6px 2px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tab svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.tabActive {
+  color: var(--color-primary);
+}
+
+/* ── "More" sheet ── */
+.sheetBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+}
+
+.sheet {
+  width: 100%;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--space-8) var(--space-16) calc(var(--space-16) + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--shadow-modal);
+  animation: sheet-up 0.18s ease-out;
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.sheetHandle {
+  width: 40px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-border);
+  margin: 6px auto 10px;
+}
+
+.sheetTitle {
+  margin: 0 0 var(--space-4);
+  padding: 0 var(--space-8);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-faint);
+}
+
+.sheetRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-8);
+  min-height: 52px;
+  color: var(--color-text-body);
+  text-decoration: none;
+  font-size: var(--text-body);
+  font-weight: 500;
+  border-radius: var(--radius-md);
+}
+
+.sheetRow svg {
+  width: 22px;
+  height: 22px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.sheetRowActive {
+  background: #f5f3ff;
+  color: var(--color-primary);
+}
+
+.sheetRowActive svg {
+  color: var(--color-primary);
+}
+
+.chev {
+  margin-left: auto;
+  color: var(--color-text-faint);
+  font-size: 22px;
+  line-height: 1;
+}

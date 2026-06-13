@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { filterRecipesByName } from '../utils/recipeSearch';
+import useDropdownPlacement from '../hooks/useDropdownPlacement';
 
 /** Stops the search input from blurring before `click` on an option, so selection commits on click. */
 function preventOptionMouseDown(e) {
@@ -19,20 +20,25 @@ function clamp(n, min, max) {
  * @param {string} [p.placeholder]
  * @param {boolean} [p.disabled]
  */
-export default function RecipeCombobox({
+const RecipeCombobox = forwardRef(function RecipeCombobox({
   recipes,
   value,
   onChange,
   label = 'Recipe',
   placeholder = 'Search recipe or meal…',
   disabled = false,
-}) {
+}, ref) {
   const rootRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    focus() { inputRef.current?.focus(); },
+  }), []);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  const { openUp, maxHeight } = useDropdownPlacement(inputRef, open, 260);
 
   const selected = useMemo(
     () => (Array.isArray(recipes) ? recipes.find(r => String(r.id) === String(value)) : null),
@@ -131,8 +137,8 @@ export default function RecipeCombobox({
               zIndex: 20,
               left: 0,
               right: 0,
-              marginTop: 6,
-              maxHeight: 260,
+              ...(openUp ? { bottom: '100%', marginBottom: 6 } : { top: '100%', marginTop: 6 }),
+              maxHeight,
               overflowY: 'auto',
               background: 'white',
               border: '1px solid #e5e7eb',
@@ -169,7 +175,7 @@ export default function RecipeCombobox({
                       border: 'none',
                       background: isActive ? '#eff6ff' : 'transparent',
                       borderRadius: 8,
-                      padding: '10px 10px',
+                      padding: '12px 10px',
                       cursor: 'pointer',
                     }}
                   >
@@ -177,13 +183,13 @@ export default function RecipeCombobox({
                       <div style={{ minWidth: 0 }}>
                         <strong>{r.name}</strong>
                         {r.serving_size ? (
-                          <span style={{ marginLeft: 8, fontSize: 12, color: '#6b7280' }}>
+                          <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>
                             per {r.serving_size}
                           </span>
                         ) : null}
                       </div>
                       {isSelected ? (
-                        <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 600 }}>
+                        <span style={{ fontSize: 12, color: 'var(--color-link)', fontWeight: 600 }}>
                           Selected
                         </span>
                       ) : null}
@@ -197,5 +203,7 @@ export default function RecipeCombobox({
       </div>
     </div>
   );
-}
+});
+
+export default RecipeCombobox;
 
