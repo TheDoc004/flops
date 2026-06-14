@@ -7,7 +7,7 @@ import Recipes from './pages/Recipes';
 import History from './pages/History';
 import Goals from './pages/Goals';
 import Report from './pages/Report';
-import Profile from './features/profile';
+import Profile from '@features/profile';
 import Training from './pages/Training';
 import MealBuilder from './pages/MealBuilder';
 import PlanLayout from './pages/Plan';
