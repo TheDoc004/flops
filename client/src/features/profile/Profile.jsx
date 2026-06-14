@@ -8,16 +8,16 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import { fetchProfile, saveProfile, fetchBodyWeights, saveBodyWeight } from '../api/profile';
-import { useMacroUnits } from '../context/MacroUnitsContext';
+import { fetchProfile, saveProfile, fetchBodyWeights, saveBodyWeight } from '../../api/profile';
+import { useMacroUnits } from '../../context/MacroUnitsContext';
 import {
   cmToFeetInches,
   feetInchesToCm,
   kgToWeightInputValue,
   parseWeightInputToKg,
   kgToLb,
-} from '../utils/bodyUnits';
-import { getLocalDateISO } from '../utils/dateLocal';
+} from '../../utils/bodyUnits';
+import { getLocalDateISO } from '../../utils/dateLocal';
 
 const ACTIVITY_OPTIONS = [
   { value: '', label: '—' },
