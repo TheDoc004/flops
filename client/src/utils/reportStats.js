@@ -1,5 +1,5 @@
-import { groupByDate, sumMacros } from './macros';
-import { addDaysLocal } from './dateLocal';
+import { groupByDate, sumMacros } from '@shared/utils/macros';
+import { addDaysLocal } from '@shared/utils/dateLocal';
 import { goalsToTargets, resolveGoalRowForDate } from './goalAdherence';
 
 export function daysInclusive(start, end) {

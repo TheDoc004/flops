@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchLogRange } from '../api/log';
-import { fetchGoals } from '../api/goals';
-import { fetchProfile } from '../api/profile';
+import { fetchLogRange } from '@shared/api/log';
+import { fetchGoals } from '@shared/api/goals';
+import { fetchProfile } from '@shared/api/profile';
 import { buildNutritionReportPdf, downloadReportPdf } from '../utils/buildNutritionReportPdf';
-import { getLocalDateISO, addDaysLocal } from '../utils/dateLocal';
+import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 
 export default function Report() {
   const [preset, setPreset] = useState('7');

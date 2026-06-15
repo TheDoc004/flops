@@ -1,6 +1,6 @@
-import { formatMacroMass } from '../utils/macroUnits';
-import { useMacroUnits } from '../context/MacroUnitsContext';
-import { MACRO_COLORS } from '../utils/colors';
+import { formatMacroMass } from '@shared/utils/macroUnits';
+import { useMacroUnits } from '@shared/context/MacroUnitsContext';
+import { MACRO_COLORS } from '@shared/utils/colors';
 
 const RING_COLORS = {
   Calories: MACRO_COLORS.calories,

@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import useDropdownPlacement from '../hooks/useDropdownPlacement';
+import useDropdownPlacement from '@shared/hooks/useDropdownPlacement';
 
 function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));

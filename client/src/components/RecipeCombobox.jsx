@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { filterRecipesByName } from '../utils/recipeSearch';
-import useDropdownPlacement from '../hooks/useDropdownPlacement';
+import useDropdownPlacement from '@shared/hooks/useDropdownPlacement';
 
 /** Stops the search input from blurring before `click` on an option, so selection commits on click. */
 function preventOptionMouseDown(e) {

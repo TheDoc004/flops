@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchLabelIngredients } from '../api/labelIngredients';
+import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import { macrosForLabelServingAmount, sumMacroObjects } from '../utils/labelMacro';
 
 const EMPTY = {

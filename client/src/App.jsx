@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { MacroUnitsProvider } from './context/MacroUnitsContext';
-import Navbar from './components/Navbar';
-import BottomNav from './components/BottomNav';
+import { MacroUnitsProvider } from '@shared/context/MacroUnitsContext';
+import Navbar from '@shared/ui/Navbar';
+import BottomNav from '@shared/ui/BottomNav';
 import Dashboard from './pages/Dashboard';
 import Recipes from './pages/Recipes';
 import History from './pages/History';

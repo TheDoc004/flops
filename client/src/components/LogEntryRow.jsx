@@ -7,10 +7,10 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import { computeEntryMacros, mealMacroCalorieBreakdown } from '../utils/macros';
-import { formatMacroMass } from '../utils/macroUnits';
-import { useMacroUnits } from '../context/MacroUnitsContext';
-import { MACRO_COLORS } from '../utils/colors';
+import { computeEntryMacros, mealMacroCalorieBreakdown } from '@shared/utils/macros';
+import { formatMacroMass } from '@shared/utils/macroUnits';
+import { useMacroUnits } from '@shared/context/MacroUnitsContext';
+import { MACRO_COLORS } from '@shared/utils/colors';
 
 const PIE_COLORS = { protein: MACRO_COLORS.protein, carbs: MACRO_COLORS.carbs, fat: MACRO_COLORS.fat };
 

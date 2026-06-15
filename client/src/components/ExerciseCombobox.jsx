@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import useDropdownPlacement from '../hooks/useDropdownPlacement';
+import useDropdownPlacement from '@shared/hooks/useDropdownPlacement';
 
 function preventOptionMouseDown(e) {
   e.preventDefault();

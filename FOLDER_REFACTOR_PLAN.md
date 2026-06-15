@@ -343,4 +343,48 @@ All work happens on the `refactor/folder-structure` branch; `main` is never touc
 
 ---
 
+---
+
+## Appendix A — Step 1A Execution Detail (shared/ carve-out)
+
+> Scope locked to the **shared foundation only**. Step 1B (`app/` shell, `main.jsx`,
+> `index.html`, global styles) is explicitly deferred. Pages and feature components are NOT moved.
+> Builds on Step 0 path aliases (commit `39ce894`).
+
+### Pre-flight — delete dead files
+Both are referenced nowhere and are importers of modules being moved:
+- `client/src/components/IngredientCreateModal.jsx` (imports `api/labelIngredients`)
+- `client/src/components/GoalAdherencePanel.jsx` (imports `utils/weekday`, `utils/statusMeta`)
+
+### Files moved (via `git mv`, history preserved)
+
+| Destination | Files |
+|---|---|
+| `shared/utils/` | `dateLocal.js` `weekday.js` `macros.js` `macroUnits.js` `bodyUnits.js` `colors.js` + colocated tests: `dateLocal.test.js` `weekday.test.js` `macros.test.js` `macroUnits.test.js` `bodyUnits.test.js` |
+| `shared/api/` | `base.js` `log.js` `profile.js` `goals.js` `recipes.js` `training.js` `workouts.js` `labelIngredients.js` |
+| `shared/hooks/` | `useDropdownPlacement.js` `useMediaQuery.js` `usePaginationAnchor.js` |
+| `shared/context/` | `MacroUnitsContext.jsx` |
+| `shared/ui/` | `MacroTotals.jsx` `RangeSelector.jsx` `Navbar.jsx` (+`Navbar.module.css`) `BottomNav.jsx` (+`BottomNav.module.css`) |
+
+### Import rewrites (suffix-based, location-independent)
+All consumers + the moved files' own internal imports are rewritten to aliases:
+- `…/utils/{dateLocal,weekday,macros,macroUnits,bodyUnits,colors}` → `@shared/utils/<name>`
+- `…/api/{log,profile,goals,recipes,training,workouts,labelIngredients}` → `@shared/api/<name>`
+- `…/hooks/{useDropdownPlacement,useMediaQuery,usePaginationAnchor}` → `@shared/hooks/<name>`
+- `…/context/MacroUnitsContext` → `@shared/context/MacroUnitsContext`
+- `…/components/{MacroTotals,RangeSelector,Navbar,BottomNav}` → `@shared/ui/<name>`
+
+Untouched on purpose: `./base` (api siblings move together), `./*.module.css` (move with their
+component), `./<name>` inside util test files (sibling source moves with the test).
+
+### Explicitly NOT in 1A
+`App.jsx`, `main.jsx`, `index.html`, `pages/Plan.jsx`, `index.css`/`App.css`, all feature pages,
+and the cross-cutting modules (`meal-logging`, `adherence`, `label-ocr`) and their utils.
+
+### Verification
+`cd client && npm run build` (authoritative), plus a grep sweep confirming no stale relative paths
+to moved modules remain.
+
+---
+
 *Generated as a planning artifact. No source files were modified to produce this document.*

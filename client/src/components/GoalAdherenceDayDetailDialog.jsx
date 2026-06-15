@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { buildDayAdherenceDetail } from '../utils/goalAdherence';
-import { ISO_WEEKDAY_LABELS } from '../utils/weekday';
+import { ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
 import { STATUS_META } from '../utils/statusMeta';
 
 /**

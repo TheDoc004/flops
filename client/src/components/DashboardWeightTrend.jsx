@@ -9,10 +9,10 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import { fetchBodyWeights } from '../api/profile';
+import { fetchBodyWeights } from '@shared/api/profile';
 import { listLocalDatesInclusive } from '../utils/goalAdherence';
-import { kgToLb } from '../utils/bodyUnits';
-import { addDaysLocal } from '../utils/dateLocal';
+import { kgToLb } from '@shared/utils/bodyUnits';
+import { addDaysLocal } from '@shared/utils/dateLocal';
 
 export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enabled, refreshKey = 0, noCard = false }) {
   const [weightRows, setWeightRows] = useState([]);

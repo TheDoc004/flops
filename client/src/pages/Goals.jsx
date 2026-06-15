@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { fetchGoals, saveGoals } from '../api/goals';
+import { fetchGoals, saveGoals } from '@shared/api/goals';
 import {
   gramsToInputValue,
   parseMacroInputToGrams,
   macroLabelSuffix,
-} from '../utils/macroUnits';
-import { useMacroUnits } from '../context/MacroUnitsContext';
-import { getLocalDateISO } from '../utils/dateLocal';
+} from '@shared/utils/macroUnits';
+import { useMacroUnits } from '@shared/context/MacroUnitsContext';
+import { getLocalDateISO } from '@shared/utils/dateLocal';
 
 const FIELD_META = [
   { key: 'calories', label: 'Calories', isMacro: false, step: '1', inputMode: 'numeric' },

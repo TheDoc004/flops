@@ -1,6 +1,6 @@
-import { getIsoWeekday } from './weekday';
-import { addDaysLocal, getLocalDateISO, parseLocalDateISO } from './dateLocal';
-import { formatMacroMass } from './macroUnits';
+import { getIsoWeekday } from '@shared/utils/weekday';
+import { addDaysLocal, getLocalDateISO, parseLocalDateISO } from '@shared/utils/dateLocal';
+import { formatMacroMass } from '@shared/utils/macroUnits';
 
 export const ADHERENCE_KEYS = ['calories', 'protein_g', 'carbs_g', 'fat_g'];
 

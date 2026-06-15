@@ -8,8 +8,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { getLocalDateISO } from '../utils/dateLocal';
-import { useMacroUnits } from '../context/MacroUnitsContext';
+import { getLocalDateISO } from '@shared/utils/dateLocal';
+import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import {
   addPresetExercise,
   createExerciseLog,
@@ -24,7 +24,7 @@ import {
   fetchWorkoutToday,
   setWorkoutToday,
   updateWorkoutPreset,
-} from '../api/workouts';
+} from '@shared/api/workouts';
 import ExerciseCombobox from '../components/ExerciseCombobox';
 
 // ── helpers ───────────────────────────────────────────────────────────────────

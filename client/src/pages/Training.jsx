@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchProfile, saveProfile } from '../api/profile';
-import { fetchRecipes } from '../api/recipes';
+import { fetchProfile, saveProfile } from '@shared/api/profile';
+import { fetchRecipes } from '@shared/api/recipes';
 import {
   addSavedFuelRecipe,
   deleteSavedFuelRecipe,
   fetchSavedFuelRecipes,
-} from '../api/training';
+} from '@shared/api/training';
 import RecipeCombobox from '../components/RecipeCombobox';
 
 export default function Training() {

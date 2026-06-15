@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import usePaginationAnchor from '../hooks/usePaginationAnchor';
+import usePaginationAnchor from '@shared/hooks/usePaginationAnchor';
 import {
   createLabelIngredient,
   deleteLabelIngredient,
   fetchLabelIngredients,
   updateLabelIngredient,
-} from '../api/labelIngredients';
+} from '@shared/api/labelIngredients';
 import LabelCropModal from '../components/LabelCropModal';
 import { extractTextFromLabelImage } from '../utils/labelOcr';
 import { parseNutritionFactsText } from '../utils/labelParse';

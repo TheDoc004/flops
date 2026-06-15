@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchBodyWeights, saveBodyWeight } from '../api/profile';
-import { kgToWeightInputValue, parseWeightInputToKg } from '../utils/bodyUnits';
+import { fetchBodyWeights, saveBodyWeight } from '@shared/api/profile';
+import { kgToWeightInputValue, parseWeightInputToKg } from '@shared/utils/bodyUnits';
 
 export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, noCard = false }) {
   const [storedKg, setStoredKg] = useState(null);

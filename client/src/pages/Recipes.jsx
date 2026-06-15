@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import RecipeRow from '../components/RecipeRow';
 import LogMealModal from '../components/LogMealModal';
-import { fetchRecipes, deleteRecipe, reactivateLimitedRecipe } from '../api/recipes';
-import { createLogEntry, createQuickFoodLog } from '../api/log';
+import { fetchRecipes, deleteRecipe, reactivateLimitedRecipe } from '@shared/api/recipes';
+import { createLogEntry, createQuickFoodLog } from '@shared/api/log';
 import { filterRecipesByName } from '../utils/recipeSearch';
-import { getLocalDateISO } from '../utils/dateLocal';
-import useMediaQuery from '../hooks/useMediaQuery';
-import usePaginationAnchor from '../hooks/usePaginationAnchor';
+import { getLocalDateISO } from '@shared/utils/dateLocal';
+import useMediaQuery from '@shared/hooks/useMediaQuery';
+import usePaginationAnchor from '@shared/hooks/usePaginationAnchor';
 
 export default function Recipes() {
   const navigate = useNavigate();

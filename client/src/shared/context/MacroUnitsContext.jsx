@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { fetchProfile, saveProfile } from '../api/profile';
+import { fetchProfile, saveProfile } from '@shared/api/profile';
 
 const MacroUnitsContext = createContext(null);
 

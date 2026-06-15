@@ -3,15 +3,15 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis,
   Tooltip, CartesianGrid, ResponsiveContainer, Legend,
 } from 'recharts';
-import RangeSelector from '../components/RangeSelector';
+import RangeSelector from '@shared/ui/RangeSelector';
 import LogEntryRow from '../components/LogEntryRow';
 import LogMealModal from '../components/LogMealModal';
-import { fetchLogRange, fetchLogForDate, fetchLogDays, createLogEntry, createQuickFoodLog, deleteLogEntry, updateLogEntry } from '../api/log';
-import { groupByDate, sumMacros } from '../utils/macros';
-import { getLocalDateISO, addDaysLocal } from '../utils/dateLocal';
-import { getWeekdayLongNameFromIsoDate } from '../utils/weekday';
-import { MACRO_COLORS } from '../utils/colors';
-import { useMacroUnits } from '../context/MacroUnitsContext';
+import { fetchLogRange, fetchLogForDate, fetchLogDays, createLogEntry, createQuickFoodLog, deleteLogEntry, updateLogEntry } from '@shared/api/log';
+import { groupByDate, sumMacros } from '@shared/utils/macros';
+import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
+import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
+import { MACRO_COLORS } from '@shared/utils/colors';
+import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import AdherenceCalendarMonth from '../components/AdherenceCalendarMonth';
 
 function getRangeStart(days) {

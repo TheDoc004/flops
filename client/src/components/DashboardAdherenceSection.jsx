@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchLogRange } from '../api/log';
-import { groupByDate } from '../utils/macros';
-import { addDaysLocal } from '../utils/dateLocal';
+import { fetchLogRange } from '@shared/api/log';
+import { groupByDate } from '@shared/utils/macros';
+import { addDaysLocal } from '@shared/utils/dateLocal';
 import { buildWeeklyAdherenceRows, listLocalDatesInclusive } from '../utils/goalAdherence';
-import { ISO_WEEKDAY_LABELS } from '../utils/weekday';
+import { ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
 import GoalAdherenceDayDetailDialog from './GoalAdherenceDayDetailDialog';
 import AdherenceCalendarMonth from './AdherenceCalendarMonth';
 import { STATUS_META } from '../utils/statusMeta';
