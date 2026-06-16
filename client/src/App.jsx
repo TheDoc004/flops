@@ -11,7 +11,7 @@ import Profile from '@features/profile';
 import Training from './pages/Training';
 import MealBuilder from './pages/MealBuilder';
 import PlanLayout from './pages/Plan';
-import TrainingWorkouts from './pages/TrainingWorkouts';
+import TrainingWorkouts from '@features/training-workouts';
 import Ingredients from './pages/Ingredients';
 
 export default function App() {

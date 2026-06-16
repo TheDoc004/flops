@@ -25,7 +25,7 @@ import {
   setWorkoutToday,
   updateWorkoutPreset,
 } from '@shared/api/workouts';
-import ExerciseCombobox from '../components/ExerciseCombobox';
+import ExerciseCombobox from './components/ExerciseCombobox';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
