@@ -5,7 +5,7 @@ import BottomNav from '@shared/ui/BottomNav';
 import Dashboard from './pages/Dashboard';
 import Recipes from './pages/Recipes';
 import History from './pages/History';
-import Goals from './pages/Goals';
+import Goals from '@features/goals';
 import Report from './pages/Report';
 import Profile from '@features/profile';
 import Training from './pages/Training';
