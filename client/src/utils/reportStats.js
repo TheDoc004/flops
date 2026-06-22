@@ -1,6 +1,6 @@
 import { groupByDate, sumMacros } from '@shared/utils/macros';
 import { addDaysLocal } from '@shared/utils/dateLocal';
-import { goalsToTargets, resolveGoalRowForDate } from './goalAdherence';
+import { goalsToTargets, resolveGoalRowForDate } from '@features/adherence';
 
 export function daysInclusive(start, end) {
   const a = new Date(`${start}T12:00:00`);

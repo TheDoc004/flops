@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { fetchLogRange } from '@shared/api/log';
 import { groupByDate } from '@shared/utils/macros';
 import { addDaysLocal } from '@shared/utils/dateLocal';
-import { buildWeeklyAdherenceRows, listLocalDatesInclusive } from '../utils/goalAdherence';
+import { buildWeeklyAdherenceRows, listLocalDatesInclusive } from '@features/adherence';
 import { ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
-import GoalAdherenceDayDetailDialog from './GoalAdherenceDayDetailDialog';
+import { GoalAdherenceDayDetailDialog } from '@features/adherence';
 import AdherenceCalendarMonth from './AdherenceCalendarMonth';
-import { STATUS_META } from '../utils/statusMeta';
+import { STATUS_META } from '@features/adherence';
 
 const MAX_CUSTOM_DAYS = 92;
 

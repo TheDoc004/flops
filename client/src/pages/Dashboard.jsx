@@ -11,7 +11,7 @@ import { fetchProfile } from '@shared/api/profile';
 import { sumMacros, groupByDate } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
 import { getLocalDateISO, addDaysLocal, parseLocalDateISO } from '@shared/utils/dateLocal';
-import { buildWeeklyAdherenceRows, listLocalDatesInclusive, goalsToTargets, hasAnyTarget, resolveGoalRowForDate } from '../utils/goalAdherence';
+import { buildWeeklyAdherenceRows, listLocalDatesInclusive, goalsToTargets, hasAnyTarget, resolveGoalRowForDate } from '@features/adherence';
 import DashboardAdherenceSection from '../components/DashboardAdherenceSection';
 import DashboardWeightRow from '../components/DashboardWeightRow';
 import DashboardWeightTrend from '../components/DashboardWeightTrend';

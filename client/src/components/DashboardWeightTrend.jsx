@@ -10,7 +10,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { fetchBodyWeights } from '@shared/api/profile';
-import { listLocalDatesInclusive } from '../utils/goalAdherence';
+import { listLocalDatesInclusive } from '@features/adherence';
 import { kgToLb } from '@shared/utils/bodyUnits';
 import { addDaysLocal } from '@shared/utils/dateLocal';
 

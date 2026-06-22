@@ -3,10 +3,10 @@ import { fetchLogRange } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { groupByDate } from '@shared/utils/macros';
 import { addDaysLocal, getLocalDateISO, parseLocalDateISO } from '@shared/utils/dateLocal';
-import { buildWeeklyAdherenceRows, hasAnyTarget } from '../utils/goalAdherence';
+import { buildWeeklyAdherenceRows, hasAnyTarget } from '@features/adherence';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
-import GoalAdherenceDayDetailDialog from './GoalAdherenceDayDetailDialog';
-import { STATUS_META } from '../utils/statusMeta';
+import { GoalAdherenceDayDetailDialog } from '@features/adherence';
+import { STATUS_META } from '@features/adherence';
 
 // Compact metric labels so missed-macro text fits inside small calendar tiles.
 const SHORT_METRIC = { Calories: 'Cal', Protein: 'Pro', Carbs: 'Carb', Fat: 'Fat', Fiber: 'Fib' };

@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { computePeriodStats, averageGoalCalories, goalVersionsForRange } from './reportStats';
-import { formatTargetRangeDisplay } from './goalAdherence';
+import { formatTargetRangeDisplay } from '@features/adherence';
 
 function fmt(n, d = 0) {
   if (n == null || !Number.isFinite(n)) return '—';
