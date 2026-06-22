@@ -6,10 +6,13 @@ import {
   fetchLabelIngredients,
   updateLabelIngredient,
 } from '@shared/api/labelIngredients';
-import LabelCropModal from '../components/LabelCropModal';
-import { extractTextFromLabelImage } from '../utils/labelOcr';
-import { parseNutritionFactsText } from '../utils/labelParse';
-import { mergeNutritionParseIntoIngredientForm, scanFieldClass } from '../utils/mergeNutritionParseIntoIngredientForm';
+import {
+  LabelCropModal,
+  extractTextFromLabelImage,
+  parseNutritionFactsText,
+  mergeNutritionParseIntoIngredientForm,
+  scanFieldClass,
+} from '@features/label-ocr';
 
 function filterByName(items, q) {
   const query = String(q ?? '').trim().toLowerCase();

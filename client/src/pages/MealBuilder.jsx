@@ -2,13 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import RecipeForm from '../components/RecipeForm';
 import IngredientCombobox from '../components/IngredientCombobox';
-import LabelCropModal from '../components/LabelCropModal';
+import { LabelCropModal } from '@features/label-ocr';
 import { createRecipe, fetchRecipe, updateRecipe } from '@shared/api/recipes';
 import { createLabelIngredient, fetchLabelIngredients, markLabelIngredientsUsed } from '@shared/api/labelIngredients';
-import { extractTextFromLabelImage } from '../utils/labelOcr';
-import { parseNutritionFactsText } from '../utils/labelParse';
-import { mergeNutritionParseIntoIngredientForm, scanFieldClass } from '../utils/mergeNutritionParseIntoIngredientForm';
-import { macrosForLabelServingAmount, sumMacroObjects } from '../utils/labelMacro';
+import {
+  extractTextFromLabelImage,
+  parseNutritionFactsText,
+  mergeNutritionParseIntoIngredientForm,
+  scanFieldClass,
+  macrosForLabelServingAmount,
+  sumMacroObjects,
+} from '@features/label-ocr';
 
 function emptyLabelDraft() {
   return {

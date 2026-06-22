@@ -1,4 +1,4 @@
-import { gramsFromAmount } from './labelMacro';
+import { gramsFromAmount } from '@features/label-ocr';
 import { listLoggingSlotsFromRecipe } from './recipeLoggingSlots';
 
 /**

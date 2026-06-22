@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
-import { macrosForLabelServingAmount, sumMacroObjects } from '../utils/labelMacro';
+import { macrosForLabelServingAmount, sumMacroObjects } from '@features/label-ocr';
 
 const EMPTY = {
   name: '',
