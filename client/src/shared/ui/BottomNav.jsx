@@ -19,11 +19,13 @@ const IconMore = () => (<svg {...svgProps}><rect x="3" y="3" width="7" height="7
 const IconIngredients = () => (<svg {...svgProps}><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="m3.3 7 8.7 5 8.7-5M12 22V12" /></svg>);
 const IconTraining = () => (<svg {...svgProps}><path d="M4 9v6M7 7v10M17 7v10M20 9v6M7 12h10" /></svg>);
 const IconPlan = () => (<svg {...svgProps}><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V3h6v1M9 10h6M9 14h6" /></svg>);
+const IconAi = () => (<svg {...svgProps}><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15l-1.8-4.2L5.5 9l4.7-1.3z" /><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z" /></svg>);
 
 /* Routes that live under the "More" sheet — used to light up the More tab. */
-const SECONDARY_PATHS = ['/ingredients', '/training', '/plan'];
+const SECONDARY_PATHS = ['/ai-logger', '/ingredients', '/training', '/plan'];
 
 const SHEET_ITEMS = [
+  { to: '/ai-logger', label: 'AI Macro Logger', Icon: IconAi },
   { to: '/ingredients', label: 'Ingredient Library', Icon: IconIngredients },
   { to: '/training', label: 'Training', Icon: IconTraining },
   { to: '/plan', label: 'Plan', Icon: IconPlan },

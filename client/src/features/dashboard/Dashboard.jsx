@@ -270,9 +270,18 @@ export default function Dashboard() {
               : today}
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
-          + Log a Meal
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link
+            to="/ai-logger"
+            className="btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
+          >
+            ✨ AI estimate
+          </Link>
+          <button className="btn-primary" onClick={() => setShowModal(true)}>
+            + Log a Meal
+          </button>
+        </div>
       </div>
 
       {error && <p className="error" style={{ marginTop: 0, marginBottom: 16 }}>{error}</p>}

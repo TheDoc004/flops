@@ -13,6 +13,7 @@ import MealBuilder from '@features/meal-builder';
 import PlanLayout from './layouts/PlanLayout';
 import TrainingWorkouts from '@features/training-workouts';
 import Ingredients from '@features/ingredients';
+import AiMacroLogger from '@features/ai-macro-logger';
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/ingredients" element={<Ingredients />} />
           <Route path="/history" element={<History />} />
           <Route path="/meal-builder" element={<MealBuilder />} />
+          <Route path="/ai-logger" element={<AiMacroLogger />} />
           <Route path="/training" element={<TrainingWorkouts />} />
 
           <Route path="/plan" element={<PlanLayout />}>

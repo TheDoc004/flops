@@ -1,3 +1,12 @@
+const path = require('path');
+// Load a local server/.env if present (real environment vars still win on Render etc.).
+// process.loadEnvFile is built into Node 20.12+/21.7+ — no dotenv dependency needed.
+try {
+  process.loadEnvFile(path.join(__dirname, '.env'));
+} catch {
+  /* no .env file — rely on the process environment */
+}
+
 const express = require('express');
 const cors = require('cors');
 const { createDb } = require('./db');
@@ -8,6 +17,7 @@ const { createProfileRouter, createBodyWeightsRouter } = require('./routes/profi
 const { createTrainingRouter } = require('./routes/training');
 const { createLabelIngredientsRouter } = require('./routes/labelIngredients');
 const { createWorkoutsRouter } = require('./routes/workouts');
+const { createAiRouter } = require('./routes/ai');
 
 const db = createDb(process.env.DB_PATH || './nutrition.db');
 const app = express();
@@ -46,6 +56,7 @@ app.use('/api/profile', createProfileRouter(db));
 app.use('/api/body-weights', createBodyWeightsRouter(db));
 app.use('/api/training', createTrainingRouter(db));
 app.use('/api/workouts', createWorkoutsRouter(db));
+app.use('/api/ai', createAiRouter());
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
