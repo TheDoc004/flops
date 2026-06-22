@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import LogEntryRow from '../components/LogEntryRow';
-import LogMealModal from '../components/LogMealModal';
+import { LogEntryRow } from '@features/meal-logging';
+import { LogMealModal } from '@features/meal-logging';
 import MacroTotals from '@shared/ui/MacroTotals';
 import DailyTrainingContextBanner from '../components/DailyTrainingContextBanner';
 import MealFuelReadinessCard from '../components/MealFuelReadinessCard';

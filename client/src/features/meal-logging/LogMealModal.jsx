@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
-import RecipeCombobox from './RecipeCombobox';
-import { QUICK_FOODS, filterQuickFoods, macrosForQuickFoodAmount } from '../utils/quickFoods';
-import { adjustPerServingMacrosForResolvedClient } from '../utils/recipeLogMacros';
-import { listLoggingSlotsFromRecipe, listNonEditableTemplateLines } from '../utils/recipeLoggingSlots';
+import RecipeCombobox from '@/components/RecipeCombobox';
+import { QUICK_FOODS, filterQuickFoods, macrosForQuickFoodAmount } from './quickFoods';
+import { adjustPerServingMacrosForResolvedClient } from './recipeLogMacros';
+import { listLoggingSlotsFromRecipe, listNonEditableTemplateLines } from './recipeLoggingSlots';
 
 function preventOptionMouseDown(e) {
   e.preventDefault();

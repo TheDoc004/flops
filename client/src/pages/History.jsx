@@ -4,8 +4,8 @@ import {
   Tooltip, CartesianGrid, ResponsiveContainer, Legend,
 } from 'recharts';
 import RangeSelector from '@shared/ui/RangeSelector';
-import LogEntryRow from '../components/LogEntryRow';
-import LogMealModal from '../components/LogMealModal';
+import { LogEntryRow } from '@features/meal-logging';
+import { LogMealModal } from '@features/meal-logging';
 import { fetchLogRange, fetchLogForDate, fetchLogDays, createLogEntry, createQuickFoodLog, deleteLogEntry, updateLogEntry } from '@shared/api/log';
 import { groupByDate, sumMacros } from '@shared/utils/macros';
 import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
