@@ -10,7 +10,7 @@ import Report from '@features/report';
 import Profile from '@features/profile';
 import Training from '@features/training-fuel';
 import MealBuilder from '@features/meal-builder';
-import PlanLayout from './pages/Plan';
+import PlanLayout from './layouts/PlanLayout';
 import TrainingWorkouts from '@features/training-workouts';
 import Ingredients from '@features/ingredients';
 
