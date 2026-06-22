@@ -44,7 +44,7 @@ Vite proxies `/api` → `localhost:3001` in dev. The SQLite DB lives at
 - **Soft deletes.** Recipes use `is_deleted = 1`. Workout presets use `is_deleted = 1`. Never hard-delete things that log entries reference.
 - **Schema migrations** are inline in `server/db.js` using `PRAGMA table_info()` + conditional `ALTER TABLE`. Follow this pattern when adding columns to existing tables.
 - **Log entry denormalization.** When a meal is logged, recipe macros are copied into `log_entries` columns (`recipe_calories`, `recipe_protein_g`, etc.) so historical records survive recipe edits.
-- **No CSS framework.** Use the existing `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.card`, `.error`, `.empty-state` classes from `client/src/index.css`. Extend with inline styles.
+- **No CSS framework.** Use the existing `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.card`, `.error`, `.empty-state` classes from `client/src/styles/index.css`. Extend with inline styles.
 - **MacroUnitsContext** is the only React Context — it exposes `macroUnits` ('metric'|'us') and `bodyUnits` ('metric'|'us') from the user profile. Consume it in any component that displays macro values or weights.
 
 ## Folder Structure
@@ -64,15 +64,23 @@ nutrition-tracker/
 │       ├── workouts.js       # Workout presets, exercise library, exercise logs, progress
 │       └── labelIngredients.js # Ingredient library CRUD + OCR use tracking
 │
-├── client/src/
-│   ├── App.jsx               # Router, layout, MacroUnitsProvider
-│   ├── pages/                # One file per route
-│   ├── components/           # Reusable UI components
-│   ├── api/                  # Thin fetch wrappers, one file per route group
-│   ├── utils/                # Pure JS utilities (no side effects)
-│   ├── context/MacroUnitsContext.jsx
-│   └── hooks/                # (empty — custom hooks not yet extracted)
+├── client/src/               # feature-based layout
+│   ├── app/                  # App.jsx (router + MacroUnitsProvider), main.jsx, layouts/PlanLayout.jsx
+│   ├── styles/               # index.css (design-system tokens), App.css
+│   ├── shared/               # cross-feature foundation
+│   │   ├── api/              # thin fetch wrappers, one file per route group
+│   │   ├── utils/            # pure JS utilities (no side effects)
+│   │   ├── hooks/            # custom hooks (useMediaQuery, usePaginationAnchor, useDropdownPlacement)
+│   │   ├── context/          # MacroUnitsContext
+│   │   └── ui/               # shared UI (Navbar, BottomNav, MacroTotals, RangeSelector, RecipeCombobox)
+│   └── features/<name>/      # one folder per feature: <Page>.jsx + index.js barrel + colocated
+│                             # components/utils. Cross-cutting modules also live here
+│                             # (label-ocr, adherence, meal-logging).
 ```
+
+**Import conventions:** cross-feature imports use path aliases (`@app`, `@shared`, `@features`,
+and `@` → `src`); within a feature use relative paths. Import a cross-cutting module through its
+`index.js` barrel, never its internals.
 
 ## Route Map
 

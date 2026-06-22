@@ -33,8 +33,8 @@ Every screen should feel like it was designed for one job, not assembled from pa
 ## Coding Philosophy
 
 - One component = one job. If it fetches, manages state, AND renders — split it.
-- No CSS frameworks. Use the existing plain CSS system in `client/src/index.css`.
-- Reuse before you create. Check `client/src/components/` before writing a new component.
+- No CSS frameworks. Use the existing plain CSS system in `client/src/styles/index.css`.
+- Reuse before you create. Check `client/src/shared/ui/` and the relevant `features/<name>/` before writing a new component.
 - Recharts for all charts, always inside `<ResponsiveContainer width="100%" height={N}>`.
 - SQLite is synchronous — no `.then()` on DB calls, no async/await on `better-sqlite3`.
 - Soft deletes only. Never hard-delete anything that log entries could reference.
@@ -85,14 +85,16 @@ server/
     labelIngredients.js  — ingredient library
 
 client/src/
-  App.jsx                — router + MacroUnitsProvider
-  pages/                 — one file per route
-  components/            — reusable UI pieces
-  api/                   — thin fetch wrappers per route group
-  utils/                 — pure JS utilities
-  context/               — MacroUnitsContext only
-  hooks/                 — custom hooks (currently empty, extract here when refactoring)
+  app/                   — App.jsx (router + MacroUnitsProvider), main.jsx, layouts/
+  styles/                — index.css (design system), App.css
+  shared/                — cross-feature foundation: api/, utils/, hooks/, context/, ui/
+  features/<name>/       — one folder per feature; <Page>.jsx + index.js barrel,
+                           colocated components/utils. Cross-cutting modules live here too
+                           (label-ocr, adherence, meal-logging).
 ```
+
+Import conventions: cross-feature imports use aliases (`@app`, `@shared`, `@features`, `@` → src);
+within a feature use relative paths. Import cross-cutting modules via their barrel, never internals.
 
 ---
 
