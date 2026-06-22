@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
-import RecipeCombobox from '@/components/RecipeCombobox';
+import RecipeCombobox from '@shared/ui/RecipeCombobox';
 import { QUICK_FOODS, filterQuickFoods, macrosForQuickFoodAmount } from './quickFoods';
 import { adjustPerServingMacrosForResolvedClient } from './recipeLogMacros';
 import { listLoggingSlotsFromRecipe, listNonEditableTemplateLines } from './recipeLoggingSlots';

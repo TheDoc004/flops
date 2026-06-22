@@ -6,7 +6,7 @@ import {
   deleteSavedFuelRecipe,
   fetchSavedFuelRecipes,
 } from '@shared/api/training';
-import RecipeCombobox from '../components/RecipeCombobox';
+import RecipeCombobox from '@shared/ui/RecipeCombobox';
 
 export default function Training() {
   const [loading, setLoading] = useState(true);

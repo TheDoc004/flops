@@ -4,7 +4,7 @@ import RecipeRow from '../components/RecipeRow';
 import { LogMealModal } from '@features/meal-logging';
 import { fetchRecipes, deleteRecipe, reactivateLimitedRecipe } from '@shared/api/recipes';
 import { createLogEntry, createQuickFoodLog } from '@shared/api/log';
-import { filterRecipesByName } from '../utils/recipeSearch';
+import { filterRecipesByName } from '@shared/utils/recipeSearch';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
 import usePaginationAnchor from '@shared/hooks/usePaginationAnchor';
