@@ -8,7 +8,7 @@ import History from './pages/History';
 import Goals from '@features/goals';
 import Report from '@features/report';
 import Profile from '@features/profile';
-import Training from './pages/Training';
+import Training from '@features/training-fuel';
 import MealBuilder from '@features/meal-builder';
 import PlanLayout from './pages/Plan';
 import TrainingWorkouts from '@features/training-workouts';
