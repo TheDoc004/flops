@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import RecipeForm from '../components/RecipeForm';
-import IngredientCombobox from '../components/IngredientCombobox';
+import RecipeForm from './RecipeForm';
+import IngredientCombobox from './IngredientCombobox';
 import { LabelCropModal } from '@features/label-ocr';
 import { createRecipe, fetchRecipe, updateRecipe } from '@shared/api/recipes';
 import { createLabelIngredient, fetchLabelIngredients, markLabelIngredientsUsed } from '@shared/api/labelIngredients';
