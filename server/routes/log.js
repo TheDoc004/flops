@@ -144,6 +144,98 @@ function createLogRouter(db) {
     res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ?`).get(entryId));
   });
 
+  /**
+   * Log a one-off meal from absolute (per-serving) macros — e.g. macros worked
+   * out elsewhere and pasted in. Like quick-food, this writes to a hidden
+   * (is_quick_food=1) backing recipe so it appears in the daily log/history but
+   * NEVER in the Recipe Library. Deduped by name so repeats don't pile up.
+   */
+  router.post('/custom', (req, res) => {
+    const date = normalizeIsoDate(req.body?.date);
+    if (!date) return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
+
+    const name = String(req.body?.name ?? '').trim();
+    if (!name) return res.status(400).json({ error: 'name is required' });
+
+    const calories = normalizeNonNegNumber(req.body?.calories);
+    const protein_g = normalizeNonNegNumber(req.body?.protein_g);
+    const carbs_g = normalizeNonNegNumber(req.body?.carbs_g);
+    const fat_g = normalizeNonNegNumber(req.body?.fat_g);
+    if (calories == null || protein_g == null || carbs_g == null || fat_g == null) {
+      return res.status(400).json({ error: 'calories, protein_g, carbs_g, fat_g must be non-negative numbers' });
+    }
+    const fiber_g = req.body?.fiber_g == null || req.body?.fiber_g === '' ? null : normalizeNonNegNumber(req.body?.fiber_g);
+    if (req.body?.fiber_g != null && req.body?.fiber_g !== '' && fiber_g == null) {
+      return res.status(400).json({ error: 'fiber_g must be a non-negative number' });
+    }
+
+    const servingsRaw = req.body?.servings == null ? 1 : Number(req.body.servings);
+    if (!Number.isFinite(servingsRaw) || servingsRaw <= 0) {
+      return res.status(400).json({ error: 'servings must be a positive number' });
+    }
+
+    const t = normalizeTimeMin(req.body?.time_min);
+    const notes = req.body?.notes != null ? String(req.body.notes).trim() : null;
+
+    const findExisting = db.prepare(
+      `SELECT id FROM recipes
+       WHERE COALESCE(is_quick_food, 0) = 1 AND lower(name) = lower(?) AND serving_size = '1 serving'
+       ORDER BY id ASC LIMIT 1`
+    );
+    const updateExisting = db.prepare(
+      `UPDATE recipes
+       SET calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?, ingredients = '[]', recipe_kind = 'permanent', is_archived = 0, meal_builder_meta = NULL, is_quick_food = 1
+       WHERE id = ?`
+    );
+    const insertRecipe = db.prepare(
+      `INSERT INTO recipes (name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients, recipe_kind, remaining_uses, max_uses, is_archived, meal_builder_meta, is_quick_food)
+       VALUES (?, '1 serving', ?, ?, ?, ?, ?, '[]', 'permanent', NULL, NULL, 0, NULL, 1)`
+    );
+    const insertLog = db.prepare(
+      `INSERT INTO log_entries (
+         recipe_id, date, time_min, servings, notes,
+         recipe_name, serving_size, recipe_calories, recipe_protein_g, recipe_carbs_g, recipe_fat_g, recipe_fiber_g, recipe_is_quick_food,
+         slot_selections_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+    );
+
+    let entryId;
+    try {
+      const run = db.transaction(() => {
+        const existing = findExisting.get(name);
+        let recipeId;
+        if (existing?.id) {
+          recipeId = existing.id;
+          updateExisting.run(calories, protein_g, carbs_g, fat_g, fiber_g, recipeId);
+        } else {
+          const r = insertRecipe.run(name, calories, protein_g, carbs_g, fat_g, fiber_g);
+          recipeId = r.lastInsertRowid;
+        }
+        const ins = insertLog.run(
+          recipeId,
+          date,
+          t,
+          servingsRaw,
+          notes || null,
+          name,
+          '1 serving',
+          calories,
+          protein_g,
+          carbs_g,
+          fat_g,
+          fiber_g,
+          1
+        );
+        return ins.lastInsertRowid;
+      });
+      entryId = run();
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to log custom meal' });
+    }
+
+    res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ?`).get(entryId));
+  });
+
   router.get('/days', (req, res) => {
     const limitRaw = req.query.limit;
     const offsetRaw = req.query.offset;

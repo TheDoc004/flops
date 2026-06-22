@@ -39,7 +39,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const ref = useRef(null);
   const [recipes, setRecipes] = useState([]);
   const [recipeId, setRecipeId] = useState(initialEntry?.recipe_id ? String(initialEntry.recipe_id) : '');
-  const [mode, setMode] = useState('recipe'); // 'recipe' | 'quick'
+  const [mode, setMode] = useState('recipe'); // 'recipe' | 'quick' | 'custom'
   const [servings, setServings] = useState(
     initialEntry?.servings != null ? String(initialEntry.servings) : '1'
   );
@@ -273,6 +273,14 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const quickSelected = useMemo(() => QUICK_FOODS.find(f => f.id === quickFoodId) || null, [quickFoodId]);
   const quickMacros = useMemo(() => macrosForQuickFoodAmount(quickSelected, quickAmount, quickUnit), [quickSelected, quickAmount, quickUnit]);
 
+  // Custom "log once" state — for meals whose macros you already know (e.g. worked out elsewhere).
+  const [customName, setCustomName] = useState('');
+  const [customCalories, setCustomCalories] = useState('');
+  const [customProtein, setCustomProtein] = useState('');
+  const [customCarbs, setCustomCarbs] = useState('');
+  const [customFat, setCustomFat] = useState('');
+  const [customFiber, setCustomFiber] = useState('');
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
@@ -289,6 +297,32 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
             protein_g_100g: quickSelected.protein_g_100g,
             carbs_g_100g: quickSelected.carbs_g_100g,
             fat_g_100g: quickSelected.fat_g_100g,
+          },
+          notes: notes.trim() || undefined,
+          time_min: parseHHMMToTimeMin(timeHHMM),
+        });
+      } else if (mode === 'custom') {
+        const name = customName.trim();
+        if (!name) return setError('Enter a meal name');
+        const cals = Number(customCalories);
+        const p = Number(customProtein);
+        const c = Number(customCarbs);
+        const f = Number(customFat);
+        if ([cals, p, c, f].some(n => !Number.isFinite(n) || n < 0)) {
+          return setError('Enter calories, protein, carbs and fat (0 or more)');
+        }
+        const fiber = customFiber.trim() === '' ? undefined : Number(customFiber);
+        if (fiber !== undefined && (!Number.isFinite(fiber) || fiber < 0)) {
+          return setError('Fiber must be 0 or more, or left blank');
+        }
+        await onLog({
+          log_custom: {
+            name,
+            calories: cals,
+            protein_g: p,
+            carbs_g: c,
+            fat_g: f,
+            ...(fiber !== undefined ? { fiber_g: fiber } : {}),
           },
           notes: notes.trim() || undefined,
           time_min: parseHHMMToTimeMin(timeHHMM),
@@ -350,6 +384,14 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
             style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem', fontWeight: 700 }}
           >
             Quick add food
+          </button>
+          <button
+            type="button"
+            className={mode === 'custom' ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => setMode('custom')}
+            style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem', fontWeight: 700 }}
+          >
+            Log once (custom)
           </button>
         </div>
 
@@ -560,7 +602,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               </div>
             )}
           </>
-        ) : (
+        ) : mode === 'quick' ? (
           /* Quick add mode */
           <div>
             <label>Food</label>
@@ -622,6 +664,42 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
             )}
             <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
               Quick add foods are one-off logs. They won&apos;t show up in the Recipe Library unless you save a recipe separately.
+            </p>
+          </div>
+        ) : (
+          /* Custom "log once" mode */
+          <div>
+            <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--color-text-body)' }}>
+              Track this meal today without saving it to your recipe library. Enter the macros you already worked out.
+            </p>
+            <div style={{ marginBottom: 10 }}>
+              <label>Meal name</label>
+              <input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="e.g. Chicken burrito bowl" />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label>Calories</label>
+                <input type="number" min="0" step="1" value={customCalories} onChange={e => setCustomCalories(e.target.value)} placeholder="e.g. 620" />
+              </div>
+              <div>
+                <label>Protein (g)</label>
+                <input type="number" min="0" step="0.1" value={customProtein} onChange={e => setCustomProtein(e.target.value)} placeholder="e.g. 45" />
+              </div>
+              <div>
+                <label>Carbs (g)</label>
+                <input type="number" min="0" step="0.1" value={customCarbs} onChange={e => setCustomCarbs(e.target.value)} placeholder="e.g. 60" />
+              </div>
+              <div>
+                <label>Fat (g)</label>
+                <input type="number" min="0" step="0.1" value={customFat} onChange={e => setCustomFat(e.target.value)} placeholder="e.g. 20" />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label>Fiber (g) <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(optional)</span></label>
+                <input type="number" min="0" step="0.1" value={customFiber} onChange={e => setCustomFiber(e.target.value)} placeholder="optional" />
+              </div>
+            </div>
+            <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
+              This won&apos;t be added to your Recipe Library. To reuse a meal, build it in the Meal Builder and choose &ldquo;Save as recipe&rdquo;.
             </p>
           </div>
         )}

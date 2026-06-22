@@ -44,6 +44,19 @@ export async function createQuickFoodLog(data) {
   return res.json();
 }
 
+export async function createCustomLog(data) {
+  const res = await fetch(apiUrl('/api/log/custom'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => null);
+    throw new Error(e?.error || 'Failed to log meal');
+  }
+  return res.json();
+}
+
 export async function updateLogEntry(id, data) {
   const res = await fetch(apiUrl(`/api/log/${id}`), {
     method: 'PUT',

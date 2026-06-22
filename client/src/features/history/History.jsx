@@ -6,7 +6,7 @@ import {
 import RangeSelector from '@shared/ui/RangeSelector';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
-import { fetchLogRange, fetchLogForDate, fetchLogDays, createLogEntry, createQuickFoodLog, deleteLogEntry, updateLogEntry } from '@shared/api/log';
+import { fetchLogRange, fetchLogForDate, fetchLogDays, createLogEntry, createQuickFoodLog, createCustomLog, deleteLogEntry, updateLogEntry } from '@shared/api/log';
 import { groupByDate, sumMacros } from '@shared/utils/macros';
 import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
@@ -136,6 +136,13 @@ export default function History() {
       await createQuickFoodLog({
         date: selectedDate,
         ...data.quick_food,
+        notes: data.notes,
+        time_min: data.time_min,
+      });
+    } else if (data?.log_custom) {
+      await createCustomLog({
+        date: selectedDate,
+        ...data.log_custom,
         notes: data.notes,
         time_min: data.time_min,
       });

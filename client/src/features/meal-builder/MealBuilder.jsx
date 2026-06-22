@@ -4,6 +4,8 @@ import RecipeForm from './RecipeForm';
 import IngredientCombobox from './IngredientCombobox';
 import { LabelCropModal } from '@features/label-ocr';
 import { createRecipe, fetchRecipe, updateRecipe } from '@shared/api/recipes';
+import { createCustomLog } from '@shared/api/log';
+import { getLocalDateISO } from '@shared/utils/dateLocal';
 import { createLabelIngredient, fetchLabelIngredients, markLabelIngredientsUsed } from '@shared/api/labelIngredients';
 import {
   extractTextFromLabelImage,
@@ -104,10 +106,9 @@ export default function MealBuilder() {
   const [labelCropOpen, setLabelCropOpen] = useState(false);
   const [lines, setLines] = useState([newLine()]);
   const [mealName, setMealName] = useState('');
-  const [saveKind, setSaveKind] = useState('permanent');
-  const [limitedUses, setLimitedUses] = useState(5);
   const [mealSaveError, setMealSaveError] = useState('');
   const [mealSaved, setMealSaved] = useState(false);
+  const [mealLoggedOnce, setMealLoggedOnce] = useState(false);
   const [libOpen, setLibOpen] = useState(false);
   // Mobile only: which ingredient rows have the collapsed "More options" (role + substitutes) open.
   const [expandedLines, setExpandedLines] = useState(() => new Set());
@@ -199,10 +200,6 @@ export default function MealBuilder() {
       }));
     if (nextLines.length) setLines(nextLines);
     setMealName(loadedRecipe.name || '');
-    setSaveKind(loadedRecipe.recipe_kind === 'limited' ? 'limited' : 'permanent');
-    if (loadedRecipe.recipe_kind === 'limited') {
-      setLimitedUses(Number(loadedRecipe.max_uses) || 5);
-    }
   }, [mode, loadedRecipe, recipeId]);
 
   useEffect(() => {
@@ -215,11 +212,11 @@ export default function MealBuilder() {
   }, [pendingFocusLineId, lines]);
 
   useEffect(() => {
-    if (!mealSaved) return;
+    if (!mealSaved && !mealLoggedOnce) return;
     requestAnimationFrame(() => {
       backToDashboardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
-  }, [mealSaved]);
+  }, [mealSaved, mealLoggedOnce]);
 
   const lineMacros = useMemo(() => {
     return lines.map(line => {
@@ -486,17 +483,7 @@ export default function MealBuilder() {
         fiber_g: t.fiber_g > 0 ? Math.round(t.fiber_g * 100) / 100 : undefined,
         ingredients,
         meal_builder_meta,
-        recipe_kind: saveKind,
       };
-      if (saveKind === 'limited') {
-        const n = Number(limitedUses);
-        if (!Number.isInteger(n) || n < 1 || n > 999) {
-          setMealSaveError('Uses must be an integer from 1 to 999.');
-          return;
-        }
-        body.max_uses = n;
-        body.remaining_uses = n;
-      }
       if (recipeId) {
         await updateRecipe(recipeId, body);
       } else {
@@ -513,6 +500,44 @@ export default function MealBuilder() {
         setMealName('');
         setLines([newLine()]);
       }
+    } catch (err) {
+      setMealSaveError(err.message);
+    }
+  }
+
+  async function logOnceMeal() {
+    setMealSaveError('');
+    setMealSaved(false);
+    setMealLoggedOnce(false);
+    const name = mealName.trim();
+    if (!name) {
+      setMealSaveError('Meal name is required.');
+      return;
+    }
+    const validLines = lineMacros.filter(Boolean);
+    if (validLines.length === 0) {
+      setMealSaveError('Add at least one ingredient with a valid amount.');
+      return;
+    }
+    const t = sumMacroObjects(validLines);
+    try {
+      await createCustomLog({
+        date: getLocalDateISO(),
+        name,
+        calories: Math.round(t.calories * 10) / 10,
+        protein_g: Math.round(t.protein_g * 100) / 100,
+        carbs_g: Math.round(t.carbs_g * 100) / 100,
+        fat_g: Math.round(t.fat_g * 100) / 100,
+        fiber_g: t.fiber_g > 0 ? Math.round(t.fiber_g * 100) / 100 : undefined,
+      });
+      const usedIds = [...new Set(lines.map(l => Number(l.labelIngredientId)).filter(n => Number.isInteger(n) && n > 0))];
+      if (usedIds.length) {
+        try { await markLabelIngredientsUsed(usedIds); } catch { /* non-blocking */ }
+        await reloadLabels();
+      }
+      setMealLoggedOnce(true);
+      setMealName('');
+      setLines([newLine()]);
     } catch (err) {
       setMealSaveError(err.message);
     }
@@ -568,7 +593,7 @@ export default function MealBuilder() {
             {recipeId ? 'Edit recipe (manual)' : 'New recipe (manual)'}
           </h3>
           <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-            Use this for recipes you want to enter directly (no label ingredients needed).
+            Enter a meal directly (no saved ingredients needed). {recipeId ? 'Save your changes below.' : 'Log it once, or save it as a reusable recipe.'}
           </p>
           {loadingRecipe && recipeId ? (
             <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>Loading…</p>
@@ -576,8 +601,12 @@ export default function MealBuilder() {
             <RecipeForm
               key={recipeId ? `edit-${recipeId}` : 'manual-new'}
               initial={recipeId && loadedRecipe ? { ...loadedRecipe, fiber_g: loadedRecipe.fiber_g ?? '' } : undefined}
-              submitLabel={recipeId ? 'Save changes' : 'Create recipe'}
+              submitLabel={recipeId ? 'Save changes' : 'Save as recipe'}
               onCancel={() => navigate('/recipes')}
+              onLogOnce={recipeId ? undefined : async (payload) => {
+                await createCustomLog({ date: getLocalDateISO(), ...payload });
+                navigate('/', { state: { scrollToTop: true } });
+              }}
               onSubmit={async (data) => {
                 if (recipeId) {
                   await updateRecipe(recipeId, data);
@@ -1026,7 +1055,7 @@ export default function MealBuilder() {
       </div>
 
       <form className="card" onSubmit={saveMeal}>
-        <h3 className="section-title">3. Save this as a recipe or template</h3>
+        <h3 className="section-title">{recipeId ? '3. Save your changes' : '3. Log it once, or save it as a recipe'}</h3>
         {recipeId && (
           <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--color-text-muted)' }}>
             Editing recipe #{recipeId}. Saving will update the existing recipe.
@@ -1036,46 +1065,55 @@ export default function MealBuilder() {
           <label>Meal name</label>
           <input value={mealName} onChange={e => setMealName(e.target.value)} placeholder="e.g. Meal prep bowl #1" required />
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ display: 'block', marginBottom: 6 }}>Save as</label>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginRight: 16, cursor: 'pointer' }}>
-            <input type="radio" name="kind" checked={saveKind === 'permanent'} onChange={() => setSaveKind('permanent')} />
-            Permanent recipe
-          </label>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input type="radio" name="kind" checked={saveKind === 'limited'} onChange={() => setSaveKind('limited')} />
-            Limited-use meal template
-          </label>
-        </div>
-        {saveKind === 'limited' && (
-          <div style={{ marginBottom: 12 }}>
-            <label>Number of logs (uses)</label>
-            <input type="number" min={1} max={999} step={1} value={limitedUses} onChange={e => setLimitedUses(Number(e.target.value))} style={{ maxWidth: 120 }} />
-            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>Each time you log this meal, remaining uses decrease. At 0 it is archived and hidden from quick picks.</p>
-          </div>
-        )}
         {mealSaveError && <p className="error">{mealSaveError}</p>}
         {mealSaved && (
           <p style={{ color: 'var(--color-success)', fontSize: 14 }}>
-            Saved. <Link to="/recipes" style={{ color: 'var(--color-link)' }}>Open Recipe Library</Link>
+            Saved to your library. <Link to="/recipes" style={{ color: 'var(--color-link)' }}>Open Recipe Library</Link>
           </p>
         )}
-        <button
-          type="submit"
-          className="btn-primary"
-          style={{
-            width: '100%',
-            minHeight: 72,
-            fontSize: '1.25rem',
-            fontWeight: 700,
-            marginTop: 24,
-            borderRadius: 14,
-            letterSpacing: '-0.01em',
-          }}
-        >
-          {recipeId ? 'Save changes' : 'Save meal'}
-        </button>
-        {mealSaved && (
+        {mealLoggedOnce && (
+          <p style={{ color: 'var(--color-success)', fontSize: 14 }}>
+            Logged to today. It&apos;s in your daily log — not saved to your Recipe Library.
+          </p>
+        )}
+        {recipeId ? (
+          <button
+            type="submit"
+            className="btn-primary"
+            style={{ width: '100%', minHeight: 72, fontSize: '1.25rem', fontWeight: 700, marginTop: 16, borderRadius: 14, letterSpacing: '-0.01em' }}
+          >
+            Save changes
+          </button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
+            <div>
+              <button
+                type="button"
+                onClick={logOnceMeal}
+                className="btn-secondary"
+                style={{ width: '100%', minHeight: 60, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
+              >
+                Log once
+              </button>
+              <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Track this meal today without saving it to your recipe library.
+              </p>
+            </div>
+            <div>
+              <button
+                type="submit"
+                className="btn-primary"
+                style={{ width: '100%', minHeight: 60, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
+              >
+                Save as recipe
+              </button>
+              <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Add this to your recipe library so you can reuse it later.
+              </p>
+            </div>
+          </div>
+        )}
+        {(mealSaved || mealLoggedOnce) && (
           <button
             ref={backToDashboardRef}
             type="button"

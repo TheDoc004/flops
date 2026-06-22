@@ -5,7 +5,7 @@ import { LogMealModal } from '@features/meal-logging';
 import MacroTotals from '@shared/ui/MacroTotals';
 import DailyTrainingContextBanner from './DailyTrainingContextBanner';
 import MealFuelReadinessCard from './MealFuelReadinessCard';
-import { fetchLogRange, createLogEntry, createQuickFoodLog, deleteLogEntry } from '@shared/api/log';
+import { fetchLogRange, createLogEntry, createQuickFoodLog, createCustomLog, deleteLogEntry } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
 import { sumMacros, groupByDate } from '@shared/utils/macros';
@@ -217,14 +217,14 @@ export default function Dashboard() {
   }
 
   async function handleLog(data) {
-    const entry = data?.quick_food
-      ? await createQuickFoodLog({
-        date: today,
-        ...data.quick_food,
-        notes: data.notes,
-        time_min: data.time_min,
-      })
-      : await createLogEntry({ ...data, date: today });
+    let entry;
+    if (data?.quick_food) {
+      entry = await createQuickFoodLog({ date: today, ...data.quick_food, notes: data.notes, time_min: data.time_min });
+    } else if (data?.log_custom) {
+      entry = await createCustomLog({ date: today, ...data.log_custom, notes: data.notes, time_min: data.time_min });
+    } else {
+      entry = await createLogEntry({ ...data, date: today });
+    }
     applyFuelSnapshotFromEntry(entry);
     await load();
   }

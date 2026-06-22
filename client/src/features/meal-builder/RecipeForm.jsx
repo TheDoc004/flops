@@ -64,7 +64,7 @@ function optionIdsFromSlotRow(row) {
   return [def, ...subs];
 }
 
-export default function RecipeForm({ initial = EMPTY, onSubmit, onCancel, submitLabel = 'Save' }) {
+export default function RecipeForm({ initial = EMPTY, onSubmit, onLogOnce = null, onCancel, submitLabel = 'Save' }) {
   const [form, setForm] = useState(() => ({
     ...initial,
     ingredients: normalizeIngredientsForForm(initial),
@@ -244,6 +244,37 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onCancel, submit
     }
   }
 
+  async function handleLogOnce() {
+    setError('');
+    const name = form.name.trim();
+    if (!name) { setError('Name is required.'); return; }
+    const cals = Number(form.calories);
+    const p = Number(form.protein_g);
+    const c = Number(form.carbs_g);
+    const f = Number(form.fat_g);
+    if ([cals, p, c, f].some(n => !Number.isFinite(n) || n < 0)) {
+      setError('Enter calories, protein, carbs and fat (0 or more).');
+      return;
+    }
+    const fiber = form.fiber_g !== '' ? Number(form.fiber_g) : undefined;
+    if (fiber !== undefined && (!Number.isFinite(fiber) || fiber < 0)) {
+      setError('Fiber must be 0 or more, or left blank.');
+      return;
+    }
+    try {
+      await onLogOnce({
+        name,
+        calories: cals,
+        protein_g: p,
+        carbs_g: c,
+        fat_g: f,
+        ...(fiber !== undefined ? { fiber_g: fiber } : {}),
+      });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   const sortedLabels = useMemo(
     () => [...labelIngredients].sort((a, b) => String(a.name).localeCompare(String(b.name))),
     [labelIngredients]
@@ -407,10 +438,34 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onCancel, submit
         </div>
       </div>
       {error && <p className="error">{error}</p>}
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        {onCancel && <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>}
-        <button type="submit" className="btn-primary">{submitLabel}</button>
-      </div>
+      {onLogOnce ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <button type="button" className="btn-secondary" style={{ width: '100%', minHeight: 52, fontWeight: 700 }} onClick={handleLogOnce}>
+              Log once
+            </button>
+            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
+              Track this meal today without saving it to your recipe library.
+            </p>
+          </div>
+          <div>
+            <button type="submit" className="btn-primary" style={{ width: '100%', minHeight: 52, fontWeight: 700 }}>
+              Save as recipe
+            </button>
+            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
+              Add this to your recipe library so you can reuse it later.
+            </p>
+          </div>
+          {onCancel && (
+            <button type="button" className="btn-secondary" onClick={onCancel} style={{ alignSelf: 'flex-start' }}>Cancel</button>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          {onCancel && <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>}
+          <button type="submit" className="btn-primary">{submitLabel}</button>
+        </div>
+      )}
     </form>
   );
 }

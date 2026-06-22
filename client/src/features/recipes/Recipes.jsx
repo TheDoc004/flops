@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import RecipeRow from './RecipeRow';
 import { LogMealModal } from '@features/meal-logging';
 import { fetchRecipes, deleteRecipe, reactivateLimitedRecipe } from '@shared/api/recipes';
-import { createLogEntry, createQuickFoodLog } from '@shared/api/log';
+import { createLogEntry, createQuickFoodLog, createCustomLog } from '@shared/api/log';
 import { filterRecipesByName } from '@shared/utils/recipeSearch';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
@@ -153,6 +153,13 @@ export default function Recipes() {
               await createQuickFoodLog({
                 date: today,
                 ...payload.quick_food,
+                notes: payload.notes,
+                time_min: payload.time_min,
+              });
+            } else if (payload?.log_custom) {
+              await createCustomLog({
+                date: today,
+                ...payload.log_custom,
                 notes: payload.notes,
                 time_min: payload.time_min,
               });
