@@ -12,7 +12,7 @@ import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
 import { MACRO_COLORS } from '@shared/utils/colors';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
-import AdherenceCalendarMonth from '../components/AdherenceCalendarMonth';
+import { AdherenceCalendarMonth } from '@features/adherence';
 
 function getRangeStart(days) {
   return addDaysLocal(getLocalDateISO(), -(days - 1));

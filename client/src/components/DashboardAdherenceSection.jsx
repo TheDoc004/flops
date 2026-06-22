@@ -5,7 +5,7 @@ import { addDaysLocal } from '@shared/utils/dateLocal';
 import { buildWeeklyAdherenceRows, listLocalDatesInclusive } from '@features/adherence';
 import { ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
 import { GoalAdherenceDayDetailDialog } from '@features/adherence';
-import AdherenceCalendarMonth from './AdherenceCalendarMonth';
+import { AdherenceCalendarMonth } from '@features/adherence';
 import { STATUS_META } from '@features/adherence';
 
 const MAX_CUSTOM_DAYS = 92;
