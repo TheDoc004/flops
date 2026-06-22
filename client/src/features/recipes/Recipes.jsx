@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import RecipeRow from '../components/RecipeRow';
+import RecipeRow from './RecipeRow';
 import { LogMealModal } from '@features/meal-logging';
 import { fetchRecipes, deleteRecipe, reactivateLimitedRecipe } from '@shared/api/recipes';
 import { createLogEntry, createQuickFoodLog } from '@shared/api/log';

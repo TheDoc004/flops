@@ -3,7 +3,7 @@ import { MacroUnitsProvider } from '@shared/context/MacroUnitsContext';
 import Navbar from '@shared/ui/Navbar';
 import BottomNav from '@shared/ui/BottomNav';
 import Dashboard from './pages/Dashboard';
-import Recipes from './pages/Recipes';
+import Recipes from '@features/recipes';
 import History from './pages/History';
 import Goals from '@features/goals';
 import Report from '@features/report';
