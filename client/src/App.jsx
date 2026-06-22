@@ -12,7 +12,7 @@ import Training from './pages/Training';
 import MealBuilder from './pages/MealBuilder';
 import PlanLayout from './pages/Plan';
 import TrainingWorkouts from '@features/training-workouts';
-import Ingredients from './pages/Ingredients';
+import Ingredients from '@features/ingredients';
 
 export default function App() {
   return (
