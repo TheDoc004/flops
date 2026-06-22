@@ -3,8 +3,8 @@ import { Link, useLocation } from 'react-router-dom';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
 import MacroTotals from '@shared/ui/MacroTotals';
-import DailyTrainingContextBanner from '../components/DailyTrainingContextBanner';
-import MealFuelReadinessCard from '../components/MealFuelReadinessCard';
+import DailyTrainingContextBanner from './DailyTrainingContextBanner';
+import MealFuelReadinessCard from './MealFuelReadinessCard';
 import { fetchLogRange, createLogEntry, createQuickFoodLog, deleteLogEntry } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
@@ -12,12 +12,12 @@ import { sumMacros, groupByDate } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
 import { getLocalDateISO, addDaysLocal, parseLocalDateISO } from '@shared/utils/dateLocal';
 import { buildWeeklyAdherenceRows, listLocalDatesInclusive, goalsToTargets, hasAnyTarget, resolveGoalRowForDate } from '@features/adherence';
-import DashboardAdherenceSection from '../components/DashboardAdherenceSection';
-import DashboardWeightRow from '../components/DashboardWeightRow';
-import DashboardWeightTrend from '../components/DashboardWeightTrend';
+import DashboardAdherenceSection from './DashboardAdherenceSection';
+import DashboardWeightRow from './DashboardWeightRow';
+import DashboardWeightTrend from './DashboardWeightTrend';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import { fetchDailyTrainingContext, saveDailyTrainingContext, fetchSavedFuelRecipes } from '@shared/api/training';
-import { computeMealTrainingReadiness } from '../utils/mealTrainingReadiness';
+import { computeMealTrainingReadiness } from './mealTrainingReadiness';
 
 function macrosFromLogEntry(entry) {
   const s = Number(entry.servings) || 1;

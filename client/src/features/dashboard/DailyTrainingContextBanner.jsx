@@ -1,4 +1,4 @@
-import { TRAINING_CONTEXT_IDS, TRAINING_CONTEXT_LABELS } from '../utils/mealTrainingReadiness';
+import { TRAINING_CONTEXT_IDS, TRAINING_CONTEXT_LABELS } from './mealTrainingReadiness';
 
 export default function DailyTrainingContextBanner({ contextType, onChange, disabled }) {
   return (

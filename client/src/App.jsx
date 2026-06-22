@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { MacroUnitsProvider } from '@shared/context/MacroUnitsContext';
 import Navbar from '@shared/ui/Navbar';
 import BottomNav from '@shared/ui/BottomNav';
-import Dashboard from './pages/Dashboard';
+import Dashboard from '@features/dashboard';
 import Recipes from '@features/recipes';
 import History from '@features/history';
 import Goals from '@features/goals';
