@@ -6,7 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Recipes from './pages/Recipes';
 import History from './pages/History';
 import Goals from '@features/goals';
-import Report from './pages/Report';
+import Report from '@features/report';
 import Profile from '@features/profile';
 import Training from './pages/Training';
 import MealBuilder from './pages/MealBuilder';

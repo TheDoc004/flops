@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { fetchLogRange } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
-import { buildNutritionReportPdf, downloadReportPdf } from '../utils/buildNutritionReportPdf';
+import { buildNutritionReportPdf, downloadReportPdf } from './buildNutritionReportPdf';
 import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 
 export default function Report() {
