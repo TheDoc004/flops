@@ -4,6 +4,7 @@ const {
   AiConfigError,
   AiProviderError,
   AiResponseError,
+  AiQuotaError,
 } = require('../aiMacroService');
 
 const MAX_DESCRIPTION = 2000;
@@ -33,6 +34,9 @@ function createAiRouter() {
     } catch (e) {
       if (e instanceof AiConfigError) {
         return res.status(503).json({ error: e.message });
+      }
+      if (e instanceof AiQuotaError) {
+        return res.status(402).json({ error: e.message });
       }
       if (e instanceof AiProviderError) {
         return res.status(502).json({ error: 'The AI service had a problem. Please try again.' });

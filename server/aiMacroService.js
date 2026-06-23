@@ -13,6 +13,20 @@
 class AiConfigError extends Error {} // no usable API key configured -> 503
 class AiProviderError extends Error {} // provider call failed -> 502
 class AiResponseError extends Error {} // provider returned unusable output -> 502
+class AiQuotaError extends Error {} // provider account out of quota / billing not set up -> 402
+
+// Quota / billing signatures across providers (OpenAI "insufficient_quota",
+// Anthropic "credit balance is too low", generic billing/payment language).
+const QUOTA_RE = /insufficient_quota|exceeded your current quota|credit balance is too low|billing|payment required|out of credits|quota/i;
+
+function classifyProviderError(status, detail) {
+  if (status === 402 || QUOTA_RE.test(String(detail || ''))) {
+    return new AiQuotaError(
+      "The AI provider says the account is out of quota or billing isn't set up. Add credits / check the provider's billing settings, then try again."
+    );
+  }
+  return new AiProviderError(`AI service returned ${status}. ${String(detail).slice(0, 300)}`);
+}
 
 const SCHEMA_HINT = `{
   "mealName": "string — a short name for this meal",
@@ -93,7 +107,7 @@ async function callOpenAI({ description, correction }) {
   }
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    throw new AiProviderError(`AI service returned ${res.status}. ${detail.slice(0, 300)}`);
+    throw classifyProviderError(res.status, detail);
   }
   const data = await res.json().catch(() => null);
   const text = data?.choices?.[0]?.message?.content;
@@ -124,7 +138,7 @@ async function callAnthropic({ description, correction }) {
   }
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    throw new AiProviderError(`AI service returned ${res.status}. ${detail.slice(0, 300)}`);
+    throw classifyProviderError(res.status, detail);
   }
   const data = await res.json().catch(() => null);
   const text = Array.isArray(data?.content)
@@ -236,4 +250,4 @@ async function estimateMacros({ description, correction } = {}) {
   return { ...validateEstimate(extractJson(text)), provider };
 }
 
-module.exports = { estimateMacros, AiConfigError, AiProviderError, AiResponseError };
+module.exports = { estimateMacros, AiConfigError, AiProviderError, AiResponseError, AiQuotaError };
