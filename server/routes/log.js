@@ -19,7 +19,9 @@ function normalizeMicrosPayload(body) {
     const v = Number(m[k]);
     if (Number.isFinite(v) && v >= 0) micros[k] = Math.round(v * 100) / 100;
   }
-  if (Object.keys(micros).length === 0) return null;
+  // A meal only counts as estimated if at least one nutrient is actually > 0.
+  // An empty or all-zero object is not a real estimate — don't store it.
+  if (!Object.values(micros).some(v => v > 0)) return null;
   const confidence = ['low', 'medium', 'high'].includes(body.micros_confidence) ? body.micros_confidence : 'low';
   const notes = body.micros_notes != null ? String(body.micros_notes).slice(0, 500) : '';
   return JSON.stringify({

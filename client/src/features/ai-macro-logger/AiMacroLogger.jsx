@@ -123,7 +123,7 @@ export default function AiMacroLogger() {
     setBusy('log');
     setError('');
     try {
-      const hasMicros = estimate.micros && Object.keys(estimate.micros).length > 0;
+      const hasMicros = estimate.micros && Object.values(estimate.micros).some(v => Number(v) > 0);
       await createCustomLog({
         date: getLocalDateISO(),
         name: estimate.mealName.trim() || 'Meal',

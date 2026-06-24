@@ -33,6 +33,10 @@ export function parseMicros(entry) {
   try { p = typeof raw === 'string' ? JSON.parse(raw) : raw; }
   catch { return null; }
   if (!p || typeof p !== 'object' || !p.micros || typeof p.micros !== 'object') return null;
+  // An empty or all-zero micros object is not a real estimate — treat as "no
+  // estimate" so it isn't counted as estimated/high-confidence (self-heals any
+  // such blob that was stored before the server-side guard existed).
+  if (!Object.values(p.micros).some(v => Number(v) > 0)) return null;
   return p; // { micros, confidence, notes, version, estimatedAt }
 }
 
