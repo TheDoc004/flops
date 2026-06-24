@@ -38,19 +38,14 @@ function isValidIsoDate(s) {
   return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
 }
 
-const MODES = [
-  { key: 'single', label: 'Single' },
-  { key: 'multi', label: 'Multi' },
-  { key: 'range', label: 'Range' },
-];
-
 export default function History() {
   const { macroUnits } = useMacroUnits();
 
   // ── Selection + report state ──
-  const [mode, setMode] = useState('single');
+  // Unified selection: clicking days toggles them; presets pick a range.
+  // presetN (7|14|30|null) only drives the summary label ("Last N days").
   const [selDates, setSelDates] = useState(() => [getLocalDateISO()]);
-  const [rangeAnchor, setRangeAnchor] = useState(null);
+  const [presetN, setPresetN] = useState(null);
   const [reportDays, setReportDays] = useState([]);
   const [reportDates, setReportDates] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
@@ -96,48 +91,23 @@ export default function History() {
     }
   }, []);
 
-  function viewBreakdown() {
-    void buildReport(selDates);
-    setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
-  }
-
-  function changeMode(next) {
-    setMode(next);
-    setRangeAnchor(null);
-    setSelDates(next === 'single' ? [getLocalDateISO()] : []);
-  }
-
+  // Toggle a day in/out of the selection. Any manual edit drops the preset label.
   function onCalendarDayClick(date) {
-    if (mode === 'single') {
-      setSelDates([date]);
-    } else if (mode === 'multi') {
-      setSelDates(prev => (prev.includes(date) ? prev.filter(d => d !== date) : [...prev, date]));
-    } else {
-      // range
-      if (!rangeAnchor) {
-        setRangeAnchor(date);
-        setSelDates([date]);
-      } else {
-        setSelDates(enumerateDates(rangeAnchor, date));
-        setRangeAnchor(null);
-      }
-    }
+    setPresetN(null);
+    setSelDates(prev => (prev.includes(date) ? prev.filter(d => d !== date) : [...prev, date]));
   }
 
+  // Preset range: replace the selection with the last N days and label it as such.
   function applyPreset(n) {
-    const dates = presetDates(n);
-    setMode('range');
-    setRangeAnchor(null);
-    setSelDates(dates);
-    void buildReport(dates);
+    setPresetN(n);
+    setSelDates(presetDates(n));
     setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   }
 
+  // Clear → back to today, so the page never feels blank.
   function clearSelection() {
-    setSelDates([]);
-    setRangeAnchor(null);
-    setReportDays([]);
-    setReportDates([]);
+    setPresetN(null);
+    setSelDates([getLocalDateISO()]);
   }
 
   // ── Day editor handlers (preserved) ──
@@ -200,18 +170,18 @@ export default function History() {
     await refreshAfterEdit();
   }
 
-  // Open focused on today: build today's report.
+  // Report auto-updates from the current selection (no "View Breakdown" step).
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial report load
-    void buildReport([getLocalDateISO()]);
-  }, [buildReport]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- report tracks selection
+    void buildReport(selDates);
+  }, [selDates, buildReport]);
 
   const selectionLabel = useMemo(() => {
     if (selDates.length === 0) return 'No days selected.';
+    if (presetN) return `Last ${presetN} days`;
     if (selDates.length === 1) return `1 day · ${selDates[0]}`;
-    const sorted = [...selDates].sort();
-    return `${selDates.length} days · ${sorted[0]} → ${sorted[sorted.length - 1]}`;
-  }, [selDates]);
+    return `${selDates.length} selected days`;
+  }, [selDates, presetN]);
 
   return (
     <div>
@@ -223,35 +193,22 @@ export default function History() {
       <div className="card" style={{ marginBottom: 20 }}>
         <h2 className="section-title" style={{ marginBottom: 4 }}>Review nutrition</h2>
         <p style={{ margin: '0 0 14px', fontSize: 13, color: '#9ca3af' }}>
-          Pick a day, several days, or a range — then view the breakdown below.
+          Pick one or more days, or use a preset range. The report below updates automatically.
         </p>
 
-        {/* Mode toggle + presets */}
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-          <div style={{ display: 'inline-flex', gap: 4, background: '#f3f0ff', borderRadius: 10, padding: 4 }}>
-            {MODES.map(m => (
-              <button
-                key={m.key}
-                type="button"
-                onClick={() => changeMode(m.key)}
-                style={{
-                  minHeight: 0, padding: '7px 16px', borderRadius: 8, fontWeight: 600, fontSize: 13,
-                  border: 'none', cursor: 'pointer',
-                  background: mode === m.key ? '#312e81' : 'transparent',
-                  color: mode === m.key ? '#fff' : '#4b5563',
-                }}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
-            {[7, 14, 30].map(n => (
-              <button key={n} type="button" className="btn-secondary" style={{ minHeight: 0, padding: '7px 12px', fontSize: 13 }} onClick={() => applyPreset(n)}>
-                {n}D
-              </button>
-            ))}
-          </div>
+        {/* Preset ranges */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+          {[7, 14, 30].map(n => (
+            <button
+              key={n}
+              type="button"
+              className={presetN === n ? 'btn-primary' : 'btn-secondary'}
+              style={{ minHeight: 0, padding: '7px 14px', fontSize: 13 }}
+              onClick={() => applyPreset(n)}
+            >
+              {n}D
+            </button>
+          ))}
         </div>
 
         {/* Calendar with selection */}
@@ -264,8 +221,8 @@ export default function History() {
 
         {/* Selection summary + actions */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 16 }}>
-          <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
-            {mode === 'range' && rangeAnchor ? `Range start ${rangeAnchor} — pick an end day.` : selectionLabel}
+          <p style={{ margin: 0, fontSize: 13, color: '#6b7280', fontWeight: 500 }}>
+            {selectionLabel}{reportLoading ? ' · updating…' : ''}
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
@@ -276,12 +233,7 @@ export default function History() {
             >
               Edit a day ↓
             </button>
-            {selDates.length > 0 && (
-              <button type="button" className="btn-secondary" onClick={clearSelection}>Clear</button>
-            )}
-            <button type="button" className="btn-primary" disabled={selDates.length === 0 || reportLoading} onClick={viewBreakdown}>
-              {reportLoading ? 'Loading…' : 'View Breakdown'}
-            </button>
+            <button type="button" className="btn-secondary" onClick={clearSelection}>Clear</button>
           </div>
         </div>
       </div>
