@@ -98,8 +98,9 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={200}>
-          {/* top/right margin gives dots (r=4 + strokeWidth=2) room so they aren't clipped */}
-          <ComposedChart data={chartData} margin={{ top: 16, right: 16, left: 0, bottom: 4 }}>
+          {/* top/right margin gives dots (r=4 + strokeWidth=2) room so they aren't clipped;
+              left margin keeps the y-axis labels off the card edge */}
+          <ComposedChart data={chartData} margin={{ top: 16, right: 16, left: 8, bottom: 4 }}>
             <CartesianGrid stroke="#ececec" strokeDasharray="4 4" vertical={false} />
             <XAxis
               dataKey="date"
@@ -111,6 +112,8 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
               }
               axisLine={{ stroke: '#e5e7eb' }}
               tickLine={false}
+              /* inset the first/last data points so edge dots have breathing room */
+              padding={{ left: 12, right: 12 }}
             />
             <YAxis
               yAxisId="weight"
@@ -154,7 +157,11 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
                 );
               }}
               activeDot={{ r: 5, fill: '#312e81', stroke: '#fff', strokeWidth: 2 }}
-              connectNulls
+              /* connectNulls={false}: break the line across unlogged days so a
+                 large gap (e.g. 06/12 → 06/24) is not drawn as one diagonal.
+                 Only consecutive logged days connect; isolated entries show as a
+                 lone dot via the custom dot renderer above. */
+              connectNulls={false}
               name="Weight"
               isAnimationActive={false}
             />
