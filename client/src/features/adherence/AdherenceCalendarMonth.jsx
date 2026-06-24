@@ -50,8 +50,10 @@ function datesInMonth(yyyyMm) {
  * @param {boolean}  [props.bare=false]     - When true, omits the outer .card wrapper (for embedding)
  * @param {boolean}  [props.showNav=true]  - When false, hides the prev/next month navigation
  * @param {function} [props.onViewDay]     - Optional callback(dateStr) fired when user clicks "View or edit day"
+ * @param {string[]} [props.selectedDates] - Opt-in selection mode: ISO dates to highlight as selected
+ * @param {function} [props.onDayClick]    - Opt-in: when set, clicking a day calls onDayClick(date) instead of opening the detail dialog
  */
-export default function AdherenceCalendarMonth({ macroUnits, bare = false, showNav = true, onViewDay = null }) {
+export default function AdherenceCalendarMonth({ macroUnits, bare = false, showNav = true, onViewDay = null, selectedDates = null, onDayClick = null }) {
   const [month, setMonth] = useState(() => getLocalDateISO().slice(0, 7)); // YYYY-MM
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -60,6 +62,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
   const [detailRow, setDetailRow] = useState(null);
 
   const monthDates = useMemo(() => datesInMonth(month), [month]);
+  const selectedSet = useMemo(() => new Set(selectedDates || []), [selectedDates]);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,7 +122,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
         <div>
           <h3 className="section-title">Adherence calendar</h3>
           <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
-            Month view. Click a day for details.
+            {onDayClick ? 'Click days to add them to your selection.' : 'Month view. Click a day for details.'}
           </p>
         </div>
         {showNav && (
@@ -158,24 +161,26 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
           const m = STATUS_META[row.status] || STATUS_META.no_target;
           const dayNum = Number(row.date.slice(8, 10));
           const hasTarget = hasAnyTarget(row.targets);
+          const isSelected = selectedSet.has(row.date);
           return (
             <div
               key={row.date}
               role="button"
               tabIndex={0}
               className="cal-day"
-              onClick={() => setDetailRow(row)}
+              onClick={() => (onDayClick ? onDayClick(row.date) : setDetailRow(row))}
               onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  setDetailRow(row);
+                  if (onDayClick) onDayClick(row.date); else setDetailRow(row);
                 }
               }}
               title={row.date}
               style={{
                 borderRadius: 10,
-                border: `1px solid ${m.border}`,
-                background: hasTarget ? m.bg : 'transparent',
+                border: isSelected ? '2px solid #7c3aed' : `1px solid ${m.border}`,
+                background: isSelected ? '#f5f3ff' : (hasTarget ? m.bg : 'transparent'),
+                boxShadow: isSelected ? '0 0 0 2px rgba(124, 58, 237, 0.22)' : 'none',
                 minHeight: 52,
                 cursor: 'pointer',
                 overflow: 'hidden',

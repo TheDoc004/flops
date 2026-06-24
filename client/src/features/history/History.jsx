@@ -1,27 +1,54 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis,
-  Tooltip, CartesianGrid, ResponsiveContainer, Legend,
-} from 'recharts';
-import RangeSelector from '@shared/ui/RangeSelector';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
 import { fetchLogRange, fetchLogForDate, fetchLogDays, createLogEntry, createQuickFoodLog, createCustomLog, deleteLogEntry, updateLogEntry } from '@shared/api/log';
-import { groupByDate, sumMacros } from '@shared/utils/macros';
+import { sumMacros } from '@shared/utils/macros';
 import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
-import { MACRO_COLORS } from '@shared/utils/colors';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import { AdherenceCalendarMonth } from '@features/adherence';
+import { sumDayMicros } from '@shared/utils/microNutrients';
+import NutritionReport from './NutritionReport';
 
-function getRangeStart(days) {
-  return addDaysLocal(getLocalDateISO(), -(days - 1));
+/** Inclusive list of ISO dates from start..end (capped for safety). */
+function enumerateDates(start, end) {
+  if (!start || !end) return [];
+  const [a, b] = start <= end ? [start, end] : [end, start];
+  const out = [];
+  let cur = a;
+  for (let i = 0; i < 400; i++) {
+    out.push(cur);
+    if (cur === b) break;
+    cur = addDaysLocal(cur, 1);
+  }
+  return out;
 }
+
+function presetDates(n) {
+  const today = getLocalDateISO();
+  return enumerateDates(addDaysLocal(today, -(n - 1)), today);
+}
+
+const MODES = [
+  { key: 'single', label: 'Single' },
+  { key: 'multi', label: 'Multi' },
+  { key: 'range', label: 'Range' },
+];
 
 export default function History() {
   const { macroUnits } = useMacroUnits();
-  const [range, setRange] = useState(30);
-  const [chartData, setChartData] = useState([]);
+
+  // ── Selection + report state ──
+  const [mode, setMode] = useState('single');
+  const [selDates, setSelDates] = useState(() => [getLocalDateISO()]);
+  const [rangeAnchor, setRangeAnchor] = useState(null);
+  const [reportDays, setReportDays] = useState([]);
+  const [reportDates, setReportDates] = useState([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
+  const reportRef = useRef(null);
+
+  // ── Logged Day Explorer state (edit/add/delete — preserved) ──
   const [selectedDate, setSelectedDate] = useState('');
   const [dayEntries, setDayEntries] = useState([]);
   const [error, setError] = useState('');
@@ -31,62 +58,98 @@ export default function History() {
   const [daysLoading, setDaysLoading] = useState(false);
   const [daysHasMore, setDaysHasMore] = useState(true);
   const [daysOffset, setDaysOffset] = useState(0);
-  // List collapses when a day is selected so the editor gets focus
   const [showDayList, setShowDayList] = useState(true);
-  // How many locally-loaded days are currently visible in the browse list
   const [visibleDayCount, setVisibleDayCount] = useState(14);
-
-  const dayLogRef = useRef(null);
 
   const selectedTotals = useMemo(() => sumMacros(dayEntries), [dayEntries]);
 
-  // Summary stats derived from chartData — no new API calls needed.
-  // Hit/partial/miss counts are intentionally omitted: they require goalsPayload
-  // which History no longer loads. Add them in a future phase with goals data.
-  const overviewStats = useMemo(() => {
-    if (chartData.length === 0) return null;
-    const n = chartData.length;
-    return {
-      daysLogged: n,
-      avgCalories: Math.round(chartData.reduce((s, d) => s + (d.calories || 0), 0) / n),
-      avgProtein:  +(chartData.reduce((s, d) => s + (d.protein_g || 0), 0) / n).toFixed(1),
-      avgCarbs:    +(chartData.reduce((s, d) => s + (d.carbs_g || 0), 0) / n).toFixed(1),
-      avgFat:      +(chartData.reduce((s, d) => s + (d.fat_g || 0), 0) / n).toFixed(1),
-    };
-  }, [chartData]);
-
-  const loadRange = useCallback(async () => {
-    try {
-      const entries = await fetchLogRange(getRangeStart(range), getLocalDateISO());
-      setChartData(groupByDate(entries));
-    } catch (e) {
-      setError(e.message);
-    }
-  }, [range]);
-
-  async function selectDate(date) {
-    setSelectedDate(date);
-    setVisibleDayCount(14);   // always reset browse count when selection changes
-    if (!date) {
-      setDayEntries([]);
-      setShowDayList(true);   // no selection → show the list
+  // ── Build the report for a set of dates ──
+  const buildReport = useCallback(async (dates) => {
+    const list = Array.from(new Set(dates || [])).sort();
+    if (list.length === 0) {
+      setReportDays([]);
+      setReportDates([]);
       return;
     }
-    setShowDayList(false);    // date selected → collapse the list
+    setReportLoading(true);
+    setReportError('');
+    try {
+      const entries = await fetchLogRange(list[0], list[list.length - 1]);
+      const byDate = {};
+      for (const e of entries) (byDate[e.date] ||= []).push(e);
+      const days = list.map(date => {
+        const es = byDate[date] || [];
+        return { date, entries: es, totals: sumMacros(es), micros: sumDayMicros(es) };
+      });
+      setReportDays(days);
+      setReportDates(list);
+    } catch (e) {
+      setReportError(e.message || 'Failed to build report');
+    } finally {
+      setReportLoading(false);
+    }
+  }, []);
+
+  function viewBreakdown() {
+    void buildReport(selDates);
+    setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  }
+
+  function changeMode(next) {
+    setMode(next);
+    setRangeAnchor(null);
+    setSelDates(next === 'single' ? [getLocalDateISO()] : []);
+  }
+
+  function onCalendarDayClick(date) {
+    if (mode === 'single') {
+      setSelDates([date]);
+    } else if (mode === 'multi') {
+      setSelDates(prev => (prev.includes(date) ? prev.filter(d => d !== date) : [...prev, date]));
+    } else {
+      // range
+      if (!rangeAnchor) {
+        setRangeAnchor(date);
+        setSelDates([date]);
+      } else {
+        setSelDates(enumerateDates(rangeAnchor, date));
+        setRangeAnchor(null);
+      }
+    }
+  }
+
+  function applyPreset(n) {
+    const dates = presetDates(n);
+    setMode('range');
+    setRangeAnchor(null);
+    setSelDates(dates);
+    void buildReport(dates);
+    setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  }
+
+  function clearSelection() {
+    setSelDates([]);
+    setRangeAnchor(null);
+    setReportDays([]);
+    setReportDates([]);
+  }
+
+  // ── Explorer handlers (preserved) ──
+  async function selectDate(date) {
+    setSelectedDate(date);
+    setVisibleDayCount(14);
+    if (!date) {
+      setDayEntries([]);
+      setShowDayList(true);
+      return;
+    }
+    setShowDayList(false);
     try { setDayEntries(await fetchLogForDate(date)); }
     catch (e) { setError(e.message); }
   }
 
   async function handleDateChange(e) {
     await selectDate(e.target.value);
-  }
-
-  // Called from AdherenceCalendarMonth "View or edit day" button
-  function handleViewDay(date) {
-    void selectDate(date);
-    setTimeout(() => {
-      dayLogRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
   }
 
   async function reloadSelectedDay() {
@@ -130,239 +193,137 @@ export default function History() {
     }
   }, [daysLoading, daysHasMore, daysOffset]);
 
+  // Refresh the report too if the edited day is part of it.
+  async function refreshAfterEdit() {
+    await reloadSelectedDay();
+    await reloadDayList();
+    if (reportDates.length) await buildReport(reportDates);
+  }
+
   async function handleAddMeal(data) {
     if (!selectedDate) return;
     if (data?.quick_food) {
-      await createQuickFoodLog({
-        date: selectedDate,
-        ...data.quick_food,
-        notes: data.notes,
-        time_min: data.time_min,
-      });
+      await createQuickFoodLog({ date: selectedDate, ...data.quick_food, notes: data.notes, time_min: data.time_min });
     } else if (data?.log_custom) {
-      await createCustomLog({
-        date: selectedDate,
-        ...data.log_custom,
-        notes: data.notes,
-        time_min: data.time_min,
-      });
+      await createCustomLog({ date: selectedDate, ...data.log_custom, notes: data.notes, time_min: data.time_min });
     } else {
       await createLogEntry({ ...data, date: selectedDate });
     }
     setShowAddModal(false);
-    await reloadSelectedDay();
-    await loadRange();
-    await reloadDayList();
+    await refreshAfterEdit();
   }
 
   async function handleEditMeal(data) {
     if (!editEntry) return;
     await updateLogEntry(editEntry.id, data);
     setEditEntry(null);
-    await reloadSelectedDay();
-    await loadRange();
-    await reloadDayList();
+    await refreshAfterEdit();
   }
 
   async function handleDeleteMeal(entry) {
     await deleteLogEntry(entry.id);
-    await reloadSelectedDay();
-    await loadRange();
-    await reloadDayList();
+    await refreshAfterEdit();
   }
 
+  // Open focused on today: build today's report + load the browse list.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async chart load
-    void loadRange();
-  }, [loadRange]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial report load
+    void buildReport([getLocalDateISO()]);
+  }, [buildReport]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async day list load
     void reloadDayList();
   }, [reloadDayList]);
 
+  const selectionLabel = useMemo(() => {
+    if (selDates.length === 0) return 'No days selected.';
+    if (selDates.length === 1) return `1 day · ${selDates[0]}`;
+    const sorted = [...selDates].sort();
+    return `${selDates.length} days · ${sorted[0]} → ${sorted[sorted.length - 1]}`;
+  }, [selDates]);
 
   return (
     <div>
-      {/* ── Page title ── */}
       <h1 className="page-title" style={{ marginBottom: 20 }}>History & Trends</h1>
 
       {error && <p className="error" style={{ marginBottom: 16 }}>{error}</p>}
 
-      {/* ── History Overview card ── */}
+      {/* ── Selection card ── */}
       <div className="card" style={{ marginBottom: 20 }}>
-
-        {/* Card header: section title + range selector */}
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          gap: 12, marginBottom: 4, flexWrap: 'wrap',
-        }}>
-          <h2 className="section-title">History Overview</h2>
-          <RangeSelector value={range} onChange={setRange} />
-        </div>
-
-        {/* Days-logged context line */}
-        {overviewStats && (
-          <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>
-            {overviewStats.daysLogged} day{overviewStats.daysLogged !== 1 ? 's' : ''} logged in last {range} days
-          </p>
-        )}
-
-        {/* ── Summary stat chips ── */}
-        {overviewStats ? (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-            gap: 10,
-            marginBottom: 24,
-          }}>
-            {[
-              { label: 'Calories',  value: overviewStats.avgCalories.toLocaleString('en-US'), unit: 'kcal avg/day', color: MACRO_COLORS.calories },
-              { label: 'Protein',   value: `${overviewStats.avgProtein}g`,  unit: 'avg/day', color: MACRO_COLORS.protein },
-              { label: 'Carbs',     value: `${overviewStats.avgCarbs}g`,    unit: 'avg/day', color: MACRO_COLORS.carbs   },
-              { label: 'Fat',       value: `${overviewStats.avgFat}g`,      unit: 'avg/day', color: MACRO_COLORS.fat     },
-            ].map(chip => (
-              <div key={chip.label} style={{
-                background: '#f8f6f2', border: '1px solid #e8e4dc',
-                borderRadius: 12, padding: '12px 14px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-                  <span style={{
-                    width: 7, height: 7, borderRadius: '50%',
-                    background: chip.color, flexShrink: 0,
-                  }} />
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, color: '#9ca3af',
-                    textTransform: 'uppercase', letterSpacing: '0.07em',
-                  }}>
-                    {chip.label}
-                  </span>
-                </div>
-                <div style={{
-                  fontSize: 20, fontWeight: 700, color: '#111827',
-                  fontVariantNumeric: 'tabular-nums', lineHeight: 1,
-                }}>
-                  {chip.value}
-                </div>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>
-                  {chip.unit}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ marginBottom: 20 }} />
-        )}
-
-        {/* ── Calorie trend chart ── */}
-        <div style={{ marginBottom: 24 }}>
-          <h3 className="subsection-title" style={{ marginBottom: 12 }}>Calories — last {range} days</h3>
-          {chartData.length === 0 ? (
-            <p className="empty-state">No data in this range.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Line type="monotone" dataKey="calories" stroke="#f59e0b" strokeWidth={2} dot={false} name="Calories" />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* ── Macro breakdown chart ── */}
-        <div>
-          <h3 style={{
-            margin: '0 0 4px', fontSize: 16, fontWeight: 400,
-            color: '#1e1b4b', fontFamily: "'DM Serif Display', Georgia, serif",
-          }}>Macro breakdown — last {range} days</h3>
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6b7280' }}>
-            Stacked grams per day.
-          </p>
-          {chartData.length === 0 ? (
-            <p className="empty-state">No data in this range.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={288}>
-              <BarChart
-                data={chartData}
-                margin={{ top: 12, right: 12, left: 0, bottom: 4 }}
-                barCategoryGap="26%"
-                barGap={2}
-              >
-                <CartesianGrid stroke="#ececec" strokeDasharray="4 4" vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11, fill: '#6b7280' }}
-                  tickFormatter={v =>
-                    typeof v === 'string' && v.length >= 10 ? `${v.slice(5, 7)}/${v.slice(8, 10)}` : v
-                  }
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={false}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: '#6b7280' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={44}
-                  tickFormatter={v => (Number.isFinite(v) ? Math.round(v) : v)}
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgba(243, 244, 246, 0.85)' }}
-                  contentStyle={{
-                    borderRadius: 10,
-                    border: '1px solid #e5e7eb',
-                    fontSize: 13,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
-                  }}
-                  labelFormatter={label => (
-                    <div>
-                      <div style={{ fontWeight: 600, marginBottom: 2 }}>{getWeekdayLongNameFromIsoDate(label)}</div>
-                      <div style={{ fontSize: 12, color: '#6b7280', fontWeight: 500 }}>{label}</div>
-                    </div>
-                  )}
-                  formatter={(value, name) => [`${Number(value).toFixed(1)} g`, name]}
-                />
-                <Legend
-                  wrapperStyle={{ paddingTop: 14 }}
-                  iconType="circle"
-                  iconSize={8}
-                  formatter={value => <span style={{ color: '#4b5563', fontSize: 13 }}>{value}</span>}
-                />
-                <Bar dataKey="protein_g" stackId="macros" fill={MACRO_COLORS.protein} name="Protein" maxBarSize={56} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="carbs_g"   stackId="macros" fill={MACRO_COLORS.carbs}   name="Carbs"   maxBarSize={56} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="fat_g"     stackId="macros" fill={MACRO_COLORS.fat}      name="Fat"     maxBarSize={56} radius={[10, 10, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-      {/* ── End History Overview card ── */}
-
-      <AdherenceCalendarMonth
-        macroUnits={macroUnits}
-        onViewDay={handleViewDay}
-      />
-
-      {/* ── Logged Day Explorer ── */}
-      <div ref={dayLogRef} className="card">
-        <h2 className="section-title" style={{ marginBottom: 4 }}>Logged Day Explorer</h2>
-        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>
-          Edit meals, correct macros, or review any past day.
+        <h2 className="section-title" style={{ marginBottom: 4 }}>Review nutrition</h2>
+        <p style={{ margin: '0 0 14px', fontSize: 13, color: '#9ca3af' }}>
+          Pick a day, several days, or a range — then view the breakdown below.
         </p>
 
-        {/* Jump to date + Add meal */}
+        {/* Mode toggle + presets */}
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+          <div style={{ display: 'inline-flex', gap: 4, background: '#f3f0ff', borderRadius: 10, padding: 4 }}>
+            {MODES.map(m => (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => changeMode(m.key)}
+                style={{
+                  minHeight: 0, padding: '7px 16px', borderRadius: 8, fontWeight: 600, fontSize: 13,
+                  border: 'none', cursor: 'pointer',
+                  background: mode === m.key ? '#312e81' : 'transparent',
+                  color: mode === m.key ? '#fff' : '#4b5563',
+                }}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+            {[7, 14, 30].map(n => (
+              <button key={n} type="button" className="btn-secondary" style={{ minHeight: 0, padding: '7px 12px', fontSize: 13 }} onClick={() => applyPreset(n)}>
+                {n}D
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Calendar with selection */}
+        <AdherenceCalendarMonth
+          macroUnits={macroUnits}
+          bare
+          selectedDates={selDates}
+          onDayClick={onCalendarDayClick}
+        />
+
+        {/* Selection summary + actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 16 }}>
+          <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
+            {mode === 'range' && rangeAnchor ? `Range start ${rangeAnchor} — pick an end day.` : selectionLabel}
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {selDates.length > 0 && (
+              <button type="button" className="btn-secondary" onClick={clearSelection}>Clear</button>
+            )}
+            <button type="button" className="btn-primary" disabled={selDates.length === 0 || reportLoading} onClick={viewBreakdown}>
+              {reportLoading ? 'Loading…' : 'View Breakdown'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Report ── */}
+      <div ref={reportRef}>
+        <NutritionReport days={reportDays} loading={reportLoading} error={reportError} />
+      </div>
+
+      {/* ── Logged Day Explorer (edit/add/delete) ── */}
+      <div className="card">
+        <h2 className="section-title" style={{ marginBottom: 4 }}>Edit a logged day</h2>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>
+          Jump to a date to add, edit, correct, or delete meals.
+        </p>
+
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
           <div>
             <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Jump to date</label>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={handleDateChange}
-              style={{ width: 'auto' }}
-            />
+            <input type="date" value={selectedDate} onChange={handleDateChange} style={{ width: 'auto' }} />
           </div>
           {selectedDate && (
             <button type="button" className="btn-primary" onClick={() => setShowAddModal(true)}>
@@ -371,29 +332,20 @@ export default function History() {
           )}
         </div>
 
-        {/* ── No day selected: helpful empty state ── */}
         {!selectedDate && (
           <div style={{ padding: '20px 0 8px', textAlign: 'center' }}>
-            <p style={{ margin: 0, fontSize: 14, color: '#6b7280', fontWeight: 500 }}>
-              No day selected.
-            </p>
+            <p style={{ margin: 0, fontSize: 14, color: '#6b7280', fontWeight: 500 }}>No day selected.</p>
             <p style={{ margin: '6px 0 0', fontSize: 13, color: '#9ca3af' }}>
-              Select a day from the calendar above, jump to a date, or browse recent logged days below.
+              Jump to a date or browse recent logged days below.
             </p>
           </div>
         )}
 
-        {/* ── Selected day: summary + meal list ── */}
         {selectedDate && (
           <>
-            <div style={{
-              marginBottom: 12, padding: '12px 14px',
-              border: '1px solid #e8e4dc', borderRadius: 10, background: '#faf9f7',
-            }}>
+            <div style={{ marginBottom: 12, padding: '12px 14px', border: '1px solid #e8e4dc', borderRadius: 10, background: '#faf9f7' }}>
               <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
-                <strong style={{ color: '#1e1b4b' }}>{getWeekdayLongNameFromIsoDate(selectedDate)}</strong>
-                {' · '}
-                {selectedDate}
+                <strong style={{ color: '#1e1b4b' }}>{getWeekdayLongNameFromIsoDate(selectedDate)}</strong>{' · '}{selectedDate}
               </p>
               <p style={{ margin: '5px 0 0', fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
                 <strong>{Math.round(selectedTotals.calories).toLocaleString('en-US')}</strong> cal
@@ -407,35 +359,17 @@ export default function History() {
               {dayEntries.length === 0
                 ? <p className="empty-state">No meals logged on {selectedDate}.</p>
                 : dayEntries.map(entry => (
-                  <LogEntryRow
-                    key={entry.id}
-                    entry={entry}
-                    onEdit={() => setEditEntry(entry)}
-                    onDelete={handleDeleteMeal}
-                  />
+                  <LogEntryRow key={entry.id} entry={entry} onEdit={() => setEditEntry(entry)} onDelete={handleDeleteMeal} />
                 ))}
             </div>
           </>
         )}
 
-        {/* ── Browse recent logged days (secondary / collapsible) ── */}
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f0ede8' }}>
           <button
             type="button"
-            onClick={() => {
-              if (showDayList) {
-                setVisibleDayCount(14);
-                setShowDayList(false);
-              } else {
-                setShowDayList(true);
-              }
-            }}
-            style={{
-              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              fontSize: 13, color: '#6b7280', fontWeight: 500,
-              display: 'flex', alignItems: 'center', gap: 5,
-              marginBottom: showDayList ? 10 : 0,
-            }}
+            onClick={() => { if (showDayList) { setVisibleDayCount(14); setShowDayList(false); } else { setShowDayList(true); } }}
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, color: '#6b7280', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5, marginBottom: showDayList ? 10 : 0 }}
           >
             <span style={{ fontSize: 10 }}>{showDayList ? '▲' : '▼'}</span>
             {showDayList ? 'Hide recent logged days' : 'Browse recent logged days'}
@@ -452,15 +386,7 @@ export default function History() {
                       key={d.date}
                       type="button"
                       onClick={() => void selectDate(d.date)}
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        padding: '10px 14px',
-                        border: 'none',
-                        borderBottom: '1px solid #f3f4f6',
-                        background: d.date === selectedDate ? '#f5f3ff' : '#faf9f7',
-                        cursor: 'pointer',
-                      }}
+                      style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #f3f4f6', background: d.date === selectedDate ? '#f5f3ff' : '#faf9f7', cursor: 'pointer' }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                         <div>
@@ -481,9 +407,7 @@ export default function History() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, gap: 10, flexWrap: 'wrap' }}>
                 {visibleDayCount < dayRows.length ? (
-                  <button type="button" className="btn-secondary" onClick={() => setVisibleDayCount(c => c + 14)}>
-                    Show 14 more days
-                  </button>
+                  <button type="button" className="btn-secondary" onClick={() => setVisibleDayCount(c => c + 14)}>Show 14 more days</button>
                 ) : daysHasMore ? (
                   <button type="button" className="btn-secondary" disabled={daysLoading} onClick={async () => { await loadMoreDays(); setVisibleDayCount(c => c + 14); }}>
                     {daysLoading ? 'Loading…' : 'Load more days'}
@@ -491,9 +415,7 @@ export default function History() {
                 ) : (
                   <span style={{ fontSize: 13, color: '#9ca3af' }}>All days loaded</span>
                 )}
-                <button type="button" className="btn-secondary" disabled={daysLoading} onClick={() => { void reloadDayList(); setVisibleDayCount(14); }}>
-                  Refresh
-                </button>
+                <button type="button" className="btn-secondary" disabled={daysLoading} onClick={() => { void reloadDayList(); setVisibleDayCount(14); }}>Refresh</button>
               </div>
             </>
           )}
@@ -501,21 +423,10 @@ export default function History() {
       </div>
 
       {showAddModal && (
-        <LogMealModal
-          title={`Add meal — ${selectedDate}`}
-          submitLabel="Add Meal"
-          onLog={handleAddMeal}
-          onClose={() => setShowAddModal(false)}
-        />
+        <LogMealModal title={`Add meal — ${selectedDate}`} submitLabel="Add Meal" onLog={handleAddMeal} onClose={() => setShowAddModal(false)} />
       )}
       {editEntry && (
-        <LogMealModal
-          title={`Edit meal — ${editEntry.date}`}
-          submitLabel="Save Changes"
-          initialEntry={editEntry}
-          onLog={handleEditMeal}
-          onClose={() => setEditEntry(null)}
-        />
+        <LogMealModal title={`Edit meal — ${editEntry.date}`} submitLabel="Save Changes" initialEntry={editEntry} onLog={handleEditMeal} onClose={() => setEditEntry(null)} />
       )}
     </div>
   );
