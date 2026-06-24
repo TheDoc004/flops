@@ -136,7 +136,7 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
             />
             <Line
               yAxisId="weight"
-              type="natural"
+              type="monotone"
               dataKey="weightY"
               stroke="#312e81"
               strokeWidth={2}
@@ -157,11 +157,12 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
                 );
               }}
               activeDot={{ r: 5, fill: '#312e81', stroke: '#fff', strokeWidth: 2 }}
-              /* connectNulls={false}: break the line across unlogged days so a
-                 large gap (e.g. 06/12 → 06/24) is not drawn as one diagonal.
-                 Only consecutive logged days connect; isolated entries show as a
-                 lone dot via the custom dot renderer above. */
-              connectNulls={false}
+              /* connectNulls: weight is continuous, so connect logged weigh-ins
+                 across missing days (e.g. 06/12 → 06/24). Recharts SKIPS null
+                 rows entirely when connecting — it never plots them as 0 or a
+                 bottom point — and the custom dot renderer above only draws dots
+                 on days with a real entry. Missing days still occupy the x-axis. */
+              connectNulls
               name="Weight"
               isAnimationActive={false}
             />
