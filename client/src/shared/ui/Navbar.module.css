@@ -71,28 +71,40 @@
 /* ── Nav links ── */
 .links {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   flex-wrap: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
   flex: 1;
+  min-width: 0;
   align-items: center;
+  /* When the tabs overflow, fade the right edge so it reads as a deliberate
+     scroll area rather than an accidental clip. On wide screens the tabs are
+     left-packed with trailing space, so the fade falls on empty area. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
 }
 .links::-webkit-scrollbar { display: none; }
 
 .links a {
   display: inline-block;
-  padding: 16px 22px;
+  padding: 11px 16px;
   border-radius: 12px;
   border: 1px solid #e8e4dc;
   background: rgba(255, 255, 255, 0.9);
   color: #4b5563;
   font-family: 'DM Serif Display', Georgia, serif;
   font-weight: 400;
-  font-size: 17px;
+  font-size: 16px;
   white-space: nowrap;
   transition: background 0.12s, border-color 0.12s, color 0.12s, box-shadow 0.12s;
   line-height: 1.3;
+}
+
+/* Medium desktop widths: tighten tabs so all of them fit before scrolling. */
+@media (min-width: 769px) and (max-width: 1120px) {
+  .links { gap: 4px; }
+  .links a { padding: 9px 12px; font-size: 15px; }
 }
 
 .links a:hover {

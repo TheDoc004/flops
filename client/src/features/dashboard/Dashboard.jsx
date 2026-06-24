@@ -270,13 +270,9 @@ export default function Dashboard() {
               : today}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Link
-            to="/ai-logger"
-            className="btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
-          >
-            ✨ AI estimate
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Link to="/ai-logger" className="btn-ai">
+            <span className="spark" aria-hidden="true">✨</span> AI Estimate
           </Link>
           <button className="btn-primary" onClick={() => setShowModal(true)}>
             + Log a Meal
