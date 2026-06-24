@@ -138,6 +138,15 @@ button {
   text-decoration: none;
 }
 
+/* Disabled state for the button system: clearly inactive, not broken. */
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-danger:disabled,
+.btn-ai:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* AI accent action: soft lavender gradient — in the same button system as
    primary/secondary, but distinct. Used for the "AI Estimate" entry point. */
 .btn-ai {
@@ -347,6 +356,20 @@ dialog::backdrop { background: rgba(0,0,0,0.4); }
   .cal-day { padding: 5px; }
   .cal-day-missed { font-size: 9px; line-height: 1.1; }
   .cal-day-note { font-size: 9px; }
+}
+
+/* ── Inline button spinner (matches button text color via currentColor) ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
 }
 
 /* ── Logging style selector (Ingredients + Meal Builder) ── */

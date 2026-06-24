@@ -53,6 +53,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     return `${h}:${m}`;
   });
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [labelIngredients, setLabelIngredients] = useState([]);
   const [slotSelections, setSlotSelections] = useState({});
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -283,11 +284,13 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (submitting) return; // guard against double-submit (rapid clicks / Enter)
     setError('');
     try {
       if (mode === 'quick') {
         if (!quickSelected) return setError('Select a food');
         if (!quickMacros) return setError('Enter an amount in grams or ounces');
+        setSubmitting(true);
         await onLog({
           quick_food: {
             name: quickSelected.name,
@@ -315,6 +318,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
         if (fiber !== undefined && (!Number.isFinite(fiber) || fiber < 0)) {
           return setError('Fiber must be 0 or more, or left blank');
         }
+        setSubmitting(true);
         await onLog({
           log_custom: {
             name,
@@ -343,6 +347,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           }
           payload.log_slot_customizations = buildLogSlotCustomizationsPayload();
         }
+        setSubmitting(true);
         await onLog(payload);
         if (slotsNeedingChoice.length > 0 && recipeId) {
           const toSave = {};
@@ -357,10 +362,11 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       onClose();
     } catch (err) {
       setError(err.message);
+      setSubmitting(false); // re-enable so the user can retry
     }
   }
 
-  function close() { ref.current?.close(); onClose(); }
+  function close() { if (submitting) return; ref.current?.close(); onClose(); }
 
   return (
     <dialog ref={ref} onClose={onClose}>
@@ -728,14 +734,16 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           <button
             type="submit"
             className="btn-primary"
+            disabled={submitting}
             style={{ width: '100%', minHeight: 56, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
           >
-            {submitLabel || 'Log Meal'}
+            {submitting ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>) : (submitLabel || 'Log Meal')}
           </button>
           <button
             type="button"
             className="btn-secondary"
             onClick={close}
+            disabled={submitting}
             style={{ width: '100%' }}
           >
             Cancel

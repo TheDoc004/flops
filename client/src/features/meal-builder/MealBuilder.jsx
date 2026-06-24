@@ -109,6 +109,7 @@ export default function MealBuilder() {
   const [mealSaveError, setMealSaveError] = useState('');
   const [mealSaved, setMealSaved] = useState(false);
   const [mealLoggedOnce, setMealLoggedOnce] = useState(false);
+  const [loggingOnce, setLoggingOnce] = useState(false);
   const [libOpen, setLibOpen] = useState(false);
   // Mobile only: which ingredient rows have the collapsed "More options" (role + substitutes) open.
   const [expandedLines, setExpandedLines] = useState(() => new Set());
@@ -506,6 +507,7 @@ export default function MealBuilder() {
   }
 
   async function logOnceMeal() {
+    if (loggingOnce) return; // guard against double-submit (rapid clicks)
     setMealSaveError('');
     setMealSaved(false);
     setMealLoggedOnce(false);
@@ -520,6 +522,7 @@ export default function MealBuilder() {
       return;
     }
     const t = sumMacroObjects(validLines);
+    setLoggingOnce(true);
     try {
       // Ingredient list so the server can estimate micronutrients (centralized).
       const ingredients = lines
@@ -549,6 +552,8 @@ export default function MealBuilder() {
       setLines([newLine()]);
     } catch (err) {
       setMealSaveError(err.message);
+    } finally {
+      setLoggingOnce(false); // re-enable (button stays on the page after logging)
     }
   }
 
@@ -1100,9 +1105,10 @@ export default function MealBuilder() {
                 type="button"
                 onClick={logOnceMeal}
                 className="btn-secondary"
+                disabled={loggingOnce}
                 style={{ width: '100%', minHeight: 60, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
               >
-                Log once
+                {loggingOnce ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>) : 'Log once'}
               </button>
               <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
                 Track this meal today without saving it to your recipe library.
