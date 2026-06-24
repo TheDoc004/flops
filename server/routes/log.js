@@ -4,33 +4,78 @@ const {
   resolveSlotsForLog,
   listVariableSlotsFromRecipeRow,
 } = require('../recipeIngredients');
-const { MICRO_KEYS, MICRO_ESTIMATE_VERSION } = require('../microNutrients');
+const { buildMicrosBlob } = require('../microNutrients');
+const { estimateMicrosFromIngredients } = require('../microEstimateService');
+
+const MICRO_TIMEOUT_MS = 9000;
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('micro estimate timeout')), ms)),
+  ]);
+}
+
+/** Estimate micros from an ingredient list -> micros_json string, or null. Best-effort; never throws. */
+async function microsJsonFromIngredients(ingredients) {
+  try {
+    const blob = await withTimeout(estimateMicrosFromIngredients(ingredients), MICRO_TIMEOUT_MS);
+    return blob ? JSON.stringify(blob) : null;
+  } catch {
+    return null; // micro estimation is optional — never block logging
+  }
+}
+
+/** Client-sent micros object (back-compat) -> micros_json string, or null. */
+function microsJsonFromClientMicros(body) {
+  const blob = buildMicrosBlob(body?.micros, { confidence: body?.micros_confidence, notes: body?.micros_notes });
+  return blob ? JSON.stringify(blob) : null;
+}
+
+/** Normalize a recipe row's ingredients to [{name,amount,unit}] (meal_builder_meta.lines preferred). */
+function normalizedIngredientsFromRecipe(db, recipe) {
+  try {
+    const meta = recipe.meal_builder_meta ? JSON.parse(recipe.meal_builder_meta) : null;
+    if (meta && Array.isArray(meta.lines) && meta.lines.length) {
+      const out = meta.lines
+        .map(l => ({ name: String(l?.name || '').trim(), amount: l?.amount, unit: l?.unit || '' }))
+        .filter(x => x.name);
+      if (out.length) return out;
+    }
+  } catch { /* fall through to ingredients column */ }
+
+  let ing;
+  try { ing = recipe.ingredients ? JSON.parse(recipe.ingredients) : []; } catch { ing = []; }
+  if (!Array.isArray(ing)) return [];
+  const labelName = db.prepare('SELECT name FROM label_ingredients WHERE id = ?');
+  const out = [];
+  for (const item of ing) {
+    if (item && item.kind === 'slot') {
+      const ids = Array.isArray(item.option_label_ingredient_ids) ? item.option_label_ingredient_ids : [];
+      let nm = item.label || '';
+      if (ids[0]) { const r = labelName.get(ids[0]); if (r?.name) nm = r.name; }
+      if (nm) out.push({ name: String(nm).trim(), amount: item.amount, unit: item.unit || '' });
+    } else if (item && item.name) {
+      out.push({ name: String(item.name).trim(), amount: item.amount, unit: '' });
+    }
+  }
+  return out;
+}
 
 /**
- * Build the structured micronutrient blob to store on a log entry, or null.
- * Only known keys with finite non-negative values are kept (req 13: store
- * structured values only, not raw AI responses).
+ * Resolve micros_json for a log entry (best-effort, synchronous-with-timeout):
+ * request ingredients (AI Logger / Meal Builder) > recipe-derived ingredients
+ * (recipe logs) > client-sent micros object.
  */
-function normalizeMicrosPayload(body) {
-  const m = body && typeof body.micros === 'object' ? body.micros : null;
-  if (!m) return null;
-  const micros = {};
-  for (const k of MICRO_KEYS) {
-    const v = Number(m[k]);
-    if (Number.isFinite(v) && v >= 0) micros[k] = Math.round(v * 100) / 100;
+async function resolveMicrosJson(db, body, recipe) {
+  if (Array.isArray(body?.ingredients) && body.ingredients.length) {
+    return microsJsonFromIngredients(body.ingredients);
   }
-  // A meal only counts as estimated if at least one nutrient is actually > 0.
-  // An empty or all-zero object is not a real estimate — don't store it.
-  if (!Object.values(micros).some(v => v > 0)) return null;
-  const confidence = ['low', 'medium', 'high'].includes(body.micros_confidence) ? body.micros_confidence : 'low';
-  const notes = body.micros_notes != null ? String(body.micros_notes).slice(0, 500) : '';
-  return JSON.stringify({
-    micros,
-    confidence,
-    notes,
-    version: MICRO_ESTIMATE_VERSION,
-    estimatedAt: new Date().toISOString(),
-  });
+  if (recipe && !recipe.is_quick_food) {
+    const ings = normalizedIngredientsFromRecipe(db, recipe);
+    if (ings.length) return microsJsonFromIngredients(ings);
+  }
+  return microsJsonFromClientMicros(body);
 }
 
 const ENTRY_JOIN = `
@@ -178,7 +223,7 @@ function createLogRouter(db) {
    * (is_quick_food=1) backing recipe so it appears in the daily log/history but
    * NEVER in the Recipe Library. Deduped by name so repeats don't pile up.
    */
-  router.post('/custom', (req, res) => {
+  router.post('/custom', async (req, res) => {
     const date = normalizeIsoDate(req.body?.date);
     if (!date) return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
 
@@ -261,8 +306,9 @@ function createLogRouter(db) {
       return res.status(500).json({ error: 'Failed to log custom meal' });
     }
 
-    // Optional micronutrient estimate (e.g. from the AI Macro Logger).
-    const microsJson = normalizeMicrosPayload(req.body);
+    // Optional micronutrient estimate — ingredients (AI Logger / Meal Builder)
+    // or a client-sent micros object. Best-effort; never blocks the log.
+    const microsJson = await resolveMicrosJson(db, req.body, null);
     if (microsJson) {
       db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ?').run(microsJson, entryId);
     }
@@ -326,7 +372,7 @@ function createLogRouter(db) {
     res.status(400).json({ error: 'Provide ?date=YYYY-MM-DD or ?start=YYYY-MM-DD&end=YYYY-MM-DD' });
   });
 
-  router.post('/', (req, res) => {
+  router.post('/', async (req, res) => {
     const { recipe_id, date, time_min, servings, notes, slot_selections, log_slot_customizations } = req.body;
     if (!recipe_id || !date || servings == null) {
       return res.status(400).json({ error: 'Missing required fields: recipe_id, date, servings' });
@@ -416,6 +462,13 @@ function createLogRouter(db) {
         return res.status(409).json({ error: 'No remaining uses for this meal template.' });
       }
       throw e;
+    }
+
+    // Estimate micronutrients from the recipe's ingredients (best-effort, per
+    // serving — sumDayMicros scales by servings like macros).
+    const microsJson = await resolveMicrosJson(db, req.body, recipe);
+    if (microsJson) {
+      db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ?').run(microsJson, entryId);
     }
 
     res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ?`).get(entryId));

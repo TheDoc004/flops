@@ -262,6 +262,17 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onLogOnce = null
       return;
     }
     try {
+      // Ingredient list (lines + slot defaults) so the server estimates micros.
+      const ingredients = [];
+      for (const r of form.ingredients) {
+        if (r.rowKind === 'line') {
+          const nm = String(r.name || '').trim();
+          if (nm) ingredients.push({ name: nm, amount: r.amount, unit: '' });
+        } else if (r.rowKind === 'slot') {
+          const nm = labelById[String(Number(r.default_label_ingredient_id))]?.name || String(r.label || '').trim();
+          if (nm) ingredients.push({ name: nm, amount: r.amount, unit: r.unit || '' });
+        }
+      }
       await onLogOnce({
         name,
         calories: cals,
@@ -269,6 +280,7 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onLogOnce = null
         carbs_g: c,
         fat_g: f,
         ...(fiber !== undefined ? { fiber_g: fiber } : {}),
+        ...(ingredients.length ? { ingredients } : {}),
       });
     } catch (err) {
       setError(err.message);

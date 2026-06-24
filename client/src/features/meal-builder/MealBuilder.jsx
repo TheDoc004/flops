@@ -521,6 +521,14 @@ export default function MealBuilder() {
     }
     const t = sumMacroObjects(validLines);
     try {
+      // Ingredient list so the server can estimate micronutrients (centralized).
+      const ingredients = lines
+        .map(l => {
+          const ing = ingById[l.labelIngredientId];
+          const amt = Number(l.amount);
+          return ing && ing.name && Number.isFinite(amt) ? { name: ing.name, amount: amt, unit: l.unit } : null;
+        })
+        .filter(Boolean);
       await createCustomLog({
         date: getLocalDateISO(),
         name,
@@ -529,6 +537,7 @@ export default function MealBuilder() {
         carbs_g: Math.round(t.carbs_g * 100) / 100,
         fat_g: Math.round(t.fat_g * 100) / 100,
         fiber_g: t.fiber_g > 0 ? Math.round(t.fiber_g * 100) / 100 : undefined,
+        ...(ingredients.length ? { ingredients } : {}),
       });
       const usedIds = [...new Set(lines.map(l => Number(l.labelIngredientId)).filter(n => Number.isInteger(n) && n > 0))];
       if (usedIds.length) {

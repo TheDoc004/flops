@@ -4,7 +4,6 @@ import { estimateMacros } from '@shared/api/ai';
 import { createCustomLog } from '@shared/api/log';
 import { createRecipe } from '@shared/api/recipes';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
-import { MICRO_KEYS } from '@shared/config/microNutrients';
 
 const PLACEHOLDER =
   'Example: 155g cooked turkey, 250g sweet potato, 20 calories BBQ sauce…';
@@ -36,19 +35,11 @@ function normalizeEstimate(raw) {
     fat: n(i?.fat),
     notes: typeof i?.notes === 'string' ? i.notes : '',
   }));
-  const micros = {};
-  if (raw.micros && typeof raw.micros === 'object') {
-    for (const k of MICRO_KEYS) {
-      const v = Number(raw.micros[k]);
-      if (Number.isFinite(v) && v >= 0) micros[k] = v;
-    }
-  }
   return {
     mealName: typeof raw.mealName === 'string' && raw.mealName.trim() ? raw.mealName.trim() : 'Meal',
     summary: typeof raw.summary === 'string' ? raw.summary : '',
     confidence: ['high', 'medium', 'low'].includes(raw.confidence) ? raw.confidence : 'medium',
     ingredients,
-    micros,
     assumptions: (Array.isArray(raw.assumptions) ? raw.assumptions : []).filter(x => typeof x === 'string'),
     warnings: (Array.isArray(raw.warnings) ? raw.warnings : []).filter(x => typeof x === 'string'),
   };
@@ -123,7 +114,10 @@ export default function AiMacroLogger() {
     setBusy('log');
     setError('');
     try {
-      const hasMicros = estimate.micros && Object.values(estimate.micros).some(v => Number(v) > 0);
+      // Send the ingredient list so the server estimates micros (centralized).
+      const ingredients = (estimate.ingredients || [])
+        .map(i => ({ name: i.name, amount: i.quantity, unit: i.unit }))
+        .filter(i => i.name);
       await createCustomLog({
         date: getLocalDateISO(),
         name: estimate.mealName.trim() || 'Meal',
@@ -131,7 +125,7 @@ export default function AiMacroLogger() {
         protein_g: totals.protein,
         carbs_g: totals.carbs,
         fat_g: totals.fat,
-        ...(hasMicros ? { micros: estimate.micros, micros_confidence: estimate.confidence } : {}),
+        ...(ingredients.length ? { ingredients } : {}),
       });
       navigate('/', { state: { scrollToTop: true } });
     } catch (e) {

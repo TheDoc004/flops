@@ -2,33 +2,21 @@
  * aiMacroService — server-side macro estimator.
  *
  * Turns a natural-language meal description into a structured macro estimate.
- * Provider-agnostic: uses OpenAI or Anthropic depending on which API key is set
- * (AI_PROVIDER overrides). The API key is read here, server-side only, and is
- * never sent to the frontend.
- *
- * No SDK dependency — calls each provider's REST API with the built-in fetch
- * (Node 18+). Output is validated against a fixed schema before it leaves here.
+ * Transport (provider resolution, JSON chat call, error types) lives in
+ * aiClient; this module owns only the macro prompt + validation. Micronutrients
+ * are estimated separately (see microEstimateService) so the prompt logic isn't
+ * duplicated across features.
  */
 
-const { MICRO_KEYS, MICRO_UNITS } = require('./microNutrients');
-
-class AiConfigError extends Error {} // no usable API key configured -> 503
-class AiProviderError extends Error {} // provider call failed -> 502
-class AiResponseError extends Error {} // provider returned unusable output -> 502
-class AiQuotaError extends Error {} // provider account out of quota / billing not set up -> 402
-
-// Quota / billing signatures across providers (OpenAI "insufficient_quota",
-// Anthropic "credit balance is too low", generic billing/payment language).
-const QUOTA_RE = /insufficient_quota|exceeded your current quota|credit balance is too low|billing|payment required|out of credits|quota/i;
-
-function classifyProviderError(status, detail) {
-  if (status === 402 || QUOTA_RE.test(String(detail || ''))) {
-    return new AiQuotaError(
-      "The AI provider says the account is out of quota or billing isn't set up. Add credits / check the provider's billing settings, then try again."
-    );
-  }
-  return new AiProviderError(`AI service returned ${status}. ${String(detail).slice(0, 300)}`);
-}
+const {
+  callProviderJson,
+  extractJson,
+  resolveProvider,
+  AiConfigError,
+  AiProviderError,
+  AiResponseError,
+  AiQuotaError,
+} = require('./aiClient');
 
 const SCHEMA_HINT = `{
   "mealName": "string — a short name for this meal",
@@ -48,12 +36,9 @@ const SCHEMA_HINT = `{
     }
   ],
   "totals": { "calories": number, "protein": number, "carbs": number, "fat": number },
-  "micros": { ${MICRO_KEYS.map(k => `"${k}": number`).join(', ')} },
   "assumptions": ["string"],
   "warnings": ["string"]
 }`;
-
-const MICRO_UNIT_HINT = MICRO_KEYS.map(k => `${k} in ${MICRO_UNITS[k]}`).join(', ');
 
 const SYSTEM_PROMPT = `You are a macro estimator for a personal nutrition app. Parse a natural meal description into structured per-ingredient estimates and calculate calories, protein, carbs, and fat (in grams).
 
@@ -65,20 +50,10 @@ Rules:
 - Flag uncertainty in "warnings" for vague inputs (e.g. "some sauce", "a splash", "a handful", "furikake", "oil spray").
 - If the input is vague, still return a useful estimate but set "confidence" to "low" and warn the user to review carefully.
 - "totals" must be the sum of the ingredient macros.
-- "micros": estimate the whole meal's micronutrients (${MICRO_UNIT_HINT}). These are rough estimates — include only nutrients you can reasonably estimate and omit the rest (or set the field to null). Do not invent precise values; the user is told these are estimates.
 - Keep "summary" and notes short. Do not include any prose outside the JSON.
 
 Output ONLY a single valid JSON object matching this exact shape (no markdown, no code fences, no commentary):
 ${SCHEMA_HINT}`;
-
-function resolveProvider() {
-  const explicit = (process.env.AI_PROVIDER || '').trim().toLowerCase();
-  if (explicit === 'openai') return process.env.OPENAI_API_KEY ? 'openai' : null;
-  if (explicit === 'anthropic') return process.env.ANTHROPIC_API_KEY ? 'anthropic' : null;
-  if (process.env.OPENAI_API_KEY) return 'openai';
-  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
-  return null;
-}
 
 function buildUserContent(description, correction) {
   let content = `Meal description:\n${description}`;
@@ -86,88 +61,6 @@ function buildUserContent(description, correction) {
     content += `\n\nCorrection / clarification to apply:\n${correction.trim()}`;
   }
   return content;
-}
-
-async function callOpenAI({ description, correction }) {
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  let res;
-  try {
-    res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: buildUserContent(description, correction) },
-        ],
-      }),
-    });
-  } catch (e) {
-    throw new AiProviderError(`Could not reach the AI service: ${e.message}`);
-  }
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw classifyProviderError(res.status, detail);
-  }
-  const data = await res.json().catch(() => null);
-  const text = data?.choices?.[0]?.message?.content;
-  if (!text) throw new AiResponseError('AI service returned an empty response.');
-  return text;
-}
-
-async function callAnthropic({ description, correction }) {
-  const model = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5';
-  let res;
-  try {
-    res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1500,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: buildUserContent(description, correction) }],
-      }),
-    });
-  } catch (e) {
-    throw new AiProviderError(`Could not reach the AI service: ${e.message}`);
-  }
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw classifyProviderError(res.status, detail);
-  }
-  const data = await res.json().catch(() => null);
-  const text = Array.isArray(data?.content)
-    ? data.content.filter(b => b?.type === 'text').map(b => b.text).join('')
-    : null;
-  if (!text) throw new AiResponseError('AI service returned an empty response.');
-  return text;
-}
-
-/** Pull the JSON object out of a model response (tolerates stray prose / code fences). */
-function extractJson(text) {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1] : text;
-  const start = candidate.indexOf('{');
-  const end = candidate.lastIndexOf('}');
-  if (start === -1 || end === -1 || end < start) {
-    throw new AiResponseError('AI response did not contain valid JSON.');
-  }
-  try {
-    return JSON.parse(candidate.slice(start, end + 1));
-  } catch {
-    throw new AiResponseError('AI response was not valid JSON.');
-  }
 }
 
 function num(v) {
@@ -221,22 +114,12 @@ function validateEstimate(raw) {
   const toStringArray = v =>
     (Array.isArray(v) ? v : []).map(x => str(x).trim()).filter(Boolean);
 
-  // Optional micronutrients — whitelist known keys, keep finite non-negatives.
-  const micros = {};
-  if (raw.micros && typeof raw.micros === 'object') {
-    for (const k of MICRO_KEYS) {
-      const v = Number(raw.micros[k]);
-      if (Number.isFinite(v) && v >= 0) micros[k] = Math.round(v * 100) / 100;
-    }
-  }
-
   return {
     mealName: str(raw.mealName, 'Meal').trim() || 'Meal',
     summary: str(raw.summary).trim(),
     confidence: CONFIDENCES.has(raw.confidence) ? raw.confidence : 'medium',
     ingredients,
     totals,
-    micros,
     assumptions: toStringArray(raw.assumptions),
     warnings: toStringArray(raw.warnings),
   };
@@ -245,25 +128,19 @@ function validateEstimate(raw) {
 /**
  * Estimate macros for a meal description.
  * @returns {Promise<object>} validated estimate matching the frontend schema.
- * @throws {AiConfigError|AiProviderError|AiResponseError}
+ * @throws {AiConfigError|AiProviderError|AiQuotaError|AiResponseError}
  */
 async function estimateMacros({ description, correction } = {}) {
   const desc = str(description).trim();
   if (!desc) throw new AiResponseError('A meal description is required.');
 
-  const provider = resolveProvider();
-  if (!provider) {
-    throw new AiConfigError(
-      'AI macro estimation is not configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY on the server.'
-    );
-  }
+  const text = await callProviderJson({
+    system: SYSTEM_PROMPT,
+    user: buildUserContent(desc, correction),
+    maxTokens: 1500,
+  });
 
-  const text =
-    provider === 'anthropic'
-      ? await callAnthropic({ description: desc, correction })
-      : await callOpenAI({ description: desc, correction });
-
-  return { ...validateEstimate(extractJson(text)), provider };
+  return { ...validateEstimate(extractJson(text)), provider: resolveProvider() };
 }
 
 module.exports = { estimateMacros, AiConfigError, AiProviderError, AiResponseError, AiQuotaError };
