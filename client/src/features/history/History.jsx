@@ -47,6 +47,7 @@ export default function History() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState('');
   const reportRef = useRef(null);
+  const editRef = useRef(null);
 
   // ── Logged Day Explorer state (edit/add/delete — preserved) ──
   const [selectedDate, setSelectedDate] = useState('');
@@ -298,6 +299,14 @@ export default function History() {
             {mode === 'range' && rangeAnchor ? `Range start ${rangeAnchor} — pick an end day.` : selectionLabel}
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              title="Jump to the day editor below"
+            >
+              Edit a day ↓
+            </button>
             {selDates.length > 0 && (
               <button type="button" className="btn-secondary" onClick={clearSelection}>Clear</button>
             )}
@@ -314,15 +323,23 @@ export default function History() {
       </div>
 
       {/* ── Logged Day Explorer (edit/add/delete) ── */}
-      <div className="card">
+      <div ref={editRef} className="card" style={{ scrollMarginTop: 120 }}>
         <h2 className="section-title" style={{ marginBottom: 4 }}>Edit a logged day</h2>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>
-          Jump to a date to add, edit, correct, or delete meals.
+          Pick a day to add, edit, correct, or delete its meals. This is separate from the report selection above.
         </p>
 
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
+        {/* Single-day calendar picker for editing (independent of the report selection) */}
+        <AdherenceCalendarMonth
+          macroUnits={macroUnits}
+          bare
+          selectedDates={selectedDate ? [selectedDate] : []}
+          onDayClick={(d) => void selectDate(d)}
+        />
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 16, marginBottom: 16 }}>
           <div>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Jump to date</label>
+            <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Or jump to a specific date</label>
             <input type="date" value={selectedDate} onChange={handleDateChange} style={{ width: 'auto' }} />
           </div>
           {selectedDate && (
