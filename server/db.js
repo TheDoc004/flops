@@ -55,6 +55,7 @@ function createDb(dbPath) {
       recipe_fat_g REAL,
       recipe_fiber_g REAL,
       recipe_is_quick_food INTEGER,
+      micros_json TEXT,
       FOREIGN KEY (recipe_id) REFERENCES recipes(id)
     );
     /* user_id: 0 = single-user placeholder until auth; use per-user ids later */
@@ -266,6 +267,9 @@ function createDb(dbPath) {
   }
   if (logCols.length && !logCols.includes('slot_selections_json')) {
     db.exec(`ALTER TABLE log_entries ADD COLUMN slot_selections_json TEXT`);
+  }
+  if (logCols.length && !logCols.includes('micros_json')) {
+    db.exec(`ALTER TABLE log_entries ADD COLUMN micros_json TEXT`);
   }
 
   const goalVersionCols = db.prepare('PRAGMA table_info(day_goal_versions)').all().map(c => c.name);

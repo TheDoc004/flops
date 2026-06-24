@@ -4,10 +4,36 @@ const {
   resolveSlotsForLog,
   listVariableSlotsFromRecipeRow,
 } = require('../recipeIngredients');
+const { MICRO_KEYS, MICRO_ESTIMATE_VERSION } = require('../microNutrients');
+
+/**
+ * Build the structured micronutrient blob to store on a log entry, or null.
+ * Only known keys with finite non-negative values are kept (req 13: store
+ * structured values only, not raw AI responses).
+ */
+function normalizeMicrosPayload(body) {
+  const m = body && typeof body.micros === 'object' ? body.micros : null;
+  if (!m) return null;
+  const micros = {};
+  for (const k of MICRO_KEYS) {
+    const v = Number(m[k]);
+    if (Number.isFinite(v) && v >= 0) micros[k] = Math.round(v * 100) / 100;
+  }
+  if (Object.keys(micros).length === 0) return null;
+  const confidence = ['low', 'medium', 'high'].includes(body.micros_confidence) ? body.micros_confidence : 'low';
+  const notes = body.micros_notes != null ? String(body.micros_notes).slice(0, 500) : '';
+  return JSON.stringify({
+    micros,
+    confidence,
+    notes,
+    version: MICRO_ESTIMATE_VERSION,
+    estimatedAt: new Date().toISOString(),
+  });
+}
 
 const ENTRY_JOIN = `
   SELECT le.id, le.recipe_id, le.date, le.time_min, le.servings, le.notes,
-         le.slot_selections_json,
+         le.slot_selections_json, le.micros_json,
          COALESCE(le.recipe_name, r.name, 'Deleted recipe') AS recipe_name,
          COALESCE(le.serving_size, r.serving_size, '') AS serving_size,
          COALESCE(le.recipe_calories, r.calories, 0) AS recipe_calories,
@@ -231,6 +257,12 @@ function createLogRouter(db) {
       entryId = run();
     } catch (e) {
       return res.status(500).json({ error: 'Failed to log custom meal' });
+    }
+
+    // Optional micronutrient estimate (e.g. from the AI Macro Logger).
+    const microsJson = normalizeMicrosPayload(req.body);
+    if (microsJson) {
+      db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ?').run(microsJson, entryId);
     }
 
     res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ?`).get(entryId));

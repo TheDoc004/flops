@@ -10,6 +10,8 @@
  * (Node 18+). Output is validated against a fixed schema before it leaves here.
  */
 
+const { MICRO_KEYS, MICRO_UNITS } = require('./microNutrients');
+
 class AiConfigError extends Error {} // no usable API key configured -> 503
 class AiProviderError extends Error {} // provider call failed -> 502
 class AiResponseError extends Error {} // provider returned unusable output -> 502
@@ -46,9 +48,12 @@ const SCHEMA_HINT = `{
     }
   ],
   "totals": { "calories": number, "protein": number, "carbs": number, "fat": number },
+  "micros": { ${MICRO_KEYS.map(k => `"${k}": number`).join(', ')} },
   "assumptions": ["string"],
   "warnings": ["string"]
 }`;
+
+const MICRO_UNIT_HINT = MICRO_KEYS.map(k => `${k} in ${MICRO_UNITS[k]}`).join(', ');
 
 const SYSTEM_PROMPT = `You are a macro estimator for a personal nutrition app. Parse a natural meal description into structured per-ingredient estimates and calculate calories, protein, carbs, and fat (in grams).
 
@@ -60,6 +65,7 @@ Rules:
 - Flag uncertainty in "warnings" for vague inputs (e.g. "some sauce", "a splash", "a handful", "furikake", "oil spray").
 - If the input is vague, still return a useful estimate but set "confidence" to "low" and warn the user to review carefully.
 - "totals" must be the sum of the ingredient macros.
+- "micros": estimate the whole meal's micronutrients (${MICRO_UNIT_HINT}). These are rough estimates — include only nutrients you can reasonably estimate and omit the rest (or set the field to null). Do not invent precise values; the user is told these are estimates.
 - Keep "summary" and notes short. Do not include any prose outside the JSON.
 
 Output ONLY a single valid JSON object matching this exact shape (no markdown, no code fences, no commentary):
@@ -215,12 +221,22 @@ function validateEstimate(raw) {
   const toStringArray = v =>
     (Array.isArray(v) ? v : []).map(x => str(x).trim()).filter(Boolean);
 
+  // Optional micronutrients — whitelist known keys, keep finite non-negatives.
+  const micros = {};
+  if (raw.micros && typeof raw.micros === 'object') {
+    for (const k of MICRO_KEYS) {
+      const v = Number(raw.micros[k]);
+      if (Number.isFinite(v) && v >= 0) micros[k] = Math.round(v * 100) / 100;
+    }
+  }
+
   return {
     mealName: str(raw.mealName, 'Meal').trim() || 'Meal',
     summary: str(raw.summary).trim(),
     confidence: CONFIDENCES.has(raw.confidence) ? raw.confidence : 'medium',
     ingredients,
     totals,
+    micros,
     assumptions: toStringArray(raw.assumptions),
     warnings: toStringArray(raw.warnings),
   };
