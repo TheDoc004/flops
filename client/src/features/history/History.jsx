@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
-import { fetchLogRange, fetchLogForDate, fetchLogDays, createLogEntry, createQuickFoodLog, createCustomLog, deleteLogEntry, updateLogEntry } from '@shared/api/log';
+import { fetchLogRange, fetchLogForDate, createLogEntry, createQuickFoodLog, createCustomLog, deleteLogEntry, updateLogEntry } from '@shared/api/log';
 import { sumMacros } from '@shared/utils/macros';
 import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
@@ -29,6 +29,15 @@ function presetDates(n) {
   return enumerateDates(addDaysLocal(today, -(n - 1)), today);
 }
 
+/** True only for a real calendar date in strict YYYY-MM-DD form. */
+function isValidIsoDate(s) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+
 const MODES = [
   { key: 'single', label: 'Single' },
   { key: 'multi', label: 'Multi' },
@@ -49,18 +58,14 @@ export default function History() {
   const reportRef = useRef(null);
   const editRef = useRef(null);
 
-  // ── Logged Day Explorer state (edit/add/delete — preserved) ──
+  // ── Logged Day editor state (edit/add/delete — preserved) ──
   const [selectedDate, setSelectedDate] = useState('');
   const [dayEntries, setDayEntries] = useState([]);
   const [error, setError] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editEntry, setEditEntry] = useState(null);
-  const [dayRows, setDayRows] = useState([]);
-  const [daysLoading, setDaysLoading] = useState(false);
-  const [daysHasMore, setDaysHasMore] = useState(true);
-  const [daysOffset, setDaysOffset] = useState(0);
-  const [showDayList, setShowDayList] = useState(true);
-  const [visibleDayCount, setVisibleDayCount] = useState(14);
+  const [dateInput, setDateInput] = useState('');     // raw manual "jump to date" text
+  const [dateInputError, setDateInputError] = useState('');
 
   const selectedTotals = useMemo(() => sumMacros(dayEntries), [dayEntries]);
 
@@ -135,22 +140,27 @@ export default function History() {
     setReportDates([]);
   }
 
-  // ── Explorer handlers (preserved) ──
+  // ── Day editor handlers (preserved) ──
   async function selectDate(date) {
     setSelectedDate(date);
-    setVisibleDayCount(14);
+    setDateInput(date || '');
+    setDateInputError('');
     if (!date) {
       setDayEntries([]);
-      setShowDayList(true);
       return;
     }
-    setShowDayList(false);
     try { setDayEntries(await fetchLogForDate(date)); }
     catch (e) { setError(e.message); }
   }
 
-  async function handleDateChange(e) {
-    await selectDate(e.target.value);
+  // Manual "jump to a specific date" — accepts YYYY-MM-DD, validates friendly.
+  function handleDateJump() {
+    const v = dateInput.trim();
+    if (!isValidIsoDate(v)) {
+      setDateInputError('Enter a date as YYYY-MM-DD (e.g. 2026-06-23).');
+      return;
+    }
+    void selectDate(v);
   }
 
   async function reloadSelectedDay() {
@@ -159,45 +169,9 @@ export default function History() {
     catch (e) { setError(e.message); }
   }
 
-  const reloadDayList = useCallback(async () => {
-    setDaysLoading(true);
-    setError('');
-    try {
-      const first = await fetchLogDays({ limit: 60, offset: 0 });
-      setDayRows(first);
-      setDaysOffset(first.length);
-      setDaysHasMore(first.length === 60);
-    } catch (e) {
-      setError(e.message);
-      setDayRows([]);
-      setDaysOffset(0);
-      setDaysHasMore(false);
-    } finally {
-      setDaysLoading(false);
-    }
-  }, []);
-
-  const loadMoreDays = useCallback(async () => {
-    if (daysLoading || !daysHasMore) return;
-    setDaysLoading(true);
-    setError('');
-    try {
-      const next = await fetchLogDays({ limit: 60, offset: daysOffset });
-      setDayRows(prev => [...prev, ...next]);
-      setDaysOffset(o => o + next.length);
-      setDaysHasMore(next.length === 60);
-    } catch (e) {
-      setError(e.message);
-      setDaysHasMore(false);
-    } finally {
-      setDaysLoading(false);
-    }
-  }, [daysLoading, daysHasMore, daysOffset]);
-
   // Refresh the report too if the edited day is part of it.
   async function refreshAfterEdit() {
     await reloadSelectedDay();
-    await reloadDayList();
     if (reportDates.length) await buildReport(reportDates);
   }
 
@@ -226,16 +200,11 @@ export default function History() {
     await refreshAfterEdit();
   }
 
-  // Open focused on today: build today's report + load the browse list.
+  // Open focused on today: build today's report.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial report load
     void buildReport([getLocalDateISO()]);
   }, [buildReport]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async day list load
-    void reloadDayList();
-  }, [reloadDayList]);
 
   const selectionLabel = useMemo(() => {
     if (selDates.length === 0) return 'No days selected.';
@@ -333,110 +302,72 @@ export default function History() {
         <AdherenceCalendarMonth
           macroUnits={macroUnits}
           bare
+          dayMinHeight={76}
           selectedDates={selectedDate ? [selectedDate] : []}
           onDayClick={(d) => void selectDate(d)}
         />
 
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 16, marginBottom: 16 }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Or jump to a specific date</label>
-            <input type="date" value={selectedDate} onChange={handleDateChange} style={{ width: 'auto' }} />
+        {/* Manual date entry — plain text field, no browser calendar picker. */}
+        <div style={{ marginTop: 20 }}>
+          <label htmlFor="edit-date-jump" style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 600, color: '#374151' }}>
+            Jump to a specific date
+          </label>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              id="edit-date-jump"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="YYYY-MM-DD"
+              value={dateInput}
+              onChange={(e) => { setDateInput(e.target.value); if (dateInputError) setDateInputError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleDateJump(); } }}
+              style={{ flex: '1 1 240px', maxWidth: 340, fontSize: 16, padding: '12px 14px' }}
+            />
+            <button type="button" className="btn-primary" onClick={handleDateJump}>Go</button>
           </div>
-          {selectedDate && (
-            <button type="button" className="btn-primary" onClick={() => setShowAddModal(true)}>
-              + Add meal to {selectedDate}
-            </button>
+          {dateInputError && (
+            <p style={{ margin: '8px 0 0', fontSize: 13, color: '#b91c1c' }}>{dateInputError}</p>
           )}
         </div>
 
         {!selectedDate && (
-          <div style={{ padding: '20px 0 8px', textAlign: 'center' }}>
+          <div style={{ padding: '24px 0 8px', textAlign: 'center' }}>
             <p style={{ margin: 0, fontSize: 14, color: '#6b7280', fontWeight: 500 }}>No day selected.</p>
             <p style={{ margin: '6px 0 0', fontSize: 13, color: '#9ca3af' }}>
-              Jump to a date or browse recent logged days below.
+              Pick a day from the calendar above, or type a date and press Go.
             </p>
           </div>
         )}
 
         {selectedDate && (
-          <>
-            <div style={{ marginBottom: 12, padding: '12px 14px', border: '1px solid #e8e4dc', borderRadius: 10, background: '#faf9f7' }}>
-              <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
-                <strong style={{ color: '#1e1b4b' }}>{getWeekdayLongNameFromIsoDate(selectedDate)}</strong>{' · '}{selectedDate}
-              </p>
-              <p style={{ margin: '5px 0 0', fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
-                <strong>{Math.round(selectedTotals.calories).toLocaleString('en-US')}</strong> cal
-                {' · '}P {selectedTotals.protein_g.toFixed(1)}g
-                {' · '}C {selectedTotals.carbs_g.toFixed(1)}g
-                {' · '}F {selectedTotals.fat_g.toFixed(1)}g
-              </p>
+          <div style={{ marginTop: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div style={{ flex: '1 1 220px', padding: '12px 14px', border: '1px solid #e8e4dc', borderRadius: 10, background: '#faf9f7' }}>
+                <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
+                  <strong style={{ color: '#1e1b4b' }}>{getWeekdayLongNameFromIsoDate(selectedDate)}</strong>{' · '}{selectedDate}
+                </p>
+                <p style={{ margin: '5px 0 0', fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
+                  <strong>{Math.round(selectedTotals.calories).toLocaleString('en-US')}</strong> cal
+                  {' · '}P {selectedTotals.protein_g.toFixed(1)}g
+                  {' · '}C {selectedTotals.carbs_g.toFixed(1)}g
+                  {' · '}F {selectedTotals.fat_g.toFixed(1)}g
+                </p>
+              </div>
+              <button type="button" className="btn-primary" onClick={() => setShowAddModal(true)}>
+                + Add meal
+              </button>
             </div>
 
-            <div style={{ marginBottom: 12 }}>
+            <div>
               {dayEntries.length === 0
                 ? <p className="empty-state">No meals logged on {selectedDate}.</p>
                 : dayEntries.map(entry => (
                   <LogEntryRow key={entry.id} entry={entry} onEdit={() => setEditEntry(entry)} onDelete={handleDeleteMeal} />
                 ))}
             </div>
-          </>
+          </div>
         )}
-
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f0ede8' }}>
-          <button
-            type="button"
-            onClick={() => { if (showDayList) { setVisibleDayCount(14); setShowDayList(false); } else { setShowDayList(true); } }}
-            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, color: '#6b7280', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5, marginBottom: showDayList ? 10 : 0 }}
-          >
-            <span style={{ fontSize: 10 }}>{showDayList ? '▲' : '▼'}</span>
-            {showDayList ? 'Hide recent logged days' : 'Browse recent logged days'}
-          </button>
-
-          {showDayList && (
-            <>
-              <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid #e8e4dc', borderRadius: 10 }}>
-                {dayRows.length === 0 && !daysLoading ? (
-                  <p className="empty-state" style={{ padding: 18 }}>No logged days yet.</p>
-                ) : (
-                  dayRows.slice(0, visibleDayCount).map(d => (
-                    <button
-                      key={d.date}
-                      type="button"
-                      onClick={() => void selectDate(d.date)}
-                      style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #f3f4f6', background: d.date === selectedDate ? '#f5f3ff' : '#faf9f7', cursor: 'pointer' }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                        <div>
-                          <strong style={{ fontSize: 13 }}>{d.date}</strong>
-                          <span style={{ marginLeft: 8, fontSize: 12, color: '#6b7280' }}>{getWeekdayLongNameFromIsoDate(d.date)}</span>
-                          <span style={{ marginLeft: 8, fontSize: 12, color: '#9ca3af' }}>{d.entries_count} meals</span>
-                        </div>
-                        <div style={{ fontSize: 13, color: '#374151', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                          <span><strong>{Math.round(d.calories)}</strong> cal</span>
-                          <span>P {Number(d.protein_g).toFixed(0)}g</span>
-                          <span>C {Number(d.carbs_g).toFixed(0)}g</span>
-                          <span>F {Number(d.fat_g).toFixed(0)}g</span>
-                        </div>
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, gap: 10, flexWrap: 'wrap' }}>
-                {visibleDayCount < dayRows.length ? (
-                  <button type="button" className="btn-secondary" onClick={() => setVisibleDayCount(c => c + 14)}>Show 14 more days</button>
-                ) : daysHasMore ? (
-                  <button type="button" className="btn-secondary" disabled={daysLoading} onClick={async () => { await loadMoreDays(); setVisibleDayCount(c => c + 14); }}>
-                    {daysLoading ? 'Loading…' : 'Load more days'}
-                  </button>
-                ) : (
-                  <span style={{ fontSize: 13, color: '#9ca3af' }}>All days loaded</span>
-                )}
-                <button type="button" className="btn-secondary" disabled={daysLoading} onClick={() => { void reloadDayList(); setVisibleDayCount(14); }}>Refresh</button>
-              </div>
-            </>
-          )}
-        </div>
       </div>
 
       {showAddModal && (

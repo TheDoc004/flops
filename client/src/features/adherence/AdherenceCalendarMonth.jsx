@@ -52,8 +52,9 @@ function datesInMonth(yyyyMm) {
  * @param {function} [props.onViewDay]     - Optional callback(dateStr) fired when user clicks "View or edit day"
  * @param {string[]} [props.selectedDates] - Opt-in selection mode: ISO dates to highlight as selected
  * @param {function} [props.onDayClick]    - Opt-in: when set, clicking a day calls onDayClick(date) instead of opening the detail dialog
+ * @param {number}   [props.dayMinHeight=52] - Minimum height of each day tile (raise for a larger, roomier calendar)
  */
-export default function AdherenceCalendarMonth({ macroUnits, bare = false, showNav = true, onViewDay = null, selectedDates = null, onDayClick = null }) {
+export default function AdherenceCalendarMonth({ macroUnits, bare = false, showNav = true, onViewDay = null, selectedDates = null, onDayClick = null, dayMinHeight = 52 }) {
   const [month, setMonth] = useState(() => getLocalDateISO().slice(0, 7)); // YYYY-MM
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -181,7 +182,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
                 border: isSelected ? '2px solid #7c3aed' : `1px solid ${m.border}`,
                 background: isSelected ? '#f5f3ff' : (hasTarget ? m.bg : 'transparent'),
                 boxShadow: isSelected ? '0 0 0 2px rgba(124, 58, 237, 0.22)' : 'none',
-                minHeight: 52,
+                minHeight: dayMinHeight,
                 cursor: 'pointer',
                 overflow: 'hidden',
                 display: 'flex',
