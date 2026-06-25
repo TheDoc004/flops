@@ -97,24 +97,36 @@ function ingredientsJsonFromClientRows(rows) {
   return out.length ? JSON.stringify(out) : null;
 }
 
-/** Resolved per-ingredient rows for a recipe log -> JSON string, or null. Never throws. */
-function buildRecipeIngredientsJson(db, recipe, resolvedSlots) {
+/** Resolved per-ingredient rows for a recipe log (array). Never throws. */
+function safeRecipeIngredientRows(db, recipe, resolvedSlots) {
   try {
-    const rows = resolvedIngredientRows(db, recipe, resolvedSlots || {});
-    return rows.length ? JSON.stringify(rows) : null;
+    return resolvedIngredientRows(db, recipe, resolvedSlots || {});
   } catch {
-    return null;
+    return [];
   }
 }
 
+/** Resolved per-ingredient rows -> JSON string, or null. */
+function ingredientsJsonFromRows(rows) {
+  return Array.isArray(rows) && rows.length ? JSON.stringify(rows) : null;
+}
+
 /**
- * Resolve micros_json for a log entry (best-effort, synchronous-with-timeout):
- * request ingredients (AI Logger / Meal Builder) > recipe-derived ingredients
- * (recipe logs) > client-sent micros object.
+ * Resolve micros_json for a log entry (best-effort, synchronous-with-timeout).
+ * Precedence — always the actual logged ingredients, never recipe defaults
+ * once a resolved list exists:
+ *   1. request ingredients (AI Logger / Meal Builder reviewed rows)
+ *   2. resolvedRows (recipe log AFTER substitutions / edited amounts / removals)
+ *   3. recipe default ingredients (fallback only when no resolved rows exist,
+ *      e.g. a manual name-only recipe)
+ *   4. client-sent micros object
  */
-async function resolveMicrosJson(db, body, recipe) {
+async function resolveMicrosJson(db, body, recipe, resolvedRows = null) {
   if (Array.isArray(body?.ingredients) && body.ingredients.length) {
     return microsJsonFromIngredients(body.ingredients);
+  }
+  if (Array.isArray(resolvedRows) && resolvedRows.length) {
+    return microsJsonFromIngredients(resolvedRows);
   }
   if (recipe && !recipe.is_quick_food) {
     const ings = normalizedIngredientsFromRecipe(db, recipe);
@@ -465,9 +477,11 @@ function createLogRouter(db) {
       };
     }
 
-    // Per-ingredient breakdown of exactly what was logged (best-effort; null for
-    // recipes with no macro-bearing ingredient lines).
-    const ingredientsJson = buildRecipeIngredientsJson(db, recipe, resolvedSlots);
+    // Per-ingredient breakdown of exactly what was logged (best-effort; empty
+    // for recipes with no macro-bearing ingredient lines). Reused below for the
+    // micronutrient estimate so micros reflect substitutions/edits, not defaults.
+    const recipeRows = safeRecipeIngredientRows(db, recipe, resolvedSlots);
+    const ingredientsJson = ingredientsJsonFromRows(recipeRows);
 
     const t = normalizeTimeMin(time_min);
 
@@ -522,9 +536,10 @@ function createLogRouter(db) {
       throw e;
     }
 
-    // Estimate micronutrients from the recipe's ingredients (best-effort, per
-    // serving — sumDayMicros scales by servings like macros).
-    const microsJson = await resolveMicrosJson(db, req.body, recipe);
+    // Estimate micronutrients from the ACTUAL logged ingredients (resolved rows
+    // after substitutions/edits/removals), falling back to recipe defaults only
+    // when there are no resolved rows. Best-effort, per serving.
+    const microsJson = await resolveMicrosJson(db, req.body, recipe, recipeRows);
     if (microsJson) {
       db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ?').run(microsJson, entryId);
     }
@@ -536,7 +551,7 @@ function createLogRouter(db) {
    * Update an existing entry (used for editing past days).
    * Date is intentionally not editable here to avoid accidental day moves.
    */
-  router.put('/:id', (req, res) => {
+  router.put('/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: 'Invalid id' });
@@ -603,7 +618,8 @@ function createLogRouter(db) {
         };
       }
       // Recompute the per-ingredient breakdown for the (new) recipe + picks.
-      const ingredientsJson = buildRecipeIngredientsJson(db, fullRecipe, resolvedSlots);
+      const recipeRows = safeRecipeIngredientRows(db, fullRecipe, resolvedSlots);
+      const ingredientsJson = ingredientsJsonFromRows(recipeRows);
       db.prepare(
         `UPDATE log_entries
          SET recipe_id = ?, time_min = ?, servings = ?, notes = ?,
@@ -627,6 +643,17 @@ function createLogRouter(db) {
         ingredientsJson,
         id
       );
+
+      // The ingredients changed (recipe swap / substitution / amount edit), so
+      // re-estimate micros from the resolved rows. Only overwrite on a real
+      // result; if there are genuinely no ingredients left, clear stale micros;
+      // a transient estimate failure leaves the existing micros untouched.
+      const microsJson = await resolveMicrosJson(db, req.body, fullRecipe, recipeRows);
+      if (microsJson) {
+        db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ?').run(microsJson, id);
+      } else if (!recipeRows.length && !(Array.isArray(req.body?.ingredients) && req.body.ingredients.length)) {
+        db.prepare('UPDATE log_entries SET micros_json = NULL WHERE id = ?').run(id);
+      }
     } else {
       db.prepare('UPDATE log_entries SET recipe_id = ?, time_min = ?, servings = ?, notes = ? WHERE id = ?').run(
         recipe_id,
