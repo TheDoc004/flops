@@ -67,23 +67,34 @@ Rules:
 - Keep "summary" and notes short. Do not include any prose outside the JSON.
 
 Saved-recipe awareness:
-- The user may reference one of their SAVED recipes (e.g. "log my Egg Toast Wombo Combo", "log my bagel recipe but skip the banana"). A list of their saved recipe names is provided (it may be empty).
-- If the description refers to a saved recipe, set "recipeLog.recipeName" to the EXACT matching name from the provided list, set "matchConfidence", and capture any requested changes in "recipeLog.modifications". Do NOT invent or recalculate that recipe's ingredients — the app loads the real saved recipe and applies the changes itself.
+- The user may reference one of their SAVED recipes (e.g. "log my Egg Toast Wombo Combo", "log my bagel recipe but skip the banana"). Their saved recipes — each with its ingredient list — are provided below (may be empty).
+- If the description refers to a saved recipe, set "recipeLog.recipeName" to the EXACT matching name from the provided list, set "matchConfidence", and capture any requested changes in "recipeLog.modifications". Do NOT invent or recalculate that recipe's ingredients/macros — the app loads the real saved recipe and applies the changes itself.
+- For each modification, set "target" to the EXACT ingredient name from THAT recipe's ingredient list (map the user's words to the real ingredient — e.g. "toast" → the recipe's bread ingredient, "yogurt" → the recipe's Greek yogurt). Use type "remove" for skip/without/no, "set_amount" for "use 245g X"/"make it N", "substitute" (with newName) for "use X instead of Y", "scale" (with a numeric "scale", e.g. 0.5 for half) for whole-recipe portions, and "add" ONLY for an ingredient that is NOT already in the recipe.
 - Only use a name that appears in the provided list. If you are unsure which saved recipe is meant, set "matchConfidence" to "low". If the description is a normal freeform meal (not a saved recipe), set "recipeLog" to null.
 - Either way, still fill "ingredients"/"totals" with a best-effort estimate (used only as a fallback when no saved recipe matches).
 
 Output ONLY a single valid JSON object matching this exact shape (no markdown, no code fences, no commentary):
 ${SCHEMA_HINT}`;
 
-function buildUserContent(description, correction, recipeNames) {
+function buildUserContent(description, correction, recipes) {
   let content = `Meal description:\n${description}`;
   if (correction && correction.trim()) {
     content += `\n\nCorrection / clarification to apply:\n${correction.trim()}`;
   }
-  const names = Array.isArray(recipeNames) ? recipeNames.filter(x => typeof x === 'string' && x.trim()) : [];
-  content += names.length
-    ? `\n\nSaved recipe names (match recipeLog.recipeName ONLY against these exact names):\n${names.map(x => `- ${x}`).join('\n')}`
-    : `\n\n(The user has no saved recipes — set recipeLog to null.)`;
+  const list = Array.isArray(recipes)
+    ? recipes.filter(r => r && typeof r.name === 'string' && r.name.trim())
+    : [];
+  if (list.length) {
+    const lines = list.map(r => {
+      const ings = Array.isArray(r.ingredients)
+        ? r.ingredients.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim())
+        : [];
+      return ings.length ? `- ${r.name} (ingredients: ${ings.join(', ')})` : `- ${r.name}`;
+    });
+    content += `\n\nThe user's saved recipes — match recipeLog.recipeName ONLY against these exact names, and set each modification "target" to the EXACT ingredient name listed for that recipe:\n${lines.join('\n')}`;
+  } else {
+    content += `\n\n(The user has no saved recipes — set recipeLog to null.)`;
+  }
   return content;
 }
 
@@ -176,13 +187,13 @@ function validateEstimate(raw) {
  * @returns {Promise<object>} validated estimate matching the frontend schema.
  * @throws {AiConfigError|AiProviderError|AiQuotaError|AiResponseError}
  */
-async function estimateMacros({ description, correction, recipeNames } = {}) {
+async function estimateMacros({ description, correction, recipes } = {}) {
   const desc = str(description).trim();
   if (!desc) throw new AiResponseError('A meal description is required.');
 
   const text = await callProviderJson({
     system: SYSTEM_PROMPT,
-    user: buildUserContent(desc, correction, recipeNames),
+    user: buildUserContent(desc, correction, recipes),
     maxTokens: 1500,
   });
 

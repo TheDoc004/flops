@@ -6,7 +6,8 @@ import { createRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import { macrosForLabelServingAmount } from '@features/label-ocr';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
-import { matchRecipe, recipeReviewRows } from './recipeCommand';
+import { adjustPerServingMacrosForResolvedClient } from '@features/meal-logging/recipeLogMacros';
+import { matchRecipe, applyModifications, resolvedReviewRows, recipeIngredientNames } from './recipeCommand';
 
 const PLACEHOLDER =
   'Example: 155g cooked turkey, 250g sweet potato, 20 calories BBQ sauce…';
@@ -92,20 +93,6 @@ function normalizeEstimate(raw) {
   };
 }
 
-/** Human-readable one-liner for a detected recipe modification (review display). */
-function describeModification(m) {
-  const t = m?.target ? ` ${m.target}` : '';
-  const amt = m?.quantity != null ? `${m.quantity}${m.unit ? ` ${m.unit}` : ''}` : '';
-  switch (m?.type) {
-    case 'remove': return `Remove${t}`;
-    case 'set_amount': return `Set${t}${amt ? ` to ${amt}` : ''}`;
-    case 'substitute': return `Substitute${t}${m.newName ? ` → ${m.newName}` : ''}`;
-    case 'add': return `Add ${[amt, m.newName || m.target].filter(Boolean).join(' ')}`.trim() || 'Add ingredient';
-    case 'scale': return `Scale recipe ×${m.scale ?? '?'}`;
-    default: return 'Change';
-  }
-}
-
 export default function AiMacroLogger() {
   const navigate = useNavigate();
   const [description, setDescription] = useState('');
@@ -175,7 +162,7 @@ export default function AiMacroLogger() {
       const raw = await estimateMacros({
         description: desc,
         correction: corr || undefined,
-        recipeNames: recipesRef.current.map(r => r.name),
+        recipes: recipesRef.current.map(r => ({ name: r.name, ingredients: recipeIngredientNames(r, labelByIdRef.current) })),
       });
       const normalized = normalizeEstimate(raw);
       if (!normalized) throw new Error('The estimate came back in an unexpected format. Please try again.');
@@ -188,14 +175,8 @@ export default function AiMacroLogger() {
       if (rl && rl.recipeName) {
         const match = matchRecipe(rl.recipeName, recipesRef.current);
         if (match.status === 'one') {
-          setRecipeReview({
-            recipe: match.recipe,
-            rows: recipeReviewRows(match.recipe, labelByIdRef.current),
-            modifications: rl.modifications || [],
-            matchConfidence: rl.matchConfidence,
-            fallbackEstimate: freeform,
-          });
-          setEstimate(null); setPicker(null); setRecipeServings(1);
+          buildRecipeReview(match.recipe, rl.modifications || [], freeform, rl.matchConfidence);
+          setEstimate(null);
           setReviseOpen(false); setCorrection('');
           return;
         }
@@ -216,29 +197,57 @@ export default function AiMacroLogger() {
     }
   }
 
-  // Picker → pick one of the candidate recipes (ambiguous match).
-  function choosePickerRecipe(recipe) {
+  // Resolve a matched recipe + its modifications into a review (applied changes,
+  // final preview rows, adjusted per-serving totals, and slot customizations).
+  function buildRecipeReview(recipe, modifications, fallbackEstimate, matchConfidence) {
+    const r = applyModifications(recipe, modifications, labelByIdRef.current, libIndexRef.current);
+    const rows = resolvedReviewRows(recipe, labelByIdRef.current, r.resolvedBySlot);
+    // adjust* expects a plain {id: ingredient} object (not a Map). Falls back to
+    // the sum of the resolved rows so the preview total matches what's shown.
+    const adjusted = adjustPerServingMacrosForResolvedClient(recipe, Object.fromEntries(labelByIdRef.current), r.resolvedBySlot);
+    const perServing = adjusted || rows.reduce(
+      (a, x) => ({
+        calories: a.calories + (Number(x.calories) || 0),
+        protein_g: a.protein_g + (Number(x.protein_g) || 0),
+        carbs_g: a.carbs_g + (Number(x.carbs_g) || 0),
+        fat_g: a.fat_g + (Number(x.fat_g) || 0),
+      }),
+      { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+    );
     setRecipeReview({
       recipe,
-      rows: recipeReviewRows(recipe, labelByIdRef.current),
-      modifications: picker?.modifications || [],
-      matchConfidence: 'medium',
-      fallbackEstimate: picker?.fallbackEstimate || null,
+      rows,
+      perServing,
+      customizations: r.customizations,
+      applied: r.applied,
+      unapplied: r.unapplied,
+      matchConfidence,
+      fallbackEstimate,
     });
-    setRecipeServings(1);
+    setRecipeServings(r.servingsScale != null ? r.servingsScale : 1);
     setPicker(null);
   }
 
-  // Log the matched saved recipe AS-IS through the normal recipe-log endpoint.
-  async function logRecipeAsIs() {
+  // Picker → pick one of the candidate recipes (ambiguous match).
+  function choosePickerRecipe(recipe) {
+    buildRecipeReview(recipe, picker?.modifications || [], picker?.fallbackEstimate || null, 'medium');
+  }
+
+  // Log the matched saved recipe — with any applied modifications as
+  // log_slot_customizations — through the normal recipe-log endpoint. The
+  // server resolves the final rows + macros + micros; the original recipe is
+  // never modified.
+  async function logRecipe() {
     if (busy || !recipeReview?.recipe) return;
     setBusy('log');
     setError('');
     try {
+      const custom = recipeReview.customizations || {};
       await createLogEntry({
         recipe_id: recipeReview.recipe.id,
         date: getLocalDateISO(),
         servings: Number(recipeServings) > 0 ? Number(recipeServings) : 1,
+        ...(Object.keys(custom).length ? { log_slot_customizations: custom } : {}),
       });
       navigate('/', { state: { scrollToTop: true } });
     } catch (e) {
@@ -431,15 +440,20 @@ export default function AiMacroLogger() {
             </button>
           </div>
 
-          {recipeReview.modifications.length > 0 && (
-            <div style={{ padding: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, marginBottom: 14, fontSize: 13, color: '#92400e' }}>
-              <strong>Requested changes detected:</strong>
-              <ul style={{ margin: '6px 0 6px', paddingLeft: 18 }}>
-                {recipeReview.modifications.map((mdf, i) => (
-                  <li key={i}>{describeModification(mdf)}</li>
-                ))}
+          {recipeReview.applied.length > 0 && (
+            <div style={{ padding: 12, background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 10, marginBottom: 12, fontSize: 13, color: '#065f46' }}>
+              <strong>Applied changes:</strong>
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                {recipeReview.applied.map((a, i) => <li key={i}>{a}</li>)}
               </ul>
-              <span>Applying changes is coming in the next update — for now this logs the recipe <strong>as saved</strong>.</span>
+            </div>
+          )}
+          {recipeReview.unapplied.length > 0 && (
+            <div style={{ padding: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, marginBottom: 12, fontSize: 13, color: '#92400e' }}>
+              <strong>Couldn’t apply (logging without these):</strong>
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                {recipeReview.unapplied.map((u, i) => <li key={i}>{u.text} — <span style={{ color: '#a16207' }}>{u.reason}</span></li>)}
+              </ul>
             </div>
           )}
 
@@ -453,9 +467,9 @@ export default function AiMacroLogger() {
             />
           </div>
 
-          {/* Ingredient rows (read-only — from the saved recipe) */}
+          {/* Final ingredient rows (after applied changes) */}
           <div style={{ marginBottom: 14 }}>
-            <p style={{ margin: '0 0 6px', fontSize: 13, color: '#6b7280', fontWeight: 600 }}>Recipe ingredients</p>
+            <p style={{ margin: '0 0 6px', fontSize: 13, color: '#6b7280', fontWeight: 600 }}>Final ingredients</p>
             {recipeReview.rows.length === 0 ? (
               <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>This recipe has no itemized ingredients.</p>
             ) : (
@@ -477,20 +491,20 @@ export default function AiMacroLogger() {
             )}
           </div>
 
-          {/* Recipe totals (authoritative per-serving macros × servings) */}
+          {/* Totals — adjusted per-serving macros (after changes) × servings */}
           <div style={{ padding: 12, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10 }}>
             <strong style={{ color: '#1e3a8a' }}>Totals</strong>
             <div style={{ marginTop: 4, fontSize: 15, color: '#0f172a' }}>
               {(() => {
                 const s = Number(recipeServings) > 0 ? Number(recipeServings) : 1;
-                const r = recipeReview.recipe;
-                return `${Math.round((Number(r.calories) || 0) * s)} cal · P ${((Number(r.protein_g) || 0) * s).toFixed(1)}g · C ${((Number(r.carbs_g) || 0) * s).toFixed(1)}g · F ${((Number(r.fat_g) || 0) * s).toFixed(1)}g`;
+                const ps = recipeReview.perServing;
+                return `${Math.round((Number(ps.calories) || 0) * s)} cal · P ${((Number(ps.protein_g) || 0) * s).toFixed(1)}g · C ${((Number(ps.carbs_g) || 0) * s).toFixed(1)}g · F ${((Number(ps.fat_g) || 0) * s).toFixed(1)}g`;
               })()}
             </div>
           </div>
 
           <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" className="btn-primary" onClick={logRecipeAsIs} disabled={busy !== ''} style={{ minHeight: 48, fontWeight: 700 }}>
+            <button type="button" className="btn-primary" onClick={logRecipe} disabled={busy !== ''} style={{ minHeight: 48, fontWeight: 700 }}>
               {busy === 'log' ? 'Logging…' : 'Log recipe'}
             </button>
             <button type="button" className="btn-secondary" onClick={clearAll} disabled={busy !== ''}>Cancel</button>
