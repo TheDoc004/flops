@@ -21,50 +21,66 @@ const IconTraining = () => (<svg {...svgProps}><path d="M4 9v6M7 7v10M17 7v10M20
 const IconPlan = () => (<svg {...svgProps}><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V3h6v1M9 10h6M9 14h6" /></svg>);
 const IconAi = () => (<svg {...svgProps}><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15l-1.8-4.2L5.5 9l4.7-1.3z" /><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z" /></svg>);
 
-/* Routes that live under the "More" sheet — used to light up the More tab. */
-const SECONDARY_PATHS = ['/ai-logger', '/ingredients', '/training', '/plan'];
+/* Sheet groups mirror the desktop nav: Log groups the logging tools, More
+   groups the Library (Recipes, Ingredients) plus Plan. */
+const SHEETS = {
+  log: {
+    title: 'Log',
+    items: [
+      { to: '/meal-builder', label: 'Meal Builder', Icon: IconBuilder },
+      { to: '/ai-logger', label: 'AI Macro Logger', Icon: IconAi },
+    ],
+  },
+  more: {
+    title: 'More',
+    items: [
+      { to: '/recipes', label: 'Recipes', Icon: IconRecipes },
+      { to: '/ingredients', label: 'Ingredients', Icon: IconIngredients },
+      { to: '/plan', label: 'Plan', Icon: IconPlan },
+    ],
+  },
+};
 
-const SHEET_ITEMS = [
-  { to: '/ai-logger', label: 'AI Macro Logger', Icon: IconAi },
-  { to: '/ingredients', label: 'Ingredient Library', Icon: IconIngredients },
-  { to: '/training', label: 'Training', Icon: IconTraining },
-  { to: '/plan', label: 'Plan', Icon: IconPlan },
-];
+function anyMatch(pathname, paths) {
+  return paths.some(p => pathname === p || pathname.startsWith(`${p}/`));
+}
 
 export default function BottomNav() {
   const location = useLocation();
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [openSheet, setOpenSheet] = useState(null); // 'log' | 'more' | null
 
   // Close the sheet on any route change.
-  useEffect(() => { setMoreOpen(false); }, [location.pathname]);
+  useEffect(() => { setOpenSheet(null); }, [location.pathname]);
 
-  // Lock body scroll while the sheet is open.
+  // Lock body scroll while a sheet is open.
   useEffect(() => {
-    if (!moreOpen) return;
+    if (!openSheet) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
-  }, [moreOpen]);
+  }, [openSheet]);
 
-  const moreActive = SECONDARY_PATHS.some(
-    p => location.pathname === p || location.pathname.startsWith(`${p}/`)
-  );
+  const logActive = anyMatch(location.pathname, SHEETS.log.items.map(i => i.to));
+  const moreActive = anyMatch(location.pathname, SHEETS.more.items.map(i => i.to));
 
   const tabClass = ({ isActive }) => (isActive ? `${styles.tab} ${styles.tabActive}` : styles.tab);
+  const btnClass = active => (active ? `${styles.tab} ${styles.tabActive}` : styles.tab);
+
+  const sheet = openSheet ? SHEETS[openSheet] : null;
 
   return (
     <>
-      {moreOpen && (
-        <div className={styles.sheetBackdrop} onClick={() => setMoreOpen(false)}>
+      {sheet && (
+        <div className={styles.sheetBackdrop} onClick={() => setOpenSheet(null)}>
           <div
             className={styles.sheet}
             role="dialog"
-            aria-label="More pages"
+            aria-label={`${sheet.title} pages`}
             onClick={e => e.stopPropagation()}
           >
             <div className={styles.sheetHandle} aria-hidden="true" />
-            <p className={styles.sheetTitle}>More</p>
-            {SHEET_ITEMS.map(({ to, label, Icon }) => (
+            <p className={styles.sheetTitle}>{sheet.title}</p>
+            {sheet.items.map(({ to, label, Icon }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -80,16 +96,24 @@ export default function BottomNav() {
       )}
 
       <nav className={styles.bar} aria-label="Primary">
-        <NavLink to="/" end className={tabClass}><IconHome /><span>Home</span></NavLink>
-        <NavLink to="/recipes" className={tabClass}><IconRecipes /><span>Recipes</span></NavLink>
-        <NavLink to="/meal-builder" className={tabClass}><IconBuilder /><span>Builder</span></NavLink>
-        <NavLink to="/history" className={tabClass}><IconHistory /><span>History</span></NavLink>
+        <NavLink to="/" end className={tabClass}><IconHome /><span>Today</span></NavLink>
         <button
           type="button"
-          className={moreActive || moreOpen ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+          className={btnClass(logActive || openSheet === 'log')}
           aria-haspopup="dialog"
-          aria-expanded={moreOpen}
-          onClick={() => setMoreOpen(o => !o)}
+          aria-expanded={openSheet === 'log'}
+          onClick={() => setOpenSheet(o => (o === 'log' ? null : 'log'))}
+        >
+          <IconBuilder /><span>Log</span>
+        </button>
+        <NavLink to="/history" className={tabClass}><IconHistory /><span>Review</span></NavLink>
+        <NavLink to="/training" className={tabClass}><IconTraining /><span>Training</span></NavLink>
+        <button
+          type="button"
+          className={btnClass(moreActive || openSheet === 'more')}
+          aria-haspopup="dialog"
+          aria-expanded={openSheet === 'more'}
+          onClick={() => setOpenSheet(o => (o === 'more' ? null : 'more'))}
         >
           <IconMore /><span>More</span>
         </button>
