@@ -93,6 +93,11 @@ function normalizeEstimate(raw) {
   };
 }
 
+const AI_BADGE = {
+  display: 'inline-block', fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
+  background: '#f3f4f6', border: '1px solid #e5e7eb', color: '#6b7280', whiteSpace: 'nowrap',
+};
+
 export default function AiMacroLogger() {
   const navigate = useNavigate();
   const [description, setDescription] = useState('');
@@ -201,11 +206,8 @@ export default function AiMacroLogger() {
   // final preview rows, adjusted per-serving totals, and slot customizations).
   function buildRecipeReview(recipe, modifications, fallbackEstimate, matchConfidence) {
     const r = applyModifications(recipe, modifications, labelByIdRef.current, libIndexRef.current);
-    const rows = resolvedReviewRows(recipe, labelByIdRef.current, r.resolvedBySlot);
-    // adjust* expects a plain {id: ingredient} object (not a Map). Falls back to
-    // the sum of the resolved rows so the preview total matches what's shown.
-    const adjusted = adjustPerServingMacrosForResolvedClient(recipe, Object.fromEntries(labelByIdRef.current), r.resolvedBySlot);
-    const perServing = adjusted || rows.reduce(
+    const baseRows = resolvedReviewRows(recipe, labelByIdRef.current, r.resolvedBySlot);
+    const sumRows = rows => rows.reduce(
       (a, x) => ({
         calories: a.calories + (Number(x.calories) || 0),
         protein_g: a.protein_g + (Number(x.protein_g) || 0),
@@ -214,17 +216,37 @@ export default function AiMacroLogger() {
       }),
       { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
     );
-    setRecipeReview({
-      recipe,
-      rows,
-      perServing,
-      customizations: r.customizations,
-      applied: r.applied,
-      unapplied: r.unapplied,
-      matchConfidence,
-      fallbackEstimate,
-    });
-    setRecipeServings(r.servingsScale != null ? r.servingsScale : 1);
+
+    if (r.requiresCustomPath) {
+      // Added / non-library-substituted items → log a custom instance from the
+      // final rows. Bake the scale into the recipe portion; AI rows stay as-is.
+      const s = r.servingsScale != null ? r.servingsScale : 1;
+      const scaled = baseRows.map(row => ({
+        ...row,
+        amount: row.amount != null ? Math.round(row.amount * s * 100) / 100 : row.amount,
+        calories: row.calories != null ? row.calories * s : row.calories,
+        protein_g: row.protein_g != null ? row.protein_g * s : row.protein_g,
+        carbs_g: row.carbs_g != null ? row.carbs_g * s : row.carbs_g,
+        fat_g: row.fat_g != null ? row.fat_g * s : row.fat_g,
+      }));
+      const finalRows = [...scaled, ...r.addedRows];
+      setRecipeReview({
+        recipe, requiresCustomPath: true, rows: finalRows, total: sumRows(finalRows), perServing: null,
+        customizations: null, applied: r.applied, unapplied: r.unapplied,
+        hasAi: r.addedRows.length > 0, matchConfidence, fallbackEstimate,
+      });
+      setRecipeServings(1);
+    } else {
+      // Library-only mods → Phase 2 recipe-log path. adjust* needs a plain
+      // {id: ingredient} object (not a Map); sum-of-rows fallback.
+      const adjusted = adjustPerServingMacrosForResolvedClient(recipe, Object.fromEntries(labelByIdRef.current), r.resolvedBySlot);
+      setRecipeReview({
+        recipe, requiresCustomPath: false, rows: baseRows, perServing: adjusted || sumRows(baseRows), total: null,
+        customizations: r.customizations, applied: r.applied, unapplied: r.unapplied,
+        hasAi: false, matchConfidence, fallbackEstimate,
+      });
+      setRecipeServings(r.servingsScale != null ? r.servingsScale : 1);
+    }
     setPicker(null);
   }
 
@@ -242,13 +264,39 @@ export default function AiMacroLogger() {
     setBusy('log');
     setError('');
     try {
-      const custom = recipeReview.customizations || {};
-      await createLogEntry({
-        recipe_id: recipeReview.recipe.id,
-        date: getLocalDateISO(),
-        servings: Number(recipeServings) > 0 ? Number(recipeServings) : 1,
-        ...(Object.keys(custom).length ? { log_slot_customizations: custom } : {}),
-      });
+      if (recipeReview.requiresCustomPath) {
+        // Log a custom instance from the final resolved rows (adds / non-library
+        // substitutes). Stores ingredients_json + estimates micros from the rows;
+        // the original saved recipe is untouched.
+        const ingredients = recipeReview.rows
+          .filter(r => r.name)
+          .map(r => ({
+            name: r.name,
+            amount: r.amount != null ? r.amount : undefined,
+            unit: r.unit || '',
+            calories: Number(r.calories) || 0,
+            protein_g: Number(r.protein_g) || 0,
+            carbs_g: Number(r.carbs_g) || 0,
+            fat_g: Number(r.fat_g) || 0,
+            source: r.source === 'ai' ? 'ai' : (r.source === 'recipe' ? 'recipe' : 'library'),
+            ...(r.label_ingredient_id ? { label_ingredient_id: r.label_ingredient_id } : {}),
+          }));
+        const t = recipeReview.total;
+        await createCustomLog({
+          date: getLocalDateISO(),
+          name: `${recipeReview.recipe.name} (modified)`,
+          calories: t.calories, protein_g: t.protein_g, carbs_g: t.carbs_g, fat_g: t.fat_g,
+          ingredients,
+        });
+      } else {
+        const custom = recipeReview.customizations || {};
+        await createLogEntry({
+          recipe_id: recipeReview.recipe.id,
+          date: getLocalDateISO(),
+          servings: Number(recipeServings) > 0 ? Number(recipeServings) : 1,
+          ...(Object.keys(custom).length ? { log_slot_customizations: custom } : {}),
+        });
+      }
       navigate('/', { state: { scrollToTop: true } });
     } catch (e) {
       setError(e.message);
@@ -457,15 +505,23 @@ export default function AiMacroLogger() {
             </div>
           )}
 
-          <div style={{ marginBottom: 12, maxWidth: 160 }}>
-            <label htmlFor="ai-recipe-servings">Servings</label>
-            <input
-              id="ai-recipe-servings"
-              type="number" min="0.1" step="0.1"
-              value={recipeServings}
-              onChange={e => setRecipeServings(e.target.value)}
-            />
-          </div>
+          {!recipeReview.requiresCustomPath && (
+            <div style={{ marginBottom: 12, maxWidth: 160 }}>
+              <label htmlFor="ai-recipe-servings">Servings</label>
+              <input
+                id="ai-recipe-servings"
+                type="number" min="0.1" step="0.1"
+                value={recipeServings}
+                onChange={e => setRecipeServings(e.target.value)}
+              />
+            </div>
+          )}
+
+          {recipeReview.hasAi && (
+            <p style={{ margin: '0 0 10px', fontSize: 12.5, color: '#6b7280' }}>
+              Items badged <span style={{ ...AI_BADGE }}>AI est.</span> are AI estimates (not from your library) — review before logging.
+            </p>
+          )}
 
           {/* Final ingredient rows (after applied changes) */}
           <div style={{ marginBottom: 14 }}>
@@ -473,32 +529,37 @@ export default function AiMacroLogger() {
             {recipeReview.rows.length === 0 ? (
               <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>This recipe has no itemized ingredients.</p>
             ) : (
-              recipeReview.rows.map((r, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
-                  <span style={{ color: '#1f2937', fontWeight: 500 }}>
-                    {r.name}
-                    <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8 }}>
-                      {r.amountText != null ? r.amountText : (r.amount != null ? `${+Number(r.amount).toFixed(2)}${r.unit ? ` ${r.unit}` : ''}` : '')}
+              recipeReview.rows.map((r, i) => {
+                const s = recipeReview.requiresCustomPath ? 1 : (Number(recipeServings) > 0 ? Number(recipeServings) : 1);
+                return (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13, alignItems: 'baseline' }}>
+                    <span style={{ color: '#1f2937', fontWeight: 500, minWidth: 0 }}>
+                      {r.name}
+                      <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8 }}>
+                        {r.amountText != null ? r.amountText : (r.amount != null ? `${+Number(r.amount).toFixed(2)}${r.unit ? ` ${r.unit}` : ''}` : '')}
+                      </span>
+                      {r.source === 'ai' && <span style={{ ...AI_BADGE, marginLeft: 8 }}>AI est.</span>}
                     </span>
-                  </span>
-                  {r.calories != null && (
-                    <span style={{ color: '#374151', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                      {Math.round(r.calories * (Number(recipeServings) > 0 ? Number(recipeServings) : 1))} cal
-                    </span>
-                  )}
-                </div>
-              ))
+                    {r.calories != null && (
+                      <span style={{ color: '#374151', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                        {Math.round(r.calories * s)} cal
+                      </span>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
 
-          {/* Totals — adjusted per-serving macros (after changes) × servings */}
+          {/* Totals — final macros for the logged instance */}
           <div style={{ padding: 12, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10 }}>
             <strong style={{ color: '#1e3a8a' }}>Totals</strong>
             <div style={{ marginTop: 4, fontSize: 15, color: '#0f172a' }}>
               {(() => {
-                const s = Number(recipeServings) > 0 ? Number(recipeServings) : 1;
-                const ps = recipeReview.perServing;
-                return `${Math.round((Number(ps.calories) || 0) * s)} cal · P ${((Number(ps.protein_g) || 0) * s).toFixed(1)}g · C ${((Number(ps.carbs_g) || 0) * s).toFixed(1)}g · F ${((Number(ps.fat_g) || 0) * s).toFixed(1)}g`;
+                const t = recipeReview.requiresCustomPath
+                  ? recipeReview.total
+                  : (() => { const s = Number(recipeServings) > 0 ? Number(recipeServings) : 1; const ps = recipeReview.perServing; return { calories: (Number(ps.calories) || 0) * s, protein_g: (Number(ps.protein_g) || 0) * s, carbs_g: (Number(ps.carbs_g) || 0) * s, fat_g: (Number(ps.fat_g) || 0) * s }; })();
+                return `${Math.round(t.calories)} cal · P ${t.protein_g.toFixed(1)}g · C ${t.carbs_g.toFixed(1)}g · F ${t.fat_g.toFixed(1)}g`;
               })()}
             </div>
           </div>

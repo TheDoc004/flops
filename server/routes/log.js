@@ -85,7 +85,7 @@ function ingredientsJsonFromClientRows(rows) {
       protein_g: num(r.protein_g),
       carbs_g: num(r.carbs_g),
       fat_g: num(r.fat_g),
-      source: r.source === 'library' || r.source === 'ai' ? r.source : 'estimated',
+      source: ['library', 'ai', 'recipe'].includes(r.source) ? r.source : 'estimated',
     };
     if (r.fiber_g != null) row.fiber_g = num(r.fiber_g);
     if (Number.isInteger(Number(r.label_ingredient_id)) && Number(r.label_ingredient_id) > 0) {

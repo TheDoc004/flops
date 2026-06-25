@@ -2,6 +2,8 @@ import { listLoggingSlotsFromRecipe, listNonEditableTemplateLines } from '@featu
 import { macrosForLabelServingAmount } from '@features/label-ocr';
 
 export const normName = s => String(s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+const macroNum = v => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v) * 10) / 10 : 0);
+const hasMacroEstimate = m => [m.calories, m.protein, m.carbs, m.fat].some(v => v != null);
 
 function tokenSet(s) { return new Set(normName(s).split(' ').filter(Boolean)); }
 function tokenOverlap(a, b) {
@@ -97,6 +99,7 @@ export function applyModifications(recipe, modifications, labelById, labelByName
   const customizations = {};
   const applied = [];
   const unapplied = [];
+  const addedRows = []; // AI-estimated rows (add / non-library substitute) — need the custom-log path
   let servingsScale = null;
 
   for (const m of modifications || []) {
@@ -106,6 +109,21 @@ export function applyModifications(recipe, modifications, labelById, labelByName
       if (sc != null) {
         servingsScale = sc;
         applied.push(`Scale to ${sc}× of the recipe`);
+      }
+      continue;
+    }
+    if (m.type === 'add') {
+      const name = m.newName || m.target;
+      if (name && hasMacroEstimate(m)) {
+        addedRows.push({
+          name, amount: m.quantity != null ? Number(m.quantity) : null, unit: m.unit || '',
+          calories: macroNum(m.calories), protein_g: macroNum(m.protein), carbs_g: macroNum(m.carbs), fat_g: macroNum(m.fat),
+          source: 'ai',
+        });
+        const calOnly = m.calories != null && m.protein == null && m.carbs == null && m.fat == null;
+        applied.push(`Added ${name} (AI estimate${calOnly ? ', calories only' : ''})`);
+      } else {
+        unapplied.push({ text: `Add ${[m.quantity, m.unit, name].filter(Boolean).join(' ')}`.trim() || 'Add ingredient', reason: 'needs review — couldn’t estimate this item’s macros' });
       }
       continue;
     }
@@ -142,15 +160,23 @@ export function applyModifications(recipe, modifications, labelById, labelByName
         } else {
           unapplied.push({ text: `Substitute ${name} → ${sub.name}`, reason: `“${sub.name}” needs nutrition info (grams per serving) before it can be used` });
         }
+      } else if (m.newName && hasMacroEstimate(m)) {
+        // Non-library substitute with an AI estimate → drop the original slot and
+        // add the substitute as an AI-estimated row (routes through the custom path).
+        resolvedBySlot[slot.slot_id] = { ...cur, amount: '0' };
+        addedRows.push({
+          name: m.newName, amount: m.quantity != null ? Number(m.quantity) : Number(cur.amount), unit: m.unit || cur.unit,
+          calories: macroNum(m.calories), protein_g: macroNum(m.protein), carbs_g: macroNum(m.carbs), fat_g: macroNum(m.fat),
+          source: 'ai',
+        });
+        applied.push(`Substituted ${name} → ${m.newName} (AI estimate)`);
       } else {
-        unapplied.push({ text: `Substitute ${name} → ${m.newName || '?'}`, reason: `“${m.newName || 'that ingredient'}” isn’t in your ingredient library yet` });
+        unapplied.push({ text: `Substitute ${name} → ${m.newName || '?'}`, reason: m.newName ? `couldn’t estimate macros for “${m.newName}” — needs review` : 'no replacement specified' });
       }
-    } else if (m.type === 'add') {
-      unapplied.push({ text: `Add ${[m.quantity, m.unit, m.newName].filter(Boolean).join(' ')}`.trim(), reason: 'Adding new ingredients isn’t supported yet' });
     }
   }
 
-  return { customizations, resolvedBySlot, servingsScale, applied, unapplied };
+  return { customizations, resolvedBySlot, servingsScale, applied, unapplied, addedRows, requiresCustomPath: addedRows.length > 0 };
 }
 
 /**
@@ -178,10 +204,12 @@ export function resolvedReviewRows(recipe, labelById, resolvedBySlot) {
       protein_g: m ? m.protein_g : null,
       carbs_g: m ? m.carbs_g : null,
       fat_g: m ? m.fat_g : null,
+      source: 'library',
+      label_ingredient_id: res.label_ingredient_id != null ? Number(res.label_ingredient_id) : undefined,
     });
   }
   for (const line of listNonEditableTemplateLines(recipe)) {
-    rows.push({ name: line.name, amountText: line.amount, calories: null, protein_g: null, carbs_g: null, fat_g: null });
+    rows.push({ name: line.name, amountText: line.amount, calories: null, protein_g: null, carbs_g: null, fat_g: null, source: 'recipe' });
   }
   return rows;
 }

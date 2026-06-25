@@ -48,7 +48,11 @@ const SCHEMA_HINT = `{
         "quantity": "number or null — the new amount (set_amount) or amount to add",
         "unit": "string or null",
         "newName": "string or null — the replacement (substitute) or new (add) ingredient",
-        "scale": "number or null — whole-recipe scale, e.g. 0.5 for half a serving"
+        "scale": "number or null — whole-recipe scale, e.g. 0.5 for half a serving",
+        "calories": "number or null — for add/substitute ONLY, your estimate of THIS ingredient's calories at the stated amount",
+        "protein": "number or null — for add/substitute ONLY",
+        "carbs": "number or null — for add/substitute ONLY",
+        "fat": "number or null — for add/substitute ONLY"
       }
     ]
   }
@@ -70,6 +74,7 @@ Saved-recipe awareness:
 - The user may reference one of their SAVED recipes (e.g. "log my Egg Toast Wombo Combo", "log my bagel recipe but skip the banana"). Their saved recipes — each with its ingredient list — are provided below (may be empty).
 - If the description refers to a saved recipe, set "recipeLog.recipeName" to the EXACT matching name from the provided list, set "matchConfidence", and capture any requested changes in "recipeLog.modifications". Do NOT invent or recalculate that recipe's ingredients/macros — the app loads the real saved recipe and applies the changes itself.
 - For each modification, set "target" to the EXACT ingredient name from THAT recipe's ingredient list (map the user's words to the real ingredient — e.g. "toast" → the recipe's bread ingredient, "yogurt" → the recipe's Greek yogurt). Use type "remove" for skip/without/no, "set_amount" for "use 245g X"/"make it N", "substitute" (with newName) for "use X instead of Y", "scale" (with a numeric "scale", e.g. 0.5 for half) for whole-recipe portions, and "add" ONLY for an ingredient that is NOT already in the recipe.
+- For "add" and "substitute" modifications, ALSO estimate that single ingredient's calories/protein/carbs/fat for the stated quantity/unit (e.g. add 70g blueberries → ~40 cal, ~0.5 protein, ~10 carbs, ~0 fat). If the user gives only a calorie amount (e.g. "20 calories of BBQ sauce"), set calories to that and your best macro guess (often ~0). These per-ingredient macros are used only for added/substituted items, never to recalc the saved recipe.
 - Only use a name that appears in the provided list. If you are unsure which saved recipe is meant, set "matchConfidence" to "low". If the description is a normal freeform meal (not a saved recipe), set "recipeLog" to null.
 - Either way, still fill "ingredients"/"totals" with a best-effort estimate (used only as a fallback when no saved recipe matches).
 
@@ -118,6 +123,7 @@ function validateRecipeLog(raw) {
   const recipeName = str(raw.recipeName).trim();
   if (!recipeName) return null;
   const matchConfidence = CONFIDENCES.has(raw.matchConfidence) ? raw.matchConfidence : 'low';
+  const macro = v => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v) * 10) / 10 : null);
   const modifications = (Array.isArray(raw.modifications) ? raw.modifications : [])
     .map(m => ({
       type: MOD_TYPES.has(m?.type) ? m.type : null,
@@ -126,6 +132,11 @@ function validateRecipeLog(raw) {
       unit: str(m?.unit).trim() || null,
       newName: str(m?.newName).trim() || null,
       scale: Number.isFinite(Number(m?.scale)) && Number(m.scale) > 0 ? Number(m.scale) : null,
+      // Per-ingredient macro estimate for add/substitute (null = not provided).
+      calories: macro(m?.calories),
+      protein: macro(m?.protein),
+      carbs: macro(m?.carbs),
+      fat: macro(m?.fat),
     }))
     .filter(m => m.type)
     .slice(0, 20);
