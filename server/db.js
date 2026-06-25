@@ -56,6 +56,7 @@ function createDb(dbPath) {
       recipe_fiber_g REAL,
       recipe_is_quick_food INTEGER,
       micros_json TEXT,
+      ingredients_json TEXT,
       FOREIGN KEY (recipe_id) REFERENCES recipes(id)
     );
     /* user_id: 0 = single-user placeholder until auth; use per-user ids later */
@@ -270,6 +271,12 @@ function createDb(dbPath) {
   }
   if (logCols.length && !logCols.includes('micros_json')) {
     db.exec(`ALTER TABLE log_entries ADD COLUMN micros_json TEXT`);
+  }
+  // Phase 1: per-ingredient breakdown of what was actually logged (resolved
+  // rows after substitutions/edits). Nullable; old rows stay null and display
+  // as totals only.
+  if (logCols.length && !logCols.includes('ingredients_json')) {
+    db.exec(`ALTER TABLE log_entries ADD COLUMN ingredients_json TEXT`);
   }
 
   const goalVersionCols = db.prepare('PRAGMA table_info(day_goal_versions)').all().map(c => c.name);

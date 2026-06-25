@@ -524,12 +524,26 @@ export default function MealBuilder() {
     const t = sumMacroObjects(validLines);
     setLoggingOnce(true);
     try {
-      // Ingredient list so the server can estimate micronutrients (centralized).
+      // Ingredient rows (with per-line macros) so the server persists the
+      // breakdown AND estimates micronutrients (name/amount/unit).
       const ingredients = lines
-        .map(l => {
+        .map((l, idx) => {
           const ing = ingById[l.labelIngredientId];
           const amt = Number(l.amount);
-          return ing && ing.name && Number.isFinite(amt) ? { name: ing.name, amount: amt, unit: l.unit } : null;
+          const mm = lineMacros[idx];
+          if (!ing || !ing.name || !Number.isFinite(amt) || !mm) return null;
+          return {
+            name: ing.name,
+            amount: amt,
+            unit: l.unit,
+            calories: mm.calories,
+            protein_g: mm.protein_g,
+            carbs_g: mm.carbs_g,
+            fat_g: mm.fat_g,
+            fiber_g: mm.fiber_g,
+            source: 'library',
+            label_ingredient_id: ing.id,
+          };
         })
         .filter(Boolean);
       await createCustomLog({

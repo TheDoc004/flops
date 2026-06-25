@@ -7,10 +7,11 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import { computeEntryMacros, mealMacroCalorieBreakdown } from '@shared/utils/macros';
+import { computeEntryMacros, mealMacroCalorieBreakdown, parseLoggedIngredients } from '@shared/utils/macros';
 import { formatMacroMass } from '@shared/utils/macroUnits';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import { MACRO_COLORS } from '@shared/utils/colors';
+import IngredientBreakdown from './IngredientBreakdown';
 
 const PIE_COLORS = { protein: MACRO_COLORS.protein, carbs: MACRO_COLORS.carbs, fat: MACRO_COLORS.fat };
 
@@ -33,6 +34,8 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
   const [expanded, setExpanded] = useState(false);
   const pie = buildPieData(entry);
   const { macroUnits } = useMacroUnits();
+  const ingredientRows = parseLoggedIngredients(entry);
+  const hasBreakdown = !!ingredientRows;
 
   if (variant === 'dashboard') {
     return (
@@ -87,6 +90,11 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
 
         {expanded && (
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f3f4f6' }}>
+            {hasBreakdown && (
+              <div style={{ marginBottom: 18 }}>
+                <IngredientBreakdown rows={ingredientRows} servings={entry.servings} macroUnits={macroUnits} />
+              </div>
+            )}
             <p style={{ margin: '0 0 8px', fontSize: 13, color: '#6b7280' }}>
               Calorie share by macro
             </p>
@@ -124,40 +132,59 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
 
   // Inline variant (History page, etc.)
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <strong>{entry.recipe_name}</strong>
-        <span style={{ color: '#6b7280', fontSize: 13, marginLeft: 8 }}>
-          {entry.servings}x {entry.serving_size}
-        </span>
-        {entry.notes && (
-          <span style={{ color: '#9ca3af', fontSize: 12, marginLeft: 8 }}>· {entry.notes}</span>
+    <div style={{ borderBottom: '1px solid #f3f4f6' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <strong>{entry.recipe_name}</strong>
+          <span style={{ color: '#6b7280', fontSize: 13, marginLeft: 8 }}>
+            {entry.servings}x {entry.serving_size}
+          </span>
+          {entry.notes && (
+            <span style={{ color: '#9ca3af', fontSize: 12, marginLeft: 8 }}>· {entry.notes}</span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 16, fontSize: 13, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span><strong>{Math.round(m.calories)}</strong> cal</span>
+          <span>P: {formatMacroMass(m.protein_g, macroUnits)}</span>
+          <span>C: {formatMacroMass(m.carbs_g, macroUnits)}</span>
+          <span>F: {formatMacroMass(m.fat_g, macroUnits)}</span>
+        </div>
+        {hasBreakdown && (
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ padding: '4px 10px', fontSize: 12 }}
+            onClick={() => setExpanded(e => !e)}
+            aria-expanded={expanded}
+            title="Toggle ingredient breakdown"
+          >
+            {expanded ? '▲' : '▼'}
+          </button>
+        )}
+        {onEdit && (
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ padding: '4px 10px', fontSize: 12 }}
+            onClick={() => onEdit(entry)}
+          >
+            Edit
+          </button>
+        )}
+        {onDelete && (
+          <button
+            className="btn-danger"
+            style={{ padding: '4px 10px', fontSize: 12 }}
+            onClick={() => onDelete(entry)}
+          >
+            ✕
+          </button>
         )}
       </div>
-      <div style={{ display: 'flex', gap: 16, fontSize: 13, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span><strong>{Math.round(m.calories)}</strong> cal</span>
-        <span>P: {formatMacroMass(m.protein_g, macroUnits)}</span>
-        <span>C: {formatMacroMass(m.carbs_g, macroUnits)}</span>
-        <span>F: {formatMacroMass(m.fat_g, macroUnits)}</span>
-      </div>
-      {onEdit && (
-        <button
-          type="button"
-          className="btn-secondary"
-          style={{ padding: '4px 10px', fontSize: 12 }}
-          onClick={() => onEdit(entry)}
-        >
-          Edit
-        </button>
-      )}
-      {onDelete && (
-        <button
-          className="btn-danger"
-          style={{ padding: '4px 10px', fontSize: 12 }}
-          onClick={() => onDelete(entry)}
-        >
-          ✕
-        </button>
+      {expanded && hasBreakdown && (
+        <div style={{ padding: '2px 0 12px' }}>
+          <IngredientBreakdown rows={ingredientRows} servings={entry.servings} macroUnits={macroUnits} />
+        </div>
       )}
     </div>
   );

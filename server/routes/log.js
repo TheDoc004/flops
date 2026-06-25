@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   adjustPerServingMacrosForResolvedSlots,
+  resolvedIngredientRows,
   resolveSlotsForLog,
   listVariableSlotsFromRecipeRow,
 } = require('../recipeIngredients');
@@ -63,6 +64,50 @@ function normalizedIngredientsFromRecipe(db, recipe) {
 }
 
 /**
+ * Normalize client-provided per-ingredient rows (AI Logger / Meal Builder) into
+ * the stored breakdown shape. Keeps macro fields when present; drops unusable
+ * rows. Returns a JSON string or null (so old/empty logs stay null).
+ */
+function ingredientsJsonFromClientRows(rows) {
+  if (!Array.isArray(rows)) return null;
+  const num = v => (Number.isFinite(Number(v)) ? Math.round(Number(v) * 100) / 100 : null);
+  const out = [];
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    const name = String(r.name ?? '').trim();
+    if (!name) continue;
+    const amount = r.amount != null && r.amount !== '' && Number.isFinite(Number(r.amount)) ? Number(r.amount) : null;
+    const row = {
+      name,
+      amount,
+      unit: typeof r.unit === 'string' ? r.unit : '',
+      calories: num(r.calories),
+      protein_g: num(r.protein_g),
+      carbs_g: num(r.carbs_g),
+      fat_g: num(r.fat_g),
+      source: r.source === 'library' || r.source === 'ai' ? r.source : 'estimated',
+    };
+    if (r.fiber_g != null) row.fiber_g = num(r.fiber_g);
+    if (Number.isInteger(Number(r.label_ingredient_id)) && Number(r.label_ingredient_id) > 0) {
+      row.label_ingredient_id = Number(r.label_ingredient_id);
+    }
+    out.push(row);
+    if (out.length >= 60) break;
+  }
+  return out.length ? JSON.stringify(out) : null;
+}
+
+/** Resolved per-ingredient rows for a recipe log -> JSON string, or null. Never throws. */
+function buildRecipeIngredientsJson(db, recipe, resolvedSlots) {
+  try {
+    const rows = resolvedIngredientRows(db, recipe, resolvedSlots || {});
+    return rows.length ? JSON.stringify(rows) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolve micros_json for a log entry (best-effort, synchronous-with-timeout):
  * request ingredients (AI Logger / Meal Builder) > recipe-derived ingredients
  * (recipe logs) > client-sent micros object.
@@ -80,7 +125,7 @@ async function resolveMicrosJson(db, body, recipe) {
 
 const ENTRY_JOIN = `
   SELECT le.id, le.recipe_id, le.date, le.time_min, le.servings, le.notes,
-         le.slot_selections_json, le.micros_json,
+         le.slot_selections_json, le.micros_json, le.ingredients_json,
          COALESCE(le.recipe_name, r.name, 'Deleted recipe') AS recipe_name,
          COALESCE(le.serving_size, r.serving_size, '') AS serving_size,
          COALESCE(le.recipe_calories, r.calories, 0) AS recipe_calories,
@@ -306,6 +351,13 @@ function createLogRouter(db) {
       return res.status(500).json({ error: 'Failed to log custom meal' });
     }
 
+    // Persist the per-ingredient breakdown the client reviewed (AI Logger /
+    // Meal Builder rows with macros). Best-effort; old/empty stays null.
+    const ingredientsJson = ingredientsJsonFromClientRows(req.body?.ingredients);
+    if (ingredientsJson) {
+      db.prepare('UPDATE log_entries SET ingredients_json = ? WHERE id = ?').run(ingredientsJson, entryId);
+    }
+
     // Optional micronutrient estimate — ingredients (AI Logger / Meal Builder)
     // or a client-sent micros object. Best-effort; never blocks the log.
     const microsJson = await resolveMicrosJson(db, req.body, null);
@@ -394,11 +446,12 @@ function createLogRouter(db) {
     const slots = listVariableSlotsFromRecipeRow(recipe);
     let perServing;
     let slotJson = null;
+    let resolvedSlots = null;
     if (slots.length > 0) {
       try {
-        const resolved = resolveSlotsForLog(db, recipe, slot_selections, log_slot_customizations, null, true);
-        perServing = adjustPerServingMacrosForResolvedSlots(db, recipe, resolved);
-        slotJson = JSON.stringify(resolved);
+        resolvedSlots = resolveSlotsForLog(db, recipe, slot_selections, log_slot_customizations, null, true);
+        perServing = adjustPerServingMacrosForResolvedSlots(db, recipe, resolvedSlots);
+        slotJson = JSON.stringify(resolvedSlots);
       } catch (e) {
         return res.status(400).json({ error: mapSlotAdjustError(e) });
       }
@@ -412,14 +465,18 @@ function createLogRouter(db) {
       };
     }
 
+    // Per-ingredient breakdown of exactly what was logged (best-effort; null for
+    // recipes with no macro-bearing ingredient lines).
+    const ingredientsJson = buildRecipeIngredientsJson(db, recipe, resolvedSlots);
+
     const t = normalizeTimeMin(time_min);
 
     const insertLog = db.prepare(
       `INSERT INTO log_entries (
          recipe_id, date, time_min, servings, notes,
          recipe_name, serving_size, recipe_calories, recipe_protein_g, recipe_carbs_g, recipe_fat_g, recipe_fiber_g, recipe_is_quick_food,
-         slot_selections_json
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         slot_selections_json, ingredients_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const decLimited = db.prepare(
       `UPDATE recipes
@@ -443,7 +500,8 @@ function createLogRouter(db) {
         perServing.fat_g,
         perServing.fiber_g,
         recipe.is_quick_food ? 1 : 0,
-        slotJson
+        slotJson,
+        ingredientsJson
       );
       if (recipe.recipe_kind === 'limited' && recipe.remaining_uses != null) {
         const u = decLimited.run(recipe_id);
@@ -519,9 +577,10 @@ function createLogRouter(db) {
     if (selectionUpdate) {
       let perServing;
       let slotJson = null;
+      let resolvedSlots = null;
       if (slots.length > 0) {
         try {
-          const resolved = resolveSlotsForLog(
+          resolvedSlots = resolveSlotsForLog(
             db,
             fullRecipe,
             slot_selections,
@@ -529,8 +588,8 @@ function createLogRouter(db) {
             existing.slot_selections_json,
             recipeChanged
           );
-          perServing = adjustPerServingMacrosForResolvedSlots(db, fullRecipe, resolved);
-          slotJson = JSON.stringify(resolved);
+          perServing = adjustPerServingMacrosForResolvedSlots(db, fullRecipe, resolvedSlots);
+          slotJson = JSON.stringify(resolvedSlots);
         } catch (e) {
           return res.status(400).json({ error: mapSlotAdjustError(e) });
         }
@@ -543,11 +602,13 @@ function createLogRouter(db) {
           fiber_g: fullRecipe.fiber_g,
         };
       }
+      // Recompute the per-ingredient breakdown for the (new) recipe + picks.
+      const ingredientsJson = buildRecipeIngredientsJson(db, fullRecipe, resolvedSlots);
       db.prepare(
         `UPDATE log_entries
          SET recipe_id = ?, time_min = ?, servings = ?, notes = ?,
              recipe_name = ?, serving_size = ?, recipe_calories = ?, recipe_protein_g = ?, recipe_carbs_g = ?, recipe_fat_g = ?, recipe_fiber_g = ?, recipe_is_quick_food = ?,
-             slot_selections_json = ?
+             slot_selections_json = ?, ingredients_json = ?
          WHERE id = ?`
       ).run(
         recipe_id,
@@ -563,6 +624,7 @@ function createLogRouter(db) {
         perServing.fiber_g,
         fullRecipe.is_quick_food ? 1 : 0,
         slotJson,
+        ingredientsJson,
         id
       );
     } else {

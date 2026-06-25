@@ -38,6 +38,49 @@ export function sumMacros(entries) {
   );
 }
 
+/**
+ * Parse a log entry's stored per-ingredient breakdown (Phase 1). Returns an
+ * array of rows or null when absent/invalid. Old entries (no ingredients_json)
+ * return null so callers fall back to showing totals only. Never throws.
+ */
+export function parseLoggedIngredients(entry) {
+  const raw = entry?.ingredients_json;
+  if (!raw) return null;
+  let v;
+  try { v = typeof raw === 'string' ? JSON.parse(raw) : raw; }
+  catch { return null; }
+  if (!Array.isArray(v) || v.length === 0) return null;
+  const rows = v.filter(r => r && typeof r === 'object' && r.name != null);
+  return rows.length ? rows : null;
+}
+
+/** Scale per-serving ingredient rows by servings (for display, like totals). */
+export function scaleIngredientRows(rows, servings) {
+  const s = Number(servings) > 0 ? Number(servings) : 1;
+  return (rows || []).map(r => ({
+    ...r,
+    calories: (Number(r.calories) || 0) * s,
+    protein_g: (Number(r.protein_g) || 0) * s,
+    carbs_g: (Number(r.carbs_g) || 0) * s,
+    fat_g: (Number(r.fat_g) || 0) * s,
+    ...(r.fiber_g != null ? { fiber_g: (Number(r.fiber_g) || 0) * s } : {}),
+  }));
+}
+
+/** Sum ingredient rows into a macro total (the "total = sum of rows" view). */
+export function sumIngredientRows(rows) {
+  return (rows || []).reduce(
+    (acc, r) => {
+      acc.calories += Number(r.calories) || 0;
+      acc.protein_g += Number(r.protein_g) || 0;
+      acc.carbs_g += Number(r.carbs_g) || 0;
+      acc.fat_g += Number(r.fat_g) || 0;
+      return acc;
+    },
+    { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+  );
+}
+
 export function groupByDate(entries) {
   const map = {};
   for (const entry of entries) {

@@ -260,6 +260,39 @@ function resolveSlotsForLog(db, recipeRow, slot_selections, log_slot_customizati
 }
 
 /**
+ * Macros for a label-ingredient at a given amount/unit (per the ingredient's
+ * own tracking type). Pure; returns null if the amount/unit can't be resolved.
+ */
+function ingredientMacrosForAmount(ingRow, amountValue, unit) {
+  if (!ingRow) return null;
+  if (ingRow.tracking_type === 'unit') {
+    const count = Number(amountValue);
+    if (!Number.isFinite(count) || count < 0) return null;
+    const sq = Number(ingRow.serving_quantity);
+    const mult = count / (Number.isFinite(sq) && sq > 0 ? sq : 1);
+    return {
+      calories: Number(ingRow.calories) * mult,
+      protein_g: Number(ingRow.protein_g) * mult,
+      carbs_g: Number(ingRow.carbs_g) * mult,
+      fat_g: Number(ingRow.fat_g) * mult,
+      fiber_g: ingRow.fiber_g != null && ingRow.fiber_g !== '' ? Number(ingRow.fiber_g) * mult : 0,
+    };
+  }
+  const gps = Number(ingRow.grams_per_serving);
+  if (!Number.isFinite(gps) || gps <= 0) return null;
+  const grams = gramsFromAmount(amountValue, unit);
+  if (grams == null) return null;
+  const mult = grams / gps;
+  return {
+    calories: Number(ingRow.calories) * mult,
+    protein_g: Number(ingRow.protein_g) * mult,
+    carbs_g: Number(ingRow.carbs_g) * mult,
+    fat_g: Number(ingRow.fat_g) * mult,
+    fiber_g: ingRow.fiber_g != null && ingRow.fiber_g !== '' ? Number(ingRow.fiber_g) * mult : 0,
+  };
+}
+
+/**
  * Per-serving macros after applying resolved slot picks (ingredient + optional amount/unit vs template).
  */
 function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot) {
@@ -276,33 +309,7 @@ function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot) {
   const getIng = id =>
     db.prepare('SELECT * FROM label_ingredients WHERE id = ? AND user_id = ?').get(id, 0);
 
-  function macrosForIngredientAmount(ingRow, amountValue, unit) {
-    if (ingRow.tracking_type === 'unit') {
-      const count = Number(amountValue);
-      if (!Number.isFinite(count) || count < 0) return null;
-      const sq = Number(ingRow.serving_quantity);
-      const mult = count / (Number.isFinite(sq) && sq > 0 ? sq : 1);
-      return {
-        calories: Number(ingRow.calories) * mult,
-        protein_g: Number(ingRow.protein_g) * mult,
-        carbs_g: Number(ingRow.carbs_g) * mult,
-        fat_g: Number(ingRow.fat_g) * mult,
-        fiber_g: ingRow.fiber_g != null && ingRow.fiber_g !== '' ? Number(ingRow.fiber_g) * mult : 0,
-      };
-    }
-    const gps = Number(ingRow.grams_per_serving);
-    if (!Number.isFinite(gps) || gps <= 0) return null;
-    const grams = gramsFromAmount(amountValue, unit);
-    if (grams == null) return null;
-    const mult = grams / gps;
-    return {
-      calories: Number(ingRow.calories) * mult,
-      protein_g: Number(ingRow.protein_g) * mult,
-      carbs_g: Number(ingRow.carbs_g) * mult,
-      fat_g: Number(ingRow.fat_g) * mult,
-      fiber_g: ingRow.fiber_g != null && ingRow.fiber_g !== '' ? Number(ingRow.fiber_g) * mult : 0,
-    };
-  }
+  const macrosForIngredientAmount = ingredientMacrosForAmount;
 
   let adj = { ...base };
   for (const slot of slots) {
@@ -335,6 +342,51 @@ function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot) {
     adj.fiber_g += -mDef.fiber_g + mSel.fiber_g;
   }
   return adj;
+}
+
+/**
+ * Per-ingredient breakdown rows for a recipe log (per serving), AFTER applying
+ * the resolved slot picks (substitutions + edited amounts). Each macro-bearing
+ * line/slot becomes one row { name, amount, unit, calories, protein_g, carbs_g,
+ * fat_g, fiber_g, source:'library', label_ingredient_id }. Zeroed/removed
+ * ingredients (amount <= 0) and rows whose macros can't be computed are omitted
+ * so the breakdown reflects exactly what was logged. Returns [] when the recipe
+ * has no macro-bearing ingredient lines (e.g. a manual name-only recipe) — the
+ * caller then stores null and the entry displays as totals only.
+ */
+function resolvedIngredientRows(db, recipeRow, resolvedBySlot) {
+  const slots = listLoggingSlotsFromRecipeRow(recipeRow);
+  if (slots.length === 0) return [];
+  const getIng = id =>
+    db.prepare('SELECT * FROM label_ingredients WHERE id = ? AND user_id = ?').get(id, 0);
+  const r2 = n => Math.round(n * 100) / 100;
+  const rows = [];
+  for (const slot of slots) {
+    const res =
+      (resolvedBySlot && resolvedBySlot[slot.slot_id]) || {
+        label_ingredient_id: slot.option_label_ingredient_ids[0],
+        amount: slot.amount,
+        unit: slot.unit === 'oz' ? 'oz' : 'g',
+      };
+    const amount = Number(res.amount);
+    if (!Number.isFinite(amount) || amount <= 0) continue; // removed / zeroed
+    const ing = getIng(res.label_ingredient_id);
+    const m = ingredientMacrosForAmount(ing, res.amount, res.unit);
+    if (!m) continue; // can't compute macros for this line — omit
+    rows.push({
+      name: (ing && ing.name) || slot.label,
+      amount,
+      unit: res.unit === 'oz' ? 'oz' : 'g',
+      calories: r2(m.calories),
+      protein_g: r2(m.protein_g),
+      carbs_g: r2(m.carbs_g),
+      fat_g: r2(m.fat_g),
+      fiber_g: r2(m.fiber_g),
+      source: 'library',
+      label_ingredient_id: res.label_ingredient_id,
+    });
+  }
+  return rows;
 }
 
 /**
@@ -393,6 +445,7 @@ module.exports = {
   normalizeIngredientsBody,
   adjustPerServingMacrosForSlotSelections,
   adjustPerServingMacrosForResolvedSlots,
+  resolvedIngredientRows,
   resolveSlotsForLog,
   listVariableSlotsFromRecipeRow,
   listLoggingSlotsFromRecipeRow,

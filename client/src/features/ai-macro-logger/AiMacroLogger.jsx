@@ -114,9 +114,19 @@ export default function AiMacroLogger() {
     setBusy('log');
     setError('');
     try {
-      // Send the ingredient list so the server estimates micros (centralized).
+      // Send the reviewed ingredient rows (with per-ingredient macros) so the
+      // server persists the breakdown AND estimates micros (name/amount/unit).
       const ingredients = (estimate.ingredients || [])
-        .map(i => ({ name: i.name, amount: i.quantity, unit: i.unit }))
+        .map(i => ({
+          name: i.name,
+          amount: i.quantity,
+          unit: i.unit,
+          calories: i.calories,
+          protein_g: i.protein,
+          carbs_g: i.carbs,
+          fat_g: i.fat,
+          source: 'ai',
+        }))
         .filter(i => i.name);
       await createCustomLog({
         date: getLocalDateISO(),
