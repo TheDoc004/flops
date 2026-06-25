@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { estimateMacros } from '@shared/api/ai';
 import { createCustomLog } from '@shared/api/log';
 import { createRecipe } from '@shared/api/recipes';
+import { fetchLabelIngredients } from '@shared/api/labelIngredients';
+import { macrosForLabelServingAmount } from '@features/label-ocr';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
 
 const PLACEHOLDER =
@@ -21,6 +23,49 @@ const n = v => {
   return Number.isFinite(x) && x >= 0 ? x : 0;
 };
 
+const normName = s => String(s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+const isMassUnit = u => /^(g|gram|grams|oz|ounce|ounces)$/.test(String(u || '').toLowerCase());
+
+/**
+ * Library macros for an AI-detected amount, ONLY when the AI unit is compatible
+ * with the saved ingredient's tracking type — otherwise null so we keep the AI
+ * estimate rather than mis-scale (e.g. "2 slices" onto a grams-per-serving item,
+ * or "170 g" onto a per-unit item). Returns {calories,protein_g,carbs_g,fat_g}.
+ */
+function libraryMacrosFor(ing, quantity, unit) {
+  const unitTracked = ing.tracking_type === 'unit';
+  const mass = isMassUnit(unit);
+  if (unitTracked && mass) return null;   // mass amount can't map to a per-unit ingredient
+  if (!unitTracked && !mass) return null; // non-mass amount can't map to a grams-per-serving ingredient
+  const m = macrosForLabelServingAmount(ing, quantity, mass ? unit : 'unit');
+  return m && Number.isFinite(m.calories) ? m : null;
+}
+
+/**
+ * Prefer saved-library data for AI-detected ingredients matched by name. Matched
+ * + unit-compatible rows get library macros and source:'library'; everything
+ * else stays source:'ai'. Pure — doesn't mutate the estimate.
+ */
+function enrichWithLibrary(est, libIndex) {
+  if (!est) return est;
+  const r1 = x => Math.round(x * 10) / 10;
+  const ingredients = est.ingredients.map(ing => {
+    const lib = libIndex && libIndex.get(normName(ing.name));
+    if (lib) {
+      const m = libraryMacrosFor(lib, ing.quantity, ing.unit);
+      if (m) {
+        return {
+          ...ing,
+          calories: r1(m.calories), protein: r1(m.protein_g), carbs: r1(m.carbs_g), fat: r1(m.fat_g),
+          source: 'library', label_ingredient_id: lib.id, matchedName: lib.name,
+        };
+      }
+    }
+    return { ...ing, source: 'ai', label_ingredient_id: undefined, matchedName: undefined };
+  });
+  return { ...est, ingredients };
+}
+
 /** Defensive client-side normalization so a malformed response can't crash the UI. */
 function normalizeEstimate(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -34,6 +79,7 @@ function normalizeEstimate(raw) {
     carbs: n(i?.carbs),
     fat: n(i?.fat),
     notes: typeof i?.notes === 'string' ? i.notes : '',
+    source: 'ai',
   }));
   return {
     mealName: typeof raw.mealName === 'string' && raw.mealName.trim() ? raw.mealName.trim() : 'Meal',
@@ -54,6 +100,26 @@ export default function AiMacroLogger() {
   const [correction, setCorrection] = useState('');
   const [reviseOpen, setReviseOpen] = useState(false);
   const [busy, setBusy] = useState('');
+  const [library, setLibrary] = useState([]);
+
+  // Saved ingredient library — used to prefer real data over AI estimates.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try { const list = await fetchLabelIngredients(); if (!cancelled) setLibrary(Array.isArray(list) ? list : []); }
+      catch { /* matching is a best-effort enhancement — ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const libIndex = useMemo(() => {
+    const map = new Map();
+    for (const ing of library) if (ing && ing.name) map.set(normName(ing.name), ing);
+    return map;
+  }, [library]);
+  // Keep the latest index reachable from async runEstimate without stale closures.
+  const libIndexRef = useRef(libIndex);
+  libIndexRef.current = libIndex;
 
   // Totals are always the live sum of the (editable) ingredient macros.
   const totals = useMemo(() => {
@@ -81,7 +147,8 @@ export default function AiMacroLogger() {
       const raw = await estimateMacros({ description: desc, correction: corr || undefined });
       const normalized = normalizeEstimate(raw);
       if (!normalized) throw new Error('The estimate came back in an unexpected format. Please try again.');
-      setEstimate(normalized);
+      // Prefer saved-library data for any ingredients we recognize by name.
+      setEstimate(enrichWithLibrary(normalized, libIndexRef.current));
       setReviseOpen(false);
       setCorrection('');
     } catch (e) {
@@ -116,6 +183,7 @@ export default function AiMacroLogger() {
     try {
       // Send the reviewed ingredient rows (with per-ingredient macros) so the
       // server persists the breakdown AND estimates micros (name/amount/unit).
+      // Library-matched rows carry source:'library' + label_ingredient_id.
       const ingredients = (estimate.ingredients || [])
         .map(i => ({
           name: i.name,
@@ -125,7 +193,8 @@ export default function AiMacroLogger() {
           protein_g: i.protein,
           carbs_g: i.carbs,
           fat_g: i.fat,
-          source: 'ai',
+          source: i.source === 'library' ? 'library' : 'ai',
+          ...(i.label_ingredient_id ? { label_ingredient_id: i.label_ingredient_id } : {}),
         }))
         .filter(i => i.name);
       await createCustomLog({
@@ -268,6 +337,17 @@ export default function AiMacroLogger() {
                   <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 8, fontSize: 13 }}>
                     {ing.quantity ? `${ing.quantity} ${ing.unit}`.trim() : ing.unit}
                     {STATE_LABELS[ing.state] ? ` · ${STATE_LABELS[ing.state]}` : ''}
+                  </span>
+                  <span
+                    title={ing.source === 'library' ? `From your saved ingredient: ${ing.matchedName || ing.name}` : 'AI estimate — not matched to a saved ingredient'}
+                    style={{
+                      marginLeft: 8, fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 999, whiteSpace: 'nowrap',
+                      ...(ing.source === 'library'
+                        ? { background: '#ecfdf5', border: '1px solid #6ee7b7', color: '#065f46' }
+                        : { background: '#f3f4f6', border: '1px solid #e5e7eb', color: '#6b7280' }),
+                    }}
+                  >
+                    {ing.source === 'library' ? 'Saved data' : 'AI estimate'}
                   </span>
                 </div>
                 {ing.notes && (
