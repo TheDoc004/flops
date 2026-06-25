@@ -37,10 +37,24 @@ const SCHEMA_HINT = `{
   ],
   "totals": { "calories": number, "protein": number, "carbs": number, "fat": number },
   "assumptions": ["string"],
-  "warnings": ["string"]
+  "warnings": ["string"],
+  "recipeLog": {
+    "recipeName": "string — the saved recipe the user is referring to, copied EXACTLY from the provided list; null if none",
+    "matchConfidence": "high | medium | low",
+    "modifications": [
+      {
+        "type": "remove | set_amount | substitute | add | scale",
+        "target": "string — the recipe ingredient being changed (remove/set_amount/substitute); null otherwise",
+        "quantity": "number or null — the new amount (set_amount) or amount to add",
+        "unit": "string or null",
+        "newName": "string or null — the replacement (substitute) or new (add) ingredient",
+        "scale": "number or null — whole-recipe scale, e.g. 0.5 for half a serving"
+      }
+    ]
+  }
 }`;
 
-const SYSTEM_PROMPT = `You are a macro estimator for a personal nutrition app. Parse a natural meal description into structured per-ingredient estimates and calculate calories, protein, carbs, and fat (in grams).
+const SYSTEM_PROMPT = `You are a macro estimator and recipe-command interpreter for a personal nutrition app. Parse a natural meal description into structured per-ingredient estimates and calculate calories, protein, carbs, and fat (in grams).
 
 Rules:
 - Estimate macros; do not give medical, dieting, or moral advice about food.
@@ -52,14 +66,24 @@ Rules:
 - "totals" must be the sum of the ingredient macros.
 - Keep "summary" and notes short. Do not include any prose outside the JSON.
 
+Saved-recipe awareness:
+- The user may reference one of their SAVED recipes (e.g. "log my Egg Toast Wombo Combo", "log my bagel recipe but skip the banana"). A list of their saved recipe names is provided (it may be empty).
+- If the description refers to a saved recipe, set "recipeLog.recipeName" to the EXACT matching name from the provided list, set "matchConfidence", and capture any requested changes in "recipeLog.modifications". Do NOT invent or recalculate that recipe's ingredients — the app loads the real saved recipe and applies the changes itself.
+- Only use a name that appears in the provided list. If you are unsure which saved recipe is meant, set "matchConfidence" to "low". If the description is a normal freeform meal (not a saved recipe), set "recipeLog" to null.
+- Either way, still fill "ingredients"/"totals" with a best-effort estimate (used only as a fallback when no saved recipe matches).
+
 Output ONLY a single valid JSON object matching this exact shape (no markdown, no code fences, no commentary):
 ${SCHEMA_HINT}`;
 
-function buildUserContent(description, correction) {
+function buildUserContent(description, correction, recipeNames) {
   let content = `Meal description:\n${description}`;
   if (correction && correction.trim()) {
     content += `\n\nCorrection / clarification to apply:\n${correction.trim()}`;
   }
+  const names = Array.isArray(recipeNames) ? recipeNames.filter(x => typeof x === 'string' && x.trim()) : [];
+  content += names.length
+    ? `\n\nSaved recipe names (match recipeLog.recipeName ONLY against these exact names):\n${names.map(x => `- ${x}`).join('\n')}`
+    : `\n\n(The user has no saved recipes — set recipeLog to null.)`;
   return content;
 }
 
@@ -75,6 +99,27 @@ function str(v, fallback = '') {
 
 const STATES = new Set(['raw', 'cooked', 'unknown', 'not_applicable']);
 const CONFIDENCES = new Set(['high', 'medium', 'low']);
+const MOD_TYPES = new Set(['remove', 'set_amount', 'substitute', 'add', 'scale']);
+
+/** Validate the optional recipe-command block. Returns null when not a recipe reference. */
+function validateRecipeLog(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const recipeName = str(raw.recipeName).trim();
+  if (!recipeName) return null;
+  const matchConfidence = CONFIDENCES.has(raw.matchConfidence) ? raw.matchConfidence : 'low';
+  const modifications = (Array.isArray(raw.modifications) ? raw.modifications : [])
+    .map(m => ({
+      type: MOD_TYPES.has(m?.type) ? m.type : null,
+      target: str(m?.target).trim() || null,
+      quantity: Number.isFinite(Number(m?.quantity)) ? Number(m.quantity) : null,
+      unit: str(m?.unit).trim() || null,
+      newName: str(m?.newName).trim() || null,
+      scale: Number.isFinite(Number(m?.scale)) && Number(m.scale) > 0 ? Number(m.scale) : null,
+    }))
+    .filter(m => m.type)
+    .slice(0, 20);
+  return { recipeName, matchConfidence, modifications };
+}
 
 /** Coerce arbitrary AI output into the strict shape the frontend expects. */
 function validateEstimate(raw) {
@@ -122,6 +167,7 @@ function validateEstimate(raw) {
     totals,
     assumptions: toStringArray(raw.assumptions),
     warnings: toStringArray(raw.warnings),
+    recipeLog: validateRecipeLog(raw.recipeLog),
   };
 }
 
@@ -130,13 +176,13 @@ function validateEstimate(raw) {
  * @returns {Promise<object>} validated estimate matching the frontend schema.
  * @throws {AiConfigError|AiProviderError|AiQuotaError|AiResponseError}
  */
-async function estimateMacros({ description, correction } = {}) {
+async function estimateMacros({ description, correction, recipeNames } = {}) {
   const desc = str(description).trim();
   if (!desc) throw new AiResponseError('A meal description is required.');
 
   const text = await callProviderJson({
     system: SYSTEM_PROMPT,
-    user: buildUserContent(desc, correction),
+    user: buildUserContent(desc, correction, recipeNames),
     maxTokens: 1500,
   });
 

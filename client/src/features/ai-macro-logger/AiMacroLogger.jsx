@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { estimateMacros } from '@shared/api/ai';
-import { createCustomLog } from '@shared/api/log';
-import { createRecipe } from '@shared/api/recipes';
+import { createCustomLog, createLogEntry } from '@shared/api/log';
+import { createRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import { macrosForLabelServingAmount } from '@features/label-ocr';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
+import { matchRecipe, recipeReviewRows } from './recipeCommand';
 
 const PLACEHOLDER =
   'Example: 155g cooked turkey, 250g sweet potato, 20 calories BBQ sauce…';
@@ -91,6 +92,20 @@ function normalizeEstimate(raw) {
   };
 }
 
+/** Human-readable one-liner for a detected recipe modification (review display). */
+function describeModification(m) {
+  const t = m?.target ? ` ${m.target}` : '';
+  const amt = m?.quantity != null ? `${m.quantity}${m.unit ? ` ${m.unit}` : ''}` : '';
+  switch (m?.type) {
+    case 'remove': return `Remove${t}`;
+    case 'set_amount': return `Set${t}${amt ? ` to ${amt}` : ''}`;
+    case 'substitute': return `Substitute${t}${m.newName ? ` → ${m.newName}` : ''}`;
+    case 'add': return `Add ${[amt, m.newName || m.target].filter(Boolean).join(' ')}`.trim() || 'Add ingredient';
+    case 'scale': return `Scale recipe ×${m.scale ?? '?'}`;
+    default: return 'Change';
+  }
+}
+
 export default function AiMacroLogger() {
   const navigate = useNavigate();
   const [description, setDescription] = useState('');
@@ -101,13 +116,20 @@ export default function AiMacroLogger() {
   const [reviseOpen, setReviseOpen] = useState(false);
   const [busy, setBusy] = useState('');
   const [library, setLibrary] = useState([]);
+  const [recipes, setRecipes] = useState([]);
+  const [recipeReview, setRecipeReview] = useState(null); // { recipe, rows, modifications, matchConfidence, fallbackEstimate }
+  const [picker, setPicker] = useState(null);             // { candidates, modifications, fallbackEstimate }
+  const [recipeServings, setRecipeServings] = useState(1);
 
-  // Saved ingredient library — used to prefer real data over AI estimates.
+  // Saved ingredient library + recipe list — used to recognize recipes and to
+  // prefer real data over AI estimates.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try { const list = await fetchLabelIngredients(); if (!cancelled) setLibrary(Array.isArray(list) ? list : []); }
-      catch { /* matching is a best-effort enhancement — ignore */ }
+      catch { /* best-effort enhancement — ignore */ }
+      try { const rs = await fetchRecipes(); if (!cancelled) setRecipes(Array.isArray(rs) ? rs : []); }
+      catch { /* best-effort — ignore */ }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -117,9 +139,15 @@ export default function AiMacroLogger() {
     for (const ing of library) if (ing && ing.name) map.set(normName(ing.name), ing);
     return map;
   }, [library]);
-  // Keep the latest index reachable from async runEstimate without stale closures.
-  const libIndexRef = useRef(libIndex);
-  libIndexRef.current = libIndex;
+  const labelById = useMemo(() => {
+    const map = new Map();
+    for (const ing of library) if (ing && ing.id != null) map.set(Number(ing.id), ing);
+    return map;
+  }, [library]);
+  // Keep the latest data reachable from async runEstimate without stale closures.
+  const libIndexRef = useRef(libIndex); libIndexRef.current = libIndex;
+  const labelByIdRef = useRef(labelById); labelByIdRef.current = labelById;
+  const recipesRef = useRef(recipes); recipesRef.current = recipes;
 
   // Totals are always the live sum of the (editable) ingredient macros.
   const totals = useMemo(() => {
@@ -144,18 +172,86 @@ export default function AiMacroLogger() {
     setLoading(true);
     setError('');
     try {
-      const raw = await estimateMacros({ description: desc, correction: corr || undefined });
+      const raw = await estimateMacros({
+        description: desc,
+        correction: corr || undefined,
+        recipeNames: recipesRef.current.map(r => r.name),
+      });
       const normalized = normalizeEstimate(raw);
       if (!normalized) throw new Error('The estimate came back in an unexpected format. Please try again.');
       // Prefer saved-library data for any ingredients we recognize by name.
-      setEstimate(enrichWithLibrary(normalized, libIndexRef.current));
-      setReviseOpen(false);
-      setCorrection('');
+      const freeform = enrichWithLibrary(normalized, libIndexRef.current);
+
+      // Recipe command? Match the AI's suggested name against the real saved
+      // recipes (we resolve — the AI never silently picks).
+      const rl = raw?.recipeLog && typeof raw.recipeLog === 'object' ? raw.recipeLog : null;
+      if (rl && rl.recipeName) {
+        const match = matchRecipe(rl.recipeName, recipesRef.current);
+        if (match.status === 'one') {
+          setRecipeReview({
+            recipe: match.recipe,
+            rows: recipeReviewRows(match.recipe, labelByIdRef.current),
+            modifications: rl.modifications || [],
+            matchConfidence: rl.matchConfidence,
+            fallbackEstimate: freeform,
+          });
+          setEstimate(null); setPicker(null); setRecipeServings(1);
+          setReviseOpen(false); setCorrection('');
+          return;
+        }
+        if (match.status === 'many') {
+          setPicker({ candidates: match.candidates, modifications: rl.modifications || [], fallbackEstimate: freeform });
+          setEstimate(null); setRecipeReview(null);
+          setReviseOpen(false); setCorrection('');
+          return;
+        }
+        // status 'none' → fall through to the freeform estimate.
+      }
+      setEstimate(freeform); setRecipeReview(null); setPicker(null);
+      setReviseOpen(false); setCorrection('');
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  // Picker → pick one of the candidate recipes (ambiguous match).
+  function choosePickerRecipe(recipe) {
+    setRecipeReview({
+      recipe,
+      rows: recipeReviewRows(recipe, labelByIdRef.current),
+      modifications: picker?.modifications || [],
+      matchConfidence: 'medium',
+      fallbackEstimate: picker?.fallbackEstimate || null,
+    });
+    setRecipeServings(1);
+    setPicker(null);
+  }
+
+  // Log the matched saved recipe AS-IS through the normal recipe-log endpoint.
+  async function logRecipeAsIs() {
+    if (busy || !recipeReview?.recipe) return;
+    setBusy('log');
+    setError('');
+    try {
+      await createLogEntry({
+        recipe_id: recipeReview.recipe.id,
+        date: getLocalDateISO(),
+        servings: Number(recipeServings) > 0 ? Number(recipeServings) : 1,
+      });
+      navigate('/', { state: { scrollToTop: true } });
+    } catch (e) {
+      setError(e.message);
+      setBusy('');
+    }
+  }
+
+  // Escape hatch: log the AI freeform estimate instead of the matched recipe.
+  function useFreeformInstead(fallback) {
+    setEstimate(fallback || null);
+    setRecipeReview(null);
+    setPicker(null);
   }
 
   function updateMacro(idx, field, value) {
@@ -170,6 +266,9 @@ export default function AiMacroLogger() {
 
   function clearAll() {
     setEstimate(null);
+    setRecipeReview(null);
+    setPicker(null);
+    setRecipeServings(1);
     setDescription('');
     setCorrection('');
     setReviseOpen(false);
@@ -275,19 +374,128 @@ export default function AiMacroLogger() {
       </div>
 
       {/* Loading state */}
-      {loading && !estimate && (
+      {loading && !estimate && !recipeReview && !picker && (
         <div className="card" style={{ marginBottom: 18 }}>
           <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-            Estimating macros from your description… this usually takes a few seconds.
+            Reading your request… this usually takes a few seconds.
           </p>
         </div>
       )}
 
       {/* Empty state */}
-      {!loading && !estimate && !error && (
+      {!loading && !estimate && !recipeReview && !picker && !error && (
         <p className="empty-state" style={{ padding: 16 }}>
-          Your estimate will appear here. Describe a meal above and tap <strong>Generate estimate</strong>.
+          Your estimate will appear here. Describe a meal — or say “log my &lt;recipe&gt;” — and tap <strong>Generate estimate</strong>.
         </p>
+      )}
+
+      {/* Recipe picker (ambiguous match) */}
+      {picker && (
+        <div className="card" style={{ marginBottom: 18 }}>
+          <h3 className="section-title" style={{ marginTop: 0 }}>Which recipe did you mean?</h3>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            More than one saved recipe could match. Pick one to review before logging.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {picker.candidates.map(r => (
+              <button key={r.id} type="button" className="btn-secondary" style={{ justifyContent: 'flex-start', textAlign: 'left' }} onClick={() => choosePickerRecipe(r)}>
+                {r.name}
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" className="btn-secondary" onClick={() => useFreeformInstead(picker.fallbackEstimate)}>
+              None of these — use a freeform estimate
+            </button>
+            <button type="button" className="btn-secondary" onClick={clearAll}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Recipe-log review (matched saved recipe) */}
+      {recipeReview && (
+        <div className="card" style={{ marginBottom: 18 }}>
+          <h3 className="section-title" style={{ marginTop: 0 }}>Log saved recipe</h3>
+
+          <div style={{ padding: 12, background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: 10, marginBottom: 14 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#312e81' }}>{recipeReview.recipe.name}</div>
+            <div style={{ marginTop: 4, fontSize: 12, color: '#6b21a8' }}>
+              Matched from your saved recipes{recipeReview.matchConfidence ? ` · ${recipeReview.matchConfidence} confidence` : ''}.
+            </div>
+            <button
+              type="button"
+              onClick={() => useFreeformInstead(recipeReview.fallbackEstimate)}
+              style={{ marginTop: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: '#7c3aed', textDecoration: 'underline' }}
+            >
+              Not this recipe? Use a freeform estimate instead
+            </button>
+          </div>
+
+          {recipeReview.modifications.length > 0 && (
+            <div style={{ padding: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, marginBottom: 14, fontSize: 13, color: '#92400e' }}>
+              <strong>Requested changes detected:</strong>
+              <ul style={{ margin: '6px 0 6px', paddingLeft: 18 }}>
+                {recipeReview.modifications.map((mdf, i) => (
+                  <li key={i}>{describeModification(mdf)}</li>
+                ))}
+              </ul>
+              <span>Applying changes is coming in the next update — for now this logs the recipe <strong>as saved</strong>.</span>
+            </div>
+          )}
+
+          <div style={{ marginBottom: 12, maxWidth: 160 }}>
+            <label htmlFor="ai-recipe-servings">Servings</label>
+            <input
+              id="ai-recipe-servings"
+              type="number" min="0.1" step="0.1"
+              value={recipeServings}
+              onChange={e => setRecipeServings(e.target.value)}
+            />
+          </div>
+
+          {/* Ingredient rows (read-only — from the saved recipe) */}
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ margin: '0 0 6px', fontSize: 13, color: '#6b7280', fontWeight: 600 }}>Recipe ingredients</p>
+            {recipeReview.rows.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>This recipe has no itemized ingredients.</p>
+            ) : (
+              recipeReview.rows.map((r, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
+                  <span style={{ color: '#1f2937', fontWeight: 500 }}>
+                    {r.name}
+                    <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8 }}>
+                      {r.amountText != null ? r.amountText : (r.amount != null ? `${+Number(r.amount).toFixed(2)}${r.unit ? ` ${r.unit}` : ''}` : '')}
+                    </span>
+                  </span>
+                  {r.calories != null && (
+                    <span style={{ color: '#374151', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                      {Math.round(r.calories * (Number(recipeServings) > 0 ? Number(recipeServings) : 1))} cal
+                    </span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Recipe totals (authoritative per-serving macros × servings) */}
+          <div style={{ padding: 12, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10 }}>
+            <strong style={{ color: '#1e3a8a' }}>Totals</strong>
+            <div style={{ marginTop: 4, fontSize: 15, color: '#0f172a' }}>
+              {(() => {
+                const s = Number(recipeServings) > 0 ? Number(recipeServings) : 1;
+                const r = recipeReview.recipe;
+                return `${Math.round((Number(r.calories) || 0) * s)} cal · P ${((Number(r.protein_g) || 0) * s).toFixed(1)}g · C ${((Number(r.carbs_g) || 0) * s).toFixed(1)}g · F ${((Number(r.fat_g) || 0) * s).toFixed(1)}g`;
+              })()}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" className="btn-primary" onClick={logRecipeAsIs} disabled={busy !== ''} style={{ minHeight: 48, fontWeight: 700 }}>
+              {busy === 'log' ? 'Logging…' : 'Log recipe'}
+            </button>
+            <button type="button" className="btn-secondary" onClick={clearAll} disabled={busy !== ''}>Cancel</button>
+          </div>
+        </div>
       )}
 
       {/* Review */}

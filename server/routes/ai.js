@@ -17,6 +17,13 @@ function createAiRouter() {
   router.post('/macro-estimate', async (req, res) => {
     const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
     const correction = typeof req.body?.correction === 'string' ? req.body.correction.trim() : '';
+    // Saved recipe names for recipe-command matching (best-effort; capped).
+    const recipeNames = Array.isArray(req.body?.recipeNames)
+      ? req.body.recipeNames
+          .filter(x => typeof x === 'string' && x.trim())
+          .map(x => x.trim().slice(0, 120))
+          .slice(0, 200)
+      : [];
 
     if (!description) {
       return res.status(400).json({ error: 'Please describe the meal you want to estimate.' });
@@ -29,7 +36,7 @@ function createAiRouter() {
     }
 
     try {
-      const estimate = await estimateMacros({ description, correction });
+      const estimate = await estimateMacros({ description, correction, recipeNames });
       return res.json(estimate);
     } catch (e) {
       if (e instanceof AiConfigError) {
