@@ -5,18 +5,27 @@
  */
 import { MICRO_NUTRIENTS, MICRO_KEYS, MICRO_BY_KEY } from '@shared/config/microNutrients';
 
-/* Status color system (req 8):
-   <33% red · 33–66% yellow · 66–99% green · ≥100% purple (met)
-   over upper limit → orange · watch nutrient (e.g. sodium) → neutral, orange if over. */
-const COLORS = {
-  low:     { bar: '#ef4444', track: '#fee2e2', text: '#991b1b', label: 'Low' },
-  partial: { bar: '#f59e0b', track: '#fef3c7', text: '#92400e', label: 'Partial' },
-  good:    { bar: '#10b981', track: '#d1fae5', text: '#065f46', label: 'On track' },
-  met:     { bar: '#7c3aed', track: '#ede9fe', text: '#5b21b6', label: 'Target met' },
-  over:    { bar: '#f97316', track: '#ffedd5', text: '#9a3412', label: 'Above limit' },
-  watch:   { bar: '#64748b', track: '#e2e8f0', text: '#475569', label: 'Watch' },
-  none:    { bar: '#cbd5e1', track: '#f1f5f9', text: '#94a3b8', label: 'No estimate' },
+/* Status color system — color communicates STATUS, not nutrient identity.
+   A muted palette plus a single neutral track keeps the section calm to scan:
+     red    = low / needs attention  (0–33% of target)
+     amber  = needs work             (34–74%)
+     green  = good                   (75–100%)
+     purple = over target            (>100%)
+     blue-gray = limit-based nutrient (e.g. sodium); turns red if over the limit. */
+const TRACK = '#eef1f4'; // one muted track behind every bar
+export const MICRO_STATUS = {
+  low:     { bar: '#d56a6a', track: TRACK, text: '#9b2c2c', label: 'Low' },
+  partial: { bar: '#dda23f', track: TRACK, text: '#92400e', label: 'Needs work' },
+  good:    { bar: '#46a585', track: TRACK, text: '#1d7a5f', label: 'Good' },
+  met:     { bar: '#8770c9', track: TRACK, text: '#5b21b6', label: 'Over target' },
+  watch:   { bar: '#7c8a9c', track: TRACK, text: '#475569', label: 'Limit' },
+  none:    { bar: '#cbd5e1', track: TRACK, text: '#94a3b8', label: 'No estimate' },
 };
+
+/* Compact color key shown above the bars. */
+export const MICRO_LEGEND = ['low', 'partial', 'good', 'met', 'watch'].map(k => ({
+  key: k, color: MICRO_STATUS[k].bar, label: MICRO_STATUS[k].label,
+}));
 
 const CONF_RANK = { low: 0, medium: 1, high: 2 };
 
@@ -68,23 +77,28 @@ export function sumDayMicros(entries) {
 export function statusFor(key, value) {
   const def = MICRO_BY_KEY[key];
   const v = Number(value) || 0;
-  if (!def) return { key, value: v, pct: 0, fillPct: 0, isWatch: false, over: false, ...COLORS.none, color: COLORS.none.bar, textColor: COLORS.none.text, track: COLORS.none.track };
+  if (!def) {
+    const c = MICRO_STATUS.none;
+    return { key, value: v, pct: 0, fillPct: 0, isWatch: false, over: false, color: c.bar, track: c.track, textColor: c.text, label: c.label };
+  }
 
+  // Limit-based nutrient (e.g. sodium): neutral by default, red when over.
   if (def.watch && def.upperLimit) {
     const pct = v / def.upperLimit;
     const over = v > def.upperLimit;
-    const c = over ? COLORS.over : COLORS.watch;
-    return { key, def, value: v, pct, fillPct: Math.min(pct, 1), isWatch: true, over, color: c.bar, track: c.track, textColor: c.text, label: over ? 'Above limit' : 'Watch' };
+    const c = over ? MICRO_STATUS.low : MICRO_STATUS.watch;
+    return { key, def, value: v, pct, fillPct: Math.min(pct, 1), isWatch: true, over, color: c.bar, track: c.track, textColor: c.text, label: over ? 'Over limit' : 'Limit' };
   }
 
+  // Target-based: 0–33 low · 34–74 needs work · 75–100 good · >100 over target.
   const pct = def.target ? v / def.target : 0;
-  let c;
-  if (def.upperLimit && v > def.upperLimit) c = COLORS.over;
-  else if (pct >= 1) c = COLORS.met;
-  else if (pct >= 0.66) c = COLORS.good;
-  else if (pct >= 0.33) c = COLORS.partial;
-  else c = COLORS.low;
-  return { key, def, value: v, pct, fillPct: Math.min(pct, 1), isWatch: false, over: !!(def.upperLimit && v > def.upperLimit), color: c.bar, track: c.track, textColor: c.text, label: c.label };
+  let c, label;
+  if (def.upperLimit && v > def.upperLimit) { c = MICRO_STATUS.met; label = 'Over upper limit'; }
+  else if (pct > 1) { c = MICRO_STATUS.met; label = 'Over target'; }
+  else if (pct >= 0.75) { c = MICRO_STATUS.good; label = 'Good'; }
+  else if (pct >= 0.34) { c = MICRO_STATUS.partial; label = 'Needs work'; }
+  else { c = MICRO_STATUS.low; label = 'Low'; }
+  return { key, def, value: v, pct, fillPct: Math.min(pct, 1), isWatch: false, over: !!(def.upperLimit && v > def.upperLimit), color: c.bar, track: c.track, textColor: c.text, label };
 }
 
 /** Nutrients below `threshold` of target (excludes watch nutrients), lowest first. */

@@ -1,5 +1,5 @@
 import { computeEntryMacros } from '@shared/utils/macros';
-import { nutrientsNeedingAttention } from '@shared/utils/microNutrients';
+import { nutrientsNeedingAttention, statusFor } from '@shared/utils/microNutrients';
 import MicroNutrientPanel from './MicroNutrientPanel';
 
 /**
@@ -56,16 +56,27 @@ export default function DayReport({ day }) {
         </div>
       )}
 
-      {/* Nutrients needing attention */}
+      {/* Nutrients needing attention — chips share the bar status colors. */}
       {attention.length > 0 && (
-        <div style={{ marginBottom: 16, padding: '10px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10 }}>
-          <strong style={{ fontSize: 13, color: '#92400e' }}>Needs attention</strong>
+        <div style={{ marginBottom: 16, padding: '10px 12px', background: '#faf9f7', border: '1px solid #e8e4dc', borderRadius: 10 }}>
+          <strong style={{ fontSize: 13, color: '#1e1b4b' }}>Needs attention</strong>
           <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {attention.map(a => (
-              <span key={a.key} style={{ fontSize: 12, color: '#92400e', background: '#fef3c7', borderRadius: 999, padding: '3px 9px' }}>
-                {a.name} {Math.round(a.pct * 100)}%
-              </span>
-            ))}
+            {attention.map(a => {
+              const st = statusFor(a.key, a.value);
+              return (
+                <span
+                  key={a.key}
+                  style={{
+                    fontSize: 12, color: st.textColor, background: '#fff',
+                    border: `1px solid ${st.color}`, borderRadius: 999, padding: '3px 9px',
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: st.color, flexShrink: 0 }} aria-hidden="true" />
+                  {a.name} {Math.round(a.pct * 100)}%
+                </span>
+              );
+            })}
           </div>
         </div>
       )}

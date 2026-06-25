@@ -1,7 +1,22 @@
 import { MICRO_GROUPS, MICRO_ESTIMATE_NOTE } from '@shared/config/microNutrients';
+import { MICRO_LEGEND } from '@shared/utils/microNutrients';
 import MicroNutrientBar from '@shared/ui/MicroNutrientBar';
 
 const CONF_LABEL = { low: 'Low confidence', medium: 'Medium confidence', high: 'High confidence' };
+
+/* Compact color key — colors mean status, not nutrient identity. */
+function MicroLegend() {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', alignItems: 'center', marginBottom: 16 }}>
+      {MICRO_LEGEND.map(item => (
+        <span key={item.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap' }}>
+          <span style={{ width: 9, height: 9, borderRadius: '50%', background: item.color, flexShrink: 0 }} aria-hidden="true" />
+          {item.label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /**
  * Daily micronutrient panel — all v1 nutrients, grouped by Vitamins / Minerals /
@@ -46,6 +61,7 @@ export default function MicroNutrientPanel({ values, confidence = null, coverage
         </p>
       ) : (
         <>
+          <MicroLegend />
           {MICRO_GROUPS.map(group => (
             <div key={group.key} style={{ marginBottom: 18 }}>
               <h4 style={{
@@ -59,7 +75,6 @@ export default function MicroNutrientPanel({ values, confidence = null, coverage
                   key={n.key}
                   nutrientKey={n.key}
                   value={values[n.key] || 0}
-                  confidence={confidence}
                 />
               ))}
             </div>
