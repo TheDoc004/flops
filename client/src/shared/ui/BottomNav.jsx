@@ -36,7 +36,7 @@ const SHEETS = {
     items: [
       { to: '/recipes', label: 'Recipes', Icon: IconRecipes },
       { to: '/ingredients', label: 'Ingredients', Icon: IconIngredients },
-      { to: '/plan', label: 'Plan', Icon: IconPlan },
+      { to: '/plan', label: 'Goals & Profile', Icon: IconPlan },
     ],
   },
 };

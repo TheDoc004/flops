@@ -101,11 +101,19 @@
 
 .caret { font-size: 11px; opacity: 0.7; }
 
-/* Medium desktop widths: tighten tabs so all of them fit comfortably. */
+/* Narrow desktop / tablet landscape: shrink the brand and tighten the tabs so
+   all six sections (incl. the longer "Goals & Profile") fit on one row without
+   a horizontal scroll. */
 @media (min-width: 769px) and (max-width: 1120px) {
+  .inner { gap: 12px; padding: 0 16px; }
+  .badgeWrap { width: 72px; height: 72px; }
+  .badge { height: 112px; margin-top: 3px; }
+  .brandName { font-size: 22px; }
+  .divider { height: 26px; }
   .links { gap: 4px; }
   .links a,
-  .groupBtn { padding: 9px 12px; font-size: 15px; }
+  .groupBtn { padding: 8px 11px; font-size: 14px; }
+  .caret { font-size: 10px; }
 }
 
 .links a:hover,

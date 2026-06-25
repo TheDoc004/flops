@@ -20,9 +20,14 @@ const GROUPS = [
       { to: '/ingredients', label: 'Ingredients' },
     ],
   },
-  { label: 'Review', to: '/history' },
+  {
+    label: 'Review',
+    items: [
+      { to: '/history', label: 'History' },
+    ],
+  },
   { label: 'Training', to: '/training' },
-  { label: 'Plan', to: '/plan' },
+  { label: 'Goals & Profile', to: '/plan' },
 ];
 
 function pathMatches(pathname, to) {
