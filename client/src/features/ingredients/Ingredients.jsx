@@ -13,6 +13,7 @@ import {
   mergeNutritionParseIntoIngredientForm,
   scanFieldClass,
 } from '@features/label-ocr';
+import { SERVING_UNITS, isWeightUnit, servingToStored, servingFromRow, emptyServing, unitLabel } from '@shared/utils/servingBasis';
 
 function filterByName(items, q) {
   const query = String(q ?? '').trim().toLowerCase();
@@ -33,18 +34,13 @@ function emptyForm() {
     name: '',
     base_label: '',
     brand_name: '',
-    serving_size_text: '',
-    grams_per_serving: '',
+    ...emptyServing(), // serving_amount, serving_unit, serving_unit_custom, gram_equivalent
     calories: '',
     protein_g: '',
     carbs_g: '',
     fat_g: '',
     fiber_g: '',
     source_type: 'manual',
-    tracking_type: 'weight',
-    unit_name: '',
-    serving_quantity: '1',
-    grams_per_unit: '',
   };
 }
 
@@ -141,10 +137,8 @@ export default function Ingredients() {
       const parsed = parseNutritionFactsText(text);
       const prev = {
         name: form.name,
-        base_label: form.base_label,
-        brand_name: form.brand_name,
-        serving_size_text: form.serving_size_text,
-        grams_per_serving: form.grams_per_serving,
+        serving_size_text: '',
+        grams_per_serving: '',
         calories: form.calories,
         fat_g: form.fat_g,
         carbs_g: form.carbs_g,
@@ -152,7 +146,19 @@ export default function Ingredients() {
         fiber_g: form.fiber_g,
       };
       const { next, scanFeedback, fieldStatus } = mergeNutritionParseIntoIngredientForm(prev, parsed);
-      setForm(f => ({ ...f, ...next }));
+      // Map scanned macros + a grams-per-serving (if read) onto the serving-basis form.
+      setForm(f => ({
+        ...f,
+        name: next.name ?? f.name,
+        calories: next.calories ?? f.calories,
+        protein_g: next.protein_g ?? f.protein_g,
+        carbs_g: next.carbs_g ?? f.carbs_g,
+        fat_g: next.fat_g ?? f.fat_g,
+        fiber_g: next.fiber_g ?? f.fiber_g,
+        ...(next.grams_per_serving != null && next.grams_per_serving !== ''
+          ? { serving_amount: String(next.grams_per_serving), serving_unit: 'g', serving_unit_custom: '' }
+          : {}),
+      }));
       const messages = [];
       if (ocr.errorMessage) messages.push(ocr.errorMessage);
       if (scanFeedback?.length) messages.push(...scanFeedback);
@@ -171,18 +177,13 @@ export default function Ingredients() {
       name: row.name || '',
       base_label: row.base_label || '',
       brand_name: row.brand_name || '',
-      serving_size_text: row.serving_size_text || '',
-      grams_per_serving: row.grams_per_serving == null ? '' : String(row.grams_per_serving),
+      ...servingFromRow(row),
       calories: String(row.calories ?? ''),
       protein_g: String(row.protein_g ?? ''),
       carbs_g: String(row.carbs_g ?? ''),
       fat_g: String(row.fat_g ?? ''),
       fiber_g: row.fiber_g == null ? '' : String(row.fiber_g),
       source_type: row.source_type || 'manual',
-      tracking_type: row.tracking_type || 'weight',
-      unit_name: row.unit_name || '',
-      serving_quantity: row.serving_quantity == null ? '1' : String(row.serving_quantity),
-      grams_per_unit: row.grams_per_unit == null ? '' : String(row.grams_per_unit),
     });
     formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -192,13 +193,13 @@ export default function Ingredients() {
     setError('');
     setSaving(true);
     try {
-      const isUnit = form.tracking_type === 'unit';
+      const stored = servingToStored(form);
       const body = {
         name: form.name.trim(),
         base_label: form.base_label.trim() || undefined,
         brand_name: form.brand_name.trim() || undefined,
-        serving_size_text: form.serving_size_text.trim(),
-        grams_per_serving: form.grams_per_serving === '' ? null : Number(form.grams_per_serving),
+        serving_size_text: stored.serving_size_text,
+        grams_per_serving: stored.grams_per_serving,
         calories: Number(form.calories),
         protein_g: Number(form.protein_g),
         carbs_g: Number(form.carbs_g),
@@ -206,10 +207,10 @@ export default function Ingredients() {
         fiber_g: form.fiber_g === '' ? undefined : Number(form.fiber_g),
         source_type:
           !editing && labelPhotoDataUri ? 'scanned_label' : form.source_type || 'manual',
-        tracking_type: form.tracking_type || 'weight',
-        unit_name: isUnit && form.unit_name.trim() ? form.unit_name.trim() : undefined,
-        serving_quantity: isUnit && form.serving_quantity !== '' ? Number(form.serving_quantity) : undefined,
-        grams_per_unit: isUnit && form.grams_per_unit !== '' ? Number(form.grams_per_unit) : undefined,
+        tracking_type: stored.tracking_type,
+        unit_name: stored.unit_name,
+        serving_quantity: stored.serving_quantity,
+        grams_per_unit: stored.grams_per_unit,
       };
       if (!editing && labelPhotoDataUri && labelPhotoDataUri.length < 350_000) {
         body.photo_data_uri = labelPhotoDataUri;
@@ -366,126 +367,63 @@ export default function Ingredients() {
             </div>
           </div>
 
-          {/* ── Logging style ── */}
-          <div style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid #f0ede8' }}>
-            <h4 style={{
-              margin: '0 0 10px', fontSize: 15, fontWeight: 400,
-              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
-            }}>Logging style</h4>
-            <div className="logging-style-group" style={{ marginBottom: form.tracking_type === 'unit' ? 14 : 0 }}>
-              {[
-                { value: 'weight', title: 'By weight', desc: 'Best for foods you weigh in grams or ounces.', examples: 'Yogurt, rice, chicken, fruit' },
-                { value: 'unit',   title: 'By unit',   desc: 'Best for foods you count instead of weigh.',  examples: 'Eggs, slices, bagels, scoops' },
-              ].map(opt => {
-                const selected = form.tracking_type === opt.value || (opt.value === 'weight' && form.tracking_type !== 'unit');
-                return (
-                  <label key={opt.value} className={`logging-style-option${selected ? ' is-selected' : ''}`}>
-                    <input
-                      type="radio"
-                      name="tracking_type"
-                      value={opt.value}
-                      checked={selected}
-                      onChange={() => setForm(f => ({ ...f, tracking_type: opt.value }))}
-                    />
-                    <div className="logging-style-text">
-                      <div className="logging-style-title">{opt.title}</div>
-                      <div className="logging-style-description">{opt.desc}</div>
-                      <div className="logging-style-examples">{opt.examples}</div>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-            {form.tracking_type === 'unit' && (
-              <div className="form-grid-2">
-                <div>
-                  <label>Unit name</label>
-                  <input
-                    value={form.unit_name}
-                    onChange={e => setForm(f => ({ ...f, unit_name: e.target.value }))}
-                    placeholder="e.g. slice, egg, scoop, bar"
-                    required={form.tracking_type === 'unit'}
-                  />
-                  <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
-                    How it will appear when logging (e.g. "2 slices").
-                  </p>
-                </div>
-                <div>
-                  <label>Units per serving <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(usually 1)</span></label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={form.serving_quantity}
-                    onChange={e => setForm(f => ({ ...f, serving_quantity: e.target.value }))}
-                    placeholder="1"
-                  />
-                </div>
-                <div>
-                  <label>Grams per unit <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={form.grams_per_unit}
-                    onChange={e => setForm(f => ({ ...f, grams_per_unit: e.target.value }))}
-                    placeholder="e.g. 40"
-                  />
-                  <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
-                    For future weight equivalency. Optional for now.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* ── Serving & scaling ── */}
           <div style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid #f0ede8' }}>
             <h4 style={{
-              margin: '0 0 12px', fontSize: 15, fontWeight: 400,
+              margin: '0 0 6px', fontSize: 15, fontWeight: 400,
               color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
-            }}>Serving & scaling</h4>
+            }}>Serving &amp; scaling</h4>
+            <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--color-text-faint)' }}>
+              Enter the serving size from the label — use whatever it says: 170 g, 1 cup, 1 slice, 1 scoop, 1 egg.
+            </p>
             <div className="form-grid-2">
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label>
-                  {form.tracking_type === 'unit'
-                    ? <>Serving label <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(e.g. 1 slice, 1 large egg)</span></>
-                    : <>Serving size <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(as printed)</span></>
-                  }
-                </label>
+              <div>
+                <label htmlFor="ing-serving-amount">Serving amount</label>
                 <input
-                  className={scanFieldClass(labelScanFieldStatus?.serving_size_text)}
-                  value={form.serving_size_text}
-                  onChange={e => {
-                    clearScanHints();
-                    setForm(f => ({ ...f, serving_size_text: e.target.value }));
-                  }}
-                  placeholder={form.tracking_type === 'unit' ? 'e.g. 1 slice, 1 large egg' : 'e.g. 170g, 1 slice, 1 scoop'}
-                  required
+                  id="ing-serving-amount"
+                  type="number" min="0" step="0.01"
+                  className={scanFieldClass(labelScanFieldStatus?.grams_per_serving)}
+                  value={form.serving_amount}
+                  onChange={e => { clearScanHints(); setForm(f => ({ ...f, serving_amount: e.target.value })); }}
+                  placeholder="1"
                 />
-                <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
-                  {form.tracking_type === 'unit'
-                    ? 'The human-readable label shown to you when logging.'
-                    : 'The human-readable label as printed on the package.'}
-                </p>
               </div>
-              {form.tracking_type !== 'unit' && (
-                <div>
-                  <label>Grams per serving <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(for scaling)</span></label>
+              <div>
+                <label htmlFor="ing-serving-unit">Serving unit</label>
+                <select
+                  id="ing-serving-unit"
+                  value={form.serving_unit}
+                  onChange={e => setForm(f => ({ ...f, serving_unit: e.target.value }))}
+                >
+                  {SERVING_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                  <option value="custom">custom…</option>
+                </select>
+              </div>
+              {form.serving_unit === 'custom' && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label htmlFor="ing-unit-custom">Unit name</label>
                   <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    className={scanFieldClass(labelScanFieldStatus?.grams_per_serving)}
-                    value={form.grams_per_serving}
-                    onChange={e => {
-                      clearScanHints();
-                      setForm(f => ({ ...f, grams_per_serving: e.target.value }));
-                    }}
-                    placeholder="e.g. 170"
+                    id="ing-unit-custom"
+                    value={form.serving_unit_custom}
+                    onChange={e => setForm(f => ({ ...f, serving_unit_custom: e.target.value }))}
+                    placeholder="e.g. bar, packet, bagel"
+                  />
+                </div>
+              )}
+              {!isWeightUnit(form.serving_unit) && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label htmlFor="ing-gram-equiv">
+                    1 {unitLabel(form)} = grams <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(optional)</span>
+                  </label>
+                  <input
+                    id="ing-gram-equiv"
+                    type="number" min="0" step="0.01"
+                    value={form.gram_equivalent}
+                    onChange={e => setForm(f => ({ ...f, gram_equivalent: e.target.value }))}
+                    placeholder="e.g. 31"
                   />
                   <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
-                    Used by Meal Builder to scale portions by weight.
+                    Optional — the weight of one {unitLabel(form)} for more precise scaling (e.g. 1 scoop = 31&nbsp;g).
                   </p>
                 </div>
               )}

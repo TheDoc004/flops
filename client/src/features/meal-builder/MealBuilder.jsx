@@ -15,22 +15,18 @@ import {
   macrosForLabelServingAmount,
   sumMacroObjects,
 } from '@features/label-ocr';
+import { SERVING_UNITS, isWeightUnit, servingToStored, emptyServing, unitLabel } from '@shared/utils/servingBasis';
 
 function emptyLabelDraft() {
   return {
     name: '',
     brand_name: '',
-    serving_size_text: '',
-    grams_per_serving: '',
+    ...emptyServing(), // serving_amount, serving_unit, serving_unit_custom, gram_equivalent
     calories: '',
     protein_g: '',
     carbs_g: '',
     fat_g: '',
     fiber_g: '',
-    tracking_type: 'weight',
-    unit_name: '',
-    serving_quantity: '1',
-    grams_per_unit: '',
     photoPreview: null,
     photoDataUri: null,
   };
@@ -257,8 +253,8 @@ export default function MealBuilder() {
       const prev = {
         name: labelDraft.name,
         brand_name: labelDraft.brand_name,
-        serving_size_text: labelDraft.serving_size_text,
-        grams_per_serving: labelDraft.grams_per_serving,
+        serving_size_text: '',
+        grams_per_serving: '',
         calories: labelDraft.calories,
         protein_g: labelDraft.protein_g,
         carbs_g: labelDraft.carbs_g,
@@ -270,13 +266,14 @@ export default function MealBuilder() {
         ...d,
         name: next.name,
         brand_name: next.brand_name,
-        serving_size_text: next.serving_size_text,
-        grams_per_serving: next.grams_per_serving,
         calories: next.calories,
         protein_g: next.protein_g,
         carbs_g: next.carbs_g,
         fat_g: next.fat_g,
         fiber_g: next.fiber_g,
+        ...(next.grams_per_serving != null && next.grams_per_serving !== ''
+          ? { serving_amount: String(next.grams_per_serving), serving_unit: 'g', serving_unit_custom: '' }
+          : {}),
       }));
       const messages = [];
       if (ocr.errorMessage) messages.push(ocr.errorMessage);
@@ -296,41 +293,28 @@ export default function MealBuilder() {
   async function saveLabelIngredient(e) {
     e.preventDefault();
     setLabelSaveError('');
-    const isUnit = labelDraft.tracking_type === 'unit';
     const name = labelDraft.name.trim();
     const brand_name = labelDraft.brand_name.trim();
-    const serving_size_text = labelDraft.serving_size_text.trim();
-    if (!name || !serving_size_text) {
-      setLabelSaveError('Name and serving label are required.');
+    if (!name) {
+      setLabelSaveError('Name is required.');
       return;
     }
-    if (isUnit) {
-      if (!labelDraft.unit_name.trim()) {
-        setLabelSaveError('Unit name is required (e.g. "egg", "slice", "bagel").');
-        return;
-      }
-    } else {
-      const gps = labelDraft.grams_per_serving === '' ? null : Number(labelDraft.grams_per_serving);
-      if (gps != null && (!Number.isFinite(gps) || gps <= 0)) {
-        setLabelSaveError('Grams per serving must be a positive number or left empty.');
-        return;
-      }
-    }
+    const stored = servingToStored(labelDraft);
     try {
       await createLabelIngredient({
         name,
         brand_name: brand_name || undefined,
-        serving_size_text,
-        grams_per_serving: isUnit ? null : (labelDraft.grams_per_serving === '' ? null : Number(labelDraft.grams_per_serving)),
+        serving_size_text: stored.serving_size_text,
+        grams_per_serving: stored.grams_per_serving,
         calories: Number(labelDraft.calories),
         protein_g: Number(labelDraft.protein_g),
         carbs_g: Number(labelDraft.carbs_g),
         fat_g: Number(labelDraft.fat_g),
         fiber_g: labelDraft.fiber_g === '' ? undefined : Number(labelDraft.fiber_g),
-        tracking_type: labelDraft.tracking_type || 'weight',
-        unit_name: isUnit && labelDraft.unit_name.trim() ? labelDraft.unit_name.trim() : undefined,
-        serving_quantity: isUnit && labelDraft.serving_quantity !== '' ? Number(labelDraft.serving_quantity) : undefined,
-        grams_per_unit: isUnit && labelDraft.grams_per_unit !== '' ? Number(labelDraft.grams_per_unit) : undefined,
+        tracking_type: stored.tracking_type,
+        unit_name: stored.unit_name,
+        serving_quantity: stored.serving_quantity,
+        grams_per_unit: stored.grams_per_unit,
         photo_data_uri: labelDraft.photoDataUri && labelDraft.photoDataUri.length < 350_000 ? labelDraft.photoDataUri : undefined,
         source_type: labelDraft.photoDataUri ? 'scanned_label' : 'manual',
       });
@@ -720,99 +704,61 @@ export default function MealBuilder() {
             <input value={labelDraft.brand_name} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, brand_name: e.target.value })); }} placeholder="e.g. Fage, Chobani" />
           </div>
 
-          {/* Logging style */}
+          {/* Serving & scaling */}
           <div style={{ gridColumn: '1 / -1', paddingTop: 12, borderTop: '1px solid #f0ede8' }}>
-            <div style={{ marginBottom: 10, fontSize: 14, fontWeight: 600, color: 'var(--color-text-body)' }}>Logging style</div>
-            <div className="logging-style-group">
-              {[
-                { value: 'weight', title: 'By weight', desc: 'Best for foods you weigh in grams or ounces.', examples: 'Yogurt, rice, chicken, fruit' },
-                { value: 'unit',   title: 'By unit',   desc: 'Best for foods you count instead of weigh.',  examples: 'Eggs, slices, bagels, scoops' },
-              ].map(opt => {
-                const selected = labelDraft.tracking_type === opt.value;
-                return (
-                  <label key={opt.value} className={`logging-style-option${selected ? ' is-selected' : ''}`}>
-                    <input
-                      type="radio"
-                      name="mb_tracking_type"
-                      checked={selected}
-                      onChange={() => setLabelDraft(d => ({ ...d, tracking_type: opt.value }))}
-                    />
-                    <div className="logging-style-text">
-                      <div className="logging-style-title">{opt.title}</div>
-                      <div className="logging-style-description">{opt.desc}</div>
-                      <div className="logging-style-examples">{opt.examples}</div>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
+            <div style={{ marginBottom: 4, fontSize: 14, fontWeight: 600, color: 'var(--color-text-body)' }}>Serving &amp; scaling</div>
+            <p style={{ margin: '0 0 10px', fontSize: 11, color: 'var(--color-text-faint)' }}>
+              Serving size from the label — 170 g, 1 cup, 1 slice, 1 scoop, 1 egg, etc.
+            </p>
           </div>
-
-          {/* Unit fields — only shown when By unit */}
-          {labelDraft.tracking_type === 'unit' && (<>
-            <div>
-              <label>Unit name</label>
-              <input
-                value={labelDraft.unit_name}
-                onChange={e => setLabelDraft(d => ({ ...d, unit_name: e.target.value }))}
-                placeholder="e.g. egg, slice, bagel"
-                required={labelDraft.tracking_type === 'unit'}
-              />
-              <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>How it appears when logging ("2 eggs").</p>
-            </div>
-            <div>
-              <label>Units per serving <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(usually 1)</span></label>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={labelDraft.serving_quantity}
-                onChange={e => setLabelDraft(d => ({ ...d, serving_quantity: e.target.value }))}
-                placeholder="1"
-              />
-            </div>
-            <div>
-              <label>Grams per unit <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(optional)</span></label>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={labelDraft.grams_per_unit}
-                onChange={e => setLabelDraft(d => ({ ...d, grams_per_unit: e.target.value }))}
-                placeholder="e.g. 40"
-              />
-            </div>
-          </>)}
-
-          {/* Serving label / size */}
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label>
-              {labelDraft.tracking_type === 'unit'
-                ? <>Serving label <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(e.g. 1 large egg)</span></>
-                : <>Serving size <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(as printed)</span></>}
-            </label>
+          <div>
+            <label htmlFor="mb-serving-amount">Serving amount</label>
             <input
-              className={scanFieldClass(labelScanFieldStatus?.serving_size_text)}
-              value={labelDraft.serving_size_text}
-              onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, serving_size_text: e.target.value })); }}
-              placeholder={labelDraft.tracking_type === 'unit' ? 'e.g. 1 large egg' : 'e.g. 2/3 cup (55g)'}
-              required
+              id="mb-serving-amount"
+              type="number" min="0" step="0.01"
+              className={scanFieldClass(labelScanFieldStatus?.grams_per_serving)}
+              value={labelDraft.serving_amount}
+              onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, serving_amount: e.target.value })); }}
+              placeholder="1"
             />
           </div>
-
-          {/* Grams per serving — weight mode only */}
-          {labelDraft.tracking_type !== 'unit' && (
-            <div>
-              <label>Grams per serving <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(for scaling)</span></label>
+          <div>
+            <label htmlFor="mb-serving-unit">Serving unit</label>
+            <select
+              id="mb-serving-unit"
+              value={labelDraft.serving_unit}
+              onChange={e => setLabelDraft(d => ({ ...d, serving_unit: e.target.value }))}
+            >
+              {SERVING_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+              <option value="custom">custom…</option>
+            </select>
+          </div>
+          {labelDraft.serving_unit === 'custom' && (
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label htmlFor="mb-unit-custom">Unit name</label>
               <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                className={scanFieldClass(labelScanFieldStatus?.grams_per_serving)}
-                value={labelDraft.grams_per_serving}
-                onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, grams_per_serving: e.target.value })); }}
-                placeholder="e.g. 55"
+                id="mb-unit-custom"
+                value={labelDraft.serving_unit_custom}
+                onChange={e => setLabelDraft(d => ({ ...d, serving_unit_custom: e.target.value }))}
+                placeholder="e.g. bar, packet, bagel"
               />
+            </div>
+          )}
+          {!isWeightUnit(labelDraft.serving_unit) && (
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label htmlFor="mb-gram-equiv">
+                1 {unitLabel(labelDraft)} = grams <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(optional)</span>
+              </label>
+              <input
+                id="mb-gram-equiv"
+                type="number" min="0" step="0.01"
+                value={labelDraft.gram_equivalent}
+                onChange={e => setLabelDraft(d => ({ ...d, gram_equivalent: e.target.value }))}
+                placeholder="e.g. 31"
+              />
+              <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
+                Optional — weight of one {unitLabel(labelDraft)} for more precise scaling.
+              </p>
             </div>
           )}
 
