@@ -4,7 +4,7 @@ import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
 import MacroTotals from '@shared/ui/MacroTotals';
 import DailyTrainingContextBanner from './DailyTrainingContextBanner';
-import MealFuelReadinessCard from './MealFuelReadinessCard';
+import TrainingFuelCard from './TrainingFuelCard';
 import { fetchLogRange, createLogEntry, createQuickFoodLog, createCustomLog, deleteLogEntry } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
@@ -361,12 +361,10 @@ export default function Dashboard() {
         />
       )}
 
-      {trainingPrefs.enabled && fuelReadiness && (
-        <MealFuelReadinessCard
-          result={fuelReadiness}
-          mealLabel={fuelMealSnapshot?.mealLabel}
-          onDismiss={() => setFuelMealSnapshot(null)}
-        />
+      {/* Training Fuel Timing Assistant — smarter, ingredient-aware successor to
+          the old fuel-readiness card. Shows whenever there's a meal logged today. */}
+      {trainingPrefs.enabled && entries.length > 0 && (
+        <TrainingFuelCard entries={entries} />
       )}
 
       {trainingPrefs.enabled && savedFuelOptions.length > 0 && (
