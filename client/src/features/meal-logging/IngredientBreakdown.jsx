@@ -33,7 +33,7 @@ export default function IngredientBreakdown({ rows, servings = 1, macroUnits }) 
           >
             <span style={{ color: '#1f2937', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name}>
               {r.name}
-              {r.source && r.source !== 'library' && (
+              {(r.source === 'ai' || r.source === 'estimated') && (
                 <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 600, color: '#9ca3af' }} title="AI estimate — not from your saved library">est</span>
               )}
             </span>
