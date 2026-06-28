@@ -2,14 +2,17 @@ import { macrosForLabelServingAmount, gramsFromAmount } from '@features/label-oc
 import { QUICK_FOODS, macrosForQuickFoodAmount } from '@features/meal-logging/quickFoods';
 
 /**
- * Macro source hierarchy for AI-detected ingredients:
- *   1. Ingredient Library  (exact, then fuzzy name match)  -> source 'library' ("Saved data")
- *   2. Built-in common food (fuzzy, weight-based)          -> source 'common'  ("Common data")
- *   3. AI estimate (unchanged)                              -> source 'ai'      ("AI estimate")
+ * Macro source hierarchy for AI-detected ingredients (highest priority first):
+ *   1. Explicit macros in the CURRENT message (macroSource 'provided')
+ *                                                          -> source 'provided' ("Provided in message")
+ *   2. Ingredient Library  (exact, then fuzzy name match)  -> source 'library' ("Saved data")
+ *   3. Built-in common food (fuzzy, weight-based)          -> source 'common'  ("Common data")
+ *   4. AI estimate (unchanged)                              -> source 'ai'      ("Estimated")
  *
- * Saved/library data is always preferred over generic estimates. Matching never
- * creates or mutates saved ingredients — it only borrows their macros for the
- * review, and the user can still revise every value.
+ * Tier 1 is authoritative: when the user pasted macros for an ingredient, those
+ * numbers win for this log and we do NOT consult the library or any generic
+ * estimate for it (the message wins even over a saved match). Tiers 2–4 only
+ * borrow macros for the review; the user can still revise every value.
  */
 
 const MASS_UNIT = /^(g|gram|grams|oz|ounce|ounces)$/;
@@ -189,7 +192,15 @@ const r1 = x => Math.round(x * 10) / 10;
  * matchedName is set only for a NON-exact match (so the UI can show what it used).
  */
 export function resolveIngredientSource(ing, library, quickFoods = QUICK_FOODS) {
-  // 1. Ingredient Library (exact, then fuzzy) — preferred.
+  // 1. Explicit macros provided in the current message — authoritative. Lock the
+  //    user's numbers and skip every generic/library lookup for this ingredient.
+  if (ing.macroSource === 'provided') {
+    return {
+      calories: ing.calories, protein: ing.protein, carbs: ing.carbs, fat: ing.fat,
+      source: 'provided', label_ingredient_id: undefined, matchedName: null,
+    };
+  }
+  // 2. Ingredient Library (exact, then fuzzy) — preferred over generic estimates.
   const lib = bestMatch(ing.name, library, x => x.name);
   if (lib.best && lib.score >= MATCH_THRESHOLD) {
     const m = libraryMacrosFor(lib.best, ing.quantity, ing.unit);
@@ -201,7 +212,7 @@ export function resolveIngredientSource(ing, library, quickFoods = QUICK_FOODS) 
       };
     }
   }
-  // 2. Built-in common food (weight-based only).
+  // 3. Built-in common food (weight-based only).
   if (isMassUnit(ing.unit)) {
     const cf = bestMatch(ing.name, quickFoods, x => x.name);
     if (cf.best && cf.score >= MATCH_THRESHOLD) {
@@ -215,7 +226,7 @@ export function resolveIngredientSource(ing, library, quickFoods = QUICK_FOODS) 
       }
     }
   }
-  // 3. AI estimate (unchanged).
+  // 4. AI estimate (unchanged).
   return {
     calories: ing.calories, protein: ing.protein, carbs: ing.carbs, fat: ing.fat,
     source: 'ai', label_ingredient_id: undefined, matchedName: null,

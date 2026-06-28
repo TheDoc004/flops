@@ -58,8 +58,10 @@ function normalizeEstimate(raw) {
     carbs: n(i?.carbs),
     fat: n(i?.fat),
     notes: typeof i?.notes === 'string' ? i.notes : '',
-    source: 'ai',
-    // Preserve the raw AI estimate so we can revert after a manual library swap.
+    // Whether the user gave explicit macros for this item in the message (tier 1).
+    macroSource: i?.macroSource === 'provided' ? 'provided' : 'estimated',
+    source: i?.macroSource === 'provided' ? 'provided' : 'ai',
+    // Preserve the original AI/provided macros so we can revert after a library swap.
     aiMacros: { calories: n(i?.calories), protein: n(i?.protein), carbs: n(i?.carbs), fat: n(i?.fat) },
   }));
   return {
@@ -79,9 +81,10 @@ const AI_BADGE = {
 
 // Where an ingredient's macros came from (review badges).
 const SOURCE_META = {
-  library: { label: 'Saved data', bg: '#ecfdf5', border: '#6ee7b7', color: '#065f46', kind: 'saved ingredient' },
+  provided: { label: 'Provided in message', bg: '#eef2ff', border: '#c7d2fe', color: '#3730a3', kind: null },
+  library: { label: 'Ingredient library', bg: '#ecfdf5', border: '#6ee7b7', color: '#065f46', kind: 'saved ingredient' },
   common: { label: 'Common data', bg: '#eff6ff', border: '#bfdbfe', color: '#1e40af', kind: 'common food' },
-  ai: { label: 'AI estimate', bg: '#f3f4f6', border: '#e5e7eb', color: '#6b7280', kind: null },
+  ai: { label: 'Estimated', bg: '#f3f4f6', border: '#e5e7eb', color: '#6b7280', kind: null },
   manual: { label: 'Manual', bg: '#fef3c7', border: '#fcd34d', color: '#92400e', kind: null },
 };
 const rowSourceKey = ing => (ing.overridden ? 'manual' : (SOURCE_META[ing.source] ? ing.source : 'ai'));
@@ -314,8 +317,9 @@ export default function AiMacroLogger() {
   function setRowIngredient(idx, labelId) {
     updateRow(idx, ing => {
       if (!labelId) {
-        // Back to the original AI estimate.
-        const reverted = { ...ing, ...ing.aiMacros, source: 'ai', label_ingredient_id: undefined, matchedName: undefined, overridden: false, userPicked: true };
+        // Back to the original macros — restore "provided" if the user pasted them.
+        const baseSource = ing.macroSource === 'provided' ? 'provided' : 'ai';
+        const reverted = { ...ing, ...ing.aiMacros, source: baseSource, label_ingredient_id: undefined, matchedName: undefined, overridden: false, userPicked: true };
         return applyFinal({ ...reverted, basis: deriveBasis(reverted, libraryRef.current) });
       }
       const lib = (libraryRef.current || []).find(x => Number(x.id) === Number(labelId));
@@ -427,7 +431,7 @@ export default function AiMacroLogger() {
             protein_g: i.protein,
             carbs_g: i.carbs,
             fat_g: i.fat,
-            source: newId ? 'library' : (i.overridden ? 'manual' : (['library', 'common', 'ai'].includes(i.source) ? i.source : 'ai')),
+            source: newId ? 'library' : (i.overridden ? 'manual' : (['provided', 'library', 'common', 'ai'].includes(i.source) ? i.source : 'ai')),
             ...(labelId ? { label_ingredient_id: labelId } : {}),
           };
         })
@@ -699,11 +703,13 @@ export default function AiMacroLogger() {
                 : null;
               const sourceText = ing.overridden
                 ? 'Manually adjusted'
-                : ing.source === 'library'
-                  ? `Using saved ingredient: ${savedName || ing.matchedName || 'saved item'}`
-                  : ing.source === 'common'
-                    ? `Using common food${ing.matchedName ? `: ${ing.matchedName}` : `: ${ing.name}`}`
-                    : `Using AI estimate: ${ing.name}`;
+                : ing.source === 'provided'
+                  ? 'Provided in message — using your macros'
+                  : ing.source === 'library'
+                    ? `Using saved ingredient: ${savedName || ing.matchedName || 'saved item'}`
+                    : ing.source === 'common'
+                      ? `Using common food${ing.matchedName ? `: ${ing.matchedName}` : `: ${ing.name}`}`
+                      : `Using AI estimate: ${ing.name}`;
               const basis = ing.basis || deriveBasis(ing, library);
               const basisLabel = basis.perKind === '100g'
                 ? 'per 100 g'

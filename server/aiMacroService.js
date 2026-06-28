@@ -32,6 +32,7 @@ const SCHEMA_HINT = `{
       "protein": number,
       "carbs": number,
       "fat": number,
+      "macroSource": "provided | estimated — 'provided' ONLY when the user gave explicit macros for THIS ingredient in the message; otherwise 'estimated'",
       "notes": "string — assumptions or uncertainty for this item"
     }
   ],
@@ -63,7 +64,13 @@ const SYSTEM_PROMPT = `You are a macro estimator and recipe-command interpreter 
 Rules:
 - Estimate macros; do not give medical, dieting, or moral advice about food.
 - Distinguish cooked vs raw weights when the user states them; set "state" accordingly (use "not_applicable" for things like sauces/spices where it does not apply, "unknown" if unclear).
-- Preserve brand details when the user provides them; use common nutrition estimates when brand data is missing.
+
+Explicit user-provided macros are AUTHORITATIVE — this is the single most important rule:
+- When the message states macros for an ingredient — per 100 g, per serving/per stated weight, OR for the whole amount (e.g. "use 165 cal, 31g protein, 3.6g fat, 0g carbs per 100g cooked chicken"; "150 cal, 35g carbs, 3g protein per 45g dry rice"; "this sauce has 20 calories total") — you MUST use exactly those numbers. Scale a per-amount basis to the amount actually used (e.g. 165 cal / 100 g at 163 g → 269 cal; 150 cal / 45 g dry rice at 90 g → 300 cal). Carry every macro the user gave; only estimate macros they omitted (and say so in notes).
+- NEVER replace user-provided macros with generic, common, brand, or database values, even if you "know" a more typical value. The user's number wins.
+- Set that ingredient's "macroSource" to "provided" whenever you used the user's explicit macros for it. Set "macroSource" to "estimated" for every ingredient whose macros you estimated yourself.
+- Provided macros apply ONLY to the ingredient(s) they were given for; estimate the other ingredients normally and mark them "estimated".
+- Preserve brand details when the user provides them; use common nutrition estimates only for ingredients with NO user-provided macros and no brand data.
 - List your assumptions clearly in "assumptions".
 - Flag uncertainty in "warnings" for vague inputs (e.g. "some sauce", "a splash", "a handful", "furikake", "oil spray").
 - If the input is vague, still return a useful estimate but set "confidence" to "low" and warn the user to review carefully.
@@ -158,6 +165,7 @@ function validateEstimate(raw) {
     protein: num(i?.protein),
     carbs: num(i?.carbs),
     fat: num(i?.fat),
+    macroSource: i?.macroSource === 'provided' ? 'provided' : 'estimated',
     notes: str(i?.notes).trim(),
   }));
 
