@@ -44,7 +44,30 @@ export function nameScore(aiName, candName) {
   return uni ? inter / uni : 0;
 }
 
-const MATCH_THRESHOLD = 0.6;
+export const MATCH_THRESHOLD = 0.6;
+
+const r1m = x => Math.round(x * 10) / 10;
+
+/** Saved-library ingredients ranked by likely match to a name (best first), full list. */
+export function rankedLibrary(name, library) {
+  const list = Array.isArray(library) ? library : [];
+  return list
+    .map(ing => ({ ing, score: nameScore(name, ing.name) }))
+    .sort((a, b) => b.score - a.score || String(a.ing.name).localeCompare(String(b.ing.name)))
+    .map(x => x.ing);
+}
+
+/** How many saved ingredients strongly match a name (for the "multiple matches" hint). */
+export function strongMatchCount(name, library) {
+  return (Array.isArray(library) ? library : []).filter(ing => nameScore(name, ing.name) >= MATCH_THRESHOLD).length;
+}
+
+/** Macros for a chosen saved ingredient at an amount/unit, in the AI-row shape, or null. */
+export function macrosFromLibrary(libIng, quantity, unit) {
+  const m = libraryMacrosFor(libIng, quantity, unit);
+  if (!m) return null;
+  return { calories: r1m(m.calories), protein: r1m(m.protein_g), carbs: r1m(m.carbs_g), fat: r1m(m.fat_g) };
+}
 
 /** Best candidate by name score; ties go to the most-used (use_count) item. */
 function bestMatch(name, candidates, getName) {

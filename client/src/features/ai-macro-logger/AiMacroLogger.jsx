@@ -7,7 +7,7 @@ import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
 import { adjustPerServingMacrosForResolvedClient } from '@features/meal-logging/recipeLogMacros';
 import { matchRecipe, applyModifications, resolvedReviewRows, recipeIngredientNames } from './recipeCommand';
-import { enrichEstimate } from './ingredientSource';
+import { enrichEstimate, rankedLibrary, strongMatchCount, macrosFromLibrary } from './ingredientSource';
 
 const PLACEHOLDER =
   'Example: 155g cooked turkey, 250g sweet potato, 20 calories BBQ sauce…';
@@ -41,6 +41,8 @@ function normalizeEstimate(raw) {
     fat: n(i?.fat),
     notes: typeof i?.notes === 'string' ? i.notes : '',
     source: 'ai',
+    // Preserve the raw AI estimate so we can revert after a manual library swap.
+    aiMacros: { calories: n(i?.calories), protein: n(i?.protein), carbs: n(i?.carbs), fat: n(i?.fat) },
   }));
   return {
     mealName: typeof raw.mealName === 'string' && raw.mealName.trim() ? raw.mealName.trim() : 'Meal',
@@ -62,7 +64,9 @@ const SOURCE_META = {
   library: { label: 'Saved data', bg: '#ecfdf5', border: '#6ee7b7', color: '#065f46', kind: 'saved ingredient' },
   common: { label: 'Common data', bg: '#eff6ff', border: '#bfdbfe', color: '#1e40af', kind: 'common food' },
   ai: { label: 'AI estimate', bg: '#f3f4f6', border: '#e5e7eb', color: '#6b7280', kind: null },
+  manual: { label: 'Manual', bg: '#fef3c7', border: '#fcd34d', color: '#92400e', kind: null },
 };
+const rowSourceKey = ing => (ing.overridden ? 'manual' : (SOURCE_META[ing.source] ? ing.source : 'ai'));
 
 export default function AiMacroLogger() {
   const navigate = useNavigate();
@@ -278,11 +282,35 @@ export default function AiMacroLogger() {
     setPicker(null);
   }
 
+  // Switch (or clear) the saved ingredient a row is matched to, and recompute
+  // that row's macros from the selected ingredient at the logged amount.
+  function setRowIngredient(idx, labelId) {
+    setEstimate(prev => {
+      if (!prev) return prev;
+      const ingredients = prev.ingredients.map((ing, i) => {
+        if (i !== idx) return ing;
+        if (!labelId) {
+          // Back to the original AI estimate.
+          return { ...ing, ...ing.aiMacros, source: 'ai', label_ingredient_id: undefined, matchedName: undefined, overridden: false, incompatible: false, userPicked: true };
+        }
+        const lib = (libraryRef.current || []).find(x => Number(x.id) === Number(labelId));
+        if (!lib) return ing;
+        const m = macrosFromLibrary(lib, ing.quantity, ing.unit);
+        const base = { ...ing, source: 'library', label_ingredient_id: Number(lib.id), matchedName: lib.name, overridden: false, userPicked: true };
+        // Incompatible unit (e.g. a per-gram item chosen for a "1 tbsp" row): keep
+        // current numbers and flag it so the user can adjust manually.
+        if (!m) return { ...base, incompatible: true };
+        return { ...base, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, incompatible: false };
+      });
+      return { ...prev, ingredients };
+    });
+  }
+
   function updateMacro(idx, field, value) {
     setEstimate(prev => {
       if (!prev) return prev;
       const ingredients = prev.ingredients.map((ing, i) =>
-        i === idx ? { ...ing, [field]: value === '' ? 0 : Number(value) } : ing
+        i === idx ? { ...ing, [field]: value === '' ? 0 : Number(value), overridden: true } : ing
       );
       return { ...prev, ingredients };
     });
@@ -316,7 +344,7 @@ export default function AiMacroLogger() {
           protein_g: i.protein,
           carbs_g: i.carbs,
           fat_g: i.fat,
-          source: ['library', 'common', 'ai'].includes(i.source) ? i.source : 'ai',
+          source: i.overridden ? 'manual' : (['library', 'common', 'ai'].includes(i.source) ? i.source : 'ai'),
           ...(i.label_ingredient_id ? { label_ingredient_id: i.label_ingredient_id } : {}),
         }))
         .filter(i => i.name);
@@ -589,10 +617,10 @@ export default function AiMacroLogger() {
                     {STATE_LABELS[ing.state] ? ` · ${STATE_LABELS[ing.state]}` : ''}
                   </span>
                   {(() => {
-                    const meta = SOURCE_META[ing.source] || SOURCE_META.ai;
+                    const meta = SOURCE_META[rowSourceKey(ing)];
                     return (
                       <span
-                        title={meta.kind ? `From your ${meta.kind}${ing.matchedName ? `: ${ing.matchedName}` : ''}` : 'AI estimate — no saved or common match'}
+                        title={ing.overridden ? 'You edited these macros' : (meta.kind ? `From your ${meta.kind}${ing.matchedName ? `: ${ing.matchedName}` : ''}` : 'AI estimate — no saved or common match')}
                         style={{
                           marginLeft: 8, fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 999, whiteSpace: 'nowrap',
                           background: meta.bg, border: `1px solid ${meta.border}`, color: meta.color,
@@ -603,9 +631,30 @@ export default function AiMacroLogger() {
                     );
                   })()}
                 </div>
-                {ing.matchedName && SOURCE_META[ing.source]?.kind && (
-                  <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-text-faint)' }}>
-                    Matched to {SOURCE_META[ing.source].kind}: <strong style={{ color: 'var(--color-text-muted)' }}>{ing.matchedName}</strong>
+
+                {/* Matched saved ingredient — switch or choose from the library */}
+                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <label htmlFor={`ai-match-${idx}`} style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Matched:</label>
+                  <select
+                    id={`ai-match-${idx}`}
+                    value={ing.label_ingredient_id ?? ''}
+                    onChange={e => setRowIngredient(idx, e.target.value)}
+                    style={{ flex: '1 1 200px', minWidth: 0, fontSize: 13 }}
+                  >
+                    <option value="">— No saved ingredient (estimate) —</option>
+                    {rankedLibrary(ing.name, library).map(li => (
+                      <option key={li.id} value={li.id}>{li.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {ing.incompatible && (
+                  <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#92400e' }}>
+                    Couldn’t auto-scale that saved item to “{ing.unit || 'this unit'}” — adjust the macros below.
+                  </p>
+                )}
+                {!ing.userPicked && !ing.overridden && ing.source === 'library' && strongMatchCount(ing.name, library) >= 2 && (
+                  <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#92400e' }}>
+                    Multiple saved matches found — confirm which one you used.
                   </p>
                 )}
                 {ing.notes && (
