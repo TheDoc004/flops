@@ -3,11 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { estimateMacros } from '@shared/api/ai';
 import { createCustomLog, createLogEntry } from '@shared/api/log';
 import { createRecipe, fetchRecipes } from '@shared/api/recipes';
-import { fetchLabelIngredients } from '@shared/api/labelIngredients';
+import { fetchLabelIngredients, createLabelIngredient } from '@shared/api/labelIngredients';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
+import { SERVING_UNITS, servingToStored } from '@shared/utils/servingBasis';
 import { adjustPerServingMacrosForResolvedClient } from '@features/meal-logging/recipeLogMacros';
 import { matchRecipe, applyModifications, resolvedReviewRows, recipeIngredientNames } from './recipeCommand';
-import { enrichEstimate, rankedLibrary, strongMatchCount, macrosFromLibrary } from './ingredientSource';
+import {
+  enrichEstimate, strongMatchCount, basisFromLibrary, deriveBasis,
+  scaleBasisToAmount, likelyLibraryMatches, searchLibrary,
+} from './ingredientSource';
 
 const PLACEHOLDER =
   'Example: 155g cooked turkey, 250g sweet potato, 20 calories BBQ sauce…';
@@ -26,6 +30,20 @@ const n = v => {
 };
 
 const normName = s => String(s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+
+// Tidy number for display: drop trailing zeros (172, 3.2, 40.25).
+const fmt = v => {
+  const x = Number(v);
+  if (!Number.isFinite(x)) return '0';
+  return String(Math.round(x * 100) / 100);
+};
+
+/** Recompute a row's final macros from its basis + logged amount/unit. */
+function applyFinal(ing) {
+  const m = scaleBasisToAmount(ing.basis, ing.quantity, ing.unit);
+  if (!m) return { ...ing, incompatible: true };
+  return { ...ing, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, incompatible: false };
+}
 
 /** Defensive client-side normalization so a malformed response can't crash the UI. */
 function normalizeEstimate(raw) {
@@ -282,38 +300,62 @@ export default function AiMacroLogger() {
     setPicker(null);
   }
 
-  // Switch (or clear) the saved ingredient a row is matched to, and recompute
-  // that row's macros from the selected ingredient at the logged amount.
-  function setRowIngredient(idx, labelId) {
+  // One updater for every per-row change: maps the row at idx through `fn`.
+  function updateRow(idx, fn) {
     setEstimate(prev => {
       if (!prev) return prev;
-      const ingredients = prev.ingredients.map((ing, i) => {
-        if (i !== idx) return ing;
-        if (!labelId) {
-          // Back to the original AI estimate.
-          return { ...ing, ...ing.aiMacros, source: 'ai', label_ingredient_id: undefined, matchedName: undefined, overridden: false, incompatible: false, userPicked: true };
-        }
-        const lib = (libraryRef.current || []).find(x => Number(x.id) === Number(labelId));
-        if (!lib) return ing;
-        const m = macrosFromLibrary(lib, ing.quantity, ing.unit);
-        const base = { ...ing, source: 'library', label_ingredient_id: Number(lib.id), matchedName: lib.name, overridden: false, userPicked: true };
-        // Incompatible unit (e.g. a per-gram item chosen for a "1 tbsp" row): keep
-        // current numbers and flag it so the user can adjust manually.
-        if (!m) return { ...base, incompatible: true };
-        return { ...base, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, incompatible: false };
-      });
+      const ingredients = prev.ingredients.map((ing, i) => (i === idx ? fn(ing) : ing));
       return { ...prev, ingredients };
     });
   }
 
-  function updateMacro(idx, field, value) {
-    setEstimate(prev => {
-      if (!prev) return prev;
-      const ingredients = prev.ingredients.map((ing, i) =>
-        i === idx ? { ...ing, [field]: value === '' ? 0 : Number(value), overridden: true } : ing
-      );
-      return { ...prev, ingredients };
+  // Switch (or clear) the saved ingredient a row is matched to. Rebuilds the
+  // row's basis from the selected ingredient and recomputes final macros.
+  function setRowIngredient(idx, labelId) {
+    updateRow(idx, ing => {
+      if (!labelId) {
+        // Back to the original AI estimate.
+        const reverted = { ...ing, ...ing.aiMacros, source: 'ai', label_ingredient_id: undefined, matchedName: undefined, overridden: false, userPicked: true };
+        return applyFinal({ ...reverted, basis: deriveBasis(reverted, libraryRef.current) });
+      }
+      const lib = (libraryRef.current || []).find(x => Number(x.id) === Number(labelId));
+      if (!lib) return ing;
+      const basis = basisFromLibrary(lib);
+      return applyFinal({ ...ing, source: 'library', label_ingredient_id: Number(lib.id), matchedName: lib.name, overridden: false, userPicked: true, basis });
     });
+  }
+
+  // Edit the parsed display name (does not touch macros).
+  function updateName(idx, value) {
+    updateRow(idx, ing => ({ ...ing, name: value }));
+  }
+
+  // Edit the logged amount / unit — recompute final from the unchanged basis.
+  function updateAmount(idx, value) {
+    updateRow(idx, ing => applyFinal({ ...ing, quantity: value === '' ? 0 : Number(value) }));
+  }
+  function updateUnit(idx, value) {
+    updateRow(idx, ing => applyFinal({ ...ing, unit: value }));
+  }
+
+  // Edit the nutrition basis (amount or per-basis macro). Editing the basis is a
+  // manual override — recompute final from the new basis.
+  function updateBasisAmount(idx, value) {
+    updateRow(idx, ing => applyFinal({ ...ing, overridden: true, basis: { ...ing.basis, amount: value === '' ? 0 : Number(value) } }));
+  }
+  function updateBasisMacro(idx, field, value) {
+    updateRow(idx, ing => applyFinal({ ...ing, overridden: true, basis: { ...ing.basis, [field]: value === '' ? 0 : Number(value) } }));
+  }
+
+  // Per-row UI state (expand panel, library search) lives on the row itself.
+  function toggleRowPanel(idx) {
+    updateRow(idx, ing => ({ ...ing, expanded: !ing.expanded }));
+  }
+  function setRowSearch(idx, value) {
+    updateRow(idx, ing => ({ ...ing, matchSearch: value }));
+  }
+  function toggleSaveToLibrary(idx) {
+    updateRow(idx, ing => ({ ...ing, saveToLibrary: !ing.saveToLibrary }));
   }
 
   function clearAll() {
@@ -327,26 +369,68 @@ export default function AiMacroLogger() {
     setError('');
   }
 
+  // Create label-ingredient records for the rows the user checked "Save to
+  // library" on (and that aren't already a saved match). Best-effort: a failure
+  // on one row never blocks logging. Returns { [idx]: newLabelIngredientId }.
+  async function saveCheckedIngredientsToLibrary(rows) {
+    const out = {};
+    for (let idx = 0; idx < rows.length; idx++) {
+      const i = rows[idx];
+      if (!i || !i.saveToLibrary || i.label_ingredient_id || !i.basis || !String(i.name || '').trim()) continue;
+      try {
+        const b = i.basis;
+        const known = SERVING_UNITS.includes(b.unit);
+        const stored = servingToStored({
+          serving_amount: b.amount,
+          serving_unit: known ? b.unit : 'custom',
+          serving_unit_custom: known ? '' : b.unit,
+          gram_equivalent: '',
+        });
+        const created = await createLabelIngredient({
+          name: i.name.trim(),
+          serving_size_text: stored.serving_size_text,
+          calories: b.calories, protein_g: b.protein, carbs_g: b.carbs, fat_g: b.fat,
+          tracking_type: stored.tracking_type,
+          ...(stored.grams_per_serving != null ? { grams_per_serving: stored.grams_per_serving } : {}),
+          ...(stored.serving_quantity != null ? { serving_quantity: stored.serving_quantity } : {}),
+          ...(stored.unit_name != null ? { unit_name: stored.unit_name } : {}),
+          ...(stored.grams_per_unit != null ? { grams_per_unit: stored.grams_per_unit } : {}),
+        });
+        if (created && created.id != null) out[idx] = Number(created.id);
+      } catch { /* best-effort — skip this row, still log the meal */ }
+    }
+    return out;
+  }
+
   async function logOnce() {
     if (!estimate) return;
     setBusy('log');
     setError('');
     try {
+      // Optional: persist verified/edited estimates to the ingredient library
+      // (only the rows the user explicitly checked, and only ones not already
+      // backed by a saved ingredient — so we never create duplicates).
+      const saved = await saveCheckedIngredientsToLibrary(estimate.ingredients || []);
+
       // Send the reviewed ingredient rows (with per-ingredient macros) so the
       // server persists the breakdown AND estimates micros (name/amount/unit).
       // Library-matched rows carry source:'library' + label_ingredient_id.
       const ingredients = (estimate.ingredients || [])
-        .map(i => ({
-          name: i.name,
-          amount: i.quantity,
-          unit: i.unit,
-          calories: i.calories,
-          protein_g: i.protein,
-          carbs_g: i.carbs,
-          fat_g: i.fat,
-          source: i.overridden ? 'manual' : (['library', 'common', 'ai'].includes(i.source) ? i.source : 'ai'),
-          ...(i.label_ingredient_id ? { label_ingredient_id: i.label_ingredient_id } : {}),
-        }))
+        .map((i, idx) => {
+          const newId = saved[idx];
+          const labelId = i.label_ingredient_id || newId;
+          return {
+            name: i.name,
+            amount: i.quantity,
+            unit: i.unit,
+            calories: i.calories,
+            protein_g: i.protein,
+            carbs_g: i.carbs,
+            fat_g: i.fat,
+            source: newId ? 'library' : (i.overridden ? 'manual' : (['library', 'common', 'ai'].includes(i.source) ? i.source : 'ai')),
+            ...(labelId ? { label_ingredient_id: labelId } : {}),
+          };
+        })
         .filter(i => i.name);
       await createCustomLog({
         date: getLocalDateISO(),
@@ -608,79 +692,165 @@ export default function AiMacroLogger() {
             {estimate.ingredients.length === 0 && (
               <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>No ingredients were identified.</p>
             )}
-            {estimate.ingredients.map((ing, idx) => (
-              <div key={idx} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, background: '#fff' }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-strong)' }}>
-                  {ing.name}
-                  <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 8, fontSize: 13 }}>
-                    {ing.quantity ? `${ing.quantity} ${ing.unit}`.trim() : ing.unit}
-                    {STATE_LABELS[ing.state] ? ` · ${STATE_LABELS[ing.state]}` : ''}
-                  </span>
-                  {(() => {
-                    const meta = SOURCE_META[rowSourceKey(ing)];
-                    return (
-                      <span
-                        title={ing.overridden ? 'You edited these macros' : (meta.kind ? `From your ${meta.kind}${ing.matchedName ? `: ${ing.matchedName}` : ''}` : 'AI estimate — no saved or common match')}
-                        style={{
-                          marginLeft: 8, fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 999, whiteSpace: 'nowrap',
-                          background: meta.bg, border: `1px solid ${meta.border}`, color: meta.color,
-                        }}
-                      >
-                        {meta.label}
-                      </span>
-                    );
-                  })()}
-                </div>
+            {estimate.ingredients.map((ing, idx) => {
+              const meta = SOURCE_META[rowSourceKey(ing)];
+              const savedName = ing.label_ingredient_id != null
+                ? (labelById.get(Number(ing.label_ingredient_id))?.name || ing.matchedName)
+                : null;
+              const sourceText = ing.overridden
+                ? 'Manually adjusted'
+                : ing.source === 'library'
+                  ? `Using saved ingredient: ${savedName || ing.matchedName || 'saved item'}`
+                  : ing.source === 'common'
+                    ? `Using common food${ing.matchedName ? `: ${ing.matchedName}` : `: ${ing.name}`}`
+                    : `Using AI estimate: ${ing.name}`;
+              const basis = ing.basis || deriveBasis(ing, library);
+              const basisLabel = basis.perKind === '100g'
+                ? 'per 100 g'
+                : basis.perKind === 'serving'
+                  ? `per serving (${fmt(basis.amount)} ${basis.unit})`
+                  : `per ${basis.amount === 1 ? '' : `${fmt(basis.amount)} `}${basis.unit}`;
+              // Dropdown options: likely matches (limited) or full-library search.
+              const q = String(ing.matchSearch || '').trim();
+              let options = q ? searchLibrary(q, library) : likelyLibraryMatches(ing.name, library);
+              if (ing.label_ingredient_id != null && !options.some(o => Number(o.id) === Number(ing.label_ingredient_id))) {
+                const cur = labelById.get(Number(ing.label_ingredient_id));
+                if (cur) options = [cur, ...options];
+              }
+              const ambiguous = !ing.userPicked && !ing.overridden && ing.source === 'library' && strongMatchCount(ing.name, library) >= 2;
+              return (
+                <div key={idx} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, background: '#fff' }}>
+                  {/* --- Collapsed summary (always visible) --- */}
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-strong)' }}>
+                    {ing.name}
+                    <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 8, fontSize: 13 }}>
+                      {ing.quantity ? `${fmt(ing.quantity)} ${ing.unit}`.trim() : ing.unit}
+                      {STATE_LABELS[ing.state] ? ` · ${STATE_LABELS[ing.state]}` : ''}
+                    </span>
+                    <span
+                      title={ing.overridden ? 'You edited these macros' : (meta.kind ? `From your ${meta.kind}${ing.matchedName ? `: ${ing.matchedName}` : ''}` : 'AI estimate — no saved or common match')}
+                      style={{
+                        marginLeft: 8, fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 999, whiteSpace: 'nowrap',
+                        background: meta.bg, border: `1px solid ${meta.border}`, color: meta.color,
+                      }}
+                    >
+                      {meta.label}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 3, fontSize: 12, color: 'var(--color-text-muted)' }}>{sourceText}</div>
+                  <div style={{ marginTop: 4, fontSize: 13.5, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
+                    <strong>{fmt(ing.calories)} cal</strong> · P {fmt(ing.protein)}g · C {fmt(ing.carbs)}g · F {fmt(ing.fat)}g
+                  </div>
+                  {ambiguous && (
+                    <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#92400e' }}>
+                      Multiple saved matches found — confirm which one you used.
+                    </p>
+                  )}
+                  {ing.notes && (
+                    <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-text-faint)' }}>{ing.notes}</p>
+                  )}
 
-                {/* Matched saved ingredient — switch or choose from the library */}
-                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <label htmlFor={`ai-match-${idx}`} style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Matched:</label>
-                  <select
-                    id={`ai-match-${idx}`}
-                    value={ing.label_ingredient_id ?? ''}
-                    onChange={e => setRowIngredient(idx, e.target.value)}
-                    style={{ flex: '1 1 200px', minWidth: 0, fontSize: 13 }}
+                  <button
+                    type="button"
+                    onClick={() => toggleRowPanel(idx)}
+                    aria-expanded={!!ing.expanded}
+                    style={{ marginTop: 8, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12.5, color: '#2563eb', fontWeight: 600 }}
                   >
-                    <option value="">— No saved ingredient (estimate) —</option>
-                    {rankedLibrary(ing.name, library).map(li => (
-                      <option key={li.id} value={li.id}>{li.name}</option>
-                    ))}
-                  </select>
-                </div>
-                {ing.incompatible && (
-                  <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#92400e' }}>
-                    Couldn’t auto-scale that saved item to “{ing.unit || 'this unit'}” — adjust the macros below.
-                  </p>
-                )}
-                {!ing.userPicked && !ing.overridden && ing.source === 'library' && strongMatchCount(ing.name, library) >= 2 && (
-                  <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#92400e' }}>
-                    Multiple saved matches found — confirm which one you used.
-                  </p>
-                )}
-                {ing.notes && (
-                  <p style={{ margin: '4px 0 8px', fontSize: 12, color: 'var(--color-text-faint)' }}>{ing.notes}</p>
-                )}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))', gap: 8, marginTop: 8 }}>
-                  {[
-                    ['calories', 'Cal'],
-                    ['protein', 'P (g)'],
-                    ['carbs', 'C (g)'],
-                    ['fat', 'F (g)'],
-                  ].map(([field, label]) => (
-                    <div key={field}>
-                      <label style={{ fontSize: 11 }}>{label}</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={ing[field]}
-                        onChange={e => updateMacro(idx, field, e.target.value)}
-                      />
+                    {ing.expanded ? 'Hide nutrition basis ▾' : 'Review nutrition basis ▸'}
+                  </button>
+
+                  {/* --- Expanded basis editor --- */}
+                  {ing.expanded && (
+                    <div style={{ marginTop: 10, paddingTop: 12, borderTop: '1px solid #f3f4f6', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {/* Name + amount + unit */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
+                        <div>
+                          <label style={{ fontSize: 11 }}>Ingredient name</label>
+                          <input value={ing.name} onChange={e => updateName(idx, e.target.value)} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <div>
+                            <label style={{ fontSize: 11 }}>Amount used</label>
+                            <input type="number" min="0" step="0.1" value={ing.quantity} onChange={e => updateAmount(idx, e.target.value)} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 11 }}>Unit</label>
+                            <input value={ing.unit} onChange={e => updateUnit(idx, e.target.value)} placeholder="g" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Matched saved ingredient — likely matches first, search for the rest */}
+                      <div>
+                        <label htmlFor={`ai-match-${idx}`} style={{ fontSize: 11 }}>Saved ingredient</label>
+                        <input
+                          value={ing.matchSearch || ''}
+                          onChange={e => setRowSearch(idx, e.target.value)}
+                          placeholder="Search your ingredient library…"
+                          style={{ marginBottom: 6 }}
+                        />
+                        <select
+                          id={`ai-match-${idx}`}
+                          value={ing.label_ingredient_id ?? ''}
+                          onChange={e => setRowIngredient(idx, e.target.value)}
+                          style={{ width: '100%', fontSize: 13 }}
+                        >
+                          <option value="">— No saved ingredient (estimate) —</option>
+                          {options.map(li => (
+                            <option key={li.id} value={li.id}>{li.name}</option>
+                          ))}
+                        </select>
+                        {!q && options.length === 0 && (
+                          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-text-muted)' }}>
+                            No likely matches — search above to browse your full library.
+                          </p>
+                        )}
+                        {ing.incompatible && (
+                          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#92400e' }}>
+                            Couldn’t auto-scale that saved item to “{ing.unit || 'this unit'}” — adjust the basis below.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Nutrition basis */}
+                      <div style={{ background: '#f9fafb', border: '1px solid #eef0f3', borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                          Nutrition basis <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}>· {basisLabel}</span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(64px, 1fr))', gap: 8 }}>
+                          <div>
+                            <label style={{ fontSize: 11 }}>Basis amt</label>
+                            <input type="number" min="0" step="0.1" value={basis.amount} onChange={e => updateBasisAmount(idx, e.target.value)} />
+                          </div>
+                          {[
+                            ['calories', 'Cal'],
+                            ['protein', 'P (g)'],
+                            ['carbs', 'C (g)'],
+                            ['fat', 'F (g)'],
+                          ].map(([field, label]) => (
+                            <div key={field}>
+                              <label style={{ fontSize: 11 }}>{label}</label>
+                              <input type="number" min="0" step="0.1" value={basis[field]} onChange={e => updateBasisMacro(idx, field, e.target.value)} />
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: 8, fontSize: 12.5, color: '#0f172a' }}>
+                          Calculated for {fmt(ing.quantity)} {ing.unit}: <strong>{fmt(ing.calories)} cal</strong> · P {fmt(ing.protein)}g · C {fmt(ing.carbs)}g · F {fmt(ing.fat)}g
+                        </div>
+                      </div>
+
+                      {/* Save to library — only when not already backed by a saved ingredient */}
+                      {ing.label_ingredient_id == null && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--color-text-body)', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={!!ing.saveToLibrary} onChange={() => toggleSaveToLibrary(idx)} style={{ width: 16, height: 16 }} />
+                          Save to ingredient library when I log this
+                        </label>
+                      )}
                     </div>
-                  ))}
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Totals */}

@@ -1,4 +1,4 @@
-import { macrosForLabelServingAmount } from '@features/label-ocr';
+import { macrosForLabelServingAmount, gramsFromAmount } from '@features/label-ocr';
 import { QUICK_FOODS, macrosForQuickFoodAmount } from '@features/meal-logging/quickFoods';
 
 /**
@@ -67,6 +67,92 @@ export function macrosFromLibrary(libIng, quantity, unit) {
   const m = libraryMacrosFor(libIng, quantity, unit);
   if (!m) return null;
   return { calories: r1m(m.calories), protein: r1m(m.protein_g), carbs: r1m(m.carbs_g), fat: r1m(m.fat_g) };
+}
+
+const nn = v => { const x = Number(v); return Number.isFinite(x) && x >= 0 ? x : 0; };
+
+/**
+ * Likely saved matches for a parsed name — best first, limited (default 8). Only
+ * returns scored (>0) candidates so the dropdown isn't the whole library.
+ */
+export function likelyLibraryMatches(name, library, limit = 8) {
+  return rankedLibrary(name, library)
+    .filter(ing => nameScore(name, ing.name) > 0)
+    .slice(0, limit);
+}
+
+/** Substring search across the full library (for the "search the full library" field). */
+export function searchLibrary(query, library) {
+  const q = String(query || '').toLowerCase().trim();
+  const list = Array.isArray(library) ? library : [];
+  if (!q) return [];
+  return list
+    .filter(ing => String(ing.name || '').toLowerCase().includes(q))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+/**
+ * The per-serving "nutrition basis" of a saved ingredient, in the editable shape
+ * { amount, unit, calories, protein, carbs, fat, perKind }. Mirrors how the saved
+ * row stores macros (per grams_per_serving for weight, per serving_quantity for unit).
+ */
+export function basisFromLibrary(lib) {
+  if (!lib) return null;
+  if (lib.tracking_type === 'unit') {
+    const amount = Number(lib.serving_quantity) > 0 ? Number(lib.serving_quantity) : 1;
+    return {
+      amount, unit: String(lib.unit_name || 'serving'),
+      calories: nn(lib.calories), protein: nn(lib.protein_g), carbs: nn(lib.carbs_g), fat: nn(lib.fat_g),
+      perKind: 'serving',
+    };
+  }
+  const grams = Number(lib.grams_per_serving) > 0 ? Number(lib.grams_per_serving) : 100;
+  return {
+    amount: grams, unit: 'g',
+    calories: nn(lib.calories), protein: nn(lib.protein_g), carbs: nn(lib.carbs_g), fat: nn(lib.fat_g),
+    perKind: 'serving',
+  };
+}
+
+/**
+ * Scale a basis { amount, unit, cal, p, c, f } to a logged amount/unit. Returns
+ * the AI-row macro shape, or null if the basis unit and logged unit are
+ * incompatible (weight ↔ count) — same guard used for saved ingredients.
+ */
+export function scaleBasisToAmount(basis, quantity, unit) {
+  if (!basis) return null;
+  const weightBasis = isMassUnit(basis.unit);
+  const massLogged = isMassUnit(unit);
+  if (weightBasis !== massLogged) return null;
+  const pseudo = weightBasis
+    ? { tracking_type: 'weight', grams_per_serving: gramsFromAmount(basis.amount, basis.unit), calories: basis.calories, protein_g: basis.protein, carbs_g: basis.carbs, fat_g: basis.fat }
+    : { tracking_type: 'unit', serving_quantity: basis.amount, calories: basis.calories, protein_g: basis.protein, carbs_g: basis.carbs, fat_g: basis.fat };
+  const m = macrosForLabelServingAmount(pseudo, quantity, massLogged ? unit : 'unit');
+  if (!m || !Number.isFinite(m.calories)) return null;
+  return { calories: r1m(m.calories), protein: r1m(m.protein_g), carbs: r1m(m.carbs_g), fat: r1m(m.fat_g) };
+}
+
+/**
+ * The basis to show/edit for a resolved row (after its final macros are set).
+ *  - library match  → the saved ingredient's per-serving basis
+ *  - weight AI/common → per 100 g (back-derived from the final macros)
+ *  - everything else  → per 1 unit (back-derived from the final macros)
+ */
+export function deriveBasis(row, library) {
+  if (row.source === 'library' && row.label_ingredient_id != null) {
+    const lib = (Array.isArray(library) ? library : []).find(x => Number(x.id) === Number(row.label_ingredient_id));
+    const b = basisFromLibrary(lib);
+    if (b) return b;
+  }
+  if (isMassUnit(row.unit)) {
+    const grams = gramsFromAmount(row.quantity, row.unit);
+    if (grams && grams > 0) {
+      const f = 100 / grams;
+      return { amount: 100, unit: 'g', calories: r1m(nn(row.calories) * f), protein: r1m(nn(row.protein) * f), carbs: r1m(nn(row.carbs) * f), fat: r1m(nn(row.fat) * f), perKind: '100g' };
+    }
+  }
+  const q = Number(row.quantity) > 0 ? Number(row.quantity) : 1;
+  return { amount: 1, unit: row.unit || 'serving', calories: r1m(nn(row.calories) / q), protein: r1m(nn(row.protein) / q), carbs: r1m(nn(row.carbs) / q), fat: r1m(nn(row.fat) / q), perKind: 'unit' };
 }
 
 /** Best candidate by name score; ties go to the most-used (use_count) item. */
@@ -141,11 +227,12 @@ export function enrichEstimate(est, library, quickFoods = QUICK_FOODS) {
   if (!est) return est;
   const ingredients = est.ingredients.map(ing => {
     const r = resolveIngredientSource(ing, library, quickFoods);
-    return {
+    const row = {
       ...ing,
       calories: r.calories, protein: r.protein, carbs: r.carbs, fat: r.fat,
       source: r.source, label_ingredient_id: r.label_ingredient_id, matchedName: r.matchedName,
     };
+    return { ...row, basis: deriveBasis(row, library) };
   });
   return { ...est, ingredients };
 }
