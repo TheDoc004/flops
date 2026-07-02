@@ -342,13 +342,34 @@ export default function AiMacroLogger() {
     updateRow(idx, ing => applyFinal({ ...ing, unit: value }));
   }
 
+  // A library match is only ever a suggestion. The moment the user edits the
+  // macros or picks "Manual entry", the row is detached from the saved
+  // ingredient (its id/name are dropped) so no stale library link survives.
+  function toManual(ing) {
+    return { ...ing, source: 'manual', overridden: true, label_ingredient_id: undefined, matchedName: undefined, incompatible: false, userPicked: true };
+  }
+
   // Edit the nutrition basis (amount or per-basis macro). Editing the basis is a
-  // manual override — recompute final from the new basis.
+  // manual override — detach from any library match and recompute final.
   function updateBasisAmount(idx, value) {
-    updateRow(idx, ing => applyFinal({ ...ing, overridden: true, basis: { ...ing.basis, amount: value === '' ? 0 : Number(value) } }));
+    updateRow(idx, ing => applyFinal(toManual({ ...ing, basis: { ...ing.basis, amount: value === '' ? 0 : Number(value) } })));
   }
   function updateBasisMacro(idx, field, value) {
-    updateRow(idx, ing => applyFinal({ ...ing, overridden: true, basis: { ...ing.basis, [field]: value === '' ? 0 : Number(value) } }));
+    updateRow(idx, ing => applyFinal(toManual({ ...ing, basis: { ...ing.basis, [field]: value === '' ? 0 : Number(value) } })));
+  }
+
+  // Always-available source switch: estimate baseline, manual entry, a specific
+  // saved ingredient, or "search the full library". Every option is reversible.
+  function setRowSource(idx, value) {
+    if (value === '__search__') { updateRow(idx, ing => ({ ...ing, expanded: true })); return; }
+    if (value === 'manual') {
+      // Keep the current numbers as the starting point the user will edit; drop
+      // the library link so the source is genuinely "manual".
+      updateRow(idx, ing => applyFinal(toManual({ ...ing })));
+      return;
+    }
+    if (value === 'estimate') { setRowIngredient(idx, ''); return; } // back to AI/provided baseline
+    setRowIngredient(idx, value); // a saved-ingredient id
   }
 
   // Per-row UI state (expand panel, library search) lives on the row itself.
@@ -421,8 +442,22 @@ export default function AiMacroLogger() {
       // Library-matched rows carry source:'library' + label_ingredient_id.
       const ingredients = (estimate.ingredients || [])
         .map((i, idx) => {
+          // Resolve the FINAL source once, and only attach a library id when the
+          // source is genuinely 'library' — never a stale id from a match the
+          // user has since edited or switched away from.
           const newId = saved[idx];
-          const labelId = i.label_ingredient_id || newId;
+          let source, labelId;
+          if (newId) {
+            source = 'library'; labelId = newId;          // just saved to the library
+          } else if (i.overridden || i.source === 'manual') {
+            source = 'manual'; labelId = undefined;         // user edited the macros
+          } else if (i.source === 'library' && i.label_ingredient_id) {
+            source = 'library'; labelId = i.label_ingredient_id;
+          } else if (['provided', 'common', 'ai'].includes(i.source)) {
+            source = i.source; labelId = undefined;
+          } else {
+            source = 'ai'; labelId = undefined;
+          }
           return {
             name: i.name,
             amount: i.quantity,
@@ -431,7 +466,7 @@ export default function AiMacroLogger() {
             protein_g: i.protein,
             carbs_g: i.carbs,
             fat_g: i.fat,
-            source: newId ? 'library' : (i.overridden ? 'manual' : (['provided', 'library', 'common', 'ai'].includes(i.source) ? i.source : 'ai')),
+            source,
             ...(labelId ? { label_ingredient_id: labelId } : {}),
           };
         })
@@ -724,6 +759,17 @@ export default function AiMacroLogger() {
                 if (cur) options = [cur, ...options];
               }
               const ambiguous = !ing.userPicked && !ing.overridden && ing.source === 'library' && strongMatchCount(ing.name, library) >= 2;
+              // Always-visible source switch: baseline estimate / manual / a few
+              // likely saved matches (+ the current one) / open full-library search.
+              let srcLibOpts = likelyLibraryMatches(ing.name, library).slice(0, 6);
+              if (ing.label_ingredient_id != null && !srcLibOpts.some(o => Number(o.id) === Number(ing.label_ingredient_id))) {
+                const cur = labelById.get(Number(ing.label_ingredient_id));
+                if (cur) srcLibOpts = [cur, ...srcLibOpts];
+              }
+              const estimateLabel = ing.macroSource === 'provided' ? 'Provided in message' : 'AI estimate';
+              const srcValue = ing.source === 'library' && ing.label_ingredient_id != null
+                ? String(ing.label_ingredient_id)
+                : (ing.overridden || ing.source === 'manual') ? 'manual' : 'estimate';
               return (
                 <div key={idx} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, background: '#fff' }}>
                   {/* --- Collapsed summary (always visible) --- */}
@@ -747,6 +793,29 @@ export default function AiMacroLogger() {
                   <div style={{ marginTop: 4, fontSize: 13.5, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
                     <strong>{fmt(ing.calories)} cal</strong> · P {fmt(ing.protein)}g · C {fmt(ing.carbs)}g · F {fmt(ing.fat)}g
                   </div>
+
+                  {/* Always-visible macro-source switch — a match is only a suggestion */}
+                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <label htmlFor={`ai-source-${idx}`} style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Source:</label>
+                    <select
+                      id={`ai-source-${idx}`}
+                      value={srcValue}
+                      onChange={e => setRowSource(idx, e.target.value)}
+                      style={{ flex: '1 1 220px', minWidth: 0, fontSize: 13 }}
+                    >
+                      <option value="estimate">{estimateLabel}</option>
+                      <option value="manual">Manual entry</option>
+                      {srcLibOpts.length > 0 && (
+                        <optgroup label="Ingredient library">
+                          {srcLibOpts.map(li => (
+                            <option key={li.id} value={String(li.id)}>{li.name}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <option value="__search__">Search full library…</option>
+                    </select>
+                  </div>
+
                   {ambiguous && (
                     <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#92400e' }}>
                       Multiple saved matches found — confirm which one you used.
