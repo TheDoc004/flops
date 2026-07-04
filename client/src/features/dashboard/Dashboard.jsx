@@ -4,8 +4,6 @@ import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
 import MacroTotals from '@shared/ui/MacroTotals';
 import Reveal from '@shared/ui/Reveal';
-import DailyTrainingContextBanner from './DailyTrainingContextBanner';
-import TrainingFuelCard from './TrainingFuelCard';
 import { fetchLogRange, createLogEntry, createQuickFoodLog, createCustomLog, deleteLogEntry } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
@@ -17,19 +15,6 @@ import DashboardAdherenceSection from './DashboardAdherenceSection';
 import DashboardWeightRow from './DashboardWeightRow';
 import DashboardWeightTrend from './DashboardWeightTrend';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
-import { fetchDailyTrainingContext, saveDailyTrainingContext, fetchSavedFuelRecipes } from '@shared/api/training';
-
-function macrosFromLogEntry(entry) {
-  const s = Number(entry.servings) || 1;
-  const f = entry.recipe_fiber_g != null ? Number(entry.recipe_fiber_g) : 0;
-  return {
-    calories: Number(entry.recipe_calories) * s,
-    protein_g: Number(entry.recipe_protein_g) * s,
-    carbs_g: Number(entry.recipe_carbs_g) * s,
-    fat_g: Number(entry.recipe_fat_g) * s,
-    fiber_g: f * s,
-  };
-}
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -51,22 +36,15 @@ export default function Dashboard() {
   const [today, setToday] = useState(() => getLocalDateISO());
   const [entries, setEntries] = useState([]);
   const [weekLogEntries, setWeekLogEntries] = useState([]);
-  const [profileWeightKg, setProfileWeightKg] = useState(null);
   const [goalsPayload, setGoalsPayload] = useState(null);
   const [targets, setTargets] = useState({ calories: null, protein_g: null, carbs_g: null, fat_g: null });
   const [goalsLabel, setGoalsLabel] = useState('');
   const [goalsLoaded, setGoalsLoaded] = useState(false);
   const [goalsError, setGoalsError] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [logInitialEntry, setLogInitialEntry] = useState(null);
   const [error, setError] = useState('');
   const [dashWeightPrefs, setDashWeightPrefs] = useState({ enabled: true, days: 30 });
   const [weightTrendRefresh, setWeightTrendRefresh] = useState(0);
-  const [trainingPrefs, setTrainingPrefs] = useState({ enabled: true, digestion_pref: 'none', training_goal: 'performance' });
-  const [dailyContext, setDailyContext] = useState('rest');
-  const [contextLoading, setContextLoading] = useState(true);
-  const [savedFuelOptions, setSavedFuelOptions] = useState([]);
-  const [fuelMealSnapshot, setFuelMealSnapshot] = useState(null);
 
   const greeting = useMemo(() => getGreeting(), []);
 
@@ -101,25 +79,18 @@ export default function Dashboard() {
     };
   }, []);
 
-  useEffect(() => {
-    setFuelMealSnapshot(null);
-  }, [today]);
-
   const load = useCallback(async () => {
     setGoalsError('');
     setError('');
     const weekStart = addDaysLocal(today, -6);
-    const [logResult, goalsResult, profileResult, dailyCtxResult, savedFuelResult] = await Promise.allSettled([
+    const [logResult, goalsResult, profileResult] = await Promise.allSettled([
       fetchLogRange(weekStart, today),
         fetchGoals({ date: today }),
       fetchProfile(),
-      fetchDailyTrainingContext(today),
-      fetchSavedFuelRecipes(),
     ]);
 
     if (profileResult.status === 'fulfilled') {
       const p = profileResult.value;
-      setProfileWeightKg(p.weight_kg == null ? null : Number(p.weight_kg));
       const en = p.dash_weight_chart_enabled;
       const enabled = en !== 0 && en !== false && en !== '0';
       const d = Number(p.dash_weight_days);
@@ -127,20 +98,6 @@ export default function Dashboard() {
         enabled,
         days: [14, 30, 90].includes(d) ? d : 30,
       });
-
-      setTrainingPrefs({
-        enabled: p.dash_training_fuel_enabled !== 0 && p.dash_training_fuel_enabled !== false,
-        digestion_pref: p.digestion_pref || 'none',
-        training_goal: p.training_goal || 'performance',
-      });
-    }
-
-    if (dailyCtxResult.status === 'fulfilled') {
-      setDailyContext(dailyCtxResult.value?.context_type || 'rest');
-      setContextLoading(false);
-    } else {
-      setDailyContext('rest');
-      setContextLoading(false);
     }
 
     if (logResult.status === 'fulfilled') {
@@ -151,12 +108,6 @@ export default function Dashboard() {
       setError(logResult.reason?.message || "Failed to load today's log");
       setWeekLogEntries([]);
       setEntries([]);
-    }
-
-    if (savedFuelResult.status === 'fulfilled') {
-      setSavedFuelOptions(savedFuelResult.value || []);
-    } else {
-      setSavedFuelOptions([]);
     }
 
     if (goalsResult.status === 'fulfilled') {
@@ -190,32 +141,14 @@ export default function Dashboard() {
     void load();
   }, [load]);
 
-  async function handleDailyContextChange(next) {
-    setDailyContext(next);
-    try {
-      await saveDailyTrainingContext({ date: today, context_type: next });
-    } catch (e) {
-      setError(e.message);
-    }
-  }
-
-  function applyFuelSnapshotFromEntry(entry) {
-    setFuelMealSnapshot({
-      mealLabel: entry.recipe_name || 'Meal',
-      macros: macrosFromLogEntry(entry),
-    });
-  }
-
   async function handleLog(data) {
-    let entry;
     if (data?.quick_food) {
-      entry = await createQuickFoodLog({ date: today, ...data.quick_food, notes: data.notes, time_min: data.time_min });
+      await createQuickFoodLog({ date: today, ...data.quick_food, notes: data.notes, time_min: data.time_min });
     } else if (data?.log_custom) {
-      entry = await createCustomLog({ date: today, ...data.log_custom, notes: data.notes, time_min: data.time_min });
+      await createCustomLog({ date: today, ...data.log_custom, notes: data.notes, time_min: data.time_min });
     } else {
-      entry = await createLogEntry({ ...data, date: today });
+      await createLogEntry({ ...data, date: today });
     }
-    applyFuelSnapshotFromEntry(entry);
     await load();
   }
 
@@ -353,53 +286,10 @@ export default function Dashboard() {
         }
       </Reveal>
 
-      {/* ── Training context ── */}
-      {trainingPrefs.enabled && (
-        <Reveal>
-          <DailyTrainingContextBanner
-            contextType={dailyContext}
-            disabled={contextLoading}
-            onChange={handleDailyContextChange}
-          />
-        </Reveal>
-      )}
-
-      {/* Training Fuel Timing Assistant — smarter, ingredient-aware successor to
-          the old fuel-readiness card. Shows whenever there's a meal logged today. */}
-      {trainingPrefs.enabled && entries.length > 0 && (
-        <Reveal>
-          <TrainingFuelCard entries={entries} />
-        </Reveal>
-      )}
-
-      {trainingPrefs.enabled && savedFuelOptions.length > 0 && (
-        <Reveal className="card" style={{ marginBottom: 24 }}>
-          <p style={{ margin: '0 0 10px', fontSize: 'clamp(13px, 1vw, 14.5px)', color: 'var(--color-text-muted)' }}>Quick log — saved fuel</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {savedFuelOptions.slice(0, 6).map(o => (
-              <button
-                key={o.recipe_id}
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  setLogInitialEntry({ recipe_id: o.recipe_id, servings: 1 });
-                  setShowModal(true);
-                }}
-              >
-                {o.label || o.name}
-              </button>
-            ))}
-            <Link to="/training" style={{ alignSelf: 'center', fontSize: 13, color: 'var(--color-text-faint)' }}>
-              Edit →
-            </Link>
-          </div>
-        </Reveal>
-      )}
-
       {/* ── Trends ── */}
       {dashWeightPrefs.enabled ? (
         <>
-          <Reveal style={{ marginTop: trainingPrefs.enabled ? 20 : 16 }}>
+          <Reveal style={{ marginTop: 16 }}>
             <h2 style={{
               margin: '0 0 14px', fontSize: 'clamp(28px, 2.6vw, 34px)', fontWeight: 400, color: 'var(--color-primary-ink)',
               fontFamily: "'DM Serif Display', Georgia, serif",
@@ -448,12 +338,8 @@ export default function Dashboard() {
 
       {showModal && (
         <LogMealModal
-          initialEntry={logInitialEntry || undefined}
           onLog={handleLog}
-          onClose={() => {
-            setShowModal(false);
-            setLogInitialEntry(null);
-          }}
+          onClose={() => setShowModal(false)}
         />
       )}
     </div>

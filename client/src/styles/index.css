@@ -1163,15 +1163,6 @@ dialog[open]::backdrop {
   .form-grid-2 { grid-template-columns: 1fr; }
 }
 
-/* ── Dashboard "Today's training" select: inline desktop, full-width mobile ── */
-.context-select {
-  min-width: 180px;
-  width: auto;
-}
-@media (max-width: 520px) {
-  .context-select { min-width: 0; width: 100%; }
-}
-
 /* ── Settings grid: 2-col on desktop, 1-col on mobile ── */
 .settings-grid {
   display: grid;
