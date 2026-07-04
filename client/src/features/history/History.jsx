@@ -44,13 +44,15 @@ export default function History() {
   const { macroUnits } = useMacroUnits();
   const location = useLocation();
 
-  // The dashboard's adherence card links to /history#goal-adherence — scroll
-  // the explorer into view once the page has painted.
+  // The dashboard's adherence card links to /history#goal-adherence. Content
+  // above the target streams in after mount (calendar/report data), so a
+  // single scroll lands short — nudge it a few times until layout settles.
   useEffect(() => {
-    if (location.hash !== '#goal-adherence') return;
-    requestAnimationFrame(() => {
+    if (location.hash !== '#goal-adherence') return undefined;
+    const scroll = () =>
       document.getElementById('goal-adherence')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    const timers = [0, 300, 800].map(ms => setTimeout(scroll, ms));
+    return () => timers.forEach(clearTimeout);
   }, [location.hash]);
 
   // ── Selection + report state ──
@@ -250,6 +252,11 @@ export default function History() {
             <button type="button" className="btn-secondary" onClick={clearSelection}>Clear</button>
           </div>
         </div>
+
+        {/* ── Goal adherence — same card as the calendar above, one tool ── */}
+        <div id="goal-adherence" style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--color-divider-warm)', scrollMarginTop: 90 }}>
+          <AdherenceExplorer noCard />
+        </div>
       </Reveal>
 
       {/* ── Report ── */}
@@ -259,12 +266,6 @@ export default function History() {
         </div>
       </Reveal>
 
-      {/* ── Goal adherence explorer (the tool's single home) ── */}
-      <Reveal>
-        <div id="goal-adherence" style={{ scrollMarginTop: 120, marginBottom: 20 }}>
-          <AdherenceExplorer />
-        </div>
-      </Reveal>
 
       {/* ── Logged Day Explorer (edit/add/delete) ── */}
       <Reveal>

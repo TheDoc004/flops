@@ -39,11 +39,12 @@ function daysBetweenInclusive(startIso, endIso) {
 }
 
 /**
- * Goal adherence explorer card — the single home of the adherence tool,
- * embedded on the History page. Every strip range including Custom, plus the
- * "what the dashboard card shows" setting (also mirrored in Profile).
+ * Goal adherence explorer — the single home of the adherence tool, embedded
+ * on the History page directly beneath the adherence calendar (same card, via
+ * `noCard`). Every strip range including Custom, plus the "what the dashboard
+ * card shows" setting (also mirrored in Profile).
  */
-export default function AdherenceExplorer() {
+export default function AdherenceExplorer({ noCard = false }) {
   const { macroUnits } = useMacroUnits();
   const today = useMemo(() => getLocalDateISO(), []);
 
@@ -156,8 +157,8 @@ export default function AdherenceExplorer() {
   const hits = displayRows.filter(r => r.status === 'hit').length;
   const withTargets = displayRows.filter(r => r.status !== 'no_target').length;
 
-  return (
-    <div className="card">
+  const inner = (
+    <>
       <div style={{
         display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
         marginBottom: 14, gap: 8, flexWrap: 'wrap',
@@ -323,6 +324,9 @@ export default function AdherenceExplorer() {
           onClose={() => setDetailRow(null)}
         />
       )}
-    </div>
+    </>
   );
+
+  if (noCard) return inner;
+  return <div className="card">{inner}</div>;
 }
