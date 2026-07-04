@@ -6,6 +6,7 @@ import { sumMacros } from '@shared/utils/macros';
 import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
+import Reveal from '@shared/ui/Reveal';
 import { AdherenceCalendarMonth } from '@features/adherence';
 import { sumDayMicros } from '@shared/utils/microNutrients';
 import NutritionReport from './NutritionReport';
@@ -185,12 +186,14 @@ export default function History() {
 
   return (
     <div>
-      <h1 className="page-title" style={{ marginBottom: 20 }}>History & Trends</h1>
+      <Reveal>
+        <h1 className="page-title" style={{ marginBottom: 20 }}>History & Trends</h1>
+      </Reveal>
 
       {error && <p className="error" style={{ marginBottom: 16 }}>{error}</p>}
 
       {/* ── Selection card ── */}
-      <div className="card" style={{ marginBottom: 20 }}>
+      <Reveal delay={60} className="card" style={{ marginBottom: 20 }}>
         <h2 className="section-title" style={{ marginBottom: 4 }}>Review nutrition</h2>
         <p style={{ margin: '0 0 14px', fontSize: 13, color: '#9ca3af' }}>
           Pick one or more days, or use a preset range. The report below updates automatically.
@@ -236,14 +239,17 @@ export default function History() {
             <button type="button" className="btn-secondary" onClick={clearSelection}>Clear</button>
           </div>
         </div>
-      </div>
+      </Reveal>
 
       {/* ── Report ── */}
-      <div ref={reportRef}>
-        <NutritionReport days={reportDays} loading={reportLoading} error={reportError} />
-      </div>
+      <Reveal>
+        <div ref={reportRef}>
+          <NutritionReport days={reportDays} loading={reportLoading} error={reportError} />
+        </div>
+      </Reveal>
 
       {/* ── Logged Day Explorer (edit/add/delete) ── */}
+      <Reveal>
       <div ref={editRef} className="card" style={{ scrollMarginTop: 120 }}>
         <h2 className="section-title" style={{ marginBottom: 4 }}>Edit a logged day</h2>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>
@@ -314,13 +320,16 @@ export default function History() {
             <div>
               {dayEntries.length === 0
                 ? <p className="empty-state">No meals logged on {selectedDate}.</p>
-                : dayEntries.map(entry => (
-                  <LogEntryRow key={entry.id} entry={entry} onEdit={() => setEditEntry(entry)} onDelete={handleDeleteMeal} />
+                : dayEntries.map((entry, idx) => (
+                  <Reveal key={entry.id} delay={Math.min(idx, 6) * 60}>
+                    <LogEntryRow entry={entry} onEdit={() => setEditEntry(entry)} onDelete={handleDeleteMeal} />
+                  </Reveal>
                 ))}
             </div>
           </div>
         )}
       </div>
+      </Reveal>
 
       {showAddModal && (
         <LogMealModal title={`Add meal — ${selectedDate}`} submitLabel="Add Meal" onLog={handleAddMeal} onClose={() => setShowAddModal(false)} />

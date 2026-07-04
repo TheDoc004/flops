@@ -8,6 +8,7 @@ import { filterRecipesByName } from '@shared/utils/recipeSearch';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
 import usePaginationAnchor from '@shared/hooks/usePaginationAnchor';
+import Reveal from '@shared/ui/Reveal';
 
 export default function Recipes() {
   const navigate = useNavigate();
@@ -73,7 +74,7 @@ export default function Recipes() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <Reveal style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h1 className="page-title">Recipe Library</h1>
         <button
           className="btn-primary"
@@ -82,7 +83,7 @@ export default function Recipes() {
         >
           + Add Recipe
         </button>
-      </div>
+      </Reveal>
 
       {error && <p className="error">{error}</p>}
       {logSaved && (
@@ -91,11 +92,11 @@ export default function Recipes() {
         </p>
       )}
 
-      <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--color-text-muted)' }}>
+      <Reveal delay={60} style={{ marginBottom: 12, fontSize: 13, color: 'var(--color-text-muted)' }}>
         Create and edit recipes in <Link to="/meal-builder" style={{ color: 'var(--color-link)' }}>Meal Builder</Link>. Use this library to browse, search, view, and log.
-      </div>
+      </Reveal>
 
-      <div className="card">
+      <Reveal delay={120} className="card">
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer' }}>
           <input type="checkbox" checked={includeArchived} onChange={e => setIncludeArchived(e.target.checked)} />
           <span>Show archived limited-use templates</span>
@@ -119,15 +120,16 @@ export default function Recipes() {
               {search ? ` matching "${search}"` : ''}
             </p>
             <div>
-              {paginated.map(recipe => (
-                <RecipeRow
-                  key={recipe.id}
-                  recipe={recipe}
-                  onLog={setLogRecipe}
-                  onEditInBuilder={() => navigate(`/meal-builder?mode=${recipe.meal_builder_meta?.source === 'meal_builder' ? 'labels' : 'manual'}&recipe_id=${recipe.id}`)}
-                  onDelete={handleDelete}
-                  onReactivate={handleReactivate}
-                />
+              {paginated.map((recipe, idx) => (
+                <Reveal key={recipe.id} delay={Math.min(idx, 6) * 60}>
+                  <RecipeRow
+                    recipe={recipe}
+                    onLog={setLogRecipe}
+                    onEditInBuilder={() => navigate(`/meal-builder?mode=${recipe.meal_builder_meta?.source === 'meal_builder' ? 'labels' : 'manual'}&recipe_id=${recipe.id}`)}
+                    onDelete={handleDelete}
+                    onReactivate={handleReactivate}
+                  />
+                </Reveal>
               ))}
             </div>
             {totalPages > 1 && (
@@ -139,7 +141,7 @@ export default function Recipes() {
             )}
           </>
         )}
-      </div>
+      </Reveal>
 
       {logRecipe && (
         <LogMealModal

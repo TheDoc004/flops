@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
 import MacroTotals from '@shared/ui/MacroTotals';
+import Reveal from '@shared/ui/Reveal';
 import DailyTrainingContextBanner from './DailyTrainingContextBanner';
 import TrainingFuelCard from './TrainingFuelCard';
 import { fetchLogRange, createLogEntry, createQuickFoodLog, createCustomLog, deleteLogEntry } from '@shared/api/log';
@@ -248,7 +249,7 @@ export default function Dashboard() {
   return (
     <div className="dashboard">
       {/* ── Header ── */}
-      <div style={{
+      <Reveal style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-end',
@@ -286,7 +287,7 @@ export default function Dashboard() {
             + Log a Meal
           </button>
         </div>
-      </div>
+      </Reveal>
 
       {error && <p className="error" style={{ marginTop: 0, marginBottom: 16 }}>{error}</p>}
       {goalsError && (
@@ -296,10 +297,12 @@ export default function Dashboard() {
       )}
 
       {/* ── Macro totals ── */}
-      <MacroTotals totals={totals} targets={targets} />
+      <Reveal delay={60}>
+        <MacroTotals totals={totals} targets={targets} />
+      </Reveal>
 
       {/* ── Today's meals ── */}
-      <div style={{ marginTop: 'clamp(28px, 3vw, 40px)', marginBottom: 24 }}>
+      <Reveal delay={120} style={{ marginTop: 'clamp(28px, 3vw, 40px)', marginBottom: 24 }}>
         {/* Card header */}
         <div style={{
           display: 'flex',
@@ -348,35 +351,40 @@ export default function Dashboard() {
               overflow: 'hidden',
             }}>
               {entries.map((entry, idx) => (
-                <div
+                <Reveal
                   key={entry.id}
+                  delay={Math.min(idx, 6) * 60}
                   style={{ borderBottom: idx < entries.length - 1 ? '1px solid #f0ede8' : 'none' }}
                 >
                   <LogEntryRow entry={entry} onDelete={handleDelete} variant="dashboard" />
-                </div>
+                </Reveal>
               ))}
             </div>
           )
         }
-      </div>
+      </Reveal>
 
       {/* ── Training context ── */}
       {trainingPrefs.enabled && (
-        <DailyTrainingContextBanner
-          contextType={dailyContext}
-          disabled={contextLoading}
-          onChange={handleDailyContextChange}
-        />
+        <Reveal>
+          <DailyTrainingContextBanner
+            contextType={dailyContext}
+            disabled={contextLoading}
+            onChange={handleDailyContextChange}
+          />
+        </Reveal>
       )}
 
       {/* Training Fuel Timing Assistant — smarter, ingredient-aware successor to
           the old fuel-readiness card. Shows whenever there's a meal logged today. */}
       {trainingPrefs.enabled && entries.length > 0 && (
-        <TrainingFuelCard entries={entries} />
+        <Reveal>
+          <TrainingFuelCard entries={entries} />
+        </Reveal>
       )}
 
       {trainingPrefs.enabled && savedFuelOptions.length > 0 && (
-        <div className="card" style={{ marginBottom: 24 }}>
+        <Reveal className="card" style={{ marginBottom: 24 }}>
           <p style={{ margin: '0 0 10px', fontSize: 'clamp(13px, 1vw, 14.5px)', color: 'var(--color-text-muted)' }}>Quick log — saved fuel</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {savedFuelOptions.slice(0, 6).map(o => (
@@ -396,22 +404,22 @@ export default function Dashboard() {
               Edit →
             </Link>
           </div>
-        </div>
+        </Reveal>
       )}
 
       {/* ── Trends ── */}
       {dashWeightPrefs.enabled ? (
         <>
-          <div style={{ marginTop: trainingPrefs.enabled ? 20 : 16 }}>
+          <Reveal style={{ marginTop: trainingPrefs.enabled ? 20 : 16 }}>
             <h2 style={{
               margin: '0 0 14px', fontSize: 'clamp(28px, 2.6vw, 34px)', fontWeight: 400, color: 'var(--color-primary-ink)',
               fontFamily: "'DM Serif Display', Georgia, serif",
               letterSpacing: '-0.01em',
             }}>Trends</h2>
-          </div>
+          </Reveal>
 
           {/* Combined weight card: trend chart + update form */}
-          <div className="card" style={{ marginBottom: 16, padding: '20px' }}>
+          <Reveal delay={60} className="card" style={{ marginBottom: 16, padding: '20px' }}>
             <DashboardWeightTrend
               noCard
               today={today}
@@ -427,25 +435,27 @@ export default function Dashboard() {
               bodyUnits={bodyUnits}
               onWeightSaved={() => setWeightTrendRefresh(k => k + 1)}
             />
-          </div>
+          </Reveal>
         </>
       ) : (
-        <DashboardWeightRow
-          today={today}
-          bodyUnits={bodyUnits}
-          onWeightSaved={() => setWeightTrendRefresh(k => k + 1)}
-        />
+        <Reveal>
+          <DashboardWeightRow
+            today={today}
+            bodyUnits={bodyUnits}
+            onWeightSaved={() => setWeightTrendRefresh(k => k + 1)}
+          />
+        </Reveal>
       )}
 
       {/* ── Goal adherence (flexible range) ── */}
-      <div style={{ marginTop: 4 }}>
+      <Reveal style={{ marginTop: 4 }}>
         <DashboardAdherenceSection
           today={today}
           goalsPayload={goalsPayload}
           macroUnits={macroUnits}
           rows7d={adherenceRows}
         />
-      </div>
+      </Reveal>
 
       {showModal && (
         <LogMealModal

@@ -95,6 +95,12 @@
   --enter-lift: 4px;        /* small upward travel for expanding content */
   --enter-scale: 0.98;      /* subtle scale-from for dropdowns */
 
+  /* Scroll reveal (see .reveal below): entrance travel + duration for sections
+     fading in as they enter the viewport. Kept short so a data-dense page
+     never feels like it's waiting on animation. */
+  --reveal-offset: 14px;
+  --reveal-dur: 480ms;
+
   /* Staggered reveal for the ingredient breakdown (rows + column accents).
      Tuned so a typical list opens over ~350–500ms; the index is capped (see the
      .bd rules) so long lists never drag. */
@@ -142,6 +148,24 @@
 }
 .chevron.is-open {
   transform: rotate(180deg);
+}
+
+/* ── Scroll reveal ──
+   Sections fade/slide up the first time they enter the viewport. Driven by the
+   useInView hook via <Reveal> (shared/ui), which adds .is-visible. One-shot:
+   the class stays on, so nothing replays when scrolling back up. Stagger
+   siblings by setting --reveal-delay inline (the <Reveal delay> prop). */
+.reveal {
+  opacity: 0;
+  transform: translateY(var(--reveal-offset));
+  transition:
+    opacity var(--reveal-dur) var(--ease-out),
+    transform var(--reveal-dur) var(--ease-out);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
 }
 
 /* ── Ingredient breakdown reveal ──
@@ -272,6 +296,13 @@
   .bd.is-open .bd-seg__div {
     transform: scaleY(1);
     transition: none;
+  }
+  .reveal,
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+    transition-delay: 0ms;
   }
 }
 
