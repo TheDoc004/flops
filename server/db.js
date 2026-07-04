@@ -97,6 +97,7 @@ function createDb(dbPath) {
       body_units            TEXT DEFAULT 'metric',
       dash_weight_chart_enabled INTEGER DEFAULT 1,
       dash_weight_days      INTEGER DEFAULT 30,
+      dash_adherence_view   TEXT DEFAULT '7d',
       /* RETAINED, UNUSED: the three columns below belonged to the removed
          nutrition-training fuel features (archive/nutrition-training-integration).
          Kept because SQLite DROP COLUMN requires a table rebuild and the stored
@@ -377,6 +378,9 @@ function createDb(dbPath) {
   }
   if (profileCols.length && !profileCols.includes('training_goal')) {
     db.exec(`ALTER TABLE user_profile ADD COLUMN training_goal TEXT DEFAULT 'performance'`);
+  }
+  if (profileCols.length && !profileCols.includes('dash_adherence_view')) {
+    db.exec(`ALTER TABLE user_profile ADD COLUMN dash_adherence_view TEXT DEFAULT '7d'`);
   }
 
   // Workout preset tables may already exist (noop if created above)

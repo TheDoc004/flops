@@ -44,6 +44,7 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState('');
   const [dashWeightPrefs, setDashWeightPrefs] = useState({ enabled: true, days: 30 });
+  const [dashAdherenceView, setDashAdherenceView] = useState('7d');
   const [weightTrendRefresh, setWeightTrendRefresh] = useState(0);
 
   const greeting = useMemo(() => getGreeting(), []);
@@ -98,6 +99,7 @@ export default function Dashboard() {
         enabled,
         days: [14, 30, 90].includes(d) ? d : 30,
       });
+      setDashAdherenceView(['7d', '2w', '3w', 'calendar'].includes(p.dash_adherence_view) ? p.dash_adherence_view : '7d');
     }
 
     if (logResult.status === 'fulfilled') {
@@ -333,6 +335,7 @@ export default function Dashboard() {
           goalsPayload={goalsPayload}
           macroUnits={macroUnits}
           rows7d={adherenceRows}
+          view={dashAdherenceView}
         />
       </Reveal>
 

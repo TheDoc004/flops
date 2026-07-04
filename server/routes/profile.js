@@ -12,6 +12,7 @@ const PROFILE_FIELDS = [
   'body_units',
   'dash_weight_chart_enabled',
   'dash_weight_days',
+  'dash_adherence_view',
   'dash_training_fuel_enabled',
   'digestion_pref',
   'training_goal',
@@ -43,6 +44,13 @@ function normalizeDigestionPref(raw) {
   const s = String(raw).toLowerCase();
   if (['none', 'lower_fat', 'lower_fiber', 'sensitive'].includes(s)) return s;
   return 'none';
+}
+
+function normalizeAdherenceView(raw) {
+  if (raw === null || raw === undefined || raw === '') return '7d';
+  const s = String(raw).toLowerCase();
+  if (['7d', '2w', '3w', 'calendar'].includes(s)) return s;
+  return '7d';
 }
 
 function normalizeTrainingGoal(raw) {
@@ -79,6 +87,8 @@ function normalizeField(key, raw) {
       if ([14, 30, 90].includes(n)) return n;
       return 30;
     }
+    case 'dash_adherence_view':
+      return normalizeAdherenceView(raw);
     case 'dash_training_fuel_enabled':
       if (raw === null || raw === undefined || raw === '') return 1;
       if (raw === true || raw === 1 || raw === '1') return 1;
@@ -115,6 +125,7 @@ function createProfileRouter(db) {
         body_units: 'metric',
         dash_weight_chart_enabled: 1,
         dash_weight_days: 30,
+        dash_adherence_view: '7d',
         dash_training_fuel_enabled: 1,
         digestion_pref: 'none',
         training_goal: 'performance',
@@ -122,6 +133,7 @@ function createProfileRouter(db) {
     } else {
       if (row.dash_weight_chart_enabled == null) row.dash_weight_chart_enabled = 1;
       if (row.dash_weight_days == null) row.dash_weight_days = 30;
+      if (!row.dash_adherence_view) row.dash_adherence_view = '7d';
       if (row.dash_training_fuel_enabled == null) row.dash_training_fuel_enabled = 1;
       if (!row.digestion_pref) row.digestion_pref = 'none';
       if (!row.training_goal) row.training_goal = 'performance';
@@ -147,6 +159,7 @@ function createProfileRouter(db) {
       body_units: 'metric',
       dash_weight_chart_enabled: 1,
       dash_weight_days: 30,
+      dash_adherence_view: '7d',
       dash_training_fuel_enabled: 1,
       digestion_pref: 'none',
       training_goal: 'performance',
@@ -161,9 +174,9 @@ function createProfileRouter(db) {
     db.prepare(`
       INSERT INTO user_profile (
         user_id, height_cm, weight_kg, age, sex, goal_weight_kg, activity_level, maintenance_calories, macro_units, body_units,
-        dash_weight_chart_enabled, dash_weight_days,
+        dash_weight_chart_enabled, dash_weight_days, dash_adherence_view,
         dash_training_fuel_enabled, digestion_pref, training_goal
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
         height_cm = excluded.height_cm,
         weight_kg = excluded.weight_kg,
@@ -176,6 +189,7 @@ function createProfileRouter(db) {
         body_units = excluded.body_units,
         dash_weight_chart_enabled = excluded.dash_weight_chart_enabled,
         dash_weight_days = excluded.dash_weight_days,
+        dash_adherence_view = excluded.dash_adherence_view,
         dash_training_fuel_enabled = excluded.dash_training_fuel_enabled,
         digestion_pref = excluded.digestion_pref,
         training_goal = excluded.training_goal
@@ -195,6 +209,7 @@ function createProfileRouter(db) {
         const d = Number(merged.dash_weight_days);
         return [14, 30, 90].includes(d) ? d : 30;
       })(),
+      normalizeAdherenceView(merged.dash_adherence_view),
       merged.dash_training_fuel_enabled === 0 || merged.dash_training_fuel_enabled === false ? 0 : 1,
       normalizeDigestionPref(merged.digestion_pref),
       normalizeTrainingGoal(merged.training_goal)

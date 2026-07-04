@@ -655,7 +655,9 @@ dialog[open]::backdrop {
    panels, expanding sections). Pair with a distinct React `key` per panel so
    switching content remounts the node and replays the animation. */
 .panel-in {
-  animation: panel-in var(--dur-open) var(--ease-out);
+  /* `backwards` keeps delayed items hidden until their animation starts,
+     enabling per-item stagger via an inline animation-delay. */
+  animation: panel-in var(--dur-open) var(--ease-out) backwards;
 }
 @keyframes panel-in {
   from { opacity: 0; transform: translateY(6px); }

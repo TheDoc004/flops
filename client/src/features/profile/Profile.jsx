@@ -44,6 +44,7 @@ export default function Profile() {
   const [weightError, setWeightError] = useState('');
   const [dashChartEnabled, setDashChartEnabled] = useState(true);
   const [dashChartDays, setDashChartDays] = useState(30);
+  const [dashAdherenceView, setDashAdherenceView] = useState('7d');
   const [dashPrefsSaved, setDashPrefsSaved] = useState(false);
   const [dashPrefsError, setDashPrefsError] = useState('');
   // Tracks whether the user has interacted with dash prefs yet.
@@ -69,6 +70,7 @@ export default function Profile() {
         setDashChartEnabled(p.dash_weight_chart_enabled !== 0 && p.dash_weight_chart_enabled !== false);
         const dd = Number(p.dash_weight_days);
         setDashChartDays([14, 30, 90].includes(dd) ? dd : 30);
+        setDashAdherenceView(['7d', '2w', '3w', 'calendar'].includes(p.dash_adherence_view) ? p.dash_adherence_view : '7d');
       } catch (e) {
         if (!cancelled) setError(e.message);
       } finally {
@@ -176,6 +178,7 @@ export default function Profile() {
     saveProfile({
       dash_weight_chart_enabled: dashChartEnabled ? 1 : 0,
       dash_weight_days: dashChartDays,
+      dash_adherence_view: dashAdherenceView,
     }).then(() => {
       if (!cancelled) {
         setDashPrefsSaved(true);
@@ -185,7 +188,7 @@ export default function Profile() {
       if (!cancelled) setDashPrefsError(err.message);
     });
     return () => { cancelled = true; };
-  }, [dashChartEnabled, dashChartDays]);
+  }, [dashChartEnabled, dashChartDays, dashAdherenceView]);
 
   if (loading) {
     return <p style={{ color: '#6b7280' }}>Loading…</p>;
@@ -316,6 +319,22 @@ export default function Profile() {
               <option value={14}>Last 14 days</option>
               <option value={30}>Last 30 days</option>
               <option value={90}>Last 90 days</option>
+            </select>
+          </div>
+          {/* Goal adherence: the dashboard shows exactly one view (no tabs) */}
+          <div style={{ marginTop: 10 }}>
+            <label style={{ marginBottom: 4 }}>Goal adherence view</label>
+            <select
+              value={dashAdherenceView}
+              onChange={e => {
+                dashInteracted.current = true;
+                setDashAdherenceView(e.target.value);
+              }}
+            >
+              <option value="7d">Last 7 days</option>
+              <option value="2w">Last 2 weeks</option>
+              <option value="3w">Last 3 weeks</option>
+              <option value="calendar">Month calendar</option>
             </select>
           </div>
           {dashPrefsError && <p className="error" style={{ marginTop: 8 }}>{dashPrefsError}</p>}

@@ -13,6 +13,7 @@ import PlanLayout from './layouts/PlanLayout';
 import TrainingWorkouts from '@features/training-workouts';
 import Ingredients from '@features/ingredients';
 import AiMacroLogger from '@features/ai-macro-logger';
+import { AdherencePage } from '@features/adherence';
 
 // Inner shell so we can read the route: the dashboard gets a wider content
 // container (.app-main--wide); every other page keeps the standard 1152px width.
@@ -35,6 +36,7 @@ function AppShell() {
           <Route path="/plan" element={<PlanLayout />}>
             <Route index element={<Navigate to="/plan/goals" replace />} />
             <Route path="goals" element={<Goals />} />
+            <Route path="adherence" element={<AdherencePage />} />
             <Route path="report" element={<Report />} />
             <Route path="profile" element={<Profile />} />
           </Route>
