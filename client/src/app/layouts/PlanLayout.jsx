@@ -26,7 +26,6 @@ export default function PlanLayout() {
       <div className="card" style={{ marginBottom: 16, padding: 12 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <NavLink to="/plan/goals" style={({ isActive }) => tabStyle(isActive || is('goals'))}>Goals</NavLink>
-          <NavLink to="/plan/adherence" style={({ isActive }) => tabStyle(isActive || is('adherence'))}>Adherence</NavLink>
           <NavLink to="/plan/report" style={({ isActive }) => tabStyle(isActive || is('report'))}>Report</NavLink>
           <NavLink to="/plan/profile" style={({ isActive }) => tabStyle(isActive || is('profile'))}>Profile</NavLink>
         </div>

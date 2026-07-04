@@ -92,10 +92,6 @@ export default function DashboardAdherenceSection({ today, goalsPayload, macroUn
 
         <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)', flexShrink: 0 }}>
           {meta.label}
-          {' · '}
-          <Link to="/plan/adherence" style={{ color: 'var(--color-link)' }} title="Open the full adherence explorer — all ranges, plus this card's setting">
-            Open adherence →
-          </Link>
         </p>
       </div>
 
@@ -149,6 +145,14 @@ export default function DashboardAdherenceSection({ today, goalsPayload, macroUn
           <AdherenceCalendarMonth macroUnits={macroUnits} bare />
         </div>
       )}
+
+      {/* Footer action: the full explorer (all ranges + this card's setting)
+          lives on the History page — one home for the tool. */}
+      <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--color-divider-warm)' }}>
+        <Link to="/history#goal-adherence" className="btn-secondary" style={{ width: '100%' }}>
+          Open full adherence in History →
+        </Link>
+      </div>
 
       {/* Day detail dialog for strip views */}
       {detailRow && (

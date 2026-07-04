@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
 import { fetchLogRange, fetchLogForDate, createLogEntry, createQuickFoodLog, createCustomLog, deleteLogEntry, updateLogEntry } from '@shared/api/log';
@@ -7,7 +8,7 @@ import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import Reveal from '@shared/ui/Reveal';
-import { AdherenceCalendarMonth } from '@features/adherence';
+import { AdherenceCalendarMonth, AdherenceExplorer } from '@features/adherence';
 import { sumDayMicros } from '@shared/utils/microNutrients';
 import NutritionReport from './NutritionReport';
 
@@ -41,6 +42,16 @@ function isValidIsoDate(s) {
 
 export default function History() {
   const { macroUnits } = useMacroUnits();
+  const location = useLocation();
+
+  // The dashboard's adherence card links to /history#goal-adherence — scroll
+  // the explorer into view once the page has painted.
+  useEffect(() => {
+    if (location.hash !== '#goal-adherence') return;
+    requestAnimationFrame(() => {
+      document.getElementById('goal-adherence')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [location.hash]);
 
   // ── Selection + report state ──
   // Unified selection: clicking days toggles them; presets pick a range.
@@ -245,6 +256,13 @@ export default function History() {
       <Reveal>
         <div ref={reportRef}>
           <NutritionReport days={reportDays} loading={reportLoading} error={reportError} />
+        </div>
+      </Reveal>
+
+      {/* ── Goal adherence explorer (the tool's single home) ── */}
+      <Reveal>
+        <div id="goal-adherence" style={{ scrollMarginTop: 120, marginBottom: 20 }}>
+          <AdherenceExplorer />
         </div>
       </Reveal>
 

@@ -88,8 +88,13 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
             Last {rangeDays} days · {yWeightUnit}
           </p>
         </div>
-        <Link to="/plan/profile" style={{ fontSize: 12, color: '#9ca3af', alignSelf: 'flex-start' }}>
-          Profile →
+        <Link
+          to="/plan/profile"
+          className="btn-secondary"
+          style={{ fontSize: 12, padding: '6px 12px', minHeight: 34, alignSelf: 'flex-start', flexShrink: 0 }}
+          title="Chart range and visibility live in Profile"
+        >
+          Chart settings →
         </Link>
       </div>
 

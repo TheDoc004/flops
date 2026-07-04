@@ -80,7 +80,7 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, no
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? 'Saving…' : storedKg != null ? 'Update' : 'Save'}
         </button>
-        <Link to="/profile" style={{ fontSize: 13, color: 'var(--color-link)', paddingBottom: 8 }}>
+        <Link to="/profile" className="btn-secondary">
           Full history →
         </Link>
       </form>
