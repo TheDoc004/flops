@@ -173,7 +173,8 @@ const IngredientCombobox = forwardRef(function IngredientCombobox({
           value={inputValue}
           disabled={disabled}
           autoComplete="off"
-          onFocus={() => { if (!disabled) setOpen(true); }}
+          /* No onFocus opener: the list should not pop open on programmatic or
+             tab focus. It opens on click, typing, or ↓. */
           onClick={() => { if (!disabled) setOpen(true); }}
           onChange={e => {
             setQuery(e.target.value);
@@ -185,11 +186,13 @@ const IngredientCombobox = forwardRef(function IngredientCombobox({
 
         {open && (
           <div
+            className="dropdown-in"
             style={{
               position: 'absolute',
               zIndex: 20,
               left: 0,
               right: 0,
+              transformOrigin: openUp ? 'bottom center' : 'top center',
               ...(openUp ? { bottom: '100%', marginBottom: 6 } : { top: '100%', marginTop: 6 }),
               background: 'white',
               border: '1px solid #e5e7eb',

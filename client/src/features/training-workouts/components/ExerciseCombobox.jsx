@@ -92,7 +92,8 @@ export default function ExerciseCombobox({
         value={value}
         disabled={disabled}
         autoComplete="off"
-        onFocus={() => { if (!disabled) setOpen(true); }}
+        /* No onFocus opener: the list should not pop open on programmatic or
+           tab focus. It opens on click, typing, or ↓. */
         onClick={() => { if (!disabled) setOpen(true); }}
         onChange={e => { onChange(e.target.value); setOpen(true); }}
         onKeyDown={onKeyDown}
@@ -104,11 +105,13 @@ export default function ExerciseCombobox({
         <div
           ref={listRef}
           role="listbox"
+          className="dropdown-in"
           style={{
             position: 'absolute',
             zIndex: 20,
             left: 0,
             right: 0,
+            transformOrigin: openUp ? 'bottom center' : 'top center',
             ...(openUp ? { bottom: '100%', marginBottom: 6 } : { top: '100%', marginTop: 6 }),
             maxHeight,
             overflowY: 'auto',

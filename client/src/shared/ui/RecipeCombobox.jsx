@@ -133,11 +133,13 @@ const RecipeCombobox = forwardRef(function RecipeCombobox({
           <div
             ref={listRef}
             role="listbox"
+            className="dropdown-in"
             style={{
               position: 'absolute',
               zIndex: 20,
               left: 0,
               right: 0,
+              transformOrigin: openUp ? 'bottom center' : 'top center',
               ...(openUp ? { bottom: '100%', marginBottom: 6 } : { top: '100%', marginTop: 6 }),
               maxHeight,
               overflowY: 'auto',

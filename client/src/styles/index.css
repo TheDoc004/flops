@@ -609,10 +609,21 @@ dialog[open]::backdrop {
   from { opacity: 0; transform: translateY(6px); }
 }
 
+/* Combobox option lists: quick unroll from the input edge, like the navbar
+   menus. Set transform-origin inline (top/bottom center) to match whether the
+   list opens below or above the input. */
+.dropdown-in {
+  animation: dropdown-in var(--dur-dropdown) var(--ease-out);
+}
+@keyframes dropdown-in {
+  from { opacity: 0; transform: scaleY(0.85); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   dialog[open],
   dialog[open]::backdrop,
-  .panel-in {
+  .panel-in,
+  .dropdown-in {
     animation: none;
   }
 }
