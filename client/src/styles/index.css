@@ -405,7 +405,43 @@ button {
 /* ── Button motion ──
    Every .btn-* lifts slightly on hover and presses down on tap/click — a
    tactile response layered on top of each variant's own colors/shadows.
-   The press transition is extra quick so it tracks the finger/cursor. */
+   The press transition is extra quick so it tracks the finger/cursor.
+
+   Press sweep: a translucent wash fills the button left→right while pressed
+   (::after overlay), then fades out on release; the scaleX reset is delayed
+   behind the fade so the retreat is never visible. White wash on the solid
+   variants, indigo tint on the light ones. */
+.btn-primary, .btn-secondary, .btn-danger, .btn-ai {
+  position: relative;
+  overflow: hidden; /* clips the sweep to the rounded corners */
+}
+.btn-primary::after,
+.btn-secondary::after,
+.btn-danger::after,
+.btn-ai::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0.10));
+  transform: scaleX(0);
+  transform-origin: left center;
+  opacity: 0;
+  transition: opacity 0.3s var(--ease-out), transform 0s 0.3s;
+}
+.btn-secondary::after,
+.btn-ai::after {
+  background: linear-gradient(90deg, rgba(49, 46, 129, 0.14), rgba(49, 46, 129, 0.05));
+}
+.btn-primary:active:not(:disabled)::after,
+.btn-secondary:active:not(:disabled)::after,
+.btn-danger:active:not(:disabled)::after,
+.btn-ai:active:not(:disabled)::after {
+  transform: scaleX(1);
+  opacity: 1;
+  transition: transform 0.35s var(--ease-out), opacity 0s;
+}
+
 .btn-primary:hover:not(:disabled),
 .btn-secondary:hover:not(:disabled),
 .btn-danger:hover:not(:disabled),
@@ -434,6 +470,12 @@ button {
   .btn-primary:active, .btn-secondary:active, .btn-danger:active, .btn-ai:active {
     transition: none;
     transform: none;
+  }
+  .btn-primary::after,
+  .btn-secondary::after,
+  .btn-danger::after,
+  .btn-ai::after {
+    display: none;
   }
 }
 
