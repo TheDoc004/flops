@@ -319,60 +319,6 @@ function createTrainingRouter(db) {
     });
   });
 
-  router.get('/saved-recipes', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
-    const rows = db
-      .prepare(
-        `SELECT tsr.recipe_id, tsr.label, r.name, r.serving_size
-         FROM training_saved_recipes tsr
-         JOIN recipes r ON r.id = tsr.recipe_id
-         WHERE tsr.user_id = ?
-         ORDER BY r.name`
-      )
-      .all(userId);
-    res.json(rows);
-  });
-
-  router.post('/saved-recipes', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
-    const recipeId = Number(req.body?.recipe_id);
-    if (!Number.isInteger(recipeId) || recipeId <= 0) {
-      return res.status(400).json({ error: 'recipe_id is required' });
-    }
-    if (!db.prepare('SELECT id FROM recipes WHERE id = ?').get(recipeId)) {
-      return res.status(404).json({ error: 'Recipe not found' });
-    }
-    const label = normalizeOptionalString(req.body?.label, 48);
-    db.prepare(
-      `INSERT INTO training_saved_recipes (user_id, recipe_id, label)
-       VALUES (?, ?, ?)
-       ON CONFLICT(user_id, recipe_id) DO UPDATE SET label = excluded.label`
-    ).run(userId, recipeId, label);
-    res.status(201).json({ user_id: userId, recipe_id: recipeId, label });
-  });
-
-  router.delete('/saved-recipes/:recipeId', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
-    const recipeId = Number(req.params.recipeId);
-    if (!Number.isInteger(recipeId) || recipeId <= 0) {
-      return res.status(400).json({ error: 'Invalid recipeId' });
-    }
-    const r = db
-      .prepare('DELETE FROM training_saved_recipes WHERE user_id = ? AND recipe_id = ?')
-      .run(userId, recipeId);
-    if (r.changes === 0) return res.status(404).json({ error: 'Saved item not found' });
-    res.status(204).send();
-  });
-
   router.get('/feedback', (req, res) => {
     const userId = Number(req.query.user_id ?? 0);
     if (!Number.isInteger(userId) || userId < 0) {

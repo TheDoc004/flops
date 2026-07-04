@@ -97,6 +97,11 @@ function createDb(dbPath) {
       body_units            TEXT DEFAULT 'metric',
       dash_weight_chart_enabled INTEGER DEFAULT 1,
       dash_weight_days      INTEGER DEFAULT 30,
+      /* RETAINED, UNUSED: the three columns below belonged to the removed
+         nutrition-training fuel features (archive/nutrition-training-integration).
+         Kept because SQLite DROP COLUMN requires a table rebuild and the stored
+         preferences may be useful when the bridge is rebuilt. Nothing reads or
+         writes them from the UI. See docs/future/nutrition-training-bridge.md. */
       dash_training_fuel_enabled INTEGER DEFAULT 1,
       digestion_pref        TEXT DEFAULT 'none',
       training_goal         TEXT DEFAULT 'performance',
@@ -131,7 +136,11 @@ function createDb(dbPath) {
       PRIMARY KEY (user_id, date)
     );
 
-    /* User saved go-to preworkout options (link to recipes) */
+    /* RETAINED, UNUSED: saved go-to preworkout recipes (training→recipes FK).
+       The endpoints and UI were removed with the nutrition-training separation
+       (archive/nutrition-training-integration); the table and its data are kept
+       so nothing is lost if the fuel bridge is rebuilt.
+       See docs/future/nutrition-training-bridge.md. */
     CREATE TABLE IF NOT EXISTS training_saved_recipes (
       user_id      INTEGER NOT NULL DEFAULT 0,
       recipe_id    INTEGER NOT NULL,

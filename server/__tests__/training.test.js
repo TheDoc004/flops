@@ -48,25 +48,6 @@ describe('/api/training/override', () => {
   });
 });
 
-describe('/api/training/saved-recipes', () => {
-  it('POST stores and GET lists saved recipes', async () => {
-    const { app } = buildApp();
-    const { body: recipe } = await request(app).post('/api/recipes').send({
-      name: 'Banana',
-      serving_size: '1 medium',
-      calories: 105,
-      protein_g: 1.3,
-      carbs_g: 27,
-      fat_g: 0.4,
-    });
-    const post = await request(app).post('/api/training/saved-recipes').send({ user_id: 0, recipe_id: recipe.id, label: 'Fast carb' });
-    expect(post.status).toBe(201);
-    const list = await request(app).get('/api/training/saved-recipes');
-    expect(list.status).toBe(200);
-    expect(list.body).toHaveLength(1);
-  });
-});
-
 describe('/api/training/daily-context', () => {
   it('GET defaults to rest when missing', async () => {
     const { app } = buildApp();
