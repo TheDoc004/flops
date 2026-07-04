@@ -1131,6 +1131,15 @@ dialog[open]::backdrop {
   word-break: break-word;
 }
 
+/* Little food glyph before a meal title, matched from the title/ingredients
+   (see mealEmoji.js). Slightly smaller than the title so it decorates rather
+   than dominates. */
+.meal-emoji {
+  margin-right: 8px;
+  font-size: 0.9em;
+  line-height: 1;
+}
+
 /* Macro summary: one compact row that never wraps to a second (orphan) line */
 .meal-macros {
   display: flex;

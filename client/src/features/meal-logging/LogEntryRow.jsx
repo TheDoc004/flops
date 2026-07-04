@@ -13,6 +13,7 @@ import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import { MACRO_COLORS } from '@shared/utils/colors';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
 import IngredientBreakdown from './IngredientBreakdown';
+import { mealEmoji } from './mealEmoji';
 
 const PIE_COLORS = { protein: MACRO_COLORS.protein, carbs: MACRO_COLORS.carbs, fat: MACRO_COLORS.fat };
 
@@ -50,6 +51,7 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
   const { macroUnits } = useMacroUnits();
   const ingredientRows = parseLoggedIngredients(entry);
   const hasBreakdown = !!ingredientRows;
+  const emoji = mealEmoji(entry.recipe_name, ingredientRows ? ingredientRows.map(r => r.name) : []);
 
   if (variant === 'dashboard') {
     return (
@@ -57,6 +59,7 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
         {/* Row 1: meal name (up to 2 lines) + actions */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div className="meal-name" style={{ flex: 1, minWidth: 0 }}>
+            <span className="meal-emoji" aria-hidden="true">{emoji}</span>
             {entry.recipe_name}
           </div>
 
@@ -157,6 +160,7 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
     <div style={{ borderBottom: '1px solid #f3f4f6' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
+          <span className="meal-emoji" aria-hidden="true">{emoji}</span>
           <strong>{entry.recipe_name}</strong>
           <span style={{ color: '#6b7280', fontSize: 13, marginLeft: 8 }}>
             {entry.servings}x {entry.serving_size}
