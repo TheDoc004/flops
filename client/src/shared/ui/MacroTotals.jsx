@@ -68,8 +68,10 @@ function MacroRing({ label, value, target, macroUnits }) {
 
   return (
     <div className="macro-ring-card">
-      <div style={{ position: 'relative', flexShrink: 0 }}>
-        <svg width="64" height="64" viewBox="0 0 64 64" style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
+      {/* Ring scales up on desktop via CSS width/height (viewBox stays 64), so
+          the stroke + percentage badge grow proportionally; mobile stays at 64. */}
+      <div style={{ position: 'relative', flexShrink: 0, width: 'clamp(64px, 5.4vw, 78px)', height: 'clamp(64px, 5.4vw, 78px)' }}>
+        <svg viewBox="0 0 64 64" style={{ width: '100%', height: '100%', display: 'block', transform: 'rotate(-90deg)' }} aria-hidden="true">
           {/* Track */}
           <circle cx="32" cy="32" r={radius} fill="none" strokeWidth="6" stroke="#ede9fe" />
           {/* Fill — strokeDashoffset in style enables CSS transition */}
@@ -89,7 +91,7 @@ function MacroRing({ label, value, target, macroUnits }) {
         <span style={{
           position: 'absolute', inset: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+          fontSize: 'clamp(11px, 0.95vw, 13px)', fontWeight: 700, fontVariantNumeric: 'tabular-nums',
           color: overMax ? 'var(--color-danger)' : 'var(--color-primary-ink)',
         }}>
           {hasTarget ? `${pctDisplay}%` : '—'}
@@ -97,19 +99,19 @@ function MacroRing({ label, value, target, macroUnits }) {
       </div>
 
       <div style={{ minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        <p style={{ margin: 0, fontSize: 'clamp(11px, 0.9vw, 12.5px)', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           {label}
         </p>
-        <p style={{ margin: '3px 0 1px', fontSize: 20, fontWeight: 700, color: 'var(--color-text-strong)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+        <p style={{ margin: '4px 0 2px', fontSize: 'clamp(20px, 1.9vw, 25px)', fontWeight: 700, color: 'var(--color-text-strong)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
           {displayVal}
         </p>
         {goalDisplay && (
-          <p style={{ margin: '2px 0 2px', fontSize: 11, color: 'var(--color-text-faint)', fontVariantNumeric: 'tabular-nums' }}>
+          <p style={{ margin: '2px 0 2px', fontSize: 'clamp(11px, 0.9vw, 12.5px)', color: 'var(--color-text-faint)', fontVariantNumeric: 'tabular-nums' }}>
             Goal: {goalDisplay}
           </p>
         )}
         {statusText && (
-          <p style={{ margin: 0, fontSize: 12, color: statusColor, fontWeight: inRange ? 600 : 400 }}>
+          <p style={{ margin: 0, fontSize: 'clamp(12px, 0.95vw, 13.5px)', color: statusColor, fontWeight: inRange ? 600 : 400 }}>
             {inRange && (
               <span style={{ marginRight: 3 }}>✓</span>
             )}
@@ -117,7 +119,7 @@ function MacroRing({ label, value, target, macroUnits }) {
           </p>
         )}
         {!hasTarget && (
-          <p style={{ margin: 0, fontSize: 12, color: '#c4b5fd' }}>No goal set</p>
+          <p style={{ margin: 0, fontSize: 'clamp(12px, 0.95vw, 13.5px)', color: '#c4b5fd' }}>No goal set</p>
         )}
       </div>
     </div>

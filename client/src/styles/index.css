@@ -80,6 +80,199 @@
   --shadow-card: 0 1px 3px rgba(0,0,0,0.05);
   --shadow-pop: 0 10px 28px rgba(0,0,0,0.08);
   --shadow-modal: 0 20px 60px rgba(0,0,0,0.2);
+
+  /* ── Motion ──
+     Shared timing/easing so dropdowns, collapses, and chevrons feel consistent.
+     Prefer these over hard-coding durations in individual components. */
+  --dur-fast: 150ms;        /* hover, chevron/caret rotation, pressed states */
+  --dur-dropdown: 200ms;    /* navbar menu open/close */
+  --dur-collapse: 220ms;    /* meal expand/collapse (dynamic height) */
+  --dur-open: 300ms;        /* expand: longer, decelerating */
+  --dur-close: 200ms;       /* collapse: accelerated reverse */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);  /* decelerate, no overshoot */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);        /* accelerate, for exits */
+  --enter-offset: 6px;      /* small downward entrance travel */
+  --enter-lift: 4px;        /* small upward travel for expanding content */
+  --enter-scale: 0.98;      /* subtle scale-from for dropdowns */
+
+  /* Staggered reveal for the ingredient breakdown (rows + column accents).
+     Tuned so a typical list opens over ~350–500ms; the index is capped (see the
+     .bd rules) so long lists never drag. */
+  --bd-row-offset: 6px;     /* per-row entrance travel */
+  --bd-stagger-open: 48ms;  /* delay between rows appearing (top→bottom) */
+  --bd-stagger-close: 24ms; /* faster reverse cascade on close */
+  --bd-row-dur: 220ms;      /* per-row fade/slide */
+
+  /* Neutral, warm separators for the macro panel — never macro-colored. */
+  --bd-panel-border: #e6e1d7;
+  --bd-divider: #ece7dd;
+}
+
+/* ── Motion utilities ──
+   Dynamic-height-safe collapse: the grid row animates 0fr → 1fr, so content of
+   any length expands/collapses smoothly without a fragile fixed max-height.
+   The inner element must own `overflow:hidden` + `min-height:0` for the grid
+   track to clip it. Toggle `.is-open` to expand. */
+.collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  /* Closing uses the faster ease-in; opening overrides below. */
+  transition: grid-template-rows var(--dur-close) var(--ease-in);
+}
+.collapse.is-open {
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--dur-open) var(--ease-out);
+}
+.collapse__inner {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transition: opacity var(--dur-close) var(--ease-in);
+}
+.collapse.is-open > .collapse__inner {
+  opacity: 1;
+  transition: opacity var(--dur-open) var(--ease-out);
+}
+
+/* Chevron/caret that rotates smoothly instead of snapping direction. Use a
+   single downward glyph and rotate 180° when open. */
+.chevron {
+  display: inline-block;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.chevron.is-open {
+  transform: rotate(180deg);
+}
+
+/* ── Ingredient breakdown reveal ──
+   A coordinated open sequence: header first, then rows cascade top→bottom while
+   each macro column's tint + accent bar draws downward alongside them. All motion
+   is transition-based off `.is-open`, so it replays on every open (not just first
+   mount) and interrupts cleanly on rapid toggling. Per-row `--i` and the row
+   count `--rn` (set inline) drive the stagger; the index is capped via min(…,12)
+   so long lists stay quick. */
+.bd-table { position: relative; }
+
+/* The four macro columns read as one enclosed panel that sits behind the text
+   (z-index 0); labels/values ride above (z 1). The panel spans the macro grid
+   tracks exactly (grid-column: 3 / -1) so each tinted segment lines up under its
+   centered value. Its neutral border + per-column tints fade with the reveal. */
+.bd-lanes {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  column-gap: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.bd-panel {
+  grid-column: 3 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 1px solid var(--bd-panel-border);
+  border-radius: 8px;
+  overflow: hidden;               /* clips segment tints to the rounded corners */
+  opacity: 0;
+  transition: opacity var(--dur-close) var(--ease-in);
+}
+.bd.is-open .bd-panel {
+  opacity: 1;
+  transition: opacity var(--dur-open) var(--ease-out);
+}
+.bd-seg {
+  position: relative;
+  background: var(--lane-tint);   /* very light macro-colored tint per column */
+}
+/* Neutral interior dividers draw top→down via scaleY (no layout shift). Duration
+   scales with row count so the draw stays tied to the row cascade. */
+.bd-seg__div {
+  position: absolute;
+  left: -1px;                     /* straddle the segment boundary crisply */
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--bd-divider);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform var(--dur-close) var(--ease-in);
+}
+.bd.is-open .bd-seg__div {
+  transform: scaleY(1);
+  transition: transform clamp(260ms, calc(var(--rn) * 42ms), 640ms) var(--ease-out);
+}
+
+.bd-head,
+.bd-row {
+  position: relative;
+  z-index: 1;
+  opacity: 0;
+  transform: translateY(var(--bd-row-offset));
+  /* Closed / closing: reverse cascade (bottom rows leave first), quicker. */
+  transition:
+    opacity var(--dur-close) var(--ease-in),
+    transform var(--dur-close) var(--ease-in);
+  transition-delay: calc(min(var(--rn) - 1 - var(--i), 8) * var(--bd-stagger-close));
+}
+.bd.is-open .bd-head,
+.bd.is-open .bd-row {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--bd-row-dur) var(--ease-out),
+    transform var(--bd-row-dur) var(--ease-out);
+  transition-delay: calc(min(var(--i), 8) * var(--bd-stagger-open));
+}
+
+/* Centered macro lanes: header label + every value sit centered in the tinted
+   column, not jammed against the card edge. */
+.bd-h {
+  font-size: var(--text-caption);
+  text-align: center;
+}
+.bd-val {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Narrow screens: trim horizontal padding and the header dot before touching
+   font size, so the full macro words stay legible without squashing values. */
+@media (max-width: 560px) {
+  .bd-h { font-size: 11px; letter-spacing: -0.02em; }
+  .bd-dot { display: none; }
+}
+
+/* Respect users who ask for less motion: drop travel/scale/height/stagger and
+   fall back to a near-instant opacity change only. */
+@media (prefers-reduced-motion: reduce) {
+  .collapse,
+  .collapse.is-open {
+    transition: none;
+  }
+  .collapse__inner,
+  .collapse.is-open > .collapse__inner {
+    transition: opacity 0.01ms;
+  }
+  .chevron {
+    transition: none;
+  }
+  .bd-head,
+  .bd-row,
+  .bd.is-open .bd-head,
+  .bd.is-open .bd-row {
+    opacity: 1;
+    transform: none;
+    transition: opacity 0.01ms;
+    transition-delay: 0ms;
+  }
+  .bd-panel,
+  .bd.is-open .bd-panel {
+    opacity: 1;
+    transition: none;
+  }
+  .bd-seg__div,
+  .bd.is-open .bd-seg__div {
+    transform: scaleY(1);
+    transition: none;
+  }
 }
 
 /* ── Typography ── */
@@ -252,6 +445,10 @@ label {
     grid-template-columns: repeat(4, 1fr);
   }
 }
+/* Dashboard desktop: a touch more gap so the four cards feel substantial. */
+@media (min-width: 1000px) {
+  .macro-grid { gap: var(--space-16); }
+}
 
 /* ── Macro ring card (used inside macro-grid) ── */
 .macro-ring-card {
@@ -263,6 +460,15 @@ label {
   align-items: center;
   gap: var(--space-12);
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+/* Desktop: taller, roomier cards with more space between ring and text. The
+   ring/value/label sizes scale in MacroTotals via clamp(); here we grow the
+   padding + gap to match so the extra space improves readability, not emptiness. */
+@media (min-width: 1000px) {
+  .macro-ring-card { padding: var(--space-24) var(--space-20); gap: var(--space-16); }
+}
+@media (min-width: 1280px) {
+  .macro-ring-card { padding: 26px var(--space-24); gap: var(--space-20); }
 }
 @media (max-width: 479px) {
   .macro-ring-card {
@@ -449,7 +655,21 @@ dialog::backdrop { background: rgba(0,0,0,0.4); }
 
 /* ── App main content area ── */
 .app-main {
+  max-width: 1152px;
+  margin: 0 auto;
   padding: var(--space-24) var(--space-20);
+}
+/* Dashboard-only: let the content breathe into wide desktops. The max-width
+   steps up with the viewport so side margins shrink on large screens while the
+   layout stays centered and never goes edge-to-edge. Other routes are unaffected. */
+@media (min-width: 1000px) {
+  .app-main--wide { max-width: 1240px; }
+}
+@media (min-width: 1280px) {
+  .app-main--wide { max-width: 1360px; padding-left: var(--space-32); padding-right: var(--space-32); }
+}
+@media (min-width: 1536px) {
+  .app-main--wide { max-width: 1440px; }
 }
 /* Clear the fixed bottom navigation bar (shown ≤768px) */
 @media (max-width: 768px) {
@@ -766,12 +986,17 @@ dialog::backdrop { background: rgba(0,0,0,0.4); }
 }
 
 /* ── Dashboard "Today's Meals" card ── */
-/* Meal name: up to 2 lines, then ellipsis (no awkward single-line cut-off) */
+/* Meal name: the card's title. Uses the display serif so it reads a clear step
+   above the sans ingredient names below it, while staying smaller than the 28px
+   "Today's Meals" section heading — giving four distinct hierarchy levels.
+   Up to 2 lines, then ellipsis (no awkward single-line cut-off). */
 .meal-name {
-  font-weight: 600;
-  font-size: 15px;
-  line-height: 1.3;
-  color: var(--color-text-strong);
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(19px, 1.5vw, 22px);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--color-primary-ink);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -785,8 +1010,8 @@ dialog::backdrop { background: rgba(0,0,0,0.4); }
   flex-wrap: nowrap;
   gap: 10px;
   align-items: baseline;
-  margin-top: 8px;
-  font-size: 13px;
+  margin-top: clamp(8px, 1vw, 12px);
+  font-size: clamp(13px, 1vw, 15px);
   color: var(--color-text-muted);
   white-space: nowrap;
   overflow: hidden;

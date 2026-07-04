@@ -45,7 +45,8 @@ const Pill = ({ active, onClick, children }) => (
     type="button"
     onClick={onClick}
     style={{
-      minHeight: 0, padding: '5px 11px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+      minHeight: 'clamp(30px, 2.4vw, 38px)', padding: 'clamp(5px, 0.7vw, 8px) clamp(11px, 1.2vw, 16px)',
+      borderRadius: 999, fontSize: 'clamp(12.5px, 1vw, 14.5px)', fontWeight: 600, cursor: 'pointer',
       border: active ? '1px solid #312e81' : '1px solid #e5e7eb',
       background: active ? '#312e81' : '#fff',
       color: active ? '#fff' : '#4b5563',
@@ -78,10 +79,10 @@ export default function TrainingFuelCard({ entries }) {
   const st = STATUS_STYLE[result.status] || STATUS_STYLE.best_window;
 
   return (
-    <div className="card" style={{ marginBottom: 16, padding: '16px 20px' }}>
+    <div className="card" style={{ marginBottom: 16, padding: 'clamp(16px, 1.6vw, 24px) clamp(20px, 1.8vw, 28px)' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-        <h3 className="section-title" style={{ margin: 0 }}>Ready to train?</h3>
-        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+        <h3 className="section-title" style={{ margin: 0, fontSize: 'clamp(20px, 1.9vw, 26px)' }}>Ready to train?</h3>
+        <span style={{ fontSize: 'clamp(12px, 0.95vw, 13.5px)', color: 'var(--color-text-muted)' }}>
           from your latest meal · {entry.recipe_name}
         </span>
       </div>
@@ -94,7 +95,7 @@ export default function TrainingFuelCard({ entries }) {
       </div>
       {showIntensity && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: 'var(--color-text-muted)', marginRight: 2 }}>Intensity</span>
+          <span style={{ fontSize: 'clamp(12px, 0.95vw, 13.5px)', color: 'var(--color-text-muted)', marginRight: 2 }}>Intensity</span>
           {INTENSITIES.map(i => (
             <Pill key={i.value} active={intensity === i.value} onClick={() => setIntensity(i.value)}>{i.label}</Pill>
           ))}
@@ -104,25 +105,25 @@ export default function TrainingFuelCard({ entries }) {
       {/* Status + window */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
         <span style={{
-          fontSize: 12.5, fontWeight: 700, padding: '4px 11px', borderRadius: 999,
+          fontSize: 'clamp(12.5px, 1vw, 14px)', fontWeight: 700, padding: 'clamp(4px, 0.6vw, 7px) clamp(11px, 1.2vw, 15px)', borderRadius: 999,
           background: st.bg, border: `1px solid ${st.border}`, color: st.color,
         }}>
           {result.title}
         </span>
-        <strong style={{ fontSize: 15, color: 'var(--color-text-strong)' }}>
+        <strong style={{ fontSize: 'clamp(15px, 1.3vw, 18px)', color: 'var(--color-text-strong)' }}>
           Best window: {result.idealStartMinutesAfterMeal}–{result.idealEndMinutesAfterMeal} min after eating
         </strong>
       </div>
 
-      <p style={{ margin: '10px 0 0', fontSize: 14, color: 'var(--color-text-body)', lineHeight: 1.5 }}>
+      <p style={{ margin: '12px 0 0', fontSize: 'clamp(14px, 1vw, 16px)', color: 'var(--color-text-body)', lineHeight: 1.5 }}>
         {result.message}
       </p>
-      <p style={{ margin: '6px 0 0', fontSize: 12.5, color: 'var(--color-text-muted)' }}>
+      <p style={{ margin: '6px 0 0', fontSize: 'clamp(12.5px, 0.95vw, 14px)', color: 'var(--color-text-muted)' }}>
         Reason: {result.reasonText}
       </p>
 
       {result.suggestions.length > 0 && (
-        <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12.5, color: 'var(--color-text-muted)' }}>
+        <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 'clamp(12.5px, 0.95vw, 14px)', color: 'var(--color-text-muted)' }}>
           {result.suggestions.map((s, i) => <li key={i} style={{ marginTop: 2 }}>{s}</li>)}
         </ul>
       )}

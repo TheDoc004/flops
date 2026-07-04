@@ -94,22 +94,24 @@ export default function Navbar() {
                   onClick={() => setOpenMenu(open ? null : g.label)}
                 >
                   {g.label}
-                  <span className={styles.caret} aria-hidden="true">▾</span>
+                  <span className={`${styles.caret}${open ? ` ${styles.caretOpen}` : ''}`} aria-hidden="true">▾</span>
                 </button>
-                {open && (
-                  <div className={styles.menu} role="menu">
-                    {g.items.map(it => (
-                      <NavLink
-                        key={it.to}
-                        to={it.to}
-                        role="menuitem"
-                        className={({ isActive }) => (isActive ? `${styles.menuItem} ${styles.menuItemActive}` : styles.menuItem)}
-                      >
-                        {it.label}
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
+                {/* Menu stays mounted so both open and close animate. When closed
+                    it's visually hidden and removed from the tab/a11y order via
+                    the CSS (visibility:hidden + pointer-events:none). */}
+                <div className={`${styles.menu}${open ? ` ${styles.menuOpen}` : ''}`} role="menu">
+                  {g.items.map(it => (
+                    <NavLink
+                      key={it.to}
+                      to={it.to}
+                      role="menuitem"
+                      tabIndex={open ? undefined : -1}
+                      className={({ isActive }) => (isActive ? `${styles.menuItem} ${styles.menuItemActive}` : styles.menuItem)}
+                    >
+                      {it.label}
+                    </NavLink>
+                  ))}
+                </div>
               </div>
             );
           })}

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { MacroUnitsProvider } from '@shared/context/MacroUnitsContext';
 import Navbar from '@shared/ui/Navbar';
 import BottomNav from '@shared/ui/BottomNav';
@@ -15,12 +15,15 @@ import TrainingWorkouts from '@features/training-workouts';
 import Ingredients from '@features/ingredients';
 import AiMacroLogger from '@features/ai-macro-logger';
 
-export default function App() {
+// Inner shell so we can read the route: the dashboard gets a wider content
+// container (.app-main--wide); every other page keeps the standard 1152px width.
+function AppShell() {
+  const { pathname } = useLocation();
+  const wide = pathname === '/';
   return (
-    <BrowserRouter>
-      <MacroUnitsProvider>
+    <>
       <Navbar />
-      <main className="app-main" style={{ maxWidth: 1152, margin: '0 auto' }}>
+      <main className={`app-main${wide ? ' app-main--wide' : ''}`}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/recipes" element={<Recipes />} />
@@ -46,6 +49,15 @@ export default function App() {
         </Routes>
       </main>
       <BottomNav />
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <MacroUnitsProvider>
+        <AppShell />
       </MacroUnitsProvider>
     </BrowserRouter>
   );

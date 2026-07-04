@@ -237,26 +237,34 @@ export default function Dashboard() {
   const totals = sumMacros(entries);
   const totalLoggedCal = Math.round(totals.calories);
 
+  // Larger, presence-boosted actions for the two primary dashboard buttons.
+  // Scoped to these instances (inline) so the global .btn-* sizing is untouched.
+  const dashActionStyle = {
+    fontSize: 'clamp(14px, 1vw, 16.5px)',
+    padding: 'clamp(11px, 1vw, 15px) clamp(16px, 1.7vw, 26px)',
+    minHeight: 'clamp(44px, 3.4vw, 52px)',
+  };
+
   return (
-    <div>
+    <div className="dashboard">
       {/* ── Header ── */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-end',
-        marginBottom: 24,
+        marginBottom: 'clamp(24px, 2.6vw, 34px)',
         gap: 12,
         flexWrap: 'wrap',
       }}>
         <div>
           <h1 style={{
-            margin: 0, fontSize: 38, fontWeight: 400, color: 'var(--color-primary-ink)',
+            margin: 0, fontSize: 'clamp(38px, 3.4vw, 52px)', fontWeight: 400, color: 'var(--color-primary-ink)',
             fontFamily: "'DM Serif Display', Georgia, serif",
             letterSpacing: '-0.02em', lineHeight: 1.05,
           }}>
             {greeting}
           </h1>
-          <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)', fontSize: 15 }}>
+          <p style={{ margin: '10px 0 0', color: 'var(--color-text-muted)', fontSize: 'clamp(15px, 1vw, 17px)' }}>
             {goalsLoaded && !goalsError
               ? (
                 <>
@@ -271,10 +279,10 @@ export default function Dashboard() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Link to="/ai-logger" className="btn-ai">
+          <Link to="/ai-logger" className="btn-ai" style={dashActionStyle}>
             <span className="spark" aria-hidden="true">✨</span> AI Estimate
           </Link>
-          <button className="btn-primary" onClick={() => setShowModal(true)}>
+          <button className="btn-primary" onClick={() => setShowModal(true)} style={dashActionStyle}>
             + Log a Meal
           </button>
         </div>
@@ -291,24 +299,24 @@ export default function Dashboard() {
       <MacroTotals totals={totals} targets={targets} />
 
       {/* ── Today's meals ── */}
-      <div style={{ marginTop: 28, marginBottom: 24 }}>
+      <div style={{ marginTop: 'clamp(28px, 3vw, 40px)', marginBottom: 24 }}>
         {/* Card header */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 14,
+          marginBottom: 'clamp(14px, 1.4vw, 18px)',
           gap: 8,
         }}>
           <div>
             <h2 style={{
-              margin: 0, fontSize: 28, fontWeight: 400, color: 'var(--color-primary-ink)',
+              margin: 0, fontSize: 'clamp(28px, 2.6vw, 34px)', fontWeight: 400, color: 'var(--color-primary-ink)',
               fontFamily: "'DM Serif Display', Georgia, serif",
               letterSpacing: '-0.01em',
             }}>
               Today&apos;s Meals
             </h2>
-            <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            <p style={{ margin: '4px 0 0', fontSize: 'clamp(13px, 1vw, 14.5px)', color: 'var(--color-text-muted)' }}>
               {entries.length === 0
                 ? 'Nothing logged yet'
                 : `${entries.length} meal${entries.length !== 1 ? 's' : ''} · ${totalLoggedCal.toLocaleString()} kcal`}
@@ -322,10 +330,10 @@ export default function Dashboard() {
               background: 'var(--color-surface)',
               borderRadius: 14,
               border: '1px dashed #c4b5fd',
-              padding: '24px 16px',
+              padding: 'clamp(24px, 2.4vw, 32px) 16px',
               textAlign: 'center',
             }}>
-              <p style={{ margin: '0 0 14px', color: 'var(--color-text-muted)', fontSize: 14 }}>No meals logged yet.</p>
+              <p style={{ margin: '0 0 14px', color: 'var(--color-text-muted)', fontSize: 'clamp(14px, 1vw, 15.5px)' }}>No meals logged yet.</p>
               <button className="btn-primary" onClick={() => setShowModal(true)}>
                 Log a meal
               </button>
@@ -369,7 +377,7 @@ export default function Dashboard() {
 
       {trainingPrefs.enabled && savedFuelOptions.length > 0 && (
         <div className="card" style={{ marginBottom: 24 }}>
-          <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--color-text-muted)' }}>Quick log — saved fuel</p>
+          <p style={{ margin: '0 0 10px', fontSize: 'clamp(13px, 1vw, 14.5px)', color: 'var(--color-text-muted)' }}>Quick log — saved fuel</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {savedFuelOptions.slice(0, 6).map(o => (
               <button
@@ -396,7 +404,7 @@ export default function Dashboard() {
         <>
           <div style={{ marginTop: trainingPrefs.enabled ? 20 : 16 }}>
             <h2 style={{
-              margin: '0 0 14px', fontSize: 28, fontWeight: 400, color: 'var(--color-primary-ink)',
+              margin: '0 0 14px', fontSize: 'clamp(28px, 2.6vw, 34px)', fontWeight: 400, color: 'var(--color-primary-ink)',
               fontFamily: "'DM Serif Display', Georgia, serif",
               letterSpacing: '-0.01em',
             }}>Trends</h2>
