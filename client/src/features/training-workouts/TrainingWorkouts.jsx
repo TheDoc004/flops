@@ -26,6 +26,8 @@ import {
   updateWorkoutPreset,
 } from '@shared/api/workouts';
 import Reveal from '@shared/ui/Reveal';
+import ChartReveal from '@shared/ui/ChartReveal';
+import useMediaQuery from '@shared/hooks/useMediaQuery';
 import ExerciseCombobox from './components/ExerciseCombobox';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -172,6 +174,7 @@ function ProgressChart({ exercise }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
   useEffect(() => {
     if (!exercise) { setRows([]); return; }
@@ -203,30 +206,37 @@ function ProgressChart({ exercise }) {
 
   return (
     <div style={{ marginTop: 12 }}>
-      <ResponsiveContainer width="100%" height={260}>
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip />
-          <Line
-            type="monotone"
-            dataKey="weight"
-            stroke="#111827"
-            strokeWidth={2}
-            dot={false}
-            name="Weight"
-          />
-          <Line
-            type="monotone"
-            dataKey="reps"
-            stroke="#2563eb"
-            strokeWidth={2}
-            dot={false}
-            name="Reps"
-          />
-        </LineChart>
-      </ResponsiveContainer>
+      <ChartReveal height={260}>
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip />
+            <Line
+              type="monotone"
+              dataKey="weight"
+              stroke="#111827"
+              strokeWidth={2}
+              dot={false}
+              name="Weight"
+              isAnimationActive={!reduceMotion}
+              animationDuration={900}
+            />
+            <Line
+              type="monotone"
+              dataKey="reps"
+              stroke="#2563eb"
+              strokeWidth={2}
+              dot={false}
+              name="Reps"
+              isAnimationActive={!reduceMotion}
+              animationDuration={900}
+              animationBegin={reduceMotion ? 0 : 250}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartReveal>
     </div>
   );
 }

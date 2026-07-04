@@ -6,6 +6,8 @@ import { aggregateRangeMicros, microCoverageScore, sortDays, DAY_SORTS } from '@
 import { MICRO_BY_KEY } from '@shared/config/microNutrients';
 import MicroNutrientPanel from './MicroNutrientPanel';
 import DayReport from './DayReport';
+import ChartReveal from '@shared/ui/ChartReveal';
+import useMediaQuery from '@shared/hooks/useMediaQuery';
 
 function StatChip({ label, value, unit, color }) {
   return (
@@ -23,6 +25,7 @@ function StatChip({ label, value, unit, color }) {
 export default function RangeReport({ days }) {
   const [sortKey, setSortKey] = useState('date_desc');
   const [open, setOpen] = useState(() => new Set());
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
   const logged = useMemo(() => days.filter(d => (d.entries?.length || 0) > 0), [days]);
 
@@ -114,15 +117,17 @@ export default function RangeReport({ days }) {
       {trend.length > 1 && (
         <div style={{ marginBottom: 20 }}>
           <h3 className="subsection-title" style={{ marginBottom: 10 }}>Calories across selected days</h3>
-          <ResponsiveContainer width="100%" height={180}>
-            <LineChart data={trend} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#ececec" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6b7280' }} tickFormatter={v => (v.length >= 10 ? `${v.slice(5, 7)}/${v.slice(8, 10)}` : v)} />
-              <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} width={44} />
-              <Tooltip formatter={v => [`${v} cal`, 'Calories']} labelFormatter={l => getWeekdayLongNameFromIsoDate(l)} />
-              <Line type="monotone" dataKey="calories" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          <ChartReveal height={180}>
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={trend} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#ececec" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6b7280' }} tickFormatter={v => (v.length >= 10 ? `${v.slice(5, 7)}/${v.slice(8, 10)}` : v)} />
+                <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} width={44} />
+                <Tooltip formatter={v => [`${v} cal`, 'Calories']} labelFormatter={l => getWeekdayLongNameFromIsoDate(l)} />
+                <Line type="monotone" dataKey="calories" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={!reduceMotion} animationDuration={900} />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartReveal>
         </div>
       )}
 

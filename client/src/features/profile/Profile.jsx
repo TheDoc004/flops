@@ -18,6 +18,8 @@ import {
   kgToLb,
 } from '@shared/utils/bodyUnits';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
+import ChartReveal from '@shared/ui/ChartReveal';
+import useMediaQuery from '@shared/hooks/useMediaQuery';
 import Reveal from '@shared/ui/Reveal';
 
 const ACTIVITY_OPTIONS = [
@@ -31,6 +33,7 @@ const ACTIVITY_OPTIONS = [
 
 export default function Profile() {
   const { macroUnits, setMacroUnits, bodyUnits, setBodyUnits } = useMacroUnits();
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const [form, setForm] = useState({});
   const [weights, setWeights] = useState([]);
   const [weightDate, setWeightDate] = useState(() => getLocalDateISO());
@@ -437,21 +440,25 @@ export default function Profile() {
         {chartData.length === 0 ? (
           <p className="empty-state" style={{ padding: 24 }}>No weight entries yet.</p>
         ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-              <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} unit={yUnit} />
-              <Tooltip
-                formatter={(v) => [`${Number(v).toFixed(1)}${yUnit.trim()}`, 'Weight']}
-              />
-              <Line
-                type="monotone" dataKey="weightY"
-                stroke="#312e81" strokeWidth={2} dot
-                name={bodyUnits === 'us' ? 'Weight (lb)' : 'Weight (kg)'}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <ChartReveal height={260}>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} unit={yUnit} />
+                <Tooltip
+                  formatter={(v) => [`${Number(v).toFixed(1)}${yUnit.trim()}`, 'Weight']}
+                />
+                <Line
+                  type="monotone" dataKey="weightY"
+                  stroke="#312e81" strokeWidth={2} dot
+                  name={bodyUnits === 'us' ? 'Weight (lb)' : 'Weight (kg)'}
+                  isAnimationActive={!reduceMotion}
+                  animationDuration={900}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartReveal>
         )}
       </Reveal>
     </div>

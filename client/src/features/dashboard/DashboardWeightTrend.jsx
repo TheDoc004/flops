@@ -10,6 +10,8 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { fetchBodyWeights } from '@shared/api/profile';
+import ChartReveal from '@shared/ui/ChartReveal';
+import useMediaQuery from '@shared/hooks/useMediaQuery';
 import { listLocalDatesInclusive } from '@features/adherence';
 import { kgToLb } from '@shared/utils/bodyUnits';
 import { addDaysLocal } from '@shared/utils/dateLocal';
@@ -17,6 +19,7 @@ import { addDaysLocal } from '@shared/utils/dateLocal';
 export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enabled, refreshKey = 0, noCard = false }) {
   const [weightRows, setWeightRows] = useState([]);
   const [loadError, setLoadError] = useState('');
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
   useEffect(() => {
     if (!enabled) { setWeightRows([]); return; }
@@ -97,6 +100,7 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
           No weight entries in this range yet.
         </p>
       ) : (
+        <ChartReveal height={200}>
         <ResponsiveContainer width="100%" height={200}>
           {/* top/right margin gives dots (r=4 + strokeWidth=2) room so they aren't clipped;
               left margin keeps the y-axis labels off the card edge */}
@@ -164,10 +168,12 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
                  on days with a real entry. Missing days still occupy the x-axis. */
               connectNulls
               name="Weight"
-              isAnimationActive={false}
+              isAnimationActive={!reduceMotion}
+              animationDuration={900}
             />
           </ComposedChart>
         </ResponsiveContainer>
+        </ChartReveal>
       )}
     </>
   );
