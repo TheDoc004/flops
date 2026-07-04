@@ -8,7 +8,7 @@ import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import Reveal from '@shared/ui/Reveal';
-import { AdherenceCalendarMonth, AdherenceExplorer } from '@features/adherence';
+import { AdherenceCalendarMonth, DashboardAdherencePicker } from '@features/adherence';
 import { sumDayMicros } from '@shared/utils/microNutrients';
 import NutritionReport from './NutritionReport';
 
@@ -207,8 +207,9 @@ export default function History() {
 
       {error && <p className="error" style={{ marginBottom: 16 }}>{error}</p>}
 
-      {/* ── Selection card ── */}
-      <Reveal delay={60} className="card" style={{ marginBottom: 20 }}>
+      {/* ── Calendar & adherence card (anchor target for the dashboard's
+            "Open full adherence in History →" button) ── */}
+      <Reveal delay={60} id="goal-adherence" className="card" style={{ marginBottom: 20, scrollMarginTop: 90 }}>
         <h2 className="section-title" style={{ marginBottom: 4 }}>Calendar & adherence</h2>
         <p style={{ margin: '0 0 14px', fontSize: 13, color: '#9ca3af' }}>
           Days are colored by goal adherence. Click a day to see its detail and add it to the report below; presets pick a range.
@@ -258,9 +259,9 @@ export default function History() {
           </div>
         </div>
 
-        {/* ── Goal adherence — same card as the calendar above, one tool ── */}
-        <div id="goal-adherence" style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--color-divider-warm)', scrollMarginTop: 90 }}>
-          <AdherenceExplorer noCard />
+        {/* ── Dashboard pin — which adherence view the dashboard card shows ── */}
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--color-divider-warm)' }}>
+          <DashboardAdherencePicker />
         </div>
       </Reveal>
 
