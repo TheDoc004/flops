@@ -3,13 +3,17 @@
 ## What This App Is
 
 NutriLog is a personal nutrition + training tracker. The long-term vision is two apps in one:
-a **nutritionist** side and a **personal trainer** side that share data intelligently — training
-history informs nutrition recommendations, and food logs inform training readiness. The apps
-are designed to eventually be as tightly coupled as a trainer and nutritionist at the same
-practice sharing the same client.
+a **nutritionist** side and a **personal trainer** side that will eventually share data through
+a deliberate integration layer (the "bridge") — training history informing nutrition
+recommendations, and food logs informing training readiness.
 
-**Current state:** Nutrition side is feature-complete. Training side is being rebuilt (Phase 2).
-No AI layer yet — that is Phase 3. Phase 2 is about capturing clean, structured training data.
+**Current state:** Nutrition and Training are developed as two FULLY SEPARATED domains
+(decision: July 2026). Nutrition is feature-complete; Training is being rebuilt (Phase 2).
+The earlier cross-domain fuel/readiness features were removed from the active app and are
+preserved on the branch `archive/nutrition-training-integration` — see
+`docs/future/nutrition-training-bridge.md`. Do not add new cross-domain features:
+Nutrition must not import Training business logic and vice versa. The bridge is Phase 3,
+built only after both domains work well independently.
 
 ## Running the App
 
@@ -60,7 +64,7 @@ nutrition-tracker/
 │       ├── log.js            # Meal log (daily entries, quick-food, range queries)
 │       ├── goals.js          # Versioned weekly macro goals (min/max ranges)
 │       ├── profile.js        # User profile + body weight log
-│       ├── training.js       # Training schedule, overrides, daily context, feedback, saved fuel
+│       ├── training.js       # Training schedule, overrides, daily context, feedback
 │       ├── workouts.js       # Workout presets, exercise library, exercise logs, progress
 │       └── labelIngredients.js # Ingredient library CRUD + OCR use tracking
 │
@@ -86,15 +90,14 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 
 | URL | Page | Notes |
 |---|---|---|
-| `/` | Dashboard | Today's log, macro totals, weight, adherence, fuel card |
+| `/` | Dashboard | Today's log, macro totals, weight, adherence (pure nutrition) |
 | `/recipes` | Recipe Library | Browse, archive, delete |
 | `/ingredients` | Ingredient Library | Label ingredients for Meal Builder |
 | `/meal-builder` | Meal Builder | OCR label scan → recipe builder |
 | `/history` | History | Charts, past day drill-down, edit entries |
 | `/training` | TrainingWorkouts | Workout presets, logging, progress (being rebuilt) |
-| `/plan` | Plan shell | Sub-nav for Goals / Fuel / Report / Profile |
+| `/plan` | Plan shell | Sub-nav for Goals / Report / Profile |
 | `/plan/goals` | Goals | Weekly macro targets with min/max ranges |
-| `/plan/fuel` | Training (fuel) | Digestion pref, training goal, saved fuel shortcuts |
 | `/plan/report` | Report | PDF export of intake for a date range |
 | `/plan/profile` | Profile | Physical stats, unit prefs, dashboard toggles |
 
@@ -134,11 +137,8 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 - `GET /api/training/override?date=`
 - `PUT /api/training/override`
 - `DELETE /api/training/override/:date`
-- `GET /api/training/daily-context?date=` — rest|light_cardio|medium|heavy_lifting|heavy_cardio
+- `GET /api/training/daily-context?date=` — rest|light_cardio|medium|heavy_lifting|heavy_cardio (no client consumer yet; future Training Today view)
 - `PUT /api/training/daily-context`
-- `GET /api/training/saved-recipes` — pinned go-to fuel recipes
-- `POST /api/training/saved-recipes`
-- `DELETE /api/training/saved-recipes/:recipeId`
 - `GET /api/training/feedback?date=`
 - `PUT /api/training/feedback`
 
@@ -176,7 +176,7 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 `day_goal_versions` — `user_id, effective_start_date, weekday, calories_min, calories_max, protein_g_min, protein_g_max, carbs_g_min, carbs_g_max, fat_g_min, fat_g_max, created_at`
 
 ### Profile
-`user_profile` — `user_id, height_cm, weight_kg, age, sex, goal_weight_kg, activity_level, maintenance_calories, macro_units, body_units, dash_weight_chart_enabled, dash_weight_days, dash_training_fuel_enabled, digestion_pref, training_goal`
+`user_profile` — `user_id, height_cm, weight_kg, age, sex, goal_weight_kg, activity_level, maintenance_calories, macro_units, body_units, dash_weight_chart_enabled, dash_weight_days` — plus three RETAINED-UNUSED columns from the archived fuel features (`dash_training_fuel_enabled, digestion_pref, training_goal`); nothing reads or writes them from the UI
 `body_weights` — `user_id, date, weight_kg`
 
 ### Ingredients
@@ -192,9 +192,9 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 
 `training_schedule` — `user_id, weekday (1-7), enabled, time_min, workout_type, duration_min, preset_id (FK → workout_presets)` — recurring weekly plan; preset_id links a day to a specific workout preset
 `training_overrides` — `user_id, date, enabled, time_min, workout_type, duration_min` — one-off date override to recurring schedule
-`daily_training_context` — `user_id, date, context_type (rest|light_cardio|medium|heavy_lifting|heavy_cardio)` — used by the fuel readiness card on the Dashboard
+`daily_training_context` — `user_id, date, context_type (rest|light_cardio|medium|heavy_lifting|heavy_cardio)` — training-owned; no client consumer since the fuel-card removal (future Training Today view)
 `training_feedback` — `user_id, date, energy, stomach, performance, notes` — post-workout self-assessment
-`training_saved_recipes` — `user_id, recipe_id, label` — pinned go-to fuel recipes shown as quick-log buttons on Dashboard
+`training_saved_recipes` — `user_id, recipe_id, label` — RETAINED-UNUSED (endpoints removed with the nutrition-training separation; data kept)
 
 ## Recipe Ingredient Slots (Advanced)
 
@@ -215,9 +215,13 @@ for Training section.
 Phase 2c (planned): Active workout logger (set-by-set, previous session reference), post-workout
 feedback UI, progress view as standalone tab.
 
-Phase 3 (future): Cross-app intelligence — training muscle group data informs nutrition
-protein timing / recovery recommendations. exercise_library.primary_muscle and
-secondary_muscles are the bridge columns.
+Phase 3 (future): Cross-app intelligence via a dedicated bridge layer — training muscle group
+data informs nutrition protein timing / recovery recommendations. exercise_library.primary_muscle
+and secondary_muscles are the bridge columns. The earlier fuel/readiness implementation is
+preserved on `archive/nutrition-training-integration`; see
+`docs/future/nutrition-training-bridge.md` for what exists and the prerequisites for rebuilding.
+Do not build bridge features until both domains are solid, and never by importing one domain's
+internals into the other.
 
 ## Important Notes for Future Sessions
 
