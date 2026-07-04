@@ -250,18 +250,28 @@
 /* Centered macro lanes: header label + every value sit centered in the tinted
    column, not jammed against the card edge. */
 .bd-h {
-  font-size: var(--text-caption);
+  font-size: var(--text-secondary);
+  font-weight: 800;
+  letter-spacing: 0.02em;
   text-align: center;
 }
 .bd-val {
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+/* Heat cells: stretch to the full row height so per-row macro tints tile into
+   a continuous column heat map; the value stays centered within the cell. */
+.bd-val--cell {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 0;
+}
 /* Narrow screens: trim horizontal padding and the header dot before touching
    font size, so the full macro words stay legible without squashing values. */
 @media (max-width: 560px) {
-  .bd-h { font-size: 11px; letter-spacing: -0.02em; }
-  .bd-dot { display: none; }
+  .bd-h { font-size: 12px; letter-spacing: 0; }
 }
 
 /* Respect users who ask for less motion: drop travel/scale/height/stagger and
