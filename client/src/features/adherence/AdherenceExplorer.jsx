@@ -164,7 +164,7 @@ export default function AdherenceExplorer({ noCard = false }) {
         marginBottom: 14, gap: 8, flexWrap: 'wrap',
       }}>
         <div>
-          <h2 className="section-title" style={{ marginBottom: 0 }}>Goal Adherence</h2>
+          <h2 className="section-title" style={{ marginBottom: 0 }}>Adherence over time</h2>
           {withTargets > 0 && !loading ? (
             <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
               <strong style={{ color: 'var(--color-text-strong)' }}>{hits}</strong>/{displayRows.length} days on target

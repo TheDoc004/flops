@@ -51,7 +51,9 @@ export default function History() {
     if (location.hash !== '#goal-adherence') return undefined;
     const scroll = () =>
       document.getElementById('goal-adherence')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    const timers = [0, 300, 800].map(ms => setTimeout(scroll, ms));
+    // Long tail: the calendar above the target fetches its month data, so the
+    // layout can still be growing well past the first second.
+    const timers = [0, 250, 600, 1100, 1800].map(ms => setTimeout(scroll, ms));
     return () => timers.forEach(clearTimeout);
   }, [location.hash]);
 
@@ -207,9 +209,9 @@ export default function History() {
 
       {/* ── Selection card ── */}
       <Reveal delay={60} className="card" style={{ marginBottom: 20 }}>
-        <h2 className="section-title" style={{ marginBottom: 4 }}>Review nutrition</h2>
+        <h2 className="section-title" style={{ marginBottom: 4 }}>Calendar & adherence</h2>
         <p style={{ margin: '0 0 14px', fontSize: 13, color: '#9ca3af' }}>
-          Pick one or more days, or use a preset range. The report below updates automatically.
+          Days are colored by goal adherence. Click a day to see its detail and add it to the report below; presets pick a range.
         </p>
 
         {/* Preset ranges */}
@@ -227,10 +229,13 @@ export default function History() {
           ))}
         </div>
 
-        {/* Calendar with selection */}
+        {/* Calendar with selection + inline day detail; the card header above
+            owns the title/hint, so the calendar's own header is hidden. */}
         <AdherenceCalendarMonth
           macroUnits={macroUnits}
           bare
+          hideHeader
+          inlineDetail
           selectedDates={selDates}
           onDayClick={onCalendarDayClick}
         />
@@ -275,10 +280,12 @@ export default function History() {
           Pick a day to add, edit, correct, or delete its meals. This is separate from the report selection above.
         </p>
 
-        {/* Single-day calendar picker for editing (independent of the report selection) */}
+        {/* Single-day calendar picker for editing (independent of the report
+            selection). The card heading above explains it, so no inner header. */}
         <AdherenceCalendarMonth
           macroUnits={macroUnits}
           bare
+          hideHeader
           dayMinHeight={76}
           selectedDates={selectedDate ? [selectedDate] : []}
           onDayClick={(d) => void selectDate(d)}

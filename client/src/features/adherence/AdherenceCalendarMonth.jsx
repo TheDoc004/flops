@@ -3,7 +3,7 @@ import { fetchLogRange } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { groupByDate } from '@shared/utils/macros';
 import { addDaysLocal, getLocalDateISO, parseLocalDateISO } from '@shared/utils/dateLocal';
-import { buildWeeklyAdherenceRows, hasAnyTarget } from './goalAdherence';
+import { buildWeeklyAdherenceRows, buildDayAdherenceDetail, hasAnyTarget } from './goalAdherence';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
 import GoalAdherenceDayDetailDialog from './GoalAdherenceDayDetailDialog';
 import { STATUS_META } from './statusMeta';
@@ -53,8 +53,10 @@ function datesInMonth(yyyyMm) {
  * @param {string[]} [props.selectedDates] - Opt-in selection mode: ISO dates to highlight as selected
  * @param {function} [props.onDayClick]    - Opt-in: when set, clicking a day calls onDayClick(date) instead of opening the detail dialog
  * @param {number}   [props.dayMinHeight=52] - Minimum height of each day tile (raise for a larger, roomier calendar)
+ * @param {boolean}  [props.hideHeader=false] - Hides the "Adherence calendar" title/hint (keeps month nav) when the host section provides its own heading
+ * @param {boolean}  [props.inlineDetail=false] - With onDayClick: clicking a day ALSO drops an inline detail panel below the grid (instead of the modal dialog)
  */
-export default function AdherenceCalendarMonth({ macroUnits, bare = false, showNav = true, onViewDay = null, selectedDates = null, onDayClick = null, dayMinHeight = 52 }) {
+export default function AdherenceCalendarMonth({ macroUnits, bare = false, showNav = true, onViewDay = null, selectedDates = null, onDayClick = null, dayMinHeight = 52, hideHeader = false, inlineDetail = false }) {
   const [month, setMonth] = useState(() => getLocalDateISO().slice(0, 7)); // YYYY-MM
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -119,13 +121,15 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
 
   const inner = (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-        <div>
-          <h3 className="section-title">Adherence calendar</h3>
-          <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
-            {onDayClick ? 'Click days to add them to your selection.' : 'Month view. Click a day for details.'}
-          </p>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: hideHeader ? 'flex-end' : 'space-between', gap: 12, marginBottom: 12 }}>
+        {!hideHeader && (
+          <div>
+            <h3 className="section-title">Adherence calendar</h3>
+            <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+              {onDayClick ? 'Click days to add them to your selection.' : 'Month view. Click a day for details.'}
+            </p>
+          </div>
+        )}
         {showNav && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button type="button" className="btn-secondary" onClick={prevMonth} style={{ padding: '6px 10px' }}>
@@ -169,11 +173,23 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
               role="button"
               tabIndex={0}
               className="cal-day"
-              onClick={() => (onDayClick ? onDayClick(row.date) : setDetailRow(row))}
+              onClick={() => {
+                if (onDayClick) {
+                  onDayClick(row.date);
+                  if (inlineDetail) setDetailRow(row);
+                } else {
+                  setDetailRow(row);
+                }
+              }}
               onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  if (onDayClick) onDayClick(row.date); else setDetailRow(row);
+                  if (onDayClick) {
+                    onDayClick(row.date);
+                    if (inlineDetail) setDetailRow(row);
+                  } else {
+                    setDetailRow(row);
+                  }
                 }
               }}
               title={row.date}
@@ -227,7 +243,93 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
         })}
       </div>
 
-      {detailRow && (
+      {/* Inline day detail: drops down under the grid as days are clicked,
+          updating in place instead of interrupting with a modal. */}
+      {inlineDetail && detailRow && (() => {
+        const detail = buildDayAdherenceDetail(detailRow.totals, detailRow.targets, macroUnits, {
+          status: detailRow.status,
+          hasData: detailRow.hasData,
+        });
+        if (!detail) return null;
+        const statusM = STATUS_META[detailRow.status] || STATUS_META.no_target;
+        const wdName = ISO_WEEKDAY_LABELS[detailRow.weekday] || '';
+        return (
+          <div
+            key={detailRow.date}
+            className="panel-in"
+            style={{ marginTop: 12, padding: '12px 14px', borderRadius: 10, border: `1px solid ${statusM.border}`, background: statusM.bg }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+              <p style={{ margin: 0, fontSize: 13 }}>
+                <strong>{wdName}</strong>{' · '}{detailRow.date}{' · '}
+                <span style={{ fontWeight: 600, padding: '1px 9px', borderRadius: 999, background: 'rgba(255,255,255,0.65)', color: statusM.color }}>
+                  {statusM.label}
+                </span>
+                {detail.missed?.length > 0 && (
+                  <span style={{ marginLeft: 8, fontSize: 12, color: '#92400e' }}>
+                    Off-target: {detail.missed.map(m => m.label).join(', ')}
+                  </span>
+                )}
+              </p>
+              <button
+                type="button"
+                onClick={() => setDetailRow(null)}
+                aria-label="Dismiss day detail"
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14, color: statusM.color, padding: '2px 6px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {detailRow.status === 'no_data' && (
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>No meals were logged for this day.</p>
+            )}
+            {detailRow.status === 'upcoming' && (
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>This day is in the future. No meals logged yet.</p>
+            )}
+
+            {detailRow.status !== 'no_data' && detailRow.status !== 'upcoming' && (
+              <>
+                <div className="adh-detail-table" style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: `1px solid ${statusM.border}` }}>
+                        <th style={{ padding: '6px 8px 6px 0' }}>Category</th>
+                        <th style={{ padding: 6 }}>Goal</th>
+                        <th style={{ padding: 6 }}>Actual</th>
+                        <th style={{ padding: 6 }}>vs goal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detail.categories.map(cat => (
+                        <tr key={cat.key} style={{ fontWeight: cat.missedTolerance ? 600 : 400 }}>
+                          <td style={{ padding: '5px 8px 5px 0' }}>{cat.label}</td>
+                          <td style={{ padding: 5 }}>{cat.goalDisplay}</td>
+                          <td style={{ padding: 5 }}>{cat.actualDisplay}</td>
+                          <td style={{ padding: 5 }}>{cat.deltaLabel}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Mobile: stacked per-category cards (no horizontal scroll) */}
+                <div className="adh-detail-cards">
+                  {detail.categories.map(cat => (
+                    <div key={cat.key} className="adh-detail-cat">
+                      <div className="adh-detail-cat-name">{cat.label}</div>
+                      <div className="adh-detail-cat-row"><span>Goal</span><span>{cat.goalDisplay}</span></div>
+                      <div className="adh-detail-cat-row"><span>Actual</span><span>{cat.actualDisplay}</span></div>
+                      <div className="adh-detail-cat-row"><span>vs goal</span><span>{cat.deltaLabel}</span></div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
+      {!inlineDetail && detailRow && (
         <GoalAdherenceDayDetailDialog
           key={detailRow.date}
           row={detailRow}
