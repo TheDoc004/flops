@@ -18,7 +18,6 @@ import DashboardWeightRow from './DashboardWeightRow';
 import DashboardWeightTrend from './DashboardWeightTrend';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import { fetchDailyTrainingContext, saveDailyTrainingContext, fetchSavedFuelRecipes } from '@shared/api/training';
-import { computeMealTrainingReadiness } from './mealTrainingReadiness';
 
 function macrosFromLogEntry(entry) {
   const s = Number(entry.servings) || 1;
@@ -83,16 +82,6 @@ export default function Dashboard() {
     });
     return buildWeeklyAdherenceRows(goalsPayload, dayList, { todayIso: today });
   }, [today, weekLogEntries, goalsPayload]);
-
-  const fuelReadiness = useMemo(() => {
-    if (!fuelMealSnapshot || !trainingPrefs.enabled) return null;
-    return computeMealTrainingReadiness({
-      ...fuelMealSnapshot.macros,
-      contextType: dailyContext,
-      bodyWeightKg: profileWeightKg,
-      digestionPref: trainingPrefs.digestion_pref,
-    });
-  }, [fuelMealSnapshot, dailyContext, profileWeightKg, trainingPrefs.enabled, trainingPrefs.digestion_pref]);
 
   useEffect(() => {
     function syncToday() {
