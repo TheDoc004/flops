@@ -118,7 +118,8 @@ const RecipeCombobox = forwardRef(function RecipeCombobox({
           value={inputValue}
           disabled={disabled}
           autoComplete="off"
-          onFocus={() => { if (!disabled) setOpen(true); }}
+          /* No onFocus opener: the modal autofocuses this input, and the list
+             should not pop open uninvited. It opens on click, typing, or ↓. */
           onClick={() => { if (!disabled) setOpen(true); }}
           onChange={e => {
             setQuery(e.target.value);

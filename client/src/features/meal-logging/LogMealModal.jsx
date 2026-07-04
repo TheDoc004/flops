@@ -424,8 +424,11 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--color-text-faint)' }}>Build a new recipe first</span>
         </div>
 
+        {/* Mode panels: keyed per mode so switching remounts the panel and
+            replays the .panel-in entrance. The recipe wrapper mirrors the
+            form's column gap so spacing is unchanged. */}
         {mode === 'recipe' ? (
-          <>
+          <div key="recipe" className="panel-in" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {/* Recipe picker */}
             <div>
               <RecipeCombobox
@@ -464,7 +467,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
             {/* Inline customize section — unified for all recipes with variable slots */}
             {customizeOpen && selectedRecipe && variableSlots.length > 0 && (
-              <div style={{ padding: 14, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
+              <div className="panel-in" style={{ padding: 14, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
                 <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>Customize this log</p>
                 <p style={{ margin: '0 0 14px', fontSize: 12, color: 'var(--color-text-muted)' }}>
                   Changes only apply to this meal log. Your saved recipe stays the same.
@@ -607,10 +610,10 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                 )}
               </div>
             )}
-          </>
+          </div>
         ) : mode === 'quick' ? (
           /* Quick add mode */
-          <div>
+          <div key="quick" className="panel-in">
             <label>Food</label>
             <input
               type="search"
@@ -661,7 +664,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               </div>
             </div>
             {quickSelected && quickMacros && (
-              <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb' }}>
+              <div className="panel-in" style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb' }}>
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-body)' }}>
                   <strong>{quickSelected.name}</strong> · {Math.round(quickMacros.calories)} cal ·
                   {' '}P {quickMacros.protein_g.toFixed(1)}g · C {quickMacros.carbs_g.toFixed(1)}g · F {quickMacros.fat_g.toFixed(1)}g
@@ -674,7 +677,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           </div>
         ) : (
           /* Custom "log once" mode */
-          <div>
+          <div key="custom" className="panel-in">
             <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--color-text-body)' }}>
               Track this meal today without saving it to your recipe library. Enter the macros you already worked out.
             </p>

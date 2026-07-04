@@ -360,6 +360,11 @@ button {
   line-height: 1.1;
   white-space: nowrap;
   text-decoration: none;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 /* Disabled state for the button system: clearly inactive, not broken. */
@@ -386,6 +391,41 @@ button {
   box-shadow: 0 3px 10px rgba(124, 58, 237, 0.18);
 }
 .btn-ai .spark { font-size: 0.95em; line-height: 1; }
+
+/* ── Button motion ──
+   Every .btn-* lifts slightly on hover and presses down on tap/click — a
+   tactile response layered on top of each variant's own colors/shadows.
+   The press transition is extra quick so it tracks the finger/cursor. */
+.btn-primary:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled),
+.btn-danger:hover:not(:disabled),
+.btn-ai:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.btn-primary:hover:not(:disabled),
+.btn-danger:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(30, 27, 75, 0.22);
+}
+.btn-secondary:hover:not(:disabled) {
+  box-shadow: 0 3px 8px rgba(49, 46, 129, 0.12);
+}
+.btn-primary:active:not(:disabled),
+.btn-secondary:active:not(:disabled),
+.btn-danger:active:not(:disabled),
+.btn-ai:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  box-shadow: none;
+  transition-duration: 60ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-primary, .btn-secondary, .btn-danger, .btn-ai,
+  .btn-primary:hover, .btn-secondary:hover, .btn-danger:hover, .btn-ai:hover,
+  .btn-primary:active, .btn-secondary:active, .btn-danger:active, .btn-ai:active {
+    transition: none;
+    transform: none;
+  }
+}
 
 input, select, textarea {
   border: 1px solid var(--color-input-border);
@@ -541,6 +581,41 @@ dialog {
   box-shadow: var(--shadow-modal);
 }
 dialog::backdrop { background: rgba(0,0,0,0.4); }
+
+/* ── Dialog entrance ──
+   Dialogs rise/fade in and the backdrop fades up behind them. Keyed off the
+   [open] attribute, so it plays automatically on showModal() — no JS. The
+   `from` keyframes omit `to`, which resolves to the element's normal style. */
+dialog[open] {
+  animation: dialog-enter var(--dur-open) var(--ease-out);
+}
+dialog[open]::backdrop {
+  animation: backdrop-enter var(--dur-open) ease;
+}
+@keyframes dialog-enter {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+}
+@keyframes backdrop-enter {
+  from { background: rgba(0, 0, 0, 0); }
+}
+
+/* One-shot entrance for content swapped in by a user action (modal mode
+   panels, expanding sections). Pair with a distinct React `key` per panel so
+   switching content remounts the node and replays the animation. */
+.panel-in {
+  animation: panel-in var(--dur-open) var(--ease-out);
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog[open],
+  dialog[open]::backdrop,
+  .panel-in {
+    animation: none;
+  }
+}
 @media (max-width: 480px) {
   dialog {
     padding: var(--space-16);
