@@ -3,13 +3,8 @@ import { Link } from 'react-router-dom';
 import { fetchRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
-import { QUICK_FOODS, filterQuickFoods, macrosForQuickFoodAmount } from './quickFoods';
 import { adjustPerServingMacrosForResolvedClient } from './recipeLogMacros';
 import { listLoggingSlotsFromRecipe, listNonEditableTemplateLines } from './recipeLoggingSlots';
-
-function preventOptionMouseDown(e) {
-  e.preventDefault();
-}
 
 function lastSubsKey(recipeId) { return `nlog_lastSubs_${recipeId}`; }
 
@@ -39,7 +34,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const ref = useRef(null);
   const [recipes, setRecipes] = useState([]);
   const [recipeId, setRecipeId] = useState(initialEntry?.recipe_id ? String(initialEntry.recipe_id) : '');
-  const [mode, setMode] = useState('recipe'); // 'recipe' | 'quick' | 'custom'
+  const [mode, setMode] = useState('recipe'); // 'recipe' | 'custom'
   const [servings, setServings] = useState(
     initialEntry?.servings != null ? String(initialEntry.servings) : '1'
   );
@@ -265,15 +260,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     return out;
   }
 
-  // Quick add state
-  const [quickQuery, setQuickQuery] = useState('');
-  const [quickFoodId, setQuickFoodId] = useState('');
-  const [quickAmount, setQuickAmount] = useState('');
-  const [quickUnit, setQuickUnit] = useState('g');
-  const quickOptions = useMemo(() => filterQuickFoods(quickQuery), [quickQuery]);
-  const quickSelected = useMemo(() => QUICK_FOODS.find(f => f.id === quickFoodId) || null, [quickFoodId]);
-  const quickMacros = useMemo(() => macrosForQuickFoodAmount(quickSelected, quickAmount, quickUnit), [quickSelected, quickAmount, quickUnit]);
-
   // Custom "log once" state — for meals whose macros you already know (e.g. worked out elsewhere).
   const [customName, setCustomName] = useState('');
   const [customCalories, setCustomCalories] = useState('');
@@ -287,24 +273,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     if (submitting) return; // guard against double-submit (rapid clicks / Enter)
     setError('');
     try {
-      if (mode === 'quick') {
-        if (!quickSelected) return setError('Select a food');
-        if (!quickMacros) return setError('Enter an amount in grams or ounces');
-        setSubmitting(true);
-        await onLog({
-          quick_food: {
-            name: quickSelected.name,
-            amount: Number(quickAmount),
-            unit: quickUnit,
-            calories_100g: quickSelected.calories_100g,
-            protein_g_100g: quickSelected.protein_g_100g,
-            carbs_g_100g: quickSelected.carbs_g_100g,
-            fat_g_100g: quickSelected.fat_g_100g,
-          },
-          notes: notes.trim() || undefined,
-          time_min: parseHHMMToTimeMin(timeHHMM),
-        });
-      } else if (mode === 'custom') {
+      if (mode === 'custom') {
         const name = customName.trim();
         if (!name) return setError('Enter a meal name');
         const cals = Number(customCalories);
@@ -385,20 +354,21 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           </button>
           <button
             type="button"
-            className={mode === 'quick' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setMode('quick')}
-            style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem', fontWeight: 700 }}
-          >
-            Quick add food
-          </button>
-          <button
-            type="button"
             className={mode === 'custom' ? 'btn-primary' : 'btn-secondary'}
             onClick={() => setMode('custom')}
             style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem', fontWeight: 700 }}
           >
             Log once (custom)
           </button>
+          {/* Shortcut, not a mode: leaves the modal for the AI logger page. */}
+          <Link
+            to="/ai-logger"
+            className="btn-ai"
+            onClick={close}
+            style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem' }}
+          >
+            <span className="spark" aria-hidden="true">✨</span> AI Estimate
+          </Link>
         </div>
 
         {/* Meal Builder shortcut */}
@@ -610,70 +580,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                 )}
               </div>
             )}
-          </div>
-        ) : mode === 'quick' ? (
-          /* Quick add mode */
-          <div key="quick" className="panel-in">
-            <label>Food</label>
-            <input
-              type="search"
-              placeholder="Search foods…"
-              value={quickQuery}
-              onChange={e => { setQuickQuery(e.target.value); }}
-              autoComplete="off"
-            />
-            <div style={{ marginTop: 8, maxHeight: 180, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 10 }}>
-              {quickOptions.length === 0 ? (
-                <p className="empty-state" style={{ padding: 12 }}>No foods match &quot;{quickQuery.trim()}&quot;.</p>
-              ) : (
-                quickOptions.slice(0, 30).map(f => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onMouseDown={preventOptionMouseDown}
-                    onClick={() => setQuickFoodId(f.id)}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '10px 12px',
-                      border: 'none',
-                      borderBottom: '1px solid #f3f4f6',
-                      background: f.id === quickFoodId ? '#eff6ff' : 'white',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <strong>{f.name}</strong>
-                    <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>
-                      per 100 g · {f.calories_100g} cal
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 10, marginTop: 10 }}>
-              <div>
-                <label>Amount</label>
-                <input type="number" min="0.01" step="0.01" value={quickAmount} onChange={e => setQuickAmount(e.target.value)} placeholder="e.g. 120" required />
-              </div>
-              <div>
-                <label>Unit</label>
-                <select value={quickUnit} onChange={e => setQuickUnit(e.target.value)}>
-                  <option value="g">g</option>
-                  <option value="oz">oz</option>
-                </select>
-              </div>
-            </div>
-            {quickSelected && quickMacros && (
-              <div className="panel-in" style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb' }}>
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-body)' }}>
-                  <strong>{quickSelected.name}</strong> · {Math.round(quickMacros.calories)} cal ·
-                  {' '}P {quickMacros.protein_g.toFixed(1)}g · C {quickMacros.carbs_g.toFixed(1)}g · F {quickMacros.fat_g.toFixed(1)}g
-                </p>
-              </div>
-            )}
-            <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Quick add foods are one-off logs. They won&apos;t show up in the Recipe Library unless you save a recipe separately.
-            </p>
           </div>
         ) : (
           /* Custom "log once" mode */
