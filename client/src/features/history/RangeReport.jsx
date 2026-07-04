@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
 import { MACRO_COLORS } from '@shared/utils/colors';
@@ -8,6 +8,58 @@ import MicroNutrientPanel from './MicroNutrientPanel';
 import DayReport from './DayReport';
 import ChartReveal from '@shared/ui/ChartReveal';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
+
+/** Sort selector styled like the navbar dropdowns (unroll + lavender hover). */
+function SortMenu({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    function onDocPointerDown(e) {
+      if (!rootRef.current || rootRef.current.contains(e.target)) return;
+      setOpen(false);
+    }
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown);
+  }, []);
+
+  const current = options.find(o => o.key === value);
+  return (
+    <div ref={rootRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        className="btn-secondary"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(v => !v)}
+        style={{ fontSize: 12, padding: '6px 12px', minHeight: 34, gap: 6 }}
+      >
+        Sort: {current?.label || ''}
+        <span className={`chevron${open ? ' is-open' : ''}`} aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          className="menu-pop dropdown-in"
+          style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 30, minWidth: 190, transformOrigin: 'top center' }}
+        >
+          {options.map(o => (
+            <button
+              key={o.key}
+              type="button"
+              role="option"
+              aria-selected={o.key === value}
+              className={`menu-pop-item${o.key === value ? ' is-selected' : ''}`}
+              onClick={() => { onChange(o.key); setOpen(false); }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function StatChip({ label, value, unit, color }) {
   return (
@@ -169,16 +221,16 @@ export default function RangeReport({ days }) {
       {/* ── Individual day drilldowns ── */}
       <div style={{ borderTop: '1px solid #f0ede8', paddingTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-          <h3 className="subsection-title" style={{ margin: 0 }}>Individual days</h3>
-          <label style={{ fontSize: 12, color: '#6b7280', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            Sort
-            <select value={sortKey} onChange={e => setSortKey(e.target.value)} style={{ width: 'auto', minHeight: 'auto', padding: '6px 8px' }}>
-              {DAY_SORTS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-            </select>
-          </label>
+          <h3 className="subsection-title" style={{ margin: 0 }}>
+            Individual days
+            <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: '#9ca3af' }}>({sortedDays.length})</span>
+          </h3>
+          <SortMenu value={sortKey} options={DAY_SORTS} onChange={setSortKey} />
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* Capped height: long selections (e.g. 30 days) scroll inside the
+            list instead of stretching the page. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 440, overflowY: 'auto', paddingRight: 2 }}>
           {sortedDays.map(d => {
             const isOpen = open.has(d.date);
             const cov = d.micros?.hasMicros ? Math.round(microCoverageScore(d.micros.values) * 100) : null;
