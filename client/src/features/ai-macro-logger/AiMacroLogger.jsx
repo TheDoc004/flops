@@ -6,6 +6,7 @@ import { createRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients, createLabelIngredient } from '@shared/api/labelIngredients';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
 import { SERVING_UNITS, servingToStored } from '@shared/utils/servingBasis';
+import Reveal from '@shared/ui/Reveal';
 import { adjustPerServingMacrosForResolvedClient } from '@features/meal-logging/recipeLogMacros';
 import { matchRecipe, applyModifications, resolvedReviewRows, recipeIngredientNames } from './recipeCommand';
 import {
@@ -518,13 +519,15 @@ export default function AiMacroLogger() {
 
   return (
     <div>
-      <h1 className="page-title" style={{ marginBottom: 6 }}>AI Macro Logger</h1>
-      <p className="page-subtitle" style={{ marginBottom: 18 }}>
-        Describe a meal, review the estimate, then log it once.
-      </p>
+      <Reveal>
+        <h1 className="page-title" style={{ marginBottom: 6 }}>AI Macro Logger</h1>
+        <p className="page-subtitle" style={{ marginBottom: 18 }}>
+          Describe a meal, review the estimate, then log it once.
+        </p>
+      </Reveal>
 
       {/* Input */}
-      <div className="card" style={{ marginBottom: 18 }}>
+      <Reveal delay={60} className="card" style={{ marginBottom: 18 }}>
         <label htmlFor="ai-meal-desc">Describe your meal</label>
         <textarea
           id="ai-meal-desc"
@@ -546,7 +549,7 @@ export default function AiMacroLogger() {
           </button>
         </div>
         {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
-      </div>
+      </Reveal>
 
       {/* Loading state */}
       {loading && !estimate && !recipeReview && !picker && (

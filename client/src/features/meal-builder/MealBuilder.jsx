@@ -16,6 +16,7 @@ import {
   sumMacroObjects,
 } from '@features/label-ocr';
 import { SERVING_UNITS, isWeightUnit, servingToStored, emptyServing, unitLabel } from '@shared/utils/servingBasis';
+import Reveal from '@shared/ui/Reveal';
 
 function emptyLabelDraft() {
   return {
@@ -557,12 +558,14 @@ export default function MealBuilder() {
 
   return (
     <div>
-      <h1 className="page-title" style={{ marginBottom: 8 }}>Meal Builder</h1>
-      <p className="page-subtitle" style={{ marginBottom: 14 }}>
-        Build meals and recipes from saved ingredients. Browse and log finished recipes from the <Link to="/recipes" style={{ color: 'var(--color-link)' }}>Recipe Library</Link>.
-      </p>
+      <Reveal>
+        <h1 className="page-title" style={{ marginBottom: 8 }}>Meal Builder</h1>
+        <p className="page-subtitle" style={{ marginBottom: 14 }}>
+          Build meals and recipes from saved ingredients. Browse and log finished recipes from the <Link to="/recipes" style={{ color: 'var(--color-link)' }}>Recipe Library</Link>.
+        </p>
+      </Reveal>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+      <Reveal delay={60} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
         <button
           type="button"
           className={mode === 'labels' ? 'btn-primary' : 'btn-secondary'}
@@ -595,7 +598,7 @@ export default function MealBuilder() {
             Exit edit
           </button>
         )}
-      </div>
+      </Reveal>
 
       {recipeLoadError && <p className="error">{recipeLoadError}</p>}
 
@@ -638,6 +641,7 @@ export default function MealBuilder() {
 
       {loadError && <p className="error">{loadError}</p>}
 
+      <Reveal delay={120}>
       <div ref={libCardRef} className="card" style={{ marginBottom: 20, scrollMarginTop: 120 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <h3 className="section-title">1. Add ingredients to your library if you need to</h3>
@@ -804,8 +808,9 @@ export default function MealBuilder() {
         {labelSaveError && <p className="error">{labelSaveError}</p>}
         </>)}
       </div>
+      </Reveal>
 
-      <div className="card" style={{ marginBottom: 20 }}>
+      <Reveal className="card" style={{ marginBottom: 20 }}>
         <h3 className="section-title">2. Build your meal from saved ingredients</h3>
         <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
           Pick ingredients from your library, enter the amount you're using, and the macros will calculate automatically.
@@ -1026,8 +1031,9 @@ export default function MealBuilder() {
             {macroSummaryText(totals, { fiber: true })}
           </div>
         </div>
-      </div>
+      </Reveal>
 
+      <Reveal>
       <form className="card" onSubmit={saveMeal}>
         <h3 className="section-title">{recipeId ? '3. Save your changes' : '3. Log it once, or save it as a recipe'}</h3>
         {recipeId && (
@@ -1108,6 +1114,7 @@ export default function MealBuilder() {
           </button>
         )}
       </form>
+      </Reveal>
         </>
       )}
 

@@ -18,6 +18,7 @@ import {
   kgToLb,
 } from '@shared/utils/bodyUnits';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
+import Reveal from '@shared/ui/Reveal';
 
 const ACTIVITY_OPTIONS = [
   { value: '', label: '—' },
@@ -230,15 +231,17 @@ export default function Profile() {
 
   return (
     <div>
-      <h1 className="page-title" style={{ marginBottom: 6 }}>Profile &amp; body weight</h1>
-      <p className="page-subtitle">
-        Single local profile. Height and weight stored in cm/kg; US units are display-only.
-      </p>
+      <Reveal>
+        <h1 className="page-title" style={{ marginBottom: 6 }}>Profile &amp; body weight</h1>
+        <p className="page-subtitle">
+          Single local profile. Height and weight stored in cm/kg; US units are display-only.
+        </p>
+      </Reveal>
 
       {error && <p className="error">{error}</p>}
 
       {/* ── Row 1: unit toggles ── */}
-      <div className="settings-grid">
+      <Reveal delay={60} className="settings-grid">
         <div className="card">
           <H3>Nutrition units</H3>
           <p style={{ margin: '0 0 10px', color: '#6b7280', fontSize: 13 }}>
@@ -264,10 +267,10 @@ export default function Profile() {
               label="US-style" sub="ft / in / lb" />
           </div>
         </div>
-      </div>
+      </Reveal>
 
       {/* ── Row 2: dashboard prefs + log weight ── */}
-      <div className="settings-grid">
+      <Reveal delay={120} className="settings-grid">
         <div className="card">
           <H3>Dashboard</H3>
           {/* Checkbox */}
@@ -345,9 +348,10 @@ export default function Profile() {
             Saving again on the same day updates that entry.
           </p>
         </div>
-      </div>
+      </Reveal>
 
       {/* ── Row 3: personal stats (full width) ── */}
+      <Reveal>
       <form onSubmit={handleSaveProfile} className="card" style={{ marginBottom: 16 }}>
         <H3>Personal stats</H3>
         <div className="form-grid-2">
@@ -425,9 +429,10 @@ export default function Profile() {
           <button type="submit" className="btn-primary">Save profile</button>
         </div>
       </form>
+      </Reveal>
 
       {/* ── Row 4: weight trend chart (full width) ── */}
-      <div className="card">
+      <Reveal className="card">
         <H3>Weight trend</H3>
         {chartData.length === 0 ? (
           <p className="empty-state" style={{ padding: 24 }}>No weight entries yet.</p>
@@ -448,7 +453,7 @@ export default function Profile() {
             </LineChart>
           </ResponsiveContainer>
         )}
-      </div>
+      </Reveal>
     </div>
   );
 }

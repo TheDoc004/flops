@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { fetchLogRange } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
+import Reveal from '@shared/ui/Reveal';
 import { buildNutritionReportPdf, downloadReportPdf } from './buildNutritionReportPdf';
 import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 
@@ -58,13 +59,15 @@ export default function Report() {
 
   return (
     <div>
-      <h1 className="page-title" style={{ marginBottom: 6 }}>Export report</h1>
-      <p className="page-subtitle">
-        Download a PDF summary of your logged intake — useful for a coach or to paste into an AI tool.
-      </p>
+      <Reveal>
+        <h1 className="page-title" style={{ marginBottom: 6 }}>Export report</h1>
+        <p className="page-subtitle">
+          Download a PDF summary of your logged intake — useful for a coach or to paste into an AI tool.
+        </p>
+      </Reveal>
 
       {/* Cap width so the card doesn't sprawl across the full container */}
-      <div className="card" style={{ marginBottom: 16, maxWidth: 540 }}>
+      <Reveal delay={60} className="card" style={{ marginBottom: 16, maxWidth: 540 }}>
         <h3 className="section-title" style={{ marginBottom: 14 }}>Date range</h3>
 
         {/* ── Preset pills ── */}
@@ -137,15 +140,17 @@ export default function Report() {
         <button type="button" className="btn-primary" onClick={handleDownload} disabled={busy}>
           {busy ? 'Building PDF…' : 'Download PDF'}
         </button>
-      </div>
+      </Reveal>
 
-      <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-        Tip: set your weekly targets on{' '}
-        <Link to="/plan/goals" style={{ color: 'var(--color-primary)' }}>Goals</Link>{' '}
-        and your stats on{' '}
-        <Link to="/plan/profile" style={{ color: 'var(--color-primary)' }}>Profile</Link>{' '}
-        so they appear in the report.
-      </p>
+      <Reveal delay={120}>
+        <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+          Tip: set your weekly targets on{' '}
+          <Link to="/plan/goals" style={{ color: 'var(--color-primary)' }}>Goals</Link>{' '}
+          and your stats on{' '}
+          <Link to="/plan/profile" style={{ color: 'var(--color-primary)' }}>Profile</Link>{' '}
+          so they appear in the report.
+        </p>
+      </Reveal>
     </div>
   );
 }

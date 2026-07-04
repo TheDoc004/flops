@@ -7,6 +7,7 @@ import {
 } from '@shared/utils/macroUnits';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
+import Reveal from '@shared/ui/Reveal';
 
 const FIELD_META = [
   { key: 'calories', label: 'Calories', isMacro: false, step: '1', inputMode: 'numeric' },
@@ -122,15 +123,17 @@ export default function Goals() {
 
   return (
     <div>
-      <h1 className="page-title" style={{ marginBottom: 6 }}>Weekly nutrition goals</h1>
-      <p className="page-subtitle">
-        Set a min/max range per day — same value on both sides means an exact target.
-        Changes apply from <strong>{today}</strong> forward; past days are unaffected.
-        Macros are stored in grams; display follows your unit choice in Profile.
-      </p>
+      <Reveal>
+        <h1 className="page-title" style={{ marginBottom: 6 }}>Weekly nutrition goals</h1>
+        <p className="page-subtitle">
+          Set a min/max range per day — same value on both sides means an exact target.
+          Changes apply from <strong>{today}</strong> forward; past days are unaffected.
+          Macros are stored in grams; display follows your unit choice in Profile.
+        </p>
+      </Reveal>
 
       <form onSubmit={handleSave}>
-        <div className="card goals-table-wrap" style={{ overflowX: 'auto' }}>
+        <Reveal delay={60} className="card goals-table-wrap" style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
@@ -190,10 +193,10 @@ export default function Goals() {
               ))}
             </tbody>
           </table>
-        </div>
+        </Reveal>
 
         {/* Mobile-only: vertical day cards (same state/handlers as the table) */}
-        <div className="card goals-cards">
+        <Reveal delay={60} className="card goals-cards">
           {rows.map(row => (
             <div key={row.weekday} className="goals-day-card">
               <h3 className="goals-day-title">{row.label}</h3>
@@ -240,14 +243,14 @@ export default function Goals() {
               })}
             </div>
           ))}
-        </div>
+        </Reveal>
 
         {saveError && <p className="error" style={{ marginTop: 12 }}>{saveError}</p>}
         {saved && <p style={{ marginTop: 12, color: 'var(--color-success)', fontSize: 14 }}>Goals saved from today forward.</p>}
 
-        <div style={{ marginTop: 16 }}>
+        <Reveal delay={120} style={{ marginTop: 16 }}>
           <button type="submit" className="btn-primary">Save goals</button>
-        </div>
+        </Reveal>
       </form>
     </div>
   );

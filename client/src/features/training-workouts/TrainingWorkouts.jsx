@@ -25,6 +25,7 @@ import {
   setWorkoutToday,
   updateWorkoutPreset,
 } from '@shared/api/workouts';
+import Reveal from '@shared/ui/Reveal';
 import ExerciseCombobox from './components/ExerciseCombobox';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -471,24 +472,26 @@ export default function TrainingWorkouts() {
 
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
+      <Reveal style={{ marginBottom: 20 }}>
         <h1 className="page-title" style={{ marginBottom: 4 }}>Training</h1>
         <p className="page-subtitle" style={{ margin: 0 }}>
           Log workouts, manage presets, and track progress.
         </p>
-      </div>
+      </Reveal>
 
       {error && <p className="error">{error}</p>}
       {savedMsg && (
         <p style={{ color: '#059669', fontSize: 14, marginBottom: 12 }}>{savedMsg}</p>
       )}
 
-      <TabBar active={activeTab} onChange={setActiveTab} />
+      <Reveal delay={60}>
+        <TabBar active={activeTab} onChange={setActiveTab} />
+      </Reveal>
 
       {/* ── TODAY TAB ─────────────────────────────────────────────────── */}
       {activeTab === 'today' && (
         <div>
-          <div className="card" style={{ marginBottom: 16 }}>
+          <Reveal className="card" style={{ marginBottom: 16 }} delay={120}>
             <div
               style={{
                 display: 'flex',
@@ -524,7 +527,7 @@ export default function TrainingWorkouts() {
                 </select>
               </div>
             </div>
-          </div>
+          </Reveal>
 
           {!todayPresetId ? (
             <p className="empty-state" style={{ padding: '32px 0' }}>
@@ -573,7 +576,7 @@ export default function TrainingWorkouts() {
       {activeTab === 'workouts' && (
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           {/* Preset list */}
-          <div style={{ flex: '0 1 260px', minWidth: 220 }}>
+          <Reveal delay={120} style={{ flex: '0 1 260px', minWidth: 220 }}>
             <div className="card" style={{ marginBottom: 0 }}>
               <h3 style={{ marginTop: 0, marginBottom: 12 }}>Workout presets</h3>
 
@@ -675,10 +678,10 @@ export default function TrainingWorkouts() {
                 </form>
               </details>
             </div>
-          </div>
+          </Reveal>
 
           {/* Preset detail */}
-          <div style={{ flex: '1 1 280px', minWidth: 280 }}>
+          <Reveal style={{ flex: '1 1 280px', minWidth: 280 }}>
             {!workoutsSelectedPreset ? (
               <div className="card">
                 <p className="empty-state" style={{ padding: '24px 0' }}>
@@ -856,14 +859,14 @@ export default function TrainingWorkouts() {
                 </form>
               </div>
             )}
-          </div>
+          </Reveal>
         </div>
       )}
 
       {/* ── PROGRESS TAB ──────────────────────────────────────────────── */}
       {activeTab === 'progress' && (
         <div>
-          <div className="card" style={{ marginBottom: 16 }}>
+          <Reveal className="card" style={{ marginBottom: 16 }} delay={120}>
             <h3 className="section-title" style={{ marginBottom: 12 }}>Exercise progress</h3>
             <label style={{ fontSize: 13, marginBottom: 6, display: 'block' }}>
               Exercise name
@@ -890,13 +893,13 @@ export default function TrainingWorkouts() {
                 View
               </button>
             </div>
-          </div>
+          </Reveal>
 
           {progressExercise && (
-            <div className="card">
+            <Reveal className="card">
               <h3 style={{ marginTop: 0 }}>{progressExercise}</h3>
               <ProgressChart exercise={progressExercise} />
-            </div>
+            </Reveal>
           )}
         </div>
       )}

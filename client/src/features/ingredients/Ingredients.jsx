@@ -14,6 +14,7 @@ import {
   scanFieldClass,
 } from '@features/label-ocr';
 import { SERVING_UNITS, isWeightUnit, servingToStored, servingFromRow, emptyServing, unitLabel } from '@shared/utils/servingBasis';
+import Reveal from '@shared/ui/Reveal';
 
 function filterByName(items, q) {
   const query = String(q ?? '').trim().toLowerCase();
@@ -234,17 +235,20 @@ export default function Ingredients() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+      <Reveal style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="page-title">Ingredient Library</h1>
-      </div>
+      </Reveal>
 
-      <p className="page-subtitle" style={{ marginBottom: 16 }}>
-        Save ingredients once, then reuse them forever in Meal Builder recipes. Variants (brands) are supported. Add
-        items by typing macros manually or by uploading a nutrition-label photo (assisted scan — verify before saving).
-      </p>
+      <Reveal delay={60}>
+        <p className="page-subtitle" style={{ marginBottom: 16 }}>
+          Save ingredients once, then reuse them forever in Meal Builder recipes. Variants (brands) are supported. Add
+          items by typing macros manually or by uploading a nutrition-label photo (assisted scan — verify before saving).
+        </p>
+      </Reveal>
 
       {error && <p className="error">{error}</p>}
 
+      <Reveal delay={120}>
       <div ref={formCardRef} className="card" style={{ marginBottom: 16, scrollMarginTop: 120 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <h3 className="section-title">{editing ? 'Edit ingredient' : 'Add a new ingredient'}</h3>
@@ -550,8 +554,9 @@ export default function Ingredients() {
         </form>
         </>)}
       </div>
+      </Reveal>
 
-      <div className="card">
+      <Reveal className="card">
         <h3 className="section-title">Your ingredients</h3>
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
@@ -593,8 +598,9 @@ export default function Ingredients() {
             <div style={{
               minHeight: totalPages > 1 ? `${PAGE_SIZE * 54}px` : undefined,
             }}>
-              {paginated.map(i => (
-                <div key={i.id} className="ingredient-card">
+              {paginated.map((i, idx) => (
+                <Reveal key={i.id} delay={Math.min(idx, 6) * 60}>
+                <div className="ingredient-card">
                   <div className="ingredient-card-main">
                     <div className="ingredient-card-head">
                       <strong className="ingredient-card-name">{i.name}</strong>
@@ -624,6 +630,7 @@ export default function Ingredients() {
                     </button>
                   </div>
                 </div>
+                </Reveal>
               ))}
             </div>
             {totalPages > 1 && (
@@ -635,7 +642,7 @@ export default function Ingredients() {
             )}
           </>
         )}
-      </div>
+      </Reveal>
 
       <LabelCropModal
         key={labelCropOpen ? labelPhotoPreview || 'open' : 'closed'}

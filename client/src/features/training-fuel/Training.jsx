@@ -7,6 +7,7 @@ import {
   fetchSavedFuelRecipes,
 } from '@shared/api/training';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
+import Reveal from '@shared/ui/Reveal';
 
 export default function Training() {
   const [loading, setLoading] = useState(true);
@@ -113,16 +114,18 @@ export default function Training() {
 
   return (
     <div>
-      <h1 className="page-title" style={{ marginBottom: 6 }}>Fuel settings</h1>
-      <p className="page-subtitle">
-        Tune digestion preferences and Dashboard quick-log shortcuts.
-      </p>
+      <Reveal>
+        <h1 className="page-title" style={{ marginBottom: 6 }}>Fuel settings</h1>
+        <p className="page-subtitle">
+          Tune digestion preferences and Dashboard quick-log shortcuts.
+        </p>
+      </Reveal>
 
       {error && <p className="error">{error}</p>}
 
       <div className="settings-grid">
         {/* ── Training fuel preferences ── */}
-        <div className="card">
+        <Reveal delay={60} className="card">
           <H3>Training fuel</H3>
 
           {/* Dashboard toggle — pill style, width:auto fixes the global input { width:100% } rule */}
@@ -186,10 +189,10 @@ export default function Training() {
           {fuelSaved && (
             <p style={{ marginTop: 10, fontSize: 12, color: 'var(--color-success)' }}>Saved.</p>
           )}
-        </div>
+        </Reveal>
 
         {/* ── Saved quick-log fuel options ── */}
-        <div className="card">
+        <Reveal delay={120} className="card">
           <H3>Saved fuel options</H3>
           <p style={{ margin: '0 0 12px', color: 'var(--color-text-muted)', fontSize: 13 }}>
             Quick-log buttons on the Dashboard.
@@ -224,8 +227,8 @@ export default function Training() {
             <p className="empty-state" style={{ padding: 12 }}>No saved options yet.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {savedOptions.map(o => (
-                <div key={o.recipe_id} style={{
+              {savedOptions.map((o, idx) => (
+                <Reveal key={o.recipe_id} delay={Math.min(idx, 6) * 60} style={{
                   display: 'flex', justifyContent: 'space-between', gap: 10,
                   alignItems: 'center', padding: '8px 0',
                   borderBottom: '1px solid #f0ede8',
@@ -241,11 +244,11 @@ export default function Training() {
                   >
                     Remove
                   </button>
-                </div>
+                </Reveal>
               ))}
             </div>
           )}
-        </div>
+        </Reveal>
       </div>
     </div>
   );
