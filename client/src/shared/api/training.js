@@ -83,33 +83,6 @@ export async function fetchTrainingToday({ date, weekday }) {
   return res.json();
 }
 
-export async function fetchSavedFuelRecipes() {
-  const res = await fetch(apiUrl('/api/training/saved-recipes'));
-  if (!res.ok) throw new Error('Failed to load saved fuel options');
-  return res.json();
-}
-
-export async function addSavedFuelRecipe(recipe_id, label) {
-  const res = await fetch(apiUrl('/api/training/saved-recipes'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 0, recipe_id, label }),
-  });
-  if (!res.ok) {
-    const e = await readJsonIfPresent(res);
-    throw new Error(e?.error || 'Failed to save option');
-  }
-  return res.json();
-}
-
-export async function deleteSavedFuelRecipe(recipeId) {
-  const res = await fetch(apiUrl(`/api/training/saved-recipes/${recipeId}?user_id=0`), { method: 'DELETE' });
-  if (!res.ok) {
-    const e = await readJsonIfPresent(res);
-    throw new Error(e?.error || 'Failed to remove option');
-  }
-}
-
 export async function fetchTrainingFeedback(date) {
   const res = await fetch(apiUrl(`/api/training/feedback?date=${date}`));
   if (!res.ok) throw new Error('Failed to load workout feedback');

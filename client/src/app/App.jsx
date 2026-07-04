@@ -8,7 +8,6 @@ import History from '@features/history';
 import Goals from '@features/goals';
 import Report from '@features/report';
 import Profile from '@features/profile';
-import Training from '@features/training-fuel';
 import MealBuilder from '@features/meal-builder';
 import PlanLayout from './layouts/PlanLayout';
 import TrainingWorkouts from '@features/training-workouts';
@@ -36,14 +35,12 @@ function AppShell() {
           <Route path="/plan" element={<PlanLayout />}>
             <Route index element={<Navigate to="/plan/goals" replace />} />
             <Route path="goals" element={<Goals />} />
-            <Route path="fuel" element={<Training />} />
             <Route path="report" element={<Report />} />
             <Route path="profile" element={<Profile />} />
           </Route>
 
           {/* Back-compat redirects */}
           <Route path="/goals" element={<Navigate to="/plan/goals" replace />} />
-          <Route path="/fuel" element={<Navigate to="/plan/fuel" replace />} />
           <Route path="/report" element={<Navigate to="/plan/report" replace />} />
           <Route path="/profile" element={<Navigate to="/plan/profile" replace />} />
         </Routes>
