@@ -575,7 +575,7 @@ export default function MealBuilder() {
             setSearchParams(next);
           }}
         >
-          Smart Meal Builder
+          Build from ingredients
         </button>
         <button
           type="button"
@@ -586,7 +586,7 @@ export default function MealBuilder() {
             setSearchParams(next);
           }}
         >
-          Manual recipe
+          Known macros
         </button>
         {recipeId && (
           <button
@@ -605,11 +605,19 @@ export default function MealBuilder() {
       {mode === 'manual' && (
         <div className="card" style={{ marginBottom: 20 }}>
           <h3 className="section-title">
-            {recipeId ? 'Edit recipe (manual)' : 'New recipe (manual)'}
+            {recipeId ? 'Edit recipe (known macros)' : 'New recipe — known macros'}
           </h3>
           <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-            Enter a meal directly (no saved ingredients needed). {recipeId ? 'Save your changes below.' : 'Log it once, or save it as a reusable recipe.'}
+            For meals where you know the numbers but not the exact amounts — a restaurant order, a packaged meal.
+            Type the macros from the label or the restaurant&apos;s nutrition page; list the ingredients as reference notes.
+            {' '}{recipeId ? 'Save your changes below.' : 'Log it once, or save it as a reusable recipe.'}
           </p>
+          {!recipeId && (
+            <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+              Only have a rough idea of what&apos;s in it? Let the{' '}
+              <Link to="/ai-logger" style={{ color: 'var(--color-link)' }}>✨ AI logger</Link> estimate it instead.
+            </p>
+          )}
           {loadingRecipe && recipeId ? (
             <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>Loading…</p>
           ) : (
@@ -666,8 +674,8 @@ export default function MealBuilder() {
             <div style={{ marginTop: 10 }}>
               <img src={labelDraft.photoPreview} alt="Label preview" style={{ maxWidth: 220, maxHeight: 220, borderRadius: 8, border: '1px solid #e5e7eb' }} />
               <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                <button type="button" className="btn-secondary" disabled={ocrBusy} onClick={() => void runOcr()}>
-                  {ocrBusy ? 'Reading…' : 'Read label (OCR)'}
+                <button type="button" className={ocrBusy ? 'btn-secondary btn-loading' : 'btn-secondary'} disabled={ocrBusy} onClick={() => void runOcr()}>
+                  {ocrBusy ? (<><span className="btn-spinner" aria-hidden="true" />Reading…</>) : 'Read label (OCR)'}
                 </button>
                 <button type="button" className="btn-secondary" onClick={() => setLabelCropOpen(true)}>
                   Crop to nutrition panel
@@ -1070,7 +1078,7 @@ export default function MealBuilder() {
               <button
                 type="button"
                 onClick={logOnceMeal}
-                className="btn-secondary"
+                className={loggingOnce ? 'btn-secondary btn-loading' : 'btn-secondary'}
                 disabled={loggingOnce}
                 style={{ width: '100%', minHeight: 60, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
               >

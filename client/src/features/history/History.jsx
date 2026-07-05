@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
-import { fetchLogRange, fetchLogForDate, createLogEntry, createQuickFoodLog, createCustomLog, deleteLogEntry, updateLogEntry } from '@shared/api/log';
+import { fetchLogRange, fetchLogForDate, createLogEntry, deleteLogEntry, updateLogEntry } from '@shared/api/log';
 import { sumMacros } from '@shared/utils/macros';
 import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
@@ -163,13 +163,7 @@ export default function History() {
 
   async function handleAddMeal(data) {
     if (!selectedDate) return;
-    if (data?.quick_food) {
-      await createQuickFoodLog({ date: selectedDate, ...data.quick_food, notes: data.notes, time_min: data.time_min });
-    } else if (data?.log_custom) {
-      await createCustomLog({ date: selectedDate, ...data.log_custom, notes: data.notes, time_min: data.time_min });
-    } else {
-      await createLogEntry({ ...data, date: selectedDate });
-    }
+    await createLogEntry({ ...data, date: selectedDate });
     setShowAddModal(false);
     await refreshAfterEdit();
   }

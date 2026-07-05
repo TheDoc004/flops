@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
-import { macrosForLabelServingAmount, sumMacroObjects } from '@features/label-ocr';
 
 const EMPTY = {
   name: '',
@@ -69,6 +68,11 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onLogOnce = null
     ...initial,
     ingredients: normalizeIngredientsForForm(initial),
   }));
+  // Slot editing is legacy-only: recipes that already have variable slots keep
+  // full slot management, but NEW known-macros recipes don't offer them —
+  // hand-assembling library ingredients to derive macros is the AI logger's
+  // job now (or the ingredients-mode builder for exact recipes).
+  const [hadSlots] = useState(() => normalizeIngredientsForForm(initial).some(r => r.rowKind === 'slot'));
   const [error, setError] = useState('');
   const [labelIngredients, setLabelIngredients] = useState([]);
 
@@ -175,33 +179,6 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onLogOnce = null
       const next = f.ingredients.filter((_, i) => i !== index);
       return { ...f, ingredients: next.length ? next : [{ rowKind: 'line', name: '', amount: '' }] };
     });
-  }
-
-  function estimateMacrosFromSlots() {
-    const rows = [];
-    for (const row of form.ingredients) {
-      if (row.rowKind !== 'slot') continue;
-      const defId = Number(row.default_label_ingredient_id);
-      if (!Number.isInteger(defId) || defId <= 0) continue;
-      const ing = labelById[String(defId)];
-      if (!ing) continue;
-      const m = macrosForLabelServingAmount(ing, row.amount, row.unit);
-      if (m) rows.push(m);
-    }
-    if (rows.length === 0) {
-      setError('Add variable slots with a default library ingredient and amount each, or enter macros manually.');
-      return;
-    }
-    const t = sumMacroObjects(rows);
-    setForm(f => ({
-      ...f,
-      calories: String(Math.round(t.calories * 10) / 10),
-      protein_g: String(Math.round(t.protein_g * 10) / 10),
-      carbs_g: String(Math.round(t.carbs_g * 10) / 10),
-      fat_g: String(Math.round(t.fat_g * 10) / 10),
-      fiber_g: t.fiber_g > 0 ? String(Math.round(t.fiber_g * 10) / 10) : '',
-    }));
-    setError('');
   }
 
   async function handleSubmit(e) {
@@ -312,18 +289,26 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onLogOnce = null
 
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-          <label style={{ margin: 0 }}>Ingredients</label>
+          <label style={{ margin: 0 }}>Ingredients (reference notes)</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" className="btn-secondary" onClick={addLineRow}>+ Fixed line</button>
-            <button type="button" className="btn-secondary" onClick={addSlotRow}>+ Ingredient slot</button>
-            <button type="button" className="btn-secondary" onClick={estimateMacrosFromSlots} title="Sum macros from each slot using its default ingredient">
-              Estimate macros from slots
-            </button>
+            <button type="button" className="btn-secondary" onClick={addLineRow}>+ Add ingredient note</button>
+            {hadSlots && (
+              <button type="button" className="btn-secondary" onClick={addSlotRow}>+ Ingredient slot</button>
+            )}
           </div>
         </div>
         <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-          <strong>Fixed lines</strong> are free-text notes. <strong>Ingredient slots</strong> use your Ingredient Library: pick a <strong>default</strong> and optional <strong>substitutes</strong>.
-          When you log the recipe, you only choose an ingredient if that slot has substitutes; the saved recipe never changes.
+          {hadSlots ? (
+            <>
+              <strong>Fixed lines</strong> are free-text notes. <strong>Ingredient slots</strong> use your Ingredient Library: pick a <strong>default</strong> and optional <strong>substitutes</strong>.
+              When you log the recipe, you only choose an ingredient if that slot has substitutes; the saved recipe never changes.
+            </>
+          ) : (
+            <>
+              Free-text notes for what&apos;s in it — &ldquo;white rice, double scoop&rdquo;, &ldquo;chicken&rdquo;. They document the meal (and help
+              micronutrient estimates); the macros above are what gets logged.
+            </>
+          )}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {form.ingredients.map((row, index) =>

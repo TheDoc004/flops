@@ -34,7 +34,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const ref = useRef(null);
   const [recipes, setRecipes] = useState([]);
   const [recipeId, setRecipeId] = useState(initialEntry?.recipe_id ? String(initialEntry.recipe_id) : '');
-  const [mode, setMode] = useState('recipe'); // 'recipe' | 'custom'
   const [servings, setServings] = useState(
     initialEntry?.servings != null ? String(initialEntry.servings) : '1'
   );
@@ -95,11 +94,10 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     setCustomizeOpen(selectedRecipe != null && variableSlots.length > 0);
   }, [selectedRecipe?.id, variableSlots.length]);
 
-  // Auto-focus recipe input when modal is in recipe mode
+  // Auto-focus the recipe input when the modal opens
   useEffect(() => {
-    if (mode !== 'recipe') return;
     requestAnimationFrame(() => recipeComboboxRef.current?.focus());
-  }, [mode]);
+  }, []);
 
   // Initialize per-slot amounts from recipe defaults (preserves existing state on re-render)
   useEffect(() => {
@@ -260,72 +258,35 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     return out;
   }
 
-  // Custom "log once" state — for meals whose macros you already know (e.g. worked out elsewhere).
-  const [customName, setCustomName] = useState('');
-  const [customCalories, setCustomCalories] = useState('');
-  const [customProtein, setCustomProtein] = useState('');
-  const [customCarbs, setCustomCarbs] = useState('');
-  const [customFat, setCustomFat] = useState('');
-  const [customFiber, setCustomFiber] = useState('');
-
   async function handleSubmit(e) {
     e.preventDefault();
     if (submitting) return; // guard against double-submit (rapid clicks / Enter)
     setError('');
     try {
-      if (mode === 'custom') {
-        const name = customName.trim();
-        if (!name) return setError('Enter a meal name');
-        const cals = Number(customCalories);
-        const p = Number(customProtein);
-        const c = Number(customCarbs);
-        const f = Number(customFat);
-        if ([cals, p, c, f].some(n => !Number.isFinite(n) || n < 0)) {
-          return setError('Enter calories, protein, carbs and fat (0 or more)');
-        }
-        const fiber = customFiber.trim() === '' ? undefined : Number(customFiber);
-        if (fiber !== undefined && (!Number.isFinite(fiber) || fiber < 0)) {
-          return setError('Fiber must be 0 or more, or left blank');
-        }
-        setSubmitting(true);
-        await onLog({
-          log_custom: {
-            name,
-            calories: cals,
-            protein_g: p,
-            carbs_g: c,
-            fat_g: f,
-            ...(fiber !== undefined ? { fiber_g: fiber } : {}),
-          },
-          notes: notes.trim() || undefined,
-          time_min: parseHHMMToTimeMin(timeHHMM),
-        });
-      } else {
-        if (!recipeId) return setError('Select a recipe');
-        const payload = {
-          recipe_id: Number(recipeId),
-          servings: Number(servings),
-          notes: notes.trim() || undefined,
-          time_min: parseHHMMToTimeMin(timeHHMM),
-        };
-        if (variableSlots.length > 0) {
-          for (const s of slotsNeedingChoice) {
-            if (slotSelections[s.slot_id] == null) {
-              return setError(`Choose an option for: ${s.label || 'ingredient slot'}`);
-            }
+      if (!recipeId) return setError('Select a recipe');
+      const payload = {
+        recipe_id: Number(recipeId),
+        servings: Number(servings),
+        notes: notes.trim() || undefined,
+        time_min: parseHHMMToTimeMin(timeHHMM),
+      };
+      if (variableSlots.length > 0) {
+        for (const s of slotsNeedingChoice) {
+          if (slotSelections[s.slot_id] == null) {
+            return setError(`Choose an option for: ${s.label || 'ingredient slot'}`);
           }
-          payload.log_slot_customizations = buildLogSlotCustomizationsPayload();
         }
-        setSubmitting(true);
-        await onLog(payload);
-        if (slotsNeedingChoice.length > 0 && recipeId) {
-          const toSave = {};
-          for (const s of slotsNeedingChoice) {
-            const chosenId = slotSelections[s.slot_id];
-            if (chosenId != null) toSave[s.slot_id] = Number(chosenId);
-          }
-          if (Object.keys(toSave).length > 0) saveLastSubs(Number(recipeId), toSave);
+        payload.log_slot_customizations = buildLogSlotCustomizationsPayload();
+      }
+      setSubmitting(true);
+      await onLog(payload);
+      if (slotsNeedingChoice.length > 0 && recipeId) {
+        const toSave = {};
+        for (const s of slotsNeedingChoice) {
+          const chosenId = slotSelections[s.slot_id];
+          if (chosenId != null) toSave[s.slot_id] = Number(chosenId);
         }
+        if (Object.keys(toSave).length > 0) saveLastSubs(Number(recipeId), toSave);
       }
       ref.current?.close();
       onClose();
@@ -339,35 +300,21 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
   return (
     <dialog ref={ref} onClose={onClose}>
-      <h2 style={{ marginTop: 0 }}>{title || 'Log a Meal'}</h2>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+        <h2 style={{ margin: 0 }}>{title || 'Log a Meal'}</h2>
+        <button type="button" className="modal-close-x" aria-label="Close" onClick={close}>✕</button>
+      </div>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-        {/* Mode selector */}
+        {/* One-off meals live in the AI logger now — this modal logs saved recipes. */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className={mode === 'recipe' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setMode('recipe')}
-            style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem', fontWeight: 700 }}
-          >
-            Saved recipe
-          </button>
-          <button
-            type="button"
-            className={mode === 'custom' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setMode('custom')}
-            style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem', fontWeight: 700 }}
-          >
-            Log once (custom)
-          </button>
-          {/* Shortcut, not a mode: leaves the modal for the AI logger page. */}
           <Link
             to="/ai-logger"
             className="btn-ai"
             onClick={close}
             style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem' }}
           >
-            <span className="spark" aria-hidden="true">✨</span> AI Estimate
+            <span className="spark" aria-hidden="true">✨</span> AI Estimate — describe or speak a meal
           </Link>
         </div>
 
@@ -394,11 +341,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--color-text-faint)' }}>Build a new recipe first</span>
         </div>
 
-        {/* Mode panels: keyed per mode so switching remounts the panel and
-            replays the .panel-in entrance. The recipe wrapper mirrors the
-            form's column gap so spacing is unchanged. */}
-        {mode === 'recipe' ? (
-          <div key="recipe" className="panel-in" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="panel-in" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {/* Recipe picker */}
             <div>
               <RecipeCombobox
@@ -581,43 +524,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               </div>
             )}
           </div>
-        ) : (
-          /* Custom "log once" mode */
-          <div key="custom" className="panel-in">
-            <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--color-text-body)' }}>
-              Track this meal today without saving it to your recipe library. Enter the macros you already worked out.
-            </p>
-            <div style={{ marginBottom: 10 }}>
-              <label>Meal name</label>
-              <input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="e.g. Chicken burrito bowl" />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div>
-                <label>Calories</label>
-                <input type="number" min="0" step="1" value={customCalories} onChange={e => setCustomCalories(e.target.value)} placeholder="e.g. 620" />
-              </div>
-              <div>
-                <label>Protein (g)</label>
-                <input type="number" min="0" step="0.1" value={customProtein} onChange={e => setCustomProtein(e.target.value)} placeholder="e.g. 45" />
-              </div>
-              <div>
-                <label>Carbs (g)</label>
-                <input type="number" min="0" step="0.1" value={customCarbs} onChange={e => setCustomCarbs(e.target.value)} placeholder="e.g. 60" />
-              </div>
-              <div>
-                <label>Fat (g)</label>
-                <input type="number" min="0" step="0.1" value={customFat} onChange={e => setCustomFat(e.target.value)} placeholder="e.g. 20" />
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label>Fiber (g) <span style={{ fontSize: 11, color: 'var(--color-text-faint)', fontWeight: 400 }}>(optional)</span></label>
-                <input type="number" min="0" step="0.1" value={customFiber} onChange={e => setCustomFiber(e.target.value)} placeholder="optional" />
-              </div>
-            </div>
-            <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-              This won&apos;t be added to your Recipe Library. To reuse a meal, build it in the Meal Builder and choose &ldquo;Save as recipe&rdquo;.
-            </p>
-          </div>
-        )}
 
         {/* Time */}
         <div>
@@ -639,23 +545,14 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
         </div>
 
         {error && <p className="error">{error}</p>}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+        <div style={{ marginTop: 4 }}>
           <button
             type="submit"
-            className="btn-primary"
+            className={submitting ? 'btn-primary btn-loading' : 'btn-primary'}
             disabled={submitting}
             style={{ width: '100%', minHeight: 56, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
           >
             {submitting ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>) : (submitLabel || 'Log Meal')}
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={close}
-            disabled={submitting}
-            style={{ width: '100%' }}
-          >
-            Cancel
           </button>
         </div>
       </form>

@@ -4,7 +4,7 @@ import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
 import MacroTotals from '@shared/ui/MacroTotals';
 import Reveal from '@shared/ui/Reveal';
-import { fetchLogRange, createLogEntry, createQuickFoodLog, createCustomLog, deleteLogEntry } from '@shared/api/log';
+import { fetchLogRange, createLogEntry, deleteLogEntry } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
 import { sumMacros, groupByDate } from '@shared/utils/macros';
@@ -144,13 +144,7 @@ export default function Dashboard() {
   }, [load]);
 
   async function handleLog(data) {
-    if (data?.quick_food) {
-      await createQuickFoodLog({ date: today, ...data.quick_food, notes: data.notes, time_min: data.time_min });
-    } else if (data?.log_custom) {
-      await createCustomLog({ date: today, ...data.log_custom, notes: data.notes, time_min: data.time_min });
-    } else {
-      await createLogEntry({ ...data, date: today });
-    }
+    await createLogEntry({ ...data, date: today });
     await load();
   }
 
