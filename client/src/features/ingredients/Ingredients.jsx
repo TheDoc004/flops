@@ -15,6 +15,7 @@ import {
 } from '@features/label-ocr';
 import { SERVING_UNITS, isWeightUnit, servingToStored, servingFromRow, emptyServing, unitLabel } from '@shared/utils/servingBasis';
 import Reveal from '@shared/ui/Reveal';
+import GrowStack from '@shared/ui/GrowStack';
 
 function filterByName(items, q) {
   const query = String(q ?? '').trim().toLowerCase();
@@ -50,12 +51,27 @@ export default function Ingredients() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('alpha_asc');
   const { page, setPage, paginationRef, handlePageChange } = usePaginationAnchor();
+  // Which side new rows slide in from — follows the flip direction, like a book.
+  const [slideFrom, setSlideFrom] = useState('right');
+  // Height floor for the list area, captured on every flip: a shorter page
+  // (especially the last one) must not shrink the card and pull the pagination
+  // buttons up mid-click — short pages get white space instead.
+  const listRef = useRef(null);
+  const [listMinHeight, setListMinHeight] = useState(0);
+  const flipPage = next => {
+    const h = listRef.current?.offsetHeight || 0;
+    setListMinHeight(prev => Math.max(prev, h));
+    setSlideFrom(next > page ? 'right' : 'left');
+    handlePageChange(next);
+  };
+  // A different result set has different natural heights — release the floor.
+  useEffect(() => { setListMinHeight(0); }, [search, sort]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(null);
-  const formCardRef = useRef(null);
+  const formDialogRef = useRef(null);
   const [form, setForm] = useState(emptyForm);
   const [labelPhotoPreview, setLabelPhotoPreview] = useState(null);
   const [labelPhotoDataUri, setLabelPhotoDataUri] = useState(null);
@@ -99,6 +115,15 @@ export default function Ingredients() {
   const paginated = useMemo(() => sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [sorted, page]);
 
   useEffect(() => { setPage(1); }, [search, sort]);
+
+  // Runs on every way out of the form dialog (✕, Esc, after save): next open
+  // always starts from a fresh blank form.
+  function closeForm() {
+    setEditing(null);
+    setFormOpen(false);
+    setForm(emptyForm());
+    clearLabelPhoto();
+  }
 
   function clearLabelPhoto() {
     setLabelPhotoPreview(null);
@@ -186,7 +211,6 @@ export default function Ingredients() {
       fiber_g: row.fiber_g == null ? '' : String(row.fiber_g),
       source_type: row.source_type || 'manual',
     });
-    formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function submit(e) {
@@ -248,23 +272,23 @@ export default function Ingredients() {
 
       {error && <p className="error">{error}</p>}
 
-      <Reveal delay={120}>
-      <div ref={formCardRef} className="card" style={{ marginBottom: 16, scrollMarginTop: 120 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <h3 className="section-title">{editing ? 'Edit ingredient' : 'Add a new ingredient'}</h3>
-          {!editing && (
-            <button type="button" className="btn-secondary" style={{ flexShrink: 0 }} onClick={() => setFormOpen(o => !o)}>
-              {formOpen ? 'Collapse' : '+ Add ingredient'}
-            </button>
-          )}
+      {(formOpen || editing) && (
+      <dialog
+        ref={el => { formDialogRef.current = el; if (el && !el.open) el.showModal(); }}
+        onClose={closeForm}
+        style={{ width: 'min(560px, 92vw)', maxHeight: '88vh', overflowY: 'auto' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+          <h2 style={{ margin: 0 }}>{editing ? 'Edit ingredient' : 'Add a new ingredient'}</h2>
+          <button
+            type="button"
+            className="modal-close-x"
+            aria-label="Close"
+            onClick={() => formDialogRef.current?.close()}
+          >
+            ✕
+          </button>
         </div>
-        {!formOpen && !editing && (
-          <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
-            Save ingredients once, then reuse them in meals and recipes.
-          </p>
-        )}
-
-        {(formOpen || editing) && (<>
 
         {/* ── Scan label (optional, new entries only) ── */}
         {!editing && (
@@ -521,20 +545,7 @@ export default function Ingredients() {
 
           {/* ── Buttons ── */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            {editing ? (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  setEditing(null);
-                  setForm(emptyForm());
-                  setFormOpen(false);
-                  clearLabelPhoto();
-                }}
-              >
-                Cancel
-              </button>
-            ) : (
+            {!editing && (
               <button
                 type="button"
                 className="btn-secondary"
@@ -546,18 +557,24 @@ export default function Ingredients() {
                 Clear form
               </button>
             )}
-            <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? 'Saving…' : editing ? 'Save changes' : 'Save ingredient'}
+            <button type="submit" className={saving ? 'btn-primary btn-loading' : 'btn-primary'} disabled={saving}>
+              {saving
+                ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>)
+                : editing ? 'Save changes' : 'Save ingredient'}
             </button>
           </div>
 
         </form>
-        </>)}
-      </div>
-      </Reveal>
+      </dialog>
+      )}
 
       <Reveal className="card">
-        <h3 className="section-title">Your ingredients</h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <h3 className="section-title">Your ingredients</h3>
+          <button type="button" className="btn-primary" style={{ flexShrink: 0 }} onClick={() => setFormOpen(true)}>
+            + Add ingredient
+          </button>
+        </div>
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
           <div style={{ flex: 1, minWidth: 180 }}>
@@ -595,12 +612,13 @@ export default function Ingredients() {
               {filtered.length} ingredient{filtered.length !== 1 ? 's' : ''}
               {search ? ` matching "${search}"` : ''}
             </p>
-            <div style={{
-              minHeight: totalPages > 1 ? `${PAGE_SIZE * 54}px` : undefined,
-            }}>
-              {paginated.map((i, idx) => (
-                <Reveal key={i.id} delay={Math.min(idx, 6) * 60}>
-                <div className="ingredient-card">
+            <div
+              ref={listRef}
+              style={{ display: 'flex', flexDirection: 'column', minHeight: listMinHeight || undefined }}
+            >
+              <GrowStack slideFrom={slideFrom}>
+              {paginated.map(i => (
+                <div className="ingredient-card" key={i.id}>
                   <div className="ingredient-card-main">
                     <div className="ingredient-card-head">
                       <strong className="ingredient-card-name">{i.name}</strong>
@@ -630,14 +648,31 @@ export default function Ingredients() {
                     </button>
                   </div>
                 </div>
-                </Reveal>
               ))}
+              </GrowStack>
+              {totalPages > 1 && paginated.length < PAGE_SIZE && (
+                <div className="ghost-slots">
+                  {Array.from({ length: PAGE_SIZE - paginated.length }, (_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="ghost-slot"
+                      aria-label="Add an ingredient"
+                      title="Add an ingredient"
+                      onClick={() => setFormOpen(true)}
+                      style={{ '--slide-delay': `${Math.min(paginated.length + i, 8) * 45}ms` }}
+                    >
+                      +
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             {totalPages > 1 && (
               <div ref={paginationRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 16, paddingTop: 12, borderTop: '1px solid #f3f4f6' }}>
-                <button type="button" className="btn-secondary" disabled={page <= 1} onClick={() => handlePageChange(page - 1)}>Previous</button>
+                <button type="button" className="btn-secondary" disabled={page <= 1} onClick={() => flipPage(page - 1)}>Previous</button>
                 <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Page {page} of {totalPages}</span>
-                <button type="button" className="btn-secondary" disabled={page >= totalPages} onClick={() => handlePageChange(page + 1)}>Next</button>
+                <button type="button" className="btn-secondary" disabled={page >= totalPages} onClick={() => flipPage(page + 1)}>Next</button>
               </div>
             )}
           </>

@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import RecipeRow from './RecipeRow';
 import { LogMealModal } from '@features/meal-logging';
 import { fetchRecipes, deleteRecipe, reactivateLimitedRecipe } from '@shared/api/recipes';
-import { createLogEntry, createQuickFoodLog, createCustomLog } from '@shared/api/log';
+import { createLogEntry } from '@shared/api/log';
 import { filterRecipesByName } from '@shared/utils/recipeSearch';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
 import usePaginationAnchor from '@shared/hooks/usePaginationAnchor';
 import Reveal from '@shared/ui/Reveal';
+import GrowStack from '@shared/ui/GrowStack';
 
 export default function Recipes() {
   const navigate = useNavigate();
@@ -24,6 +25,21 @@ export default function Recipes() {
   const isWide = useMediaQuery('(min-width: 700px)');
   const pageSize = isWide ? 10 : 6;
   const { page, setPage, paginationRef, handlePageChange } = usePaginationAnchor();
+  // Which side new rows slide in from — follows the flip direction, like a book.
+  const [slideFrom, setSlideFrom] = useState('right');
+  // Height floor for the list area, captured on every flip: a shorter page
+  // (especially the last one) must not shrink the card and pull the pagination
+  // buttons up mid-click — short pages get white space instead.
+  const listRef = useRef(null);
+  const [listMinHeight, setListMinHeight] = useState(0);
+  const flipPage = next => {
+    const h = listRef.current?.offsetHeight || 0;
+    setListMinHeight(prev => Math.max(prev, h));
+    setSlideFrom(next > page ? 'right' : 'left');
+    handlePageChange(next);
+  };
+  // A different result set has different natural heights — release the floor.
+  useEffect(() => { setListMinHeight(0); }, [search, includeArchived, pageSize]);
 
   useEffect(() => { void load(); }, [includeArchived]);
   useEffect(() => {
@@ -119,24 +135,45 @@ export default function Recipes() {
               {filtered.length} recipe{filtered.length !== 1 ? 's' : ''}
               {search ? ` matching "${search}"` : ''}
             </p>
-            <div>
-              {paginated.map((recipe, idx) => (
-                <Reveal key={recipe.id} delay={Math.min(idx, 6) * 60}>
+            <div
+              ref={listRef}
+              style={{ display: 'flex', flexDirection: 'column', minHeight: listMinHeight || undefined }}
+            >
+              <GrowStack slideFrom={slideFrom}>
+                {paginated.map(recipe => (
                   <RecipeRow
+                    key={recipe.id}
                     recipe={recipe}
                     onLog={setLogRecipe}
                     onEditInBuilder={() => navigate(`/meal-builder?mode=${recipe.meal_builder_meta?.source === 'meal_builder' ? 'labels' : 'manual'}&recipe_id=${recipe.id}`)}
                     onDelete={handleDelete}
                     onReactivate={handleReactivate}
                   />
-                </Reveal>
-              ))}
+                ))}
+              </GrowStack>
+              {totalPages > 1 && paginated.length < pageSize && (
+                <div className="ghost-slots">
+                  {Array.from({ length: pageSize - paginated.length }, (_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="ghost-slot"
+                      aria-label="Add a recipe in Meal Builder"
+                      title="Add a recipe"
+                      onClick={() => navigate('/meal-builder')}
+                      style={{ '--slide-delay': `${Math.min(paginated.length + i, 8) * 45}ms` }}
+                    >
+                      +
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             {totalPages > 1 && (
               <div ref={paginationRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--color-divider)' }}>
-                <button type="button" className="btn-secondary" disabled={currentPage <= 1} onClick={() => handlePageChange(currentPage - 1)}>Previous</button>
+                <button type="button" className="btn-secondary" disabled={currentPage <= 1} onClick={() => flipPage(currentPage - 1)}>Previous</button>
                 <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Page {currentPage} of {totalPages}</span>
-                <button type="button" className="btn-secondary" disabled={currentPage >= totalPages} onClick={() => handlePageChange(currentPage + 1)}>Next</button>
+                <button type="button" className="btn-secondary" disabled={currentPage >= totalPages} onClick={() => flipPage(currentPage + 1)}>Next</button>
               </div>
             )}
           </>
@@ -150,24 +187,7 @@ export default function Recipes() {
           initialEntry={{ recipe_id: logRecipe.id, servings: 1 }}
           onClose={() => setLogRecipe(null)}
           onLog={async (payload) => {
-            const today = getLocalDateISO();
-            if (payload?.quick_food) {
-              await createQuickFoodLog({
-                date: today,
-                ...payload.quick_food,
-                notes: payload.notes,
-                time_min: payload.time_min,
-              });
-            } else if (payload?.log_custom) {
-              await createCustomLog({
-                date: today,
-                ...payload.log_custom,
-                notes: payload.notes,
-                time_min: payload.time_min,
-              });
-            } else {
-              await createLogEntry({ ...payload, date: today });
-            }
+            await createLogEntry({ ...payload, date: getLocalDateISO() });
             setLogRecipe(null);
             navigate(`/recipes?saved=${encodeURIComponent('Logged to today.')}`);
           }}

@@ -16,11 +16,25 @@ export default function RecipeRow({ recipe, onLog, onEditInBuilder, onDelete, on
               Variable ingredients
             </span>
           )}
-          {limited && (
-            <span style={{ fontSize: 12, fontWeight: 600, color: archived ? 'var(--color-text-faint)' : '#b45309', background: archived ? 'var(--color-divider)' : '#fffbeb', padding: '2px 8px', borderRadius: 999 }}>
-              {archived ? 'Template · archived' : `Template · ${recipe.remaining_uses ?? '—'} left`}
-            </span>
-          )}
+          {limited && (() => {
+            // Meal preps saved from the AI logger carry a meta marker; the
+            // serving_size check catches preps saved before the marker existed.
+            const isPrep = recipe.meal_builder_meta?.source === 'ai_meal_prep'
+              || /meal-prep/i.test(recipe.serving_size || '');
+            const label = isPrep
+              ? (archived ? '🍱 Meal prep · finished' : `🍱 Meal prep · ${recipe.remaining_uses ?? '—'} left`)
+              : (archived ? 'Template · archived' : `Template · ${recipe.remaining_uses ?? '—'} left`);
+            const tint = archived
+              ? { color: 'var(--color-text-faint)', background: 'var(--color-divider)' }
+              : isPrep
+                ? { color: '#5b21b6', background: '#f3efff' }
+                : { color: '#b45309', background: '#fffbeb' };
+            return (
+              <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999, ...tint }}>
+                {label}
+              </span>
+            );
+          })()}
           <span style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>per {recipe.serving_size}</span>
         </div>
         {ingredients.length > 0 && (
