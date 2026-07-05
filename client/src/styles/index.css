@@ -1292,6 +1292,132 @@ dialog[open]::backdrop {
   .mb-role-mobile { display: block; }
 }
 
+/* ── Meal Builder wizard: stepper header + step navigation ──
+   The builder is split into pages (Ingredients → Build → Review & save).
+   Completed steps are tappable to go back; forward moves through the
+   Continue buttons at the bottom of each step. */
+.wizard-steps {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+.wizard-step {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  padding: 6px 4px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: default;
+}
+.wizard-step:disabled { opacity: 1; cursor: default; }
+.wizard-step.is-clickable { cursor: pointer; }
+/* connector line halves, drawn from each step toward its neighbors */
+.wizard-step::before,
+.wizard-step::after {
+  content: '';
+  position: absolute;
+  top: 22px;
+  height: 2px;
+  width: calc(50% - 22px);
+  background: var(--color-border);
+}
+.wizard-step::before { left: 0; }
+.wizard-step::after { right: 0; }
+.wizard-step:first-child::before,
+.wizard-step:last-child::after { display: none; }
+.wizard-step.is-done::before,
+.wizard-step.is-done::after,
+.wizard-step.is-current::before { background: var(--color-primary); }
+.wizard-step-num {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-pill);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--color-divider);
+  color: var(--color-text-muted);
+  border: 2px solid transparent;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.wizard-step.is-current .wizard-step-num {
+  background: var(--color-primary);
+  color: #fff;
+}
+.wizard-step.is-done .wizard-step-num {
+  background: var(--color-secondary-bg);
+  color: var(--color-primary);
+  border-color: var(--color-secondary-border);
+}
+.wizard-step.is-clickable:hover .wizard-step-num { background: var(--color-secondary-bg-hover); }
+.wizard-step-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  line-height: 1.3;
+  text-align: center;
+}
+.wizard-step.is-current .wizard-step-label { color: var(--color-primary-ink); }
+
+/* Optional ingredient detour: replaces the stepper with a back button + label */
+.wizard-detour-crumb {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.wizard-detour-back {
+  min-height: var(--touch-target);
+  padding: 8px 16px;
+  background: var(--color-secondary-bg);
+  border: 1px solid var(--color-secondary-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-primary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.wizard-detour-back:hover { background: var(--color-secondary-bg-hover); }
+.wizard-detour-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.wizard-nav {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.wizard-nav .wizard-back {
+  flex: 0 0 auto;
+  min-width: 110px;
+  min-height: 52px;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 12px;
+}
+.wizard-nav .wizard-continue {
+  flex: 1;
+  min-height: 52px;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 12px;
+  letter-spacing: -0.01em;
+}
+
 /* ── Adherence: desktop tables vs mobile stacked cards ── */
 .adh-detail-cards,
 .adh-hist-cards { display: none; }
