@@ -21,6 +21,7 @@ describe('createDb', () => {
       'recipe_kind', 'remaining_uses', 'max_uses', 'is_archived', 'meal_builder_meta',
       'is_quick_food',
       'is_deleted',
+      'created_at',
     ]));
   });
 

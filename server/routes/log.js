@@ -494,9 +494,9 @@ function createLogRouter(db) {
     );
     const decLimited = db.prepare(
       `UPDATE recipes
-       SET remaining_uses = remaining_uses - 1,
-           is_archived = CASE WHEN remaining_uses - 1 <= 0 THEN 1 ELSE is_archived END
-       WHERE id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL AND remaining_uses > 0`
+       SET remaining_uses = remaining_uses - ?,
+           is_archived = CASE WHEN remaining_uses - ? <= 0 THEN 1 ELSE is_archived END
+       WHERE id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL AND remaining_uses >= ?`
     );
 
     const run = db.transaction(() => {
@@ -518,7 +518,11 @@ function createLogRouter(db) {
         ingredientsJson
       );
       if (recipe.recipe_kind === 'limited' && recipe.remaining_uses != null) {
-        const u = decLimited.run(recipe_id);
+        // One use per serving eaten — a 5-serving meal prep is exhausted after
+        // 5 servings no matter how they're grouped into entries. Fractions
+        // round up (half a serving still opens a container).
+        const uses = Math.max(1, Math.ceil(Number(servings) || 1));
+        const u = decLimited.run(uses, uses, recipe_id, uses);
         if (u.changes === 0) {
           throw new Error('LIMIT_USES');
         }
@@ -589,6 +593,55 @@ function createLogRouter(db) {
         (Object.prototype.hasOwnProperty.call(req.body, 'slot_selections') ||
           Object.prototype.hasOwnProperty.call(req.body, 'log_slot_customizations')));
 
+    // Limited-use accounting for edits — mirrors the POST decrement and the
+    // DELETE restore so remaining_uses stays honest however an entry changes:
+    // servings up consumes the delta (409 when not enough remain), servings
+    // down hands the difference back, and a recipe swap restores the old
+    // template before charging the new one. Runs inside the same transaction
+    // as the entry UPDATE. Throws 'LIMIT_USES' when uses run out.
+    const usesOf = s => Math.max(1, Math.ceil(Number(s) || 1));
+    const consumeLimited = db.prepare(
+      `UPDATE recipes
+       SET remaining_uses = remaining_uses - ?,
+           is_archived = CASE WHEN remaining_uses - ? <= 0 THEN 1 ELSE is_archived END
+       WHERE id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL AND remaining_uses >= ?`
+    );
+    const restoreLimited = db.prepare(
+      `UPDATE recipes
+       SET remaining_uses = CASE
+             WHEN max_uses IS NOT NULL THEN MIN(max_uses, remaining_uses + ?)
+             ELSE remaining_uses + ?
+           END,
+           is_archived = CASE WHEN remaining_uses <= 0 THEN 0 ELSE is_archived END
+       WHERE id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL`
+    );
+    const isLimited = r => r && r.recipe_kind === 'limited' && r.remaining_uses != null;
+    function adjustLimitedUses() {
+      if (recipeChanged) {
+        const oldRecipe = db.prepare('SELECT * FROM recipes WHERE id = ?').get(existing.recipe_id);
+        if (isLimited(oldRecipe)) {
+          const back = usesOf(existing.servings);
+          restoreLimited.run(back, back, oldRecipe.id);
+        }
+        if (isLimited(fullRecipe)) {
+          const need = usesOf(servings);
+          if (consumeLimited.run(need, need, fullRecipe.id, need).changes === 0) {
+            throw new Error('LIMIT_USES');
+          }
+        }
+        return;
+      }
+      if (!isLimited(fullRecipe)) return;
+      const delta = usesOf(servings) - usesOf(existing.servings);
+      if (delta > 0) {
+        if (consumeLimited.run(delta, delta, fullRecipe.id, delta).changes === 0) {
+          throw new Error('LIMIT_USES');
+        }
+      } else if (delta < 0) {
+        restoreLimited.run(-delta, -delta, fullRecipe.id);
+      }
+    }
+
     if (selectionUpdate) {
       let perServing;
       let slotJson = null;
@@ -620,29 +673,39 @@ function createLogRouter(db) {
       // Recompute the per-ingredient breakdown for the (new) recipe + picks.
       const recipeRows = safeRecipeIngredientRows(db, fullRecipe, resolvedSlots);
       const ingredientsJson = ingredientsJsonFromRows(recipeRows);
-      db.prepare(
-        `UPDATE log_entries
-         SET recipe_id = ?, time_min = ?, servings = ?, notes = ?,
-             recipe_name = ?, serving_size = ?, recipe_calories = ?, recipe_protein_g = ?, recipe_carbs_g = ?, recipe_fat_g = ?, recipe_fiber_g = ?, recipe_is_quick_food = ?,
-             slot_selections_json = ?, ingredients_json = ?
-         WHERE id = ?`
-      ).run(
-        recipe_id,
-        t,
-        Number(servings),
-        notes ?? null,
-        fullRecipe.name,
-        fullRecipe.serving_size,
-        perServing.calories,
-        perServing.protein_g,
-        perServing.carbs_g,
-        perServing.fat_g,
-        perServing.fiber_g,
-        fullRecipe.is_quick_food ? 1 : 0,
-        slotJson,
-        ingredientsJson,
-        id
-      );
+      try {
+        db.transaction(() => {
+          adjustLimitedUses();
+          db.prepare(
+            `UPDATE log_entries
+             SET recipe_id = ?, time_min = ?, servings = ?, notes = ?,
+                 recipe_name = ?, serving_size = ?, recipe_calories = ?, recipe_protein_g = ?, recipe_carbs_g = ?, recipe_fat_g = ?, recipe_fiber_g = ?, recipe_is_quick_food = ?,
+                 slot_selections_json = ?, ingredients_json = ?
+             WHERE id = ?`
+          ).run(
+            recipe_id,
+            t,
+            Number(servings),
+            notes ?? null,
+            fullRecipe.name,
+            fullRecipe.serving_size,
+            perServing.calories,
+            perServing.protein_g,
+            perServing.carbs_g,
+            perServing.fat_g,
+            perServing.fiber_g,
+            fullRecipe.is_quick_food ? 1 : 0,
+            slotJson,
+            ingredientsJson,
+            id
+          );
+        })();
+      } catch (e) {
+        if (e.message === 'LIMIT_USES') {
+          return res.status(409).json({ error: 'No remaining uses for this meal template.' });
+        }
+        throw e;
+      }
 
       // The ingredients changed (recipe swap / substitution / amount edit), so
       // re-estimate micros from the resolved rows. Only overwrite on a real
@@ -655,23 +718,57 @@ function createLogRouter(db) {
         db.prepare('UPDATE log_entries SET micros_json = NULL WHERE id = ?').run(id);
       }
     } else {
-      db.prepare('UPDATE log_entries SET recipe_id = ?, time_min = ?, servings = ?, notes = ? WHERE id = ?').run(
-        recipe_id,
-        t,
-        Number(servings),
-        notes ?? null,
-        id
-      );
+      try {
+        db.transaction(() => {
+          adjustLimitedUses();
+          db.prepare('UPDATE log_entries SET recipe_id = ?, time_min = ?, servings = ?, notes = ? WHERE id = ?').run(
+            recipe_id,
+            t,
+            Number(servings),
+            notes ?? null,
+            id
+          );
+        })();
+      } catch (e) {
+        if (e.message === 'LIMIT_USES') {
+          return res.status(409).json({ error: 'No remaining uses for this meal template.' });
+        }
+        throw e;
+      }
     }
 
     res.json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ?`).get(id));
   });
 
   router.delete('/:id', (req, res) => {
-    if (!db.prepare('SELECT id FROM log_entries WHERE id = ?').get(req.params.id)) {
+    const entry = db.prepare('SELECT * FROM log_entries WHERE id = ?').get(req.params.id);
+    if (!entry) {
       return res.status(404).json({ error: 'Log entry not found' });
     }
-    db.prepare('DELETE FROM log_entries WHERE id = ?').run(req.params.id);
+
+    // Deleting a log means "I didn't eat it" — hand the consumed servings back
+    // to a limited template (mirror of the decrement on POST), capped at
+    // max_uses. Un-archive only when the template was exhausted (remaining 0),
+    // so a manually archived template stays archived. Note: column references
+    // in SET expressions read the pre-update values.
+    const restoreLimited = db.prepare(
+      `UPDATE recipes
+       SET remaining_uses = CASE
+             WHEN max_uses IS NOT NULL THEN MIN(max_uses, remaining_uses + ?)
+             ELSE remaining_uses + ?
+           END,
+           is_archived = CASE WHEN remaining_uses <= 0 THEN 0 ELSE is_archived END
+       WHERE id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL`
+    );
+
+    db.transaction(() => {
+      db.prepare('DELETE FROM log_entries WHERE id = ?').run(entry.id);
+      if (entry.recipe_id != null) {
+        const uses = Math.max(1, Math.ceil(Number(entry.servings) || 1));
+        restoreLimited.run(uses, uses, entry.recipe_id);
+      }
+    })();
+
     res.status(204).send();
   });
 

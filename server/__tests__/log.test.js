@@ -216,6 +216,127 @@ describe('DELETE /api/log/:id', () => {
   });
 });
 
+describe('limited-use templates — servings consume and restore uses', () => {
+  async function seedMealPrep(app, uses = 4) {
+    const res = await request(app).post('/api/recipes').send({
+      name: 'Chicken & Rice Prep', serving_size: `1 of ${uses} meal-prep servings`,
+      calories: 500, protein_g: 45, carbs_g: 55, fat_g: 10,
+      recipe_kind: 'limited', remaining_uses: uses, max_uses: uses,
+    });
+    return res.body;
+  }
+  const getRecipe = (app, id) => request(app).get(`/api/recipes/${id}`).then(r => r.body);
+
+  it('logging N servings consumes N uses', async () => {
+    const app = buildApp();
+    const prep = await seedMealPrep(app, 4);
+    await request(app).post('/api/log').send({ recipe_id: prep.id, date: '2026-04-09', servings: 2 });
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(2);
+  });
+
+  it('rejects logging more servings than remain (409), untouched count', async () => {
+    const app = buildApp();
+    const prep = await seedMealPrep(app, 2);
+    const res = await request(app).post('/api/log').send({ recipe_id: prep.id, date: '2026-04-09', servings: 3 });
+    expect(res.status).toBe(409);
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(2);
+  });
+
+  it('deleting a logged serving restores the count (undo semantics)', async () => {
+    const app = buildApp();
+    const prep = await seedMealPrep(app, 4);
+    const { body: entry } = await request(app).post('/api/log').send({ recipe_id: prep.id, date: '2026-04-09', servings: 1 });
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(3);
+    await request(app).delete(`/api/log/${entry.id}`);
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(4);
+  });
+
+  it('deleting the last serving un-archives an exhausted template', async () => {
+    const app = buildApp();
+    const prep = await seedMealPrep(app, 1);
+    const { body: entry } = await request(app).post('/api/log').send({ recipe_id: prep.id, date: '2026-04-09', servings: 1 });
+    const exhausted = await getRecipe(app, prep.id);
+    expect(exhausted.remaining_uses).toBe(0);
+    expect(exhausted.is_archived).toBe(1);
+    await request(app).delete(`/api/log/${entry.id}`);
+    const restored = await getRecipe(app, prep.id);
+    expect(restored.remaining_uses).toBe(1);
+    expect(restored.is_archived).toBe(0);
+  });
+
+  it('restore is capped at max_uses', async () => {
+    const app = buildApp();
+    const prep = await seedMealPrep(app, 3);
+    const { body: entry } = await request(app).post('/api/log').send({ recipe_id: prep.id, date: '2026-04-09', servings: 1 });
+    // Reactivate-style bump back to 3 while the entry still exists…
+    await request(app).post(`/api/recipes/${prep.id}/reactivate`).send({ remaining_uses: 3 });
+    // …then deleting the old entry must not push the count past max_uses.
+    await request(app).delete(`/api/log/${entry.id}`);
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(3);
+  });
+
+  it('editing servings up consumes the delta', async () => {
+    const app = buildApp();
+    const prep = await seedMealPrep(app, 4);
+    const { body: entry } = await request(app).post('/api/log').send({ recipe_id: prep.id, date: '2026-04-09', servings: 1 });
+    const res = await request(app).put(`/api/log/${entry.id}`).send({ servings: 3 });
+    expect(res.status).toBe(200);
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(1);
+  });
+
+  it('editing servings down restores the difference', async () => {
+    const app = buildApp();
+    const prep = await seedMealPrep(app, 4);
+    const { body: entry } = await request(app).post('/api/log').send({ recipe_id: prep.id, date: '2026-04-09', servings: 3 });
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(1);
+    await request(app).put(`/api/log/${entry.id}`).send({ servings: 1 });
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(3);
+  });
+
+  it('editing beyond the remaining servings is rejected (409), nothing changes', async () => {
+    const app = buildApp();
+    const prep = await seedMealPrep(app, 3);
+    const { body: entry } = await request(app).post('/api/log').send({ recipe_id: prep.id, date: '2026-04-09', servings: 1 });
+    const res = await request(app).put(`/api/log/${entry.id}`).send({ servings: 4 }); // needs 3 more, only 2 left
+    expect(res.status).toBe(409);
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(2);
+    const list = await request(app).get('/api/log?date=2026-04-09');
+    expect(list.body[0].servings).toBe(1); // entry untouched
+  });
+
+  it('swapping the entry to another recipe restores the old template and charges the new', async () => {
+    const app = buildApp();
+    const prep = await seedMealPrep(app, 4);
+    const other = await seedMealPrep(app, 2);
+    const { body: entry } = await request(app).post('/api/log').send({ recipe_id: prep.id, date: '2026-04-09', servings: 2 });
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(2);
+    await request(app).put(`/api/log/${entry.id}`).send({ recipe_id: other.id, servings: 1 });
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(4);
+    expect((await getRecipe(app, other.id)).remaining_uses).toBe(1);
+  });
+
+  it('swapping from a permanent recipe to a template charges the template only', async () => {
+    const app = buildApp();
+    const recipe = await seedRecipe(app);
+    const prep = await seedMealPrep(app, 2);
+    const { body: entry } = await request(app).post('/api/log').send({ recipe_id: recipe.id, date: '2026-04-09', servings: 1 });
+    await request(app).put(`/api/log/${entry.id}`).send({ recipe_id: prep.id, servings: 1 });
+    expect((await getRecipe(app, prep.id)).remaining_uses).toBe(1);
+    expect((await getRecipe(app, recipe.id)).remaining_uses).toBe(null);
+  });
+
+  it('deleting an entry for a permanent recipe leaves it untouched', async () => {
+    const app = buildApp();
+    const recipe = await seedRecipe(app);
+    const { body: entry } = await request(app).post('/api/log').send({ recipe_id: recipe.id, date: '2026-04-09', servings: 1 });
+    const res = await request(app).delete(`/api/log/${entry.id}`);
+    expect(res.status).toBe(204);
+    const after = await getRecipe(app, recipe.id);
+    expect(after.remaining_uses).toBe(null);
+    expect(after.is_archived).toBe(0);
+  });
+});
+
 describe('PUT /api/log/:id', () => {
   it('updates an entry servings and notes', async () => {
     const app = buildApp();

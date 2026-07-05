@@ -119,8 +119,8 @@ function createRecipesRouter(db) {
       .prepare(
         `INSERT INTO recipes (
           name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients,
-          recipe_kind, remaining_uses, max_uses, is_archived, meal_builder_meta
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          recipe_kind, remaining_uses, max_uses, is_archived, meal_builder_meta, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         name,
@@ -135,7 +135,8 @@ function createRecipesRouter(db) {
         lim.remaining_uses,
         lim.max_uses,
         is_archived,
-        metaJson
+        metaJson,
+        new Date().toISOString()
       );
     res.status(201).json(rowToRecipe(db.prepare('SELECT * FROM recipes WHERE id = ?').get(result.lastInsertRowid)));
   });

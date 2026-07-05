@@ -19,7 +19,8 @@ function createDb(dbPath) {
       is_archived  INTEGER NOT NULL DEFAULT 0,
       meal_builder_meta TEXT,
       is_quick_food INTEGER NOT NULL DEFAULT 0,
-      is_deleted  INTEGER NOT NULL DEFAULT 0
+      is_deleted  INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS label_ingredients (
@@ -247,6 +248,11 @@ function createDb(dbPath) {
   }
   if (recipeCols.length && !recipeCols.includes('is_deleted')) {
     db.exec(`ALTER TABLE recipes ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0`);
+  }
+  // Nullable (ALTER can't add a CURRENT_TIMESTAMP default): pre-existing rows
+  // simply have no known age. New rows are stamped explicitly on insert.
+  if (recipeCols.length && !recipeCols.includes('created_at')) {
+    db.exec(`ALTER TABLE recipes ADD COLUMN created_at TEXT`);
   }
   const logCols = db.prepare('PRAGMA table_info(log_entries)').all().map(c => c.name);
   if (logCols.length && !logCols.includes('time_min')) {
