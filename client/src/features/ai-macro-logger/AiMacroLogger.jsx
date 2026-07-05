@@ -9,6 +9,8 @@ import { SERVING_UNITS, servingToStored } from '@shared/utils/servingBasis';
 import Reveal from '@shared/ui/Reveal';
 import { adjustPerServingMacrosForResolvedClient } from '@features/meal-logging/recipeLogMacros';
 import { matchRecipe, applyModifications, resolvedReviewRows, recipeIngredientNames } from './recipeCommand';
+import VoiceInput from './VoiceInput';
+import { reconcileMealPrep } from './mealPrep';
 import {
   enrichEstimate, strongMatchCount, basisFromLibrary, deriveBasis,
   scaleBasisToAmount, likelyLibraryMatches, searchLibrary,
@@ -104,6 +106,12 @@ export default function AiMacroLogger() {
   const [recipeReview, setRecipeReview] = useState(null); // { recipe, rows, modifications, matchConfidence, fallbackEstimate }
   const [picker, setPicker] = useState(null);             // { candidates, modifications, fallbackEstimate }
   const [recipeServings, setRecipeServings] = useState(1);
+  // Meal-prep split for the current freeform estimate: layered detection
+  // (deterministic parse of the description > model's mealPrep > manual
+  // toggle in the review card). servings null = prep with unknown split.
+  const [prep, setPrep] = useState({ isMealPrep: false, servings: null });
+  // Which day "Log once" writes to — defaults to today, editable for backfill.
+  const [logDate, setLogDate] = useState(getLocalDateISO());
 
   // Saved ingredient library + recipe list — used to recognize recipes and to
   // prefer real data over AI estimates.
@@ -160,7 +168,22 @@ export default function AiMacroLogger() {
       const raw = await estimateMacros({
         description: desc,
         correction: corr || undefined,
-        recipes: recipesRef.current.map(r => ({ name: r.name, ingredients: recipeIngredientNames(r, labelByIdRef.current) })),
+        recipes: recipesRef.current.map(r => {
+          const entry = { name: r.name, ingredients: recipeIngredientNames(r, labelByIdRef.current) };
+          // Active meal preps (limited templates with servings left) get
+          // leftover metadata so the AI can recognize "log my meal prep".
+          if (r.recipe_kind === 'limited' && Number(r.remaining_uses) > 0) {
+            const made = r.created_at ? new Date(r.created_at).getTime() : NaN;
+            entry.prep = {
+              remainingServings: Number(r.remaining_uses),
+              totalServings: Number(r.max_uses) > 0 ? Number(r.max_uses) : null,
+              madeDaysAgo: Number.isFinite(made)
+                ? Math.max(0, Math.floor((Date.now() - made) / 86400000))
+                : null,
+            };
+          }
+          return entry;
+        }),
       });
       const normalized = normalizeEstimate(raw);
       if (!normalized) throw new Error('The estimate came back in an unexpected format. Please try again.');
@@ -187,6 +210,7 @@ export default function AiMacroLogger() {
         // status 'none' → fall through to the freeform estimate.
       }
       setEstimate(freeform); setRecipeReview(null); setPicker(null);
+      setPrep(reconcileMealPrep(desc, raw?.mealPrep));
       setReviseOpen(false); setCorrection('');
     } catch (e) {
       setError(e.message);
@@ -276,7 +300,7 @@ export default function AiMacroLogger() {
           }));
         const t = recipeReview.total;
         await createCustomLog({
-          date: getLocalDateISO(),
+          date: logDate || getLocalDateISO(),
           name: `${recipeReview.recipe.name} (modified)`,
           calories: t.calories, protein_g: t.protein_g, carbs_g: t.carbs_g, fat_g: t.fat_g,
           ingredients,
@@ -285,12 +309,14 @@ export default function AiMacroLogger() {
         const custom = recipeReview.customizations || {};
         await createLogEntry({
           recipe_id: recipeReview.recipe.id,
-          date: getLocalDateISO(),
+          date: logDate || getLocalDateISO(),
           servings: Number(recipeServings) > 0 ? Number(recipeServings) : 1,
           ...(Object.keys(custom).length ? { log_slot_customizations: custom } : {}),
         });
       }
-      navigate('/', { state: { scrollToTop: true } });
+      // Today's logs live on the dashboard; backfilled days are found in History.
+      if ((logDate || getLocalDateISO()) === getLocalDateISO()) navigate('/', { state: { scrollToTop: true } });
+      else navigate('/history');
     } catch (e) {
       setError(e.message);
       setBusy('');
@@ -389,6 +415,8 @@ export default function AiMacroLogger() {
     setRecipeReview(null);
     setPicker(null);
     setRecipeServings(1);
+    setPrep({ isMealPrep: false, servings: null });
+    setLogDate(getLocalDateISO());
     setDescription('');
     setCorrection('');
     setReviseOpen(false);
@@ -472,8 +500,9 @@ export default function AiMacroLogger() {
           };
         })
         .filter(i => i.name);
+      const date = logDate || getLocalDateISO();
       await createCustomLog({
-        date: getLocalDateISO(),
+        date,
         name: estimate.mealName.trim() || 'Meal',
         calories: totals.calories,
         protein_g: totals.protein,
@@ -481,7 +510,47 @@ export default function AiMacroLogger() {
         fat_g: totals.fat,
         ...(ingredients.length ? { ingredients } : {}),
       });
-      navigate('/', { state: { scrollToTop: true } });
+      // Today's logs live on the dashboard; backfilled days are found in History.
+      if (date === getLocalDateISO()) navigate('/', { state: { scrollToTop: true } });
+      else navigate('/history');
+    } catch (e) {
+      setError(e.message);
+      setBusy('');
+    }
+  }
+
+  // Save the batch as a LIMITED-USE template: per-serving macros, N uses.
+  // Each logged serving decrements remaining_uses server-side; at 0 the
+  // template auto-archives. Optionally logs the first serving right away.
+  async function saveAsMealPrep() {
+    if (!estimate || !prep.isMealPrep || prep.servings == null) return;
+    const nServings = prep.servings;
+    setBusy('prep');
+    setError('');
+    try {
+      const perServing = v => Math.round((v / nServings) * 10) / 10;
+      const ingredients = estimate.ingredients
+        .map(i => {
+          const amount = i.quantity > 0
+            ? `${fmt(i.quantity / nServings)} ${i.unit || ''}`.trim()
+            : 'as estimated';
+          return { kind: 'line', name: i.name, amount };
+        })
+        .filter(i => i.name);
+      const created = await createRecipe({
+        name: estimate.mealName.trim() || 'Meal prep',
+        serving_size: `1 of ${nServings} meal-prep servings`,
+        calories: perServing(totals.calories),
+        protein_g: perServing(totals.protein),
+        carbs_g: perServing(totals.carbs),
+        fat_g: perServing(totals.fat),
+        ingredients,
+        recipe_kind: 'limited',
+        remaining_uses: nServings,
+        max_uses: nServings,
+        meal_builder_meta: { source: 'ai_meal_prep' },
+      });
+      navigate(`/recipes?saved=${encodeURIComponent(`Meal prep saved — ${nServings} servings ready to log.`)}`);
     } catch (e) {
       setError(e.message);
       setBusy('');
@@ -537,16 +606,23 @@ export default function AiMacroLogger() {
           rows={5}
           style={{ width: '100%', resize: 'vertical', minHeight: 110, fontSize: '1rem', lineHeight: 1.5 }}
         />
-        <div style={{ marginTop: 12 }}>
+        <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <button
             type="button"
-            className="btn-primary"
+            className={loading ? 'btn-primary btn-loading' : 'btn-primary'}
             onClick={() => runEstimate('')}
             disabled={loading || !description.trim()}
             style={{ minHeight: 48, fontWeight: 700 }}
           >
-            {loading ? 'Estimating…' : estimate ? 'Re-generate from scratch' : 'Generate estimate'}
+            {loading
+              ? (<><span className="btn-spinner" aria-hidden="true" />Estimating…</>)
+              : estimate ? 'Re-generate from scratch' : 'Generate estimate'}
           </button>
+          <VoiceInput
+            onTranscript={text =>
+              setDescription(d => (d.trim() ? `${d.trimEnd()}\n${text}` : text))
+            }
+          />
         </div>
         {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
       </Reveal>
@@ -600,6 +676,22 @@ export default function AiMacroLogger() {
             <div style={{ marginTop: 4, fontSize: 12, color: '#6b21a8' }}>
               Matched from your saved recipes{recipeReview.matchConfidence ? ` · ${recipeReview.matchConfidence} confidence` : ''}.
             </div>
+            {recipeReview.recipe.recipe_kind === 'limited' && recipeReview.recipe.remaining_uses != null && (
+              <div className="prep-badge">
+                🍱 Meal prep — {recipeReview.recipe.remaining_uses}
+                {Number(recipeReview.recipe.max_uses) > 0 ? ` of ${recipeReview.recipe.max_uses}` : ''} serving
+                {recipeReview.recipe.remaining_uses === 1 ? '' : 's'} left
+                {(() => {
+                  const made = recipeReview.recipe.created_at ? new Date(recipeReview.recipe.created_at).getTime() : NaN;
+                  if (!Number.isFinite(made)) return '';
+                  const d = Math.max(0, Math.floor((Date.now() - made) / 86400000));
+                  return d === 0 ? ' · made today' : d === 1 ? ' · made yesterday' : ` · made ${d} days ago`;
+                })()}
+                <span className="prep-badge__hint">
+                  Logging counts servings down; the template archives itself when the batch is gone.
+                </span>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => useFreeformInstead(recipeReview.fallbackEstimate)}
@@ -685,9 +777,26 @@ export default function AiMacroLogger() {
             </div>
           </div>
 
-          <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" className="btn-primary" onClick={logRecipe} disabled={busy !== ''} style={{ minHeight: 48, fontWeight: 700 }}>
-              {busy === 'log' ? 'Logging…' : 'Log recipe'}
+          <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label htmlFor="ai-recipe-log-date" style={{ margin: 0, fontSize: 13 }}>Log to</label>
+            <input
+              id="ai-recipe-log-date"
+              type="date"
+              value={logDate}
+              onChange={e => setLogDate(e.target.value)}
+              style={{ width: 170 }}
+            />
+          </div>
+          {logDate && logDate !== getLocalDateISO() && (
+            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
+              Backfills {logDate} — you'll find it on that day in History.
+            </p>
+          )}
+          <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" className={busy === 'log' ? 'btn-primary btn-loading' : 'btn-primary'} onClick={logRecipe} disabled={busy !== ''} style={{ minHeight: 48, fontWeight: 700 }}>
+              {busy === 'log'
+                ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>)
+                : logDate && logDate !== getLocalDateISO() ? `Log recipe — ${logDate}` : 'Log recipe'}
             </button>
             <button type="button" className="btn-secondary" onClick={clearAll} disabled={busy !== ''}>Cancel</button>
           </div>
@@ -933,11 +1042,75 @@ export default function AiMacroLogger() {
 
           {/* Totals */}
           <div style={{ marginTop: 16, padding: 12, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10 }}>
-            <strong style={{ color: '#1e3a8a' }}>Totals</strong>
+            <strong style={{ color: '#1e3a8a' }}>Totals{prep.isMealPrep ? ' — whole batch' : ''}</strong>
             <div style={{ marginTop: 4, fontSize: 15, color: '#0f172a' }}>
               {Math.round(totals.calories)} cal · P {totals.protein.toFixed(1)}g · C {totals.carbs.toFixed(1)}g · F {totals.fat.toFixed(1)}g
             </div>
           </div>
+
+          {/* ── Meal prep split explorer ── */}
+          {prep.isMealPrep ? (
+            <div className="prep-panel panel-in">
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <h4 className="prep-panel__title">Meal prep — per-serving split</h4>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setPrep({ isMealPrep: false, servings: null })}
+                  style={{ minHeight: 34, padding: '4px 12px', fontSize: 13 }}
+                >
+                  Not a meal prep
+                </button>
+              </div>
+              <p style={{ margin: '6px 0 10px', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                {prep.servings == null
+                  ? 'How many servings are you splitting this batch into?'
+                  : `Splitting into ${prep.servings} — each serving is highlighted below.`}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {(prep.servings != null && ![2, 3, 4, 5, 6].includes(prep.servings)
+                  ? [2, 3, 4, 5, 6, prep.servings].sort((a, b) => a - b)
+                  : [2, 3, 4, 5, 6]
+                ).map(nS => (
+                  <button
+                    key={nS}
+                    type="button"
+                    className={prep.servings === nS ? 'prep-split is-selected' : 'prep-split'}
+                    onClick={() => setPrep(p => ({ ...p, servings: nS }))}
+                  >
+                    <span className="prep-split__count">÷ {nS} servings</span>
+                    <span className="prep-split__macros">
+                      {Math.round(totals.calories / nS)} cal · P {(totals.protein / nS).toFixed(1)}g · C {(totals.carbs / nS).toFixed(1)}g · F {(totals.fat / nS).toFixed(1)}g
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                <label htmlFor="prep-servings" style={{ margin: 0, fontSize: 13 }}>Custom count:</label>
+                <input
+                  id="prep-servings"
+                  type="number" min="2" max="50" step="1"
+                  value={prep.servings ?? ''}
+                  onChange={e => {
+                    const v = Math.floor(Number(e.target.value));
+                    setPrep(p => ({ ...p, servings: Number.isInteger(v) && v >= 2 && v <= 50 ? v : null }));
+                  }}
+                  style={{ width: 90 }}
+                />
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setPrep({ isMealPrep: true, servings: 4 })}
+                style={{ width: '100%', minHeight: 48, fontWeight: 700 }}
+              >
+                🍱 This is a meal prep — split into servings
+              </button>
+            </div>
+          )}
 
           {/* Assumptions / warnings */}
           {estimate.assumptions.length > 0 && (
@@ -975,11 +1148,11 @@ export default function AiMacroLogger() {
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                   <button
                     type="button"
-                    className="btn-primary"
+                    className={loading ? 'btn-primary btn-loading' : 'btn-primary'}
                     onClick={() => runEstimate(correction)}
                     disabled={loading || !correction.trim()}
                   >
-                    {loading ? 'Revising…' : 'Apply correction'}
+                    {loading ? (<><span className="btn-spinner" aria-hidden="true" />Revising…</>) : 'Apply correction'}
                   </button>
                   <button type="button" className="btn-secondary" onClick={() => { setReviseOpen(false); setCorrection(''); }}>
                     Cancel
@@ -994,29 +1167,65 @@ export default function AiMacroLogger() {
 
           {/* Actions */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 20 }}>
+            {prep.isMealPrep && (
+              <div>
+                <button
+                  type="button"
+                  className={busy === 'prep' ? 'btn-primary btn-loading' : 'btn-primary'}
+                  onClick={saveAsMealPrep}
+                  disabled={busy !== '' || prep.servings == null}
+                  style={{ width: '100%', minHeight: 56, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
+                >
+                  {busy === 'prep'
+                    ? (<><span className="btn-spinner" aria-hidden="true" />Saving meal prep…</>)
+                    : `Save as meal prep${prep.servings != null ? ` (${prep.servings} servings)` : ''}`}
+                </button>
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  {prep.servings == null
+                    ? 'Pick a serving count in the split above to enable this.'
+                    : `Saves a limited-use template with ${prep.servings} uses — each logged serving counts down until the batch is gone.`}
+                </p>
+              </div>
+            )}
             <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <label htmlFor="ai-log-date" style={{ margin: 0, fontSize: 13 }}>Log to</label>
+                <input
+                  id="ai-log-date"
+                  type="date"
+                  value={logDate}
+                  onChange={e => setLogDate(e.target.value)}
+                  style={{ width: 170 }}
+                />
+              </div>
               <button
                 type="button"
-                className="btn-primary"
+                className={busy === 'log' ? 'btn-primary btn-loading' : 'btn-primary'}
                 onClick={logOnce}
                 disabled={busy !== ''}
                 style={{ width: '100%', minHeight: 56, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
               >
-                {busy === 'log' ? 'Logging…' : 'Log once'}
+                {busy === 'log'
+                  ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>)
+                  : logDate && logDate !== getLocalDateISO() ? `Log once — ${logDate}` : 'Log once'}
               </button>
               <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-                Track this meal today without saving it to your recipe library.
+                {prep.isMealPrep
+                  ? `Logs the WHOLE batch to ${logDate === getLocalDateISO() ? 'today' : logDate} — use the meal-prep save above if you're eating it across days.`
+                  : logDate && logDate !== getLocalDateISO()
+                    ? `Backfills ${logDate} — you'll find it on that day in History.`
+                    : 'Track this meal today without saving it to your recipe library.'}
               </p>
             </div>
             <div>
               <button
                 type="button"
-                className="btn-secondary"
+                className={busy === 'save' ? 'btn-secondary btn-loading' : 'btn-secondary'}
                 onClick={saveAsRecipe}
                 disabled={busy !== ''}
                 style={{ width: '100%', minHeight: 48, fontWeight: 700 }}
               >
-                {busy === 'save' ? 'Saving…' : 'Save as recipe'}
+                {busy === 'save' ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>) : 'Save as recipe'}
               </button>
               <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
                 Add this to your recipe library so you can reuse it later.

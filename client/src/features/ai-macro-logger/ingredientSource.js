@@ -24,14 +24,40 @@ const FILLER = new Set([
   'low', 'reduced', 'of', 'the', 'a', 'an', 'with', 'and',
 ]);
 
+// State-changing preparation words: unlike a brand or variety, these change
+// what the food IS. A generic mention ("banana") must not auto-match a saved
+// item whose name declares a different state ("Frozen banana") — but the
+// reverse convenience ("honey" → "Clover honey") should keep working.
+const STATE_MODIFIERS = new Set([
+  'frozen', 'freeze', 'dried', 'dehydrated', 'canned', 'jarred', 'pickled',
+  'smoked', 'cured', 'candied', 'breaded', 'battered', 'fried', 'powdered',
+  'instant', 'concentrate', 'concentrated',
+]);
+
 const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 const singular = t => (t.length > 3 && t.endsWith('s') && !t.endsWith('ss') ? t.slice(0, -1) : t);
 const contentTokens = s => norm(s).split(' ').filter(Boolean).map(singular).filter(t => !FILLER.has(t));
+
+/** True when either name carries a state modifier the other lacks. */
+function stateMismatch(As, Cs) {
+  for (const t of As) if (STATE_MODIFIERS.has(t) && !Cs.has(t)) return true;
+  for (const t of Cs) if (STATE_MODIFIERS.has(t) && !As.has(t)) return true;
+  return false;
+}
 
 /**
  * Name similarity in [0,1]. 1 = exact (normalized); 0.9 = one name's content
  * tokens are a subset of the other ("honey" ⊂ "clover honey"); otherwise the
  * Jaccard overlap of content tokens.
+ *
+ * Two exceptions keep the subset bonus from over-matching:
+ * - It only applies when the subset covers the superset's HEAD noun (last
+ *   content token — what the food IS). "honey" ⊂ "clover honey" qualifies
+ *   (honey is the head); "onion" ⊂ "onion bagels" does not (bagel is the
+ *   head — an onion is not a bagel).
+ * - A state-modifier mismatch (one name says "frozen"/"dried"/… and the other
+ *   doesn't) caps the score at 0.5 — below MATCH_THRESHOLD.
+ * In both cases the item can still rank as a suggestion, never auto-selected.
  */
 export function nameScore(aiName, candName) {
   const a = norm(aiName), c = norm(candName);
@@ -40,11 +66,17 @@ export function nameScore(aiName, candName) {
   const A = contentTokens(aiName), C = contentTokens(candName);
   if (!A.length || !C.length) return 0;
   const As = new Set(A), Cs = new Set(C);
-  if (A.every(t => Cs.has(t)) || C.every(t => As.has(t))) return 0.9;
+  const mismatch = stateMismatch(As, Cs);
+  if (!mismatch) {
+    const headA = A[A.length - 1], headC = C[C.length - 1];
+    if (A.every(t => Cs.has(t)) && As.has(headC)) return 0.9; // A ⊂ C, C's head covered
+    if (C.every(t => As.has(t)) && Cs.has(headA)) return 0.9; // C ⊂ A, A's head covered
+  }
   let inter = 0;
   for (const t of As) if (Cs.has(t)) inter += 1;
   const uni = new Set([...As, ...Cs]).size;
-  return uni ? inter / uni : 0;
+  const jaccard = uni ? inter / uni : 0;
+  return mismatch ? Math.min(jaccard, 0.5) : jaccard;
 }
 
 export const MATCH_THRESHOLD = 0.6;

@@ -8,6 +8,25 @@ import { apiUrl } from './base';
  * @returns {Promise<object>} validated estimate (mealName, summary, confidence,
  *   ingredients[], totals, assumptions[], warnings[], recipeLog|null).
  */
+/**
+ * Send a recorded voice note to the server for speech-to-text.
+ * @param {Blob} blob raw audio from MediaRecorder (webm on Chrome/Android, mp4 on iOS)
+ * @returns {Promise<string>} the transcript ('' when no speech was detected)
+ */
+export async function transcribeAudio(blob) {
+  const res = await fetch(apiUrl('/api/ai/transcribe'), {
+    method: 'POST',
+    headers: { 'Content-Type': blob.type || 'audio/webm' },
+    body: blob,
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => null);
+    throw new Error(e?.error || 'Failed to transcribe audio.');
+  }
+  const data = await res.json();
+  return typeof data?.text === 'string' ? data.text : '';
+}
+
 export async function estimateMacros({ description, correction, recipes } = {}) {
   const res = await fetch(apiUrl('/api/ai/macro-estimate'), {
     method: 'POST',

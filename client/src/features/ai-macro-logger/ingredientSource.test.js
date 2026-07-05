@@ -84,6 +84,60 @@ describe('resolveIngredientSource — macro source hierarchy', () => {
   });
 });
 
+describe('resolveIngredientSource — state-modifier mismatch must not auto-match', () => {
+  it('generic "banana" does NOT auto-match saved "Frozen banana"', () => {
+    const ing = row({ name: 'banana', macroSource: 'estimated', quantity: 118, unit: 'g', calories: 105 });
+    const r = resolveIngredientSource(ing, [lib('Frozen banana', 90, { id: 4 })], []);
+    expect(r.source).toBe('ai'); // falls through, keeps the generic estimate
+    expect(r.calories).toBe(105);
+  });
+
+  it('generic "strawberries" does NOT auto-match saved "Frozen strawberries"', () => {
+    const ing = row({ name: 'strawberries', macroSource: 'estimated', quantity: 454, unit: 'g', calories: 145 });
+    const r = resolveIngredientSource(ing, [lib('Frozen strawberries', 35, { id: 5 })], []);
+    expect(r.source).toBe('ai');
+    expect(r.calories).toBe(145);
+  });
+
+  it('saying "frozen banana" explicitly still matches saved "Frozen banana"', () => {
+    const ing = row({ name: 'frozen banana', macroSource: 'estimated', quantity: 100, unit: 'g', calories: 999 });
+    const r = resolveIngredientSource(ing, [lib('Frozen banana', 90, { id: 4 })], []);
+    expect(r.source).toBe('library');
+    expect(r.calories).toBe(90);
+    expect(r.label_ingredient_id).toBe(4);
+  });
+
+  it('variety/brand subset matches keep working ("honey" → "Clover honey")', () => {
+    const ing = row({ name: 'honey', macroSource: 'estimated', quantity: 21, unit: 'g', calories: 999 });
+    const r = resolveIngredientSource(ing, [lib('Clover honey', 304, { id: 9 })], []);
+    expect(r.source).toBe('library');
+    expect(r.label_ingredient_id).toBe(9);
+  });
+});
+
+describe('resolveIngredientSource — subset must cover the head noun', () => {
+  it('"onions" does NOT auto-match saved "Onion bagels" (an onion is not a bagel)', () => {
+    const ing = row({ name: 'onions', macroSource: 'estimated', quantity: 200, unit: 'g', calories: 80 });
+    const r = resolveIngredientSource(ing, [lib('Onion bagels', 270, { id: 11 })], []);
+    expect(r.source).toBe('ai');
+    expect(r.calories).toBe(80);
+  });
+
+  it('"onion bagel" still auto-matches saved "Onion bagels"', () => {
+    const ing = row({ name: 'onion bagel', macroSource: 'estimated', quantity: 100, unit: 'g', calories: 999 });
+    const r = resolveIngredientSource(ing, [lib('Onion bagels', 270, { id: 11 })], []);
+    expect(r.source).toBe('library');
+    expect(r.label_ingredient_id).toBe(11);
+  });
+
+  it('brand-prefixed head matches keep working ("chicken breast" → "Kirkland chicken breast")', () => {
+    const ing = row({ name: 'chicken breast', macroSource: 'estimated', quantity: 100, unit: 'g', calories: 999 });
+    const r = resolveIngredientSource(ing, [lib('Kirkland chicken breast', 165, { id: 12 })], []);
+    expect(r.source).toBe('library');
+    expect(r.label_ingredient_id).toBe(12);
+  });
+});
+
 describe('enrichEstimate — wires the resolver across a whole estimate', () => {
   it('locks provided rows and library-matches the rest', () => {
     const est = {
