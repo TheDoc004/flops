@@ -101,6 +101,12 @@
   --reveal-offset: 14px;
   --reveal-dur: 480ms;
 
+  /* Growing list reveal (library lists): per-row height expansion. Faster than
+     --reveal-dur because rows open in a scroll-driven chain — each one waiting
+     its turn — so per-row time compounds. Keep CHAIN_DELAY in GrowReveal.jsx
+     tuned against this. */
+  --grow-dur: 360ms;
+
   /* Staggered reveal for the ingredient breakdown (rows + column accents).
      Tuned so a typical list opens over ~350–500ms; the index is capped (see the
      .bd rules) so long lists never drag. */
@@ -166,6 +172,118 @@
 .reveal.is-visible {
   opacity: 1;
   transform: none;
+}
+
+/* ── Growing list reveal ──
+   Library lists: a row starts height-collapsed and expands (0fr → 1fr) when it
+   scrolls into view and the row above it has opened, so the card physically
+   grows with its content instead of pre-claiming a viewport of blank white.
+   Height mechanics mirror .collapse above; driven by GrowStack/GrowReveal
+   (shared/ui). .is-open latches on — rows never re-collapse. */
+.grow-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  /* 1px floor so a collapsed row is never zero-area — IntersectionObserver
+     treatment of zero-height targets is inconsistent across browsers. */
+  min-height: 1px;
+  transition: grid-template-rows var(--grow-dur) var(--ease-out);
+}
+.grow-reveal.is-open {
+  grid-template-rows: 1fr;
+  min-height: 0;
+}
+.grow-reveal__inner {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transform: translateY(var(--reveal-offset));
+  transition:
+    opacity var(--grow-dur) var(--ease-out),
+    transform var(--grow-dur) var(--ease-out);
+}
+.grow-reveal.is-open > .grow-reveal__inner {
+  opacity: 1;
+  transform: none;
+}
+
+/* Page-flip entrance: rows mounted by Next/Previous (or new search matches)
+   arrive at full height — the card's height must not jump mid-pagination —
+   and slide in sideways like turning a page, staggered via --slide-delay.
+   Keyframes rather than transitions because these rows mount already
+   .is-open. The wrapper clips, so sliding content never pokes outside the
+   card (no horizontal scroll on mobile). */
+@keyframes grow-slide-right { from { opacity: 0; transform: translateX(26px); } to { opacity: 1; transform: none; } }
+@keyframes grow-slide-left { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: none; } }
+.grow-reveal.slide-right,
+.grow-reveal.slide-left {
+  overflow: hidden;
+}
+.grow-reveal.slide-right > .grow-reveal__inner,
+.grow-reveal.slide-left > .grow-reveal__inner {
+  animation: grow-slide-right var(--grow-dur) var(--ease-out) both;
+  animation-delay: var(--slide-delay, 0ms);
+}
+.grow-reveal.slide-left > .grow-reveal__inner {
+  animation-name: grow-slide-left;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grow-reveal,
+  .grow-reveal__inner {
+    transition: none;
+  }
+  .grow-reveal.slide-right > .grow-reveal__inner,
+  .grow-reveal.slide-left > .grow-reveal__inner {
+    animation: none;
+  }
+}
+
+/* ── Empty library slots ──
+   A short last page keeps the card at its locked height (see the libraries'
+   min-height floor); the leftover room is filled with dashed placeholder
+   slots — "future entries go here" — instead of bare white space. The slots
+   flex to share the leftover evenly, so the pagination bar below them never
+   moves. Each slot is a real button: an "add your next one here" shortcut. */
+@keyframes ghost-slot-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.ghost-slots {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  padding-top: var(--space-10);
+}
+.ghost-slot {
+  flex: 1;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-faint);
+  font-size: 16px;
+  cursor: pointer;
+  user-select: none;
+  animation: ghost-slot-in var(--grow-dur) var(--ease-out) both;
+  animation-delay: var(--slide-delay, 0ms);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+.ghost-slot:hover,
+.ghost-slot:focus-visible {
+  border-color: var(--color-secondary-border);
+  color: var(--color-primary);
+  background: rgba(49, 46, 129, 0.04);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ghost-slot { animation: none; }
 }
 
 /* ── Ingredient breakdown reveal ──
@@ -651,6 +769,35 @@ dialog[open]::backdrop {
   from { background: rgba(0, 0, 0, 0); }
 }
 
+/* ── Modal close (✕) ──
+   Universal top-right close for modals, replacing per-dialog Cancel buttons.
+   Sits in the modal's header row (flex, space-between with the title). */
+.modal-close-x {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: -6px -6px 0 0; /* optically align with the dialog padding corner */
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  color: var(--color-text-muted);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.modal-close-x:hover,
+.modal-close-x:focus-visible {
+  background: var(--color-secondary-bg);
+  color: var(--color-primary);
+}
+
 /* One-shot entrance for content swapped in by a user action (modal mode
    panels, expanding sections). Pair with a distinct React `key` per panel so
    switching content remounts the node and replays the animation. */
@@ -774,7 +921,11 @@ dialog[open]::backdrop {
   .cal-day-note { font-size: 9px; }
 }
 
-/* ── Inline button spinner (matches button text color via currentColor) ── */
+/* ── Button loading state ──
+   While an async action runs, add .btn-loading alongside disabled and show a
+   .btn-spinner. Plain disabled means "inert" (dimmed, not-allowed cursor); a
+   loading button instead stays near full strength and runs a soft sheen
+   across its surface so it reads as "working on it", not "dead". */
 @keyframes spin { to { transform: rotate(360deg); } }
 .btn-spinner {
   display: inline-block;
@@ -786,6 +937,154 @@ dialog[open]::backdrop {
   border-right-color: transparent;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
+}
+
+.btn-primary.btn-loading:disabled,
+.btn-secondary.btn-loading:disabled,
+.btn-danger.btn-loading:disabled,
+.btn-ai.btn-loading:disabled {
+  opacity: 0.92;
+  cursor: progress;
+}
+
+/* Indeterminate sheen: repurposes the press-sweep ::after overlay (the button
+   is disabled while loading, so the press sweep can't fire and conflict). */
+@keyframes btn-loading-sheen {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+.btn-loading::after {
+  opacity: 1;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  animation: btn-loading-sheen 1.4s var(--ease-out) infinite;
+  transition: none;
+}
+.btn-secondary.btn-loading::after,
+.btn-ai.btn-loading::after {
+  background: linear-gradient(90deg, transparent, rgba(49, 46, 129, 0.10), transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-loading::after { animation: none; opacity: 0; }
+}
+
+/* ── Voice input (AI logger) ──
+   While the mic is live the button shifts to a red-tinted "recording" look
+   with a pulsing dot, so it can't be mistaken for an ordinary secondary
+   action. */
+@keyframes voice-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.5; }
+}
+.voice-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+.btn-secondary.is-recording {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: var(--color-danger);
+}
+.btn-secondary.is-recording:hover {
+  background: #fee2e2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-dot { animation: none; }
+}
+
+/* ── Meal prep (AI logger) ──
+   Split explorer + leftover badge. Split rows behave like the app's option
+   cards: hover lift, quick press, and a selected state drawn with an inset
+   ring (reads as a 2px border without shifting layout). Pair the panel with
+   .panel-in so it animates in when detection or the toggle reveals it. */
+.prep-panel {
+  margin-top: 12px;
+  padding: var(--space-14);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+.prep-panel__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--color-primary-ink);
+  font-family: 'DM Serif Display', Georgia, serif;
+}
+.prep-split {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  font-size: 13px;
+  color: var(--color-text-body);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.prep-split:hover {
+  border-color: var(--color-secondary-border);
+  box-shadow: 0 2px 8px rgba(49, 46, 129, 0.10);
+  transform: translateY(-1px);
+}
+.prep-split:active {
+  transform: scale(0.98);
+  box-shadow: none;
+  transition-duration: 60ms;
+}
+.prep-split.is-selected {
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+  background: #eef2ff;
+}
+.prep-split__count { font-weight: 600; white-space: nowrap; }
+.prep-split.is-selected .prep-split__count { font-weight: 700; color: var(--color-primary); }
+.prep-split__macros {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+.prep-split.is-selected .prep-split__macros { color: var(--color-text-strong); }
+
+/* Leftover badge on a matched meal-prep recipe ("3 of 5 servings left"). */
+.prep-badge {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #ddd6fe;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.prep-badge__hint {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+  font-size: 12px;
+  color: #6b21a8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prep-split,
+  .prep-split:hover,
+  .prep-split:active {
+    transform: none;
+  }
 }
 
 /* ── Logging style selector (Ingredients + Meal Builder) ── */

@@ -137,8 +137,8 @@ export default function Report() {
 
         {error && <p className="error" style={{ marginBottom: 10 }}>{error}</p>}
 
-        <button type="button" className="btn-primary" onClick={handleDownload} disabled={busy}>
-          {busy ? 'Building PDF…' : 'Download PDF'}
+        <button type="button" className={busy ? 'btn-primary btn-loading' : 'btn-primary'} onClick={handleDownload} disabled={busy}>
+          {busy ? (<><span className="btn-spinner" aria-hidden="true" />Building PDF…</>) : 'Download PDF'}
         </button>
       </Reveal>
 

@@ -4,7 +4,7 @@ import { fetchGoals } from '@shared/api/goals';
 import { groupByDate } from '@shared/utils/macros';
 import { addDaysLocal, getLocalDateISO, parseLocalDateISO } from '@shared/utils/dateLocal';
 import { buildWeeklyAdherenceRows, buildDayAdherenceDetail, hasAnyTarget } from './goalAdherence';
-import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
+import { getIsoWeekday, ISO_WEEKDAY_LABELS, SUNDAY_FIRST_WEEKDAYS, sundayFirstIndex } from '@shared/utils/weekday';
 import GoalAdherenceDayDetailDialog from './GoalAdherenceDayDetailDialog';
 import { STATUS_META } from './statusMeta';
 
@@ -106,7 +106,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
     return getIsoWeekday(parseLocalDateISO(d0)); // 1..7 (Mon..Sun)
   }, [month]);
 
-  const blanks = firstWeekday - 1; // days before Monday start
+  const blanks = sundayFirstIndex(firstWeekday); // leading tiles before a Sunday-first grid
 
   function prevMonth() {
     const [y, m] = month.split('-').map(Number);
@@ -154,9 +154,9 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
       {loading && <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>Loading…</p>}
 
       <div className="cal-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', marginTop: 10 }}>
-        {Object.entries(ISO_WEEKDAY_LABELS).map(([k, v]) => (
+        {SUNDAY_FIRST_WEEKDAYS.map(k => (
           <div key={k} style={{ fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'center', fontWeight: 600 }}>
-            {v.slice(0, 3)}
+            {ISO_WEEKDAY_LABELS[k].slice(0, 3)}
           </div>
         ))}
         {Array.from({ length: blanks }).map((_, i) => (

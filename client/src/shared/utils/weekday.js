@@ -10,6 +10,13 @@ export const ISO_WEEKDAY_LABELS = {
   7: 'Sunday',
 };
 
+/** Display order for week views: Sunday-first (universal calendar convention).
+    Data stays ISO (Mon=1…Sun=7) everywhere — this is presentation order only. */
+export const SUNDAY_FIRST_WEEKDAYS = [7, 1, 2, 3, 4, 5, 6];
+
+/** Column index (0..6) of an ISO weekday in a Sunday-first week grid. */
+export const sundayFirstIndex = isoWeekday => isoWeekday % 7;
+
 /** ISO weekday: Monday = 1 … Sunday = 7 (matches JS getDay() mapping below) */
 export function getIsoWeekday(date = new Date()) {
   const d = date.getDay();

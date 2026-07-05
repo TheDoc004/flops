@@ -569,12 +569,12 @@ export default function TrainingWorkouts() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
                 <button
                   type="button"
-                  className="btn-primary"
+                  className={savingLogs ? 'btn-primary btn-loading' : 'btn-primary'}
                   style={{ minHeight: 44, padding: '0 28px' }}
                   onClick={() => void handleSaveLogs()}
                   disabled={savingLogs}
                 >
-                  {savingLogs ? 'Saving…' : "Save today's logs"}
+                  {savingLogs ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>) : "Save today's logs"}
                 </button>
               </div>
             </>

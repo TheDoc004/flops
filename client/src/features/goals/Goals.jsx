@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchGoals, saveGoals } from '@shared/api/goals';
 import {
   gramsToInputValue,
@@ -111,6 +111,13 @@ export default function Goals() {
   }
 
   const macroSuffix = macroLabelSuffix(macroUnits);
+
+  // Sunday-first display, matching every calendar view. Data stays keyed by
+  // ISO weekday (Mon=1…Sun=7) — this only reorders the rows on screen.
+  const displayRows = useMemo(
+    () => [...rows].sort((a, b) => (a.weekday % 7) - (b.weekday % 7)),
+    [rows]
+  );
   const macroStep = macroUnits === 'us' ? '0.01' : '0.1';
 
   if (loading) {
@@ -145,7 +152,7 @@ export default function Goals() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(row => (
+              {displayRows.map(row => (
                 <tr key={row.weekday} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '12px 12px 12px 0', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.label}</td>
                   {FIELD_META.map((field, idx) => {
@@ -197,7 +204,7 @@ export default function Goals() {
 
         {/* Mobile-only: vertical day cards (same state/handlers as the table) */}
         <Reveal delay={60} className="card goals-cards">
-          {rows.map(row => (
+          {displayRows.map(row => (
             <div key={row.weekday} className="goals-day-card">
               <h3 className="goals-day-title">{row.label}</h3>
               {FIELD_META.map(field => {
