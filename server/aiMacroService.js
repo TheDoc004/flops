@@ -37,6 +37,9 @@ const SCHEMA_HINT = `{
     }
   ],
   "totals": { "calories": number, "protein": number, "carbs": number, "fat": number },
+  "mealPrep": {
+    "servings": "number or null — how many servings/portions the batch is being split into, if the user stated a count; null when they did not"
+  },
   "assumptions": ["string"],
   "warnings": ["string"],
   "recipeLog": {
@@ -77,11 +80,17 @@ Explicit user-provided macros are AUTHORITATIVE — this is the single most impo
 - "totals" must be the sum of the ingredient macros.
 - Keep "summary" and notes short. Do not include any prose outside the JSON.
 
+Meal prep awareness:
+- If the description is a BATCH being cooked to eat across multiple sittings — meal prep, batch cooking, "making my lunches for the week", "this should last me a few days", "split into N containers" — set "mealPrep" to an object with "servings" = the stated number of servings/portions (integer), or null when no count was given.
+- Always estimate the WHOLE batch in "ingredients" and "totals" — never divide macros by servings yourself; the app does per-serving math.
+- Eating multiple servings in ONE sitting (e.g. "I ate 2 servings of chili") is NOT meal prep. A normal single meal is NOT meal prep. In both cases set "mealPrep" to null.
+
 Saved-recipe awareness:
 - The user may reference one of their SAVED recipes (e.g. "log my Egg Toast Wombo Combo", "log my bagel recipe but skip the banana"). Their saved recipes — each with its ingredient list — are provided below (may be empty).
 - If the description refers to a saved recipe, set "recipeLog.recipeName" to the EXACT matching name from the provided list, set "matchConfidence", and capture any requested changes in "recipeLog.modifications". Do NOT invent or recalculate that recipe's ingredients/macros — the app loads the real saved recipe and applies the changes itself.
 - For each modification, set "target" to the EXACT ingredient name from THAT recipe's ingredient list (map the user's words to the real ingredient — e.g. "toast" → the recipe's bread ingredient, "yogurt" → the recipe's Greek yogurt). Use type "remove" for skip/without/no, "set_amount" for "use 245g X"/"make it N", "substitute" (with newName) for "use X instead of Y", "scale" (with a numeric "scale", e.g. 0.5 for half) for whole-recipe portions, and "add" ONLY for an ingredient that is NOT already in the recipe.
 - For "add" and "substitute" modifications, ALSO estimate that single ingredient's calories/protein/carbs/fat for the stated quantity/unit (e.g. add 70g blueberries → ~40 cal, ~0.5 protein, ~10 carbs, ~0 fat). If the user gives only a calorie amount (e.g. "20 calories of BBQ sauce"), set calories to that and your best macro guess (often ~0). These per-ingredient macros are used only for added/substituted items, never to recalc the saved recipe.
+- Entries tagged [MEAL PREP — …] are batches the user cooked earlier and is eating across days; the tag shows how many servings remain and how long ago it was made. When the user says they ate / want to log (a serving of) a meal prep — "log my chicken prep", "had one of my meal prep lunches", "eating my leftovers from the chicken and rice I made" — match it via recipeLog exactly like a saved recipe. For N servings of a meal prep, use a single "scale" modification with scale = N (the app converts that to a serving count and tracks the remaining servings itself). Do not re-estimate its macros.
 - Only use a name that appears in the provided list. If you are unsure which saved recipe is meant, set "matchConfidence" to "low". If the description is a normal freeform meal (not a saved recipe), set "recipeLog" to null.
 - Either way, still fill "ingredients"/"totals" with a best-effort estimate (used only as a fallback when no saved recipe matches).
 
@@ -101,7 +110,17 @@ function buildUserContent(description, correction, recipes) {
       const ings = Array.isArray(r.ingredients)
         ? r.ingredients.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim())
         : [];
-      return ings.length ? `- ${r.name} (ingredients: ${ings.join(', ')})` : `- ${r.name}`;
+      let prepTag = '';
+      if (r.prep && typeof r.prep === 'object' && r.prep.remainingServings != null) {
+        const of = r.prep.totalServings != null ? ` of ${r.prep.totalServings}` : '';
+        const age = r.prep.madeDaysAgo == null
+          ? ''
+          : r.prep.madeDaysAgo === 0 ? ', made today'
+          : r.prep.madeDaysAgo === 1 ? ', made yesterday'
+          : `, made ${r.prep.madeDaysAgo} days ago`;
+        prepTag = ` [MEAL PREP — ${r.prep.remainingServings}${of} servings left${age}]`;
+      }
+      return ings.length ? `- ${r.name}${prepTag} (ingredients: ${ings.join(', ')})` : `- ${r.name}${prepTag}`;
     });
     content += `\n\nThe user's saved recipes — match recipeLog.recipeName ONLY against these exact names, and set each modification "target" to the EXACT ingredient name listed for that recipe:\n${lines.join('\n')}`;
   } else {
@@ -148,6 +167,13 @@ function validateRecipeLog(raw) {
     .filter(m => m.type)
     .slice(0, 20);
   return { recipeName, matchConfidence, modifications };
+}
+
+/** Validate the optional meal-prep block. Returns null when not a batch. */
+function validateMealPrep(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const s = Number(raw.servings);
+  return { servings: Number.isInteger(s) && s >= 2 && s <= 50 ? s : null };
 }
 
 /** Coerce arbitrary AI output into the strict shape the frontend expects. */
@@ -198,6 +224,7 @@ function validateEstimate(raw) {
     assumptions: toStringArray(raw.assumptions),
     warnings: toStringArray(raw.warnings),
     recipeLog: validateRecipeLog(raw.recipeLog),
+    mealPrep: validateMealPrep(raw.mealPrep),
   };
 }
 

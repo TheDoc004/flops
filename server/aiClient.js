@@ -134,6 +134,7 @@ module.exports = {
   callProviderJson,
   extractJson,
   resolveProvider,
+  classifyProviderError,
   AiConfigError,
   AiProviderError,
   AiResponseError,
