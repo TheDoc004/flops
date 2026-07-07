@@ -7,12 +7,13 @@ import { useEffect, useRef, useState } from 'react';
  *
  * @param {object} [options]
  * @param {number} [options.threshold] - fraction of the element that must be visible
- * @param {string} [options.rootMargin] - shrinks the trigger area; the default means
- *   elements start animating once they're ~8% up from the bottom edge
+ * @param {string} [options.rootMargin] - grows/shrinks the trigger area. Default
+ *   is '0px' (the real viewport): a shrunk bottom edge could leave the last
+ *   element in a dead zone that never intersects, hiding it permanently.
  * @param {boolean} [options.once] - pass false to toggle off when leaving the viewport
  * @returns {[import('react').RefObject, boolean]} [ref, inView] — attach ref to the element
  */
-export default function useInView({ threshold = 0.1, rootMargin = '0px 0px -8% 0px', once = true } = {}) {
+export default function useInView({ threshold = 0.1, rootMargin = '0px', once = true } = {}) {
   const ref = useRef(null);
   // No observer support (old browser / jsdom): start visible so content never hides.
   const [inView, setInView] = useState(() => typeof IntersectionObserver !== 'function');
@@ -20,6 +21,19 @@ export default function useInView({ threshold = 0.1, rootMargin = '0px 0px -8% 0
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof IntersectionObserver !== 'function') return;
+
+    // Safety net: if the element is already on-screen at mount, reveal it right
+    // away rather than waiting on the observer. Together with rootMargin '0px'
+    // (no shrunk trigger area) this guarantees visible content is never left
+    // stuck at opacity 0 — the bug where the last meal row in History stayed
+    // hidden — while still animating anything below the fold in on scroll.
+    const rect = el.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    if (rect.top < vh && rect.bottom > 0) {
+      setInView(true);
+      if (once) return;
+    }
+
     const observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting) {
         setInView(true);
