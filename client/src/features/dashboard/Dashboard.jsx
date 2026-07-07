@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
+import { AiLoggerModal } from '@features/ai-macro-logger';
 import MacroTotals from '@shared/ui/MacroTotals';
 import Reveal from '@shared/ui/Reveal';
 import { fetchLogRange, createLogEntry, deleteLogEntry } from '@shared/api/log';
@@ -42,6 +43,7 @@ export default function Dashboard() {
   const [goalsLoaded, setGoalsLoaded] = useState(false);
   const [goalsError, setGoalsError] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
   const [error, setError] = useState('');
   const [dashWeightPrefs, setDashWeightPrefs] = useState({ enabled: true, days: 30 });
   const [dashAdherenceView, setDashAdherenceView] = useState('7d');
@@ -198,9 +200,9 @@ export default function Dashboard() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Link to="/ai-logger" className="btn-ai" style={dashActionStyle}>
+          <button type="button" className="btn-ai" onClick={() => setShowAiModal(true)} style={dashActionStyle}>
             <span className="spark" aria-hidden="true">✨</span> AI Estimate
-          </Link>
+          </button>
           <button className="btn-primary" onClick={() => setShowModal(true)} style={dashActionStyle}>
             + Log a Meal
           </button>
@@ -336,7 +338,16 @@ export default function Dashboard() {
       {showModal && (
         <LogMealModal
           onLog={handleLog}
+          onOpenAi={() => { setShowModal(false); setShowAiModal(true); }}
           onClose={() => setShowModal(false)}
+        />
+      )}
+
+      {showAiModal && (
+        <AiLoggerModal
+          initialDate={today}
+          onLogged={load}
+          onClose={() => setShowAiModal(false)}
         />
       )}
     </div>

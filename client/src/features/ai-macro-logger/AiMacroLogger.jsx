@@ -11,6 +11,7 @@ import { adjustPerServingMacrosForResolvedClient } from '@features/meal-logging/
 import { matchRecipe, applyModifications, resolvedReviewRows, recipeIngredientNames } from './recipeCommand';
 import VoiceInput from './VoiceInput';
 import { reconcileMealPrep } from './mealPrep';
+import { ingredientEmoji } from './ingredientEmoji';
 import {
   enrichEstimate, strongMatchCount, basisFromLibrary, deriveBasis,
   scaleBasisToAmount, likelyLibraryMatches, searchLibrary,
@@ -84,22 +85,32 @@ const AI_BADGE = {
 
 // Where an ingredient's macros came from (review badges).
 const SOURCE_META = {
-  provided: { label: 'Provided in message', bg: '#eef2ff', border: '#c7d2fe', color: '#3730a3', kind: null },
-  library: { label: 'Ingredient library', bg: '#ecfdf5', border: '#6ee7b7', color: '#065f46', kind: 'saved ingredient' },
-  common: { label: 'Common data', bg: '#eff6ff', border: '#bfdbfe', color: '#1e40af', kind: 'common food' },
-  ai: { label: 'Estimated', bg: '#f3f4f6', border: '#e5e7eb', color: '#6b7280', kind: null },
-  manual: { label: 'Manual', bg: '#fef3c7', border: '#fcd34d', color: '#92400e', kind: null },
+  provided: { label: 'Provided in message', short: 'Yours', bg: '#eef2ff', border: '#c7d2fe', color: '#3730a3', kind: null },
+  library: { label: 'Ingredient library', short: 'Saved', bg: '#ecfdf5', border: '#6ee7b7', color: '#065f46', kind: 'saved ingredient' },
+  common: { label: 'Common data', short: 'Common', bg: '#eff6ff', border: '#bfdbfe', color: '#1e40af', kind: 'common food' },
+  ai: { label: 'Estimated', short: 'AI', bg: '#f3f4f6', border: '#e5e7eb', color: '#6b7280', kind: null },
+  manual: { label: 'Manual', short: 'Edited', bg: '#fef3c7', border: '#fcd34d', color: '#92400e', kind: null },
 };
 const rowSourceKey = ing => (ing.overridden ? 'manual' : (SOURCE_META[ing.source] ? ing.source : 'ai'));
 
-export default function AiMacroLogger() {
+/**
+ * The AI Macro Logger. Renders as a full page by default, or inline inside a
+ * dialog when `inModal` is set (e.g. the dashboard popup). In modal mode a
+ * successful log calls `onLogged` (to refresh the host) and `onClose` (to shut
+ * the dialog) instead of navigating away.
+ */
+export default function AiMacroLogger({ inModal = false, onClose, onLogged, initialDate } = {}) {
   const navigate = useNavigate();
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [estimate, setEstimate] = useState(null);
-  const [correction, setCorrection] = useState('');
-  const [reviseOpen, setReviseOpen] = useState(false);
+  // The conversation: alternating user/AI messages shown as chat bubbles.
+  const [thread, setThread] = useState([]);
+  // Corrections applied so far (oldest → newest) — sent with every revision so
+  // the AI never undoes an earlier fix.
+  const [corrections, setCorrections] = useState([]);
+  const [followUp, setFollowUp] = useState('');
   const [busy, setBusy] = useState('');
   const [library, setLibrary] = useState([]);
   const [recipes, setRecipes] = useState([]);
@@ -111,7 +122,16 @@ export default function AiMacroLogger() {
   // toggle in the review card). servings null = prep with unknown split.
   const [prep, setPrep] = useState({ isMealPrep: false, servings: null });
   // Which day "Log once" writes to — defaults to today, editable for backfill.
-  const [logDate, setLogDate] = useState(getLocalDateISO());
+  const [logDate, setLogDate] = useState(initialDate || getLocalDateISO());
+  const descRef = useRef(null);
+
+  // Put the cursor in the description box on open so you can type right away
+  // (voice input stays one tap away). Deferred a frame so it wins over the
+  // dialog's own focus handling when the logger opens as the dashboard popup.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => descRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   // Saved ingredient library + recipe list — used to recognize recipes and to
   // prefer real data over AI estimates.
@@ -162,12 +182,27 @@ export default function AiMacroLogger() {
       setError('Describe a meal first.');
       return;
     }
+    // A revision refines the estimate on screen; anything else is a fresh start.
+    const isRevision = !!corr && !!estimate;
+    const allCorrections = isRevision ? [...corrections, corr] : [];
     setLoading(true);
     setError('');
     try {
       const raw = await estimateMacros({
         description: desc,
-        correction: corr || undefined,
+        corrections: allCorrections.length ? allCorrections : undefined,
+        // Snapshot of what the user is looking at (incl. their manual edits) —
+        // the AI treats it as the baseline and changes only what corr asks.
+        currentEstimate: isRevision
+          ? {
+              mealName: estimate.mealName,
+              ingredients: estimate.ingredients.map(i => ({
+                name: i.name, quantity: i.quantity, unit: i.unit, state: i.state,
+                calories: i.calories, protein: i.protein, carbs: i.carbs, fat: i.fat,
+                macroSource: i.macroSource,
+              })),
+            }
+          : undefined,
         recipes: recipesRef.current.map(r => {
           const entry = { name: r.name, ingredients: recipeIngredientNames(r, labelByIdRef.current) };
           // Active meal preps (limited templates with servings left) get
@@ -198,20 +233,32 @@ export default function AiMacroLogger() {
         if (match.status === 'one') {
           buildRecipeReview(match.recipe, rl.modifications || [], freeform, rl.matchConfidence);
           setEstimate(null);
-          setReviseOpen(false); setCorrection('');
+          setThread([]); setCorrections([]); setFollowUp('');
           return;
         }
         if (match.status === 'many') {
           setPicker({ candidates: match.candidates, modifications: rl.modifications || [], fallbackEstimate: freeform });
           setEstimate(null); setRecipeReview(null);
-          setReviseOpen(false); setCorrection('');
+          setThread([]); setCorrections([]); setFollowUp('');
           return;
         }
         // status 'none' → fall through to the freeform estimate.
       }
       setEstimate(freeform); setRecipeReview(null); setPicker(null);
       setPrep(reconcileMealPrep(desc, raw?.mealPrep));
-      setReviseOpen(false); setCorrection('');
+      // Grow the conversation: the user's message + the AI's reply. A fresh
+      // estimate starts a new thread from the description.
+      const aiText =
+        (typeof raw?.reply === 'string' && raw.reply.trim()) ||
+        freeform.summary ||
+        "Here's my estimate — check the breakdown below.";
+      setThread(t => [
+        ...(isRevision ? t : [{ role: 'user', text: desc }]),
+        ...(isRevision ? [{ role: 'user', text: corr }] : []),
+        { role: 'ai', text: aiText },
+      ]);
+      setCorrections(allCorrections);
+      setFollowUp('');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -272,6 +319,15 @@ export default function AiMacroLogger() {
     buildRecipeReview(recipe, picker?.modifications || [], picker?.fallbackEstimate || null, 'medium');
   }
 
+  // After a successful log: in modal mode, refresh the host (dashboard) and
+  // close the dialog in place; as a full page, navigate to wherever the entry
+  // landed (today → dashboard, a past day → History).
+  function afterLog(date) {
+    if (inModal) { onLogged?.(); onClose?.(); return; }
+    if (date === getLocalDateISO()) navigate('/', { state: { scrollToTop: true } });
+    else navigate('/history');
+  }
+
   // Log the matched saved recipe — with any applied modifications as
   // log_slot_customizations — through the normal recipe-log endpoint. The
   // server resolves the final rows + macros + micros; the original recipe is
@@ -315,8 +371,7 @@ export default function AiMacroLogger() {
         });
       }
       // Today's logs live on the dashboard; backfilled days are found in History.
-      if ((logDate || getLocalDateISO()) === getLocalDateISO()) navigate('/', { state: { scrollToTop: true } });
-      else navigate('/history');
+      afterLog(logDate || getLocalDateISO());
     } catch (e) {
       setError(e.message);
       setBusy('');
@@ -416,10 +471,11 @@ export default function AiMacroLogger() {
     setPicker(null);
     setRecipeServings(1);
     setPrep({ isMealPrep: false, servings: null });
-    setLogDate(getLocalDateISO());
+    setLogDate(initialDate || getLocalDateISO());
     setDescription('');
-    setCorrection('');
-    setReviseOpen(false);
+    setThread([]);
+    setCorrections([]);
+    setFollowUp('');
     setError('');
   }
 
@@ -457,7 +513,7 @@ export default function AiMacroLogger() {
   }
 
   async function logOnce() {
-    if (!estimate) return;
+    if (!estimate || !estimate.ingredients.length) return;
     setBusy('log');
     setError('');
     try {
@@ -511,8 +567,7 @@ export default function AiMacroLogger() {
         ...(ingredients.length ? { ingredients } : {}),
       });
       // Today's logs live on the dashboard; backfilled days are found in History.
-      if (date === getLocalDateISO()) navigate('/', { state: { scrollToTop: true } });
-      else navigate('/history');
+      afterLog(date);
     } catch (e) {
       setError(e.message);
       setBusy('');
@@ -558,7 +613,7 @@ export default function AiMacroLogger() {
   }
 
   async function saveAsRecipe() {
-    if (!estimate) return;
+    if (!estimate || !estimate.ingredients.length) return;
     setBusy('save');
     setError('');
     try {
@@ -588,24 +643,51 @@ export default function AiMacroLogger() {
 
   return (
     <div>
-      <Reveal>
-        <h1 className="page-title" style={{ marginBottom: 6 }}>AI Macro Logger</h1>
-        <p className="page-subtitle" style={{ marginBottom: 18 }}>
-          Describe a meal, review the estimate, then log it once.
-        </p>
-      </Reveal>
+      {!inModal && (
+        <Reveal>
+          <h1 className="page-title" style={{ marginBottom: 6 }}>AI Macro Logger</h1>
+          <p className="page-subtitle" style={{ marginBottom: 18 }}>
+            Describe a meal and talk through the estimate, then log it once — or say “log my&nbsp;<em>recipe</em>” to pull up and tweak a saved one.
+          </p>
+        </Reveal>
+      )}
 
-      {/* Input */}
+      {/* Input — hidden once a conversation is underway; the thread takes over */}
+      {!estimate && (
       <Reveal delay={60} className="card" style={{ marginBottom: 18 }}>
         <label htmlFor="ai-meal-desc">Describe your meal</label>
-        <textarea
-          id="ai-meal-desc"
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          placeholder={PLACEHOLDER}
-          rows={5}
-          style={{ width: '100%', resize: 'vertical', minHeight: 110, fontSize: '1rem', lineHeight: 1.5 }}
-        />
+        <div style={{ position: 'relative' }}>
+          <textarea
+            id="ai-meal-desc"
+            ref={descRef}
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            onKeyDown={e => {
+              // ⌘/Ctrl + Enter generates the estimate; plain Enter stays a newline
+              // so multi-line descriptions still work.
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && description.trim() && !loading) {
+                e.preventDefault();
+                runEstimate('');
+              }
+            }}
+            placeholder={PLACEHOLDER}
+            rows={5}
+            disabled={loading}
+            style={{ width: '100%', resize: 'vertical', minHeight: 110, fontSize: '1rem', lineHeight: 1.5 }}
+          />
+          {/* Loading message floats over the box instead of pushing content down */}
+          {loading && (
+            <div style={{
+              position: 'absolute', inset: 0, borderRadius: 8,
+              background: 'rgba(255,255,255,0.82)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              fontSize: 14.5, fontWeight: 600, color: 'var(--color-text-body)',
+            }}>
+              <span className="btn-spinner" aria-hidden="true" style={{ marginRight: 0 }} />
+              Give it a second — estimating…
+            </div>
+          )}
+        </div>
         <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <button
             type="button"
@@ -616,7 +698,7 @@ export default function AiMacroLogger() {
           >
             {loading
               ? (<><span className="btn-spinner" aria-hidden="true" />Estimating…</>)
-              : estimate ? 'Re-generate from scratch' : 'Generate estimate'}
+              : 'Generate estimate'}
           </button>
           <VoiceInput
             onTranscript={text =>
@@ -626,21 +708,6 @@ export default function AiMacroLogger() {
         </div>
         {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
       </Reveal>
-
-      {/* Loading state */}
-      {loading && !estimate && !recipeReview && !picker && (
-        <div className="card" style={{ marginBottom: 18 }}>
-          <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-            Reading your request… this usually takes a few seconds.
-          </p>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!loading && !estimate && !recipeReview && !picker && !error && (
-        <p className="empty-state" style={{ padding: 16 }}>
-          Your estimate will appear here. Describe a meal — or say “log my &lt;recipe&gt;” — and tap <strong>Generate estimate</strong>.
-        </p>
       )}
 
       {/* Recipe picker (ambiguous match) */}
@@ -745,8 +812,9 @@ export default function AiMacroLogger() {
               recipeReview.rows.map((r, i) => {
                 const s = recipeReview.requiresCustomPath ? 1 : (Number(recipeServings) > 0 ? Number(recipeServings) : 1);
                 return (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13, alignItems: 'baseline' }}>
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '5px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13, alignItems: 'center' }}>
                     <span style={{ color: '#1f2937', fontWeight: 500, minWidth: 0 }}>
+                      <span aria-hidden="true" style={{ marginRight: 6 }}>{ingredientEmoji(r.name)}</span>
                       {r.name}
                       <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8 }}>
                         {r.amountText != null ? r.amountText : (r.amount != null ? `${+Number(r.amount).toFixed(2)}${r.unit ? ` ${r.unit}` : ''}` : '')}
@@ -765,9 +833,9 @@ export default function AiMacroLogger() {
           </div>
 
           {/* Totals — final macros for the logged instance */}
-          <div style={{ padding: 12, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10 }}>
-            <strong style={{ color: '#1e3a8a' }}>Totals</strong>
-            <div style={{ marginTop: 4, fontSize: 15, color: '#0f172a' }}>
+          <div style={{ padding: 12, background: '#0f3d2e', border: '1px solid #145239', borderRadius: 10 }}>
+            <strong style={{ color: '#6ee7b7' }}>Totals</strong>
+            <div style={{ marginTop: 4, fontSize: 15, color: '#ecfdf5', fontWeight: 600 }}>
               {(() => {
                 const t = recipeReview.requiresCustomPath
                   ? recipeReview.total
@@ -806,15 +874,36 @@ export default function AiMacroLogger() {
       {/* Review */}
       {estimate && (
         <div className="card" style={{ marginBottom: 18 }}>
-          <h3 className="section-title" style={{ marginTop: 0 }}>Review estimate</h3>
-
-          <div style={{ marginBottom: 12 }}>
-            <label>Meal name</label>
-            <input
-              value={estimate.mealName}
-              onChange={e => setEstimate(prev => ({ ...prev, mealName: e.target.value }))}
-            />
+          {/* Conversation so far — the description, the AI's replies, and every correction */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+            {thread.map((m, i) => (
+              <div
+                key={i}
+                style={{
+                  alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '85%',
+                  padding: '10px 14px',
+                  borderRadius: 16,
+                  fontSize: 14,
+                  lineHeight: 1.45,
+                  whiteSpace: 'pre-wrap',
+                  overflowWrap: 'break-word',
+                  ...(m.role === 'user'
+                    ? { background: '#2563eb', color: '#fff', borderBottomRightRadius: 4 }
+                    : { background: '#f3f4f6', color: '#1f2937', borderBottomLeftRadius: 4 }),
+                }}
+              >
+                {m.text}
+              </div>
+            ))}
+            {loading && (
+              <div style={{ alignSelf: 'flex-start', maxWidth: '85%', padding: '10px 14px', borderRadius: 16, borderBottomLeftRadius: 4, background: '#f3f4f6', color: '#6b7280', fontSize: 14, fontStyle: 'italic' }}>
+                Updating the estimate…
+              </div>
+            )}
           </div>
+
+          <h3 className="section-title" style={{ marginTop: 0 }}>Review estimate</h3>
 
           {conf && (
             <div
@@ -834,30 +923,25 @@ export default function AiMacroLogger() {
             </div>
           )}
 
-          {estimate.summary && (
-            <p style={{ margin: '0 0 14px', fontSize: 14, color: 'var(--color-text-body)' }}>{estimate.summary}</p>
-          )}
-
           {/* Ingredient rows */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {estimate.ingredients.length === 0 && (
               <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>No ingredients were identified.</p>
             )}
             {estimate.ingredients.map((ing, idx) => {
               const meta = SOURCE_META[rowSourceKey(ing)];
-              const savedName = ing.label_ingredient_id != null
-                ? (labelById.get(Number(ing.label_ingredient_id))?.name || ing.matchedName)
-                : null;
-              const sourceText = ing.overridden
-                ? 'Manually adjusted'
-                : ing.source === 'provided'
-                  ? 'Provided in message — using your macros'
-                  : ing.source === 'library'
-                    ? `Using saved ingredient: ${savedName || ing.matchedName || 'saved item'}`
-                    : ing.source === 'common'
-                      ? `Using common food${ing.matchedName ? `: ${ing.matchedName}` : `: ${ing.name}`}`
-                      : `Using AI estimate: ${ing.name}`;
+              const emoji = ingredientEmoji(ing.name);
               const basis = ing.basis || deriveBasis(ing, library);
+              // A big gap between a saved/common source and the AI's own estimate
+              // for the SAME amount usually means a dry/raw ↔ cooked weight
+              // mismatch (e.g. dry-pasta macros applied to a cooked weight) — the
+              // math is right but the basis isn't. Surface it so a ~2× overcount
+              // can't slip through silently.
+              const aiCal = n(ing.aiMacros?.calories);
+              const shownCal = n(ing.calories);
+              const sourceGap = (ing.source === 'library' || ing.source === 'common')
+                && aiCal > 40 && shownCal > 40
+                && (shownCal / aiCal >= 1.6 || aiCal / shownCal >= 1.6);
               const basisLabel = basis.perKind === '100g'
                 ? 'per 100 g'
                 : basis.perKind === 'serving'
@@ -883,72 +967,91 @@ export default function AiMacroLogger() {
                 ? String(ing.label_ingredient_id)
                 : (ing.overridden || ing.source === 'manual') ? 'manual' : 'estimate';
               return (
-                <div key={idx} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, background: '#fff' }}>
-                  {/* --- Collapsed summary (always visible) --- */}
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-strong)' }}>
-                    {ing.name}
-                    <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 8, fontSize: 13 }}>
-                      {ing.quantity ? `${fmt(ing.quantity)} ${ing.unit}`.trim() : ing.unit}
-                      {STATE_LABELS[ing.state] ? ` · ${STATE_LABELS[ing.state]}` : ''}
+                <div
+                  key={idx}
+                  style={{
+                    border: `1px solid ${meta.border}`,
+                    borderLeft: `3px solid ${meta.color}`,
+                    borderRadius: 8,
+                    background: meta.bg,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {/* --- Compact one-line summary; click anywhere to expand --- */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={!!ing.expanded}
+                    onClick={() => toggleRowPanel(idx)}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRowPanel(idx); } }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer' }}
+                  >
+                    <span aria-hidden="true" style={{ fontSize: 19, lineHeight: 1, flexShrink: 0 }}>{emoji}</span>
+                    <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--color-text-strong)', overflowWrap: 'anywhere' }}>{ing.name}</span>
+                      <span style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                        {ing.quantity ? `${fmt(ing.quantity)} ${ing.unit}`.trim() : ing.unit}
+                        {STATE_LABELS[ing.state] ? ` · ${STATE_LABELS[ing.state]}` : ''}
+                      </span>
+                    </div>
+                    <span
+                      title={sourceGap ? `Saved data gives ${fmt(shownCal)} cal here, but a fresh estimate is ~${fmt(aiCal)} cal — check dry/raw vs cooked weight.` : undefined}
+                      style={{ fontSize: 12.5, color: sourceGap ? '#b45309' : '#0f172a', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      {sourceGap ? '⚠ ' : ''}<strong>{fmt(ing.calories)}</strong> cal · P{fmt(ing.protein)} C{fmt(ing.carbs)} F{fmt(ing.fat)}
                     </span>
                     <span
                       title={ing.overridden ? 'You edited these macros' : (meta.kind ? `From your ${meta.kind}${ing.matchedName ? `: ${ing.matchedName}` : ''}` : 'AI estimate — no saved or common match')}
-                      style={{
-                        marginLeft: 8, fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 999, whiteSpace: 'nowrap',
-                        background: meta.bg, border: `1px solid ${meta.border}`, color: meta.color,
-                      }}
+                      style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', color: meta.color, whiteSpace: 'nowrap', flexShrink: 0 }}
                     >
-                      {meta.label}
+                      {ambiguous ? '⚠ ' : ''}{meta.short}
                     </span>
+                    <span aria-hidden="true" style={{ flexShrink: 0, fontSize: 11, color: 'var(--color-text-muted)', transform: ing.expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>▾</span>
                   </div>
-                  <div style={{ marginTop: 3, fontSize: 12, color: 'var(--color-text-muted)' }}>{sourceText}</div>
-                  <div style={{ marginTop: 4, fontSize: 13.5, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
-                    <strong>{fmt(ing.calories)} cal</strong> · P {fmt(ing.protein)}g · C {fmt(ing.carbs)}g · F {fmt(ing.fat)}g
-                  </div>
-
-                  {/* Always-visible macro-source switch — a match is only a suggestion */}
-                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <label htmlFor={`ai-source-${idx}`} style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Source:</label>
-                    <select
-                      id={`ai-source-${idx}`}
-                      value={srcValue}
-                      onChange={e => setRowSource(idx, e.target.value)}
-                      style={{ flex: '1 1 220px', minWidth: 0, fontSize: 13 }}
-                    >
-                      <option value="estimate">{estimateLabel}</option>
-                      <option value="manual">Manual entry</option>
-                      {srcLibOpts.length > 0 && (
-                        <optgroup label="Ingredient library">
-                          {srcLibOpts.map(li => (
-                            <option key={li.id} value={String(li.id)}>{li.name}</option>
-                          ))}
-                        </optgroup>
-                      )}
-                      <option value="__search__">Search full library…</option>
-                    </select>
-                  </div>
-
-                  {ambiguous && (
-                    <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#92400e' }}>
-                      Multiple saved matches found — confirm which one you used.
-                    </p>
-                  )}
-                  {ing.notes && (
-                    <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-text-faint)' }}>{ing.notes}</p>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => toggleRowPanel(idx)}
-                    aria-expanded={!!ing.expanded}
-                    style={{ marginTop: 8, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12.5, color: '#2563eb', fontWeight: 600 }}
-                  >
-                    {ing.expanded ? 'Hide nutrition basis ▾' : 'Review nutrition basis ▸'}
-                  </button>
 
                   {/* --- Expanded basis editor --- */}
                   {ing.expanded && (
-                    <div style={{ marginTop: 10, paddingTop: 12, borderTop: '1px solid #f3f4f6', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ padding: 10, background: '#fff', borderTop: `1px solid ${meta.border}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {/* Source switch (lives here to keep the collapsed row to one line) */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <label htmlFor={`ai-source-${idx}`} style={{ fontSize: 11, color: 'var(--color-text-muted)', whiteSpace: 'nowrap', margin: 0 }}>Source</label>
+                        <select
+                          id={`ai-source-${idx}`}
+                          value={srcValue}
+                          onChange={e => setRowSource(idx, e.target.value)}
+                          style={{ flex: 1, minWidth: 0, fontSize: 13 }}
+                        >
+                          <option value="estimate">{estimateLabel}</option>
+                          <option value="manual">Manual entry</option>
+                          {srcLibOpts.length > 0 && (
+                            <optgroup label="Ingredient library">
+                              {srcLibOpts.map(li => (
+                                <option key={li.id} value={String(li.id)}>{li.name}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <option value="__search__">Search full library…</option>
+                        </select>
+                      </div>
+                      {sourceGap && (
+                        <div style={{ padding: 10, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 12.5, color: '#92400e' }}>
+                          Saved data gives <strong>{fmt(shownCal)} cal</strong> for {fmt(ing.quantity)} {ing.unit}, but a fresh estimate is ~<strong>{fmt(aiCal)} cal</strong>. A gap this large usually means the saved item’s macros are per <em>dry/raw</em> weight while you logged a <em>cooked</em> amount (or vice-versa). Use whichever matches what you actually ate.
+                          <div style={{ marginTop: 8 }}>
+                            <button type="button" className="btn-secondary" onClick={() => setRowSource(idx, 'estimate')} style={{ minHeight: 34, padding: '4px 12px', fontSize: 12.5 }}>
+                              Use the estimate (~{fmt(aiCal)} cal)
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {ambiguous && (
+                        <p style={{ margin: 0, fontSize: 11.5, color: '#92400e' }}>
+                          Multiple saved matches — confirm which one you used.
+                        </p>
+                      )}
+                      {ing.notes && (
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-faint)' }}>{ing.notes}</p>
+                      )}
+
                       {/* Name + amount + unit */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
                         <div>
@@ -1041,9 +1144,9 @@ export default function AiMacroLogger() {
           </div>
 
           {/* Totals */}
-          <div style={{ marginTop: 16, padding: 12, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10 }}>
-            <strong style={{ color: '#1e3a8a' }}>Totals{prep.isMealPrep ? ' — whole batch' : ''}</strong>
-            <div style={{ marginTop: 4, fontSize: 15, color: '#0f172a' }}>
+          <div style={{ marginTop: 16, padding: 12, background: '#0f3d2e', border: '1px solid #145239', borderRadius: 10 }}>
+            <strong style={{ color: '#6ee7b7' }}>Totals{prep.isMealPrep ? ' — whole batch' : ''}</strong>
+            <div style={{ marginTop: 4, fontSize: 15, color: '#ecfdf5', fontWeight: 600 }}>
               {Math.round(totals.calories)} cal · P {totals.protein.toFixed(1)}g · C {totals.carbs.toFixed(1)}g · F {totals.fat.toFixed(1)}g
             </div>
           </div>
@@ -1112,68 +1215,55 @@ export default function AiMacroLogger() {
             </div>
           )}
 
-          {/* Assumptions / warnings */}
+          {/* Assumptions / warnings — inline and concise, no bullet lists */}
           {estimate.assumptions.length > 0 && (
-            <div style={{ marginTop: 14, padding: 12, background: '#f9fafb', borderRadius: 8, fontSize: 13 }}>
-              <strong>Assumptions</strong>
-              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-                {estimate.assumptions.map((a, i) => <li key={i}>{a}</li>)}
-              </ul>
-            </div>
+            <p style={{ margin: '14px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+              <strong style={{ color: 'var(--color-text-body)' }}>Assumptions:</strong> {estimate.assumptions.join('; ')}
+            </p>
           )}
           {estimate.warnings.length > 0 && (
-            <div style={{ marginTop: 12, padding: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 13, color: '#92400e' }}>
-              <strong>Please double-check</strong>
-              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-                {estimate.warnings.map((w, i) => <li key={i}>{w}</li>)}
-              </ul>
-            </div>
+            <p style={{ margin: '10px 0 0', padding: '8px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 13, color: '#92400e' }}>
+              <strong>Double-check:</strong> {estimate.warnings.join('; ')}
+            </p>
           )}
 
-          {/* Revise */}
-          <div style={{ marginTop: 16 }}>
-            {!reviseOpen ? (
-              <button type="button" className="btn-secondary" onClick={() => setReviseOpen(true)}>
-                Revise estimate…
+          {/* Follow-up — keep the conversation going */}
+          <div style={{ marginTop: 16, padding: 12, border: '1px solid #e5e7eb', borderRadius: 12, background: '#f9fafb' }}>
+            <label htmlFor="ai-follow-up" style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-body)' }}>
+              Anything to adjust?
+            </label>
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <input
+                id="ai-follow-up"
+                value={followUp}
+                onChange={e => setFollowUp(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && followUp.trim() && !loading) runEstimate(followUp.trim());
+                }}
+                placeholder="e.g. the rice was dry weight, and I forgot a tbsp of olive oil"
+                style={{ flex: 1, minWidth: 0, minHeight: 44 }}
+              />
+              <button
+                type="button"
+                className={loading ? 'btn-primary btn-loading' : 'btn-primary'}
+                onClick={() => runEstimate(followUp.trim())}
+                disabled={loading || !followUp.trim()}
+                style={{ minHeight: 44, fontWeight: 700, flexShrink: 0 }}
+              >
+                {loading ? (<><span className="btn-spinner" aria-hidden="true" />Updating…</>) : 'Send'}
               </button>
-            ) : (
-              <div style={{ padding: 12, border: '1px solid #e5e7eb', borderRadius: 10, background: '#f9fafb' }}>
-                <label htmlFor="ai-correction">What should change?</label>
-                <input
-                  id="ai-correction"
-                  value={correction}
-                  onChange={e => setCorrection(e.target.value)}
-                  placeholder="e.g. the rice was dry weight, not cooked"
-                />
-                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className={loading ? 'btn-primary btn-loading' : 'btn-primary'}
-                    onClick={() => runEstimate(correction)}
-                    disabled={loading || !correction.trim()}
-                  >
-                    {loading ? (<><span className="btn-spinner" aria-hidden="true" />Revising…</>) : 'Apply correction'}
-                  </button>
-                  <button type="button" className="btn-secondary" onClick={() => { setReviseOpen(false); setCorrection(''); }}>
-                    Cancel
-                  </button>
-                </div>
-                <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-                  Re-sends your description plus this correction. You can also edit the macro values above by hand.
-                </p>
-              </div>
-            )}
+            </div>
           </div>
 
           {/* Actions */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 20 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
             {prep.isMealPrep && (
               <div>
                 <button
                   type="button"
                   className={busy === 'prep' ? 'btn-primary btn-loading' : 'btn-primary'}
                   onClick={saveAsMealPrep}
-                  disabled={busy !== '' || prep.servings == null}
+                  disabled={busy !== '' || prep.servings == null || estimate.ingredients.length === 0}
                   style={{ width: '100%', minHeight: 56, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
                 >
                   {busy === 'prep'
@@ -1198,41 +1288,42 @@ export default function AiMacroLogger() {
                   style={{ width: 170 }}
                 />
               </div>
-              <button
-                type="button"
-                className={busy === 'log' ? 'btn-primary btn-loading' : 'btn-primary'}
-                onClick={logOnce}
-                disabled={busy !== ''}
-                style={{ width: '100%', minHeight: 56, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
-              >
-                {busy === 'log'
-                  ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>)
-                  : logDate && logDate !== getLocalDateISO() ? `Log once — ${logDate}` : 'Log once'}
-              </button>
-              <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-                {prep.isMealPrep
-                  ? `Logs the WHOLE batch to ${logDate === getLocalDateISO() ? 'today' : logDate} — use the meal-prep save above if you're eating it across days.`
-                  : logDate && logDate !== getLocalDateISO()
-                    ? `Backfills ${logDate} — you'll find it on that day in History.`
-                    : 'Track this meal today without saving it to your recipe library.'}
-              </p>
-            </div>
-            <div>
-              <button
-                type="button"
-                className={busy === 'save' ? 'btn-secondary btn-loading' : 'btn-secondary'}
-                onClick={saveAsRecipe}
-                disabled={busy !== ''}
-                style={{ width: '100%', minHeight: 48, fontWeight: 700 }}
-              >
-                {busy === 'save' ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>) : 'Save as recipe'}
-              </button>
-              <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-                Add this to your recipe library so you can reuse it later.
-              </p>
+              {estimate.ingredients.length === 0 && (
+                <p style={{ margin: '0 0 8px', fontSize: 12.5, color: '#92400e' }}>
+                  Nothing to log yet — add more detail in “Anything to adjust?” above and send.
+                </p>
+              )}
+              {/* Log once + Save as recipe sit side by side to save vertical space */}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={busy === 'log' ? 'btn-primary btn-loading' : 'btn-primary'}
+                  onClick={logOnce}
+                  disabled={busy !== '' || estimate.ingredients.length === 0}
+                  style={{ flex: '1 1 0', minWidth: 130, minHeight: 52, fontSize: '1.05rem', fontWeight: 700, borderRadius: 12 }}
+                >
+                  {busy === 'log'
+                    ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>)
+                    : logDate && logDate !== getLocalDateISO() ? `Log once — ${logDate}` : 'Log once'}
+                </button>
+                <button
+                  type="button"
+                  className={busy === 'save' ? 'btn-secondary btn-loading' : 'btn-secondary'}
+                  onClick={saveAsRecipe}
+                  disabled={busy !== '' || estimate.ingredients.length === 0}
+                  style={{ flex: '1 1 0', minWidth: 130, minHeight: 52, fontWeight: 700, borderRadius: 12 }}
+                >
+                  {busy === 'save' ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>) : 'Save as recipe'}
+                </button>
+              </div>
+              {logDate && logDate !== getLocalDateISO() && (
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  Backfills {logDate} — find it on that day in History.
+                </p>
+              )}
             </div>
             <button type="button" className="btn-secondary" onClick={clearAll} disabled={busy !== ''} style={{ alignSelf: 'flex-start' }}>
-              Clear
+              Start over
             </button>
           </div>
 

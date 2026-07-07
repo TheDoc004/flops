@@ -7,7 +7,6 @@ import { SERVING_UNITS, isWeightUnit, unitLabel } from '@shared/utils/servingBas
  * build → save flow.
  */
 export default function StepIngredients({
-  savedLabels,
   labelDraft,
   setLabelDraft,
   ocrBusy,
@@ -26,11 +25,7 @@ export default function StepIngredients({
   return (
     <>
       <div className="card" style={{ marginBottom: 20 }}>
-        <h3 className="section-title">Add a new ingredient</h3>
-        <p style={{ margin: '0 0 16px', fontSize: 15, color: 'var(--color-text-muted)' }}>
-          Scan the label or type it in. Save once, reuse in every meal.
-          {' '}<strong>{savedLabels.length}</strong> saved so far.
-        </p>
+        <h3 className="section-title" style={{ marginBottom: 16 }}>Add a new ingredient</h3>
 
         <div style={{ marginBottom: 12 }}>
           <label style={{ display: 'block', marginBottom: 6 }}>Label photo</label>
@@ -134,9 +129,6 @@ export default function StepIngredients({
                 onChange={e => setLabelDraft(d => ({ ...d, gram_equivalent: e.target.value }))}
                 placeholder="e.g. 31"
               />
-              <p style={{ margin: '3px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
-                Optional — for more precise scaling.
-              </p>
             </div>
           )}
 

@@ -34,9 +34,9 @@ export function mergeNutritionParseIntoIngredientForm(prev, parsed) {
   const anyMissing = priority.some(k => fieldStatus[k] === 'missing');
 
   if (countFilled > 0 && anyMissing) {
-    messages.unshift('We filled what we could — please review highlighted fields against the label.');
+    messages.unshift('Review the highlighted fields against the label.');
   } else if (countFilled === 0 && messages.length === 0) {
-    messages.push("We couldn't read numbers from this scan — add calories and macros from the packaging.");
+    messages.push("Couldn't read numbers — add calories and macros from the packaging.");
   }
 
   return {

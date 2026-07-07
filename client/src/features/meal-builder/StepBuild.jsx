@@ -55,7 +55,7 @@ export default function StepBuild({
             }}
           >
             <p style={{ margin: '0 0 10px', fontSize: 15, color: '#3730a3' }}>
-              Your ingredient library is empty — save your first one to start building.
+              Your ingredient library is empty.
             </p>
             <button type="button" className="btn-primary" onClick={onAddIngredient}>
               + Add your first ingredient

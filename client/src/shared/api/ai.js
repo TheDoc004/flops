@@ -2,10 +2,13 @@ import { apiUrl } from './base';
 
 /**
  * Ask the server-side AI to estimate macros for a natural-language meal.
- * @param {{ description: string, correction?: string, recipes?: {name: string, ingredients?: string[]}[] }} payload
- *   recipes lets the AI recognize a referenced saved recipe and map modification
- *   targets to that recipe's real ingredient names.
- * @returns {Promise<object>} validated estimate (mealName, summary, confidence,
+ * @param {{ description: string, corrections?: string[], currentEstimate?: object, recipes?: {name: string, ingredients?: string[]}[] }} payload
+ *   corrections is the full revision history (oldest → newest) and
+ *   currentEstimate is the estimate being revised — together they let the AI
+ *   apply only the newest correction without undoing earlier ones. recipes lets
+ *   the AI recognize a referenced saved recipe and map modification targets to
+ *   that recipe's real ingredient names.
+ * @returns {Promise<object>} validated estimate (mealName, summary, reply, confidence,
  *   ingredients[], totals, assumptions[], warnings[], recipeLog|null).
  */
 /**
@@ -27,11 +30,11 @@ export async function transcribeAudio(blob) {
   return typeof data?.text === 'string' ? data.text : '';
 }
 
-export async function estimateMacros({ description, correction, recipes } = {}) {
+export async function estimateMacros({ description, corrections, currentEstimate, recipes } = {}) {
   const res = await fetch(apiUrl('/api/ai/macro-estimate'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ description, correction, recipes }),
+    body: JSON.stringify({ description, corrections, currentEstimate, recipes }),
   });
   if (!res.ok) {
     const e = await res.json().catch(() => null);

@@ -10,6 +10,8 @@ const { transcribeAudio } = require('../aiTranscribe');
 
 const MAX_DESCRIPTION = 2000;
 const MAX_CORRECTION = 1000;
+const MAX_CORRECTIONS = 15;
+const MAX_ESTIMATE_INGREDIENTS = 40;
 
 function createAiRouter() {
   const router = express.Router();
@@ -17,7 +19,38 @@ function createAiRouter() {
   // POST /api/ai/macro-estimate — natural-language meal -> structured macro estimate.
   router.post('/macro-estimate', async (req, res) => {
     const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
-    const correction = typeof req.body?.correction === 'string' ? req.body.correction.trim() : '';
+    // Full correction history (oldest → newest). The legacy single `correction`
+    // field is accepted as a one-item history.
+    const corrections = (
+      Array.isArray(req.body?.corrections)
+        ? req.body.corrections
+        : typeof req.body?.correction === 'string' ? [req.body.correction] : []
+    )
+      .filter(c => typeof c === 'string' && c.trim())
+      .map(c => c.trim())
+      .slice(-MAX_CORRECTIONS);
+    // The estimate the user is currently looking at — the revision baseline.
+    // Best-effort sanitize; the AI only needs names/amounts/macros.
+    const rawEst = req.body?.currentEstimate;
+    const currentEstimate = rawEst && typeof rawEst === 'object' && Array.isArray(rawEst.ingredients)
+      ? {
+          mealName: typeof rawEst.mealName === 'string' ? rawEst.mealName.slice(0, 120) : '',
+          ingredients: rawEst.ingredients
+            .filter(i => i && typeof i === 'object')
+            .map(i => ({
+              name: typeof i.name === 'string' ? i.name.slice(0, 120) : '',
+              quantity: Number.isFinite(Number(i.quantity)) ? Number(i.quantity) : 0,
+              unit: typeof i.unit === 'string' ? i.unit.slice(0, 30) : '',
+              state: typeof i.state === 'string' ? i.state.slice(0, 20) : '',
+              calories: Number(i.calories) || 0,
+              protein: Number(i.protein) || 0,
+              carbs: Number(i.carbs) || 0,
+              fat: Number(i.fat) || 0,
+              macroSource: i.macroSource === 'provided' ? 'provided' : 'estimated',
+            }))
+            .slice(0, MAX_ESTIMATE_INGREDIENTS),
+        }
+      : null;
     // Saved recipes (name + ingredient names) for recipe-command matching and
     // mapping modification targets to real ingredients. Best-effort; capped.
     const recipes = Array.isArray(req.body?.recipes)
@@ -52,12 +85,12 @@ function createAiRouter() {
     if (description.length > MAX_DESCRIPTION) {
       return res.status(400).json({ error: `Description is too long (max ${MAX_DESCRIPTION} characters).` });
     }
-    if (correction.length > MAX_CORRECTION) {
+    if (corrections.some(c => c.length > MAX_CORRECTION)) {
       return res.status(400).json({ error: `Correction is too long (max ${MAX_CORRECTION} characters).` });
     }
 
     try {
-      const estimate = await estimateMacros({ description, correction, recipes });
+      const estimate = await estimateMacros({ description, corrections, currentEstimate, recipes });
       return res.json(estimate);
     } catch (e) {
       if (e instanceof AiConfigError) {

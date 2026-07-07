@@ -483,10 +483,7 @@ export default function TrainingWorkouts() {
   return (
     <div>
       <Reveal style={{ marginBottom: 20 }}>
-        <h1 className="page-title" style={{ marginBottom: 4 }}>Training</h1>
-        <p className="page-subtitle" style={{ margin: 0 }}>
-          Log workouts, manage presets, and track progress.
-        </p>
+        <h1 className="page-title" style={{ margin: 0 }}>Training</h1>
       </Reveal>
 
       {error && <p className="error">{error}</p>}
@@ -520,10 +517,8 @@ export default function TrainingWorkouts() {
                 </strong>
               </div>
               <div style={{ minWidth: 180 }}>
-                <label style={{ fontSize: 13, marginBottom: 4, display: 'block' }}>
-                  Change workout
-                </label>
                 <select
+                  aria-label="Change workout"
                   value={todayPresetId}
                   onChange={e => void handleSelectTodayPreset(e.target.value)}
                   style={{ width: '100%' }}
@@ -849,12 +844,11 @@ export default function TrainingWorkouts() {
                   onSubmit={handleAddExercise}
                   style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
                 >
-                  <label style={{ fontSize: 13 }}>Add exercise</label>
                   <ExerciseCombobox
                     library={library}
                     value={newExerciseName}
                     onChange={setNewExerciseName}
-                    placeholder="Search library or type any name…"
+                    placeholder="Add exercise — search or type any name…"
                   />
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button
@@ -878,9 +872,6 @@ export default function TrainingWorkouts() {
         <div>
           <Reveal className="card" style={{ marginBottom: 16 }} delay={120}>
             <h3 className="section-title" style={{ marginBottom: 12 }}>Exercise progress</h3>
-            <label style={{ fontSize: 13, marginBottom: 6, display: 'block' }}>
-              Exercise name
-            </label>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
               <div style={{ flex: '1 1 240px' }}>
                 <ExerciseCombobox

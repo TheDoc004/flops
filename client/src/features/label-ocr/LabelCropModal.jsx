@@ -136,8 +136,7 @@ export default function LabelCropModal({ open, imageSrc, onClose, onApply }) {
           <button type="button" className="modal-close-x" aria-label="Close" onClick={() => onClose?.()}>✕</button>
         </div>
         <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-          Drag a rectangle around the Nutrition Facts panel. This often improves OCR on busy labels (branding, colored
-          backgrounds).
+          Drag to crop around the Nutrition Facts panel.
         </p>
         <div
           ref={wrapRef}

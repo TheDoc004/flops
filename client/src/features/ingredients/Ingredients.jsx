@@ -265,8 +265,7 @@ export default function Ingredients() {
 
       <Reveal delay={60}>
         <p className="page-subtitle" style={{ marginBottom: 16 }}>
-          Save ingredients once, then reuse them forever in Meal Builder recipes. Variants (brands) are supported. Add
-          items by typing macros manually or by uploading a nutrition-label photo (assisted scan — verify before saving).
+          Scan labels or add macros manually, then reuse them in recipes.
         </p>
       </Reveal>
 
@@ -300,9 +299,6 @@ export default function Ingredients() {
               Scan label{' '}
               <span style={{ fontSize: 12, color: 'var(--color-text-faint)', fontFamily: 'inherit' }}>(optional)</span>
             </h4>
-            <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--color-text-faint)' }}>
-              Upload a nutrition label photo and run OCR to pre-fill the fields below. Always verify before saving.
-            </p>
             <label style={{ display: 'block', marginBottom: 6 }}>Nutrition label photo</label>
             <input type="file" accept="image/*" onChange={onPickLabelPhoto} />
             {labelPhotoPreview && (

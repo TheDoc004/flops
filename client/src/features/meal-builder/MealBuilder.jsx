@@ -531,7 +531,7 @@ export default function MealBuilder() {
       <Reveal>
         <h1 className="page-title" style={{ marginBottom: 8 }}>Meal Builder</h1>
         <p className="page-subtitle" style={{ marginBottom: 14, fontSize: 15 }}>
-          Build meals from your saved ingredients. Finished recipes live in the <Link to="/recipes" style={{ color: 'var(--color-link)' }}>Recipe Library</Link>.
+          Build meals from your saved ingredients.
         </p>
       </Reveal>
 
@@ -577,13 +577,10 @@ export default function MealBuilder() {
           <h3 className="section-title">
             {recipeId ? 'Edit recipe (known macros)' : 'New recipe — known macros'}
           </h3>
-          <p style={{ margin: '0 0 12px', fontSize: 15, color: 'var(--color-text-muted)' }}>
-            Know the macros but not the exact amounts? Type them in — a restaurant order, a packaged meal.
-          </p>
           {!recipeId && (
             <p style={{ margin: '0 0 12px', fontSize: 15, color: 'var(--color-text-muted)' }}>
-              Only a rough idea of what&apos;s in it? Use the{' '}
-              <Link to="/ai-logger" style={{ color: 'var(--color-link)' }}>✨ AI logger</Link> instead.
+              Only a rough idea? Use the{' '}
+              <Link to="/ai-logger" style={{ color: 'var(--color-link)' }}>✨ AI logger</Link>.
             </p>
           )}
           {loadingRecipe && recipeId ? (

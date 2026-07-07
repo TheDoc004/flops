@@ -85,9 +85,6 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, no
         </Link>
       </form>
       {error && <p className="error" style={{ marginTop: 8, marginBottom: 0 }}>{error}</p>}
-      <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--color-text-faint)' }}>
-        One entry per day; saving again updates today.
-      </p>
     </>
   );
 

@@ -56,8 +56,7 @@ export default function MicroNutrientPanel({ values, confidence = null, coverage
 
       {!hasMicros ? (
         <p className="empty-state" style={{ padding: 14 }}>
-          No micronutrient estimates here yet. Ingredient-based logs — saved recipes, Meal Builder meals,
-          and AI Macro Logger meals — include estimated micros when logged.
+          No micronutrient estimates yet.
         </p>
       ) : (
         <>

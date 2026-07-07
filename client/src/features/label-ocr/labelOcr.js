@@ -5,9 +5,9 @@
 import { preprocessLabelImageForOcr } from './labelImagePreprocess.js';
 
 const SOFT_PARTIAL =
-  "We couldn't fully read the label — we filled what we could. Please review and complete missing fields.";
+  "Partial read — review and complete the missing fields.";
 const OCR_FAIL =
-  "We couldn't read text from this image. Try cropping to the nutrition panel, better lighting, or enter values manually.";
+  "Couldn't read this image. Try cropping or better lighting.";
 
 async function recognizeOne(worker, blob) {
   const { data } = await worker.recognize(blob);

@@ -297,19 +297,6 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onLogOnce = null
             )}
           </div>
         </div>
-        <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-          {hadSlots ? (
-            <>
-              <strong>Fixed lines</strong> are free-text notes. <strong>Ingredient slots</strong> use your Ingredient Library: pick a <strong>default</strong> and optional <strong>substitutes</strong>.
-              When you log the recipe, you only choose an ingredient if that slot has substitutes; the saved recipe never changes.
-            </>
-          ) : (
-            <>
-              Free-text notes for what&apos;s in it — &ldquo;white rice, double scoop&rdquo;, &ldquo;chicken&rdquo;. They document the meal (and help
-              micronutrient estimates); the macros above are what gets logged.
-            </>
-          )}
-        </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {form.ingredients.map((row, index) =>
             row.rowKind === 'slot' ? (
@@ -360,9 +347,6 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onLogOnce = null
                 </div>
                 <div style={{ marginTop: 10 }}>
                   <label style={{ fontSize: 12 }}>Substitutes (optional)</label>
-                  <p style={{ margin: '4px 0 6px', fontSize: 12, color: 'var(--color-text-muted)' }}>
-                    If you add substitutes, logging will ask which ingredient you used. Same portion (above) is used for macros.
-                  </p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4, alignItems: 'center' }}>
                     {row.substitute_label_ingredient_ids.map(oid => {
                       const ing = labelById[String(oid)];
@@ -437,22 +421,12 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onLogOnce = null
       {error && <p className="error">{error}</p>}
       {onLogOnce ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <button type="button" className="btn-secondary" style={{ width: '100%', minHeight: 52, fontWeight: 700 }} onClick={handleLogOnce}>
-              Log once
-            </button>
-            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Track this meal today without saving it to your recipe library.
-            </p>
-          </div>
-          <div>
-            <button type="submit" className="btn-primary" style={{ width: '100%', minHeight: 52, fontWeight: 700 }}>
-              Save as recipe
-            </button>
-            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Add this to your recipe library so you can reuse it later.
-            </p>
-          </div>
+          <button type="button" className="btn-secondary" style={{ width: '100%', minHeight: 52, fontWeight: 700 }} onClick={handleLogOnce}>
+            Log once
+          </button>
+          <button type="submit" className="btn-primary" style={{ width: '100%', minHeight: 52, fontWeight: 700 }}>
+            Save as recipe
+          </button>
           {onCancel && (
             <button type="button" className="btn-secondary" onClick={onCancel} style={{ alignSelf: 'flex-start' }}>Cancel</button>
           )}

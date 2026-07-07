@@ -135,7 +135,6 @@ export default function Goals() {
         <p className="page-subtitle">
           Set a min/max range per day — same value on both sides means an exact target.
           Changes apply from <strong>{today}</strong> forward; past days are unaffected.
-          Macros are stored in grams; display follows your unit choice in Profile.
         </p>
       </Reveal>
 

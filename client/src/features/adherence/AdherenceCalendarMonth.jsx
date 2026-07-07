@@ -125,9 +125,6 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
         {!hideHeader && (
           <div>
             <h3 className="section-title">Adherence calendar</h3>
-            <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
-              {onDayClick ? 'Click days to add them to your selection.' : 'Month view. Click a day for details.'}
-            </p>
           </div>
         )}
         {showNav && (
@@ -267,7 +264,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
                 </span>
                 {detail.missed?.length > 0 && (
                   <span style={{ marginLeft: 8, fontSize: 12, color: '#92400e' }}>
-                    Off-target: {detail.missed.map(m => m.label).join(', ')}
+                    Missed: {detail.missed.map(m => m.label).join(', ')}
                   </span>
                 )}
               </p>
@@ -282,10 +279,10 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
             </div>
 
             {detailRow.status === 'no_data' && (
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>No meals were logged for this day.</p>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>No meals logged.</p>
             )}
             {detailRow.status === 'upcoming' && (
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>This day is in the future. No meals logged yet.</p>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>Upcoming day — nothing logged yet.</p>
             )}
 
             {detailRow.status !== 'no_data' && detailRow.status !== 'upcoming' && (

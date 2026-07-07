@@ -30,7 +30,7 @@ function parseHHMMToTimeMin(hhmm) {
   return hh * 60 + mm;
 }
 
-export default function LogMealModal({ onLog, onClose, initialEntry, title, submitLabel }) {
+export default function LogMealModal({ onLog, onClose, initialEntry, title, submitLabel, onOpenAi }) {
   const ref = useRef(null);
   const [recipes, setRecipes] = useState([]);
   const [recipeId, setRecipeId] = useState(initialEntry?.recipe_id ? String(initialEntry.recipe_id) : '');
@@ -306,16 +306,29 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       </div>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-        {/* One-off meals live in the AI logger now — this modal logs saved recipes. */}
+        {/* One-off meals live in the AI logger now — this modal logs saved recipes.
+            On the dashboard, onOpenAi hands off to the AI popup in place (no
+            navigation); elsewhere we fall back to the full /ai-logger page. */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Link
-            to="/ai-logger"
-            className="btn-ai"
-            onClick={close}
-            style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem' }}
-          >
-            <span className="spark" aria-hidden="true">✨</span> AI Estimate — describe or speak a meal
-          </Link>
+          {onOpenAi ? (
+            <button
+              type="button"
+              className="btn-ai"
+              onClick={() => { close(); onOpenAi(); }}
+              style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem' }}
+            >
+              <span className="spark" aria-hidden="true">✨</span> AI Estimate — describe or speak a meal
+            </button>
+          ) : (
+            <Link
+              to="/ai-logger"
+              className="btn-ai"
+              onClick={close}
+              style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem' }}
+            >
+              <span className="spark" aria-hidden="true">✨</span> AI Estimate — describe or speak a meal
+            </Link>
+          )}
         </div>
 
         {/* Meal Builder shortcut */}
@@ -381,15 +394,12 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
             {/* Inline customize section — unified for all recipes with variable slots */}
             {customizeOpen && selectedRecipe && variableSlots.length > 0 && (
               <div className="panel-in" style={{ padding: 14, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
-                <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>Customize this log</p>
-                <p style={{ margin: '0 0 14px', fontSize: 12, color: 'var(--color-text-muted)' }}>
-                  Changes only apply to this meal log. Your saved recipe stays the same.
-                </p>
+                <p style={{ margin: '0 0 14px', fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>Customize this log</p>
 
                 {/* Fixed (manual text) rows that can't be edited */}
                 {templateLinesOnlyManual.length > 0 && (
                   <div style={{ marginBottom: 14, padding: 10, background: '#f0fdf4', borderRadius: 8, fontSize: 12, color: '#4b5563' }}>
-                    <strong>Fixed items (not editable):</strong>
+                    <strong>Fixed items:</strong>
                     <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
                       {templateLinesOnlyManual.map((ln, i) => (
                         <li key={`${ln.name}-${i}`}>{ln.name} — {ln.amount}</li>
@@ -533,9 +543,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
             value={timeHHMM}
             onChange={e => setTimeHHMM(e.target.value)}
           />
-          <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-            Optional. Useful if you want meal order on your log to match real life.
-          </p>
         </div>
 
         {/* Notes */}

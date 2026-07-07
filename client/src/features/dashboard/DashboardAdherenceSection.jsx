@@ -103,7 +103,7 @@ export default function DashboardAdherenceSection({ today, goalsPayload, macroUn
       {isStrip && !loading && (
         displayRows.length === 0 ? (
           <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>
-            No goal data yet — set goals to start tracking adherence.
+            No goals set.
           </p>
         ) : (
           <>

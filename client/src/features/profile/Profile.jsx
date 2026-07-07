@@ -238,10 +238,7 @@ export default function Profile() {
   return (
     <div>
       <Reveal>
-        <h1 className="page-title" style={{ marginBottom: 6 }}>Profile &amp; body weight</h1>
-        <p className="page-subtitle">
-          Single local profile. Height and weight stored in cm/kg; US units are display-only.
-        </p>
+        <h1 className="page-title" style={{ margin: 0 }}>Profile &amp; body weight</h1>
       </Reveal>
 
       {error && <p className="error">{error}</p>}

@@ -49,7 +49,6 @@ export default function GoalAdherenceDayDetailDialog({ row, macroUnits, onClose,
         <strong>{wdName}</strong>{' · '}{row.date}
       </p>
       <p style={{ margin: '0 0 16px', fontSize: 14 }}>
-        Status:{' '}
         <span style={{
           fontWeight: 600, padding: '2px 10px', borderRadius: 999,
           background: statusM.bg, color: statusM.color,
@@ -60,23 +59,19 @@ export default function GoalAdherenceDayDetailDialog({ row, macroUnits, onClose,
 
       {isFuture && (
         <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-          This day is in the future. No meals logged yet.
+          Upcoming day — nothing logged yet.
         </p>
       )}
       {row.status === 'no_data' && (
         <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-          No meals were logged for this day.
+          No meals logged.
         </p>
       )}
       {detail.missed?.length > 0 && (
         <p style={{ margin: '0 0 12px', fontSize: 13, color: '#92400e' }}>
-          Off-target: {detail.missed.map(m => m.label).join(', ')}
+          Missed: {detail.missed.map(m => m.label).join(', ')}
         </p>
       )}
-
-      <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--color-text-faint)' }}>
-        A category is a hit when the actual value is within its min/max goal range.
-      </p>
 
       <div className="adh-detail-table" style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

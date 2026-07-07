@@ -109,7 +109,7 @@ export default function Recipes() {
       )}
 
       <Reveal delay={60} style={{ marginBottom: 12, fontSize: 13, color: 'var(--color-text-muted)' }}>
-        Create and edit recipes in <Link to="/meal-builder" style={{ color: 'var(--color-link)' }}>Meal Builder</Link>. Use this library to browse, search, view, and log.
+        Create and edit recipes in <Link to="/meal-builder" style={{ color: 'var(--color-link)' }}>Meal Builder</Link>.
       </Reveal>
 
       <Reveal delay={120} className="card">

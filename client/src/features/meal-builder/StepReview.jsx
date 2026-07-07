@@ -45,11 +45,6 @@ export default function StepReview({
     <form onSubmit={onSaveMeal}>
       <div className="card" style={{ marginBottom: 20 }}>
         <h3 className="section-title">{recipeId ? 'Review & save your changes' : 'Review your meal'}</h3>
-        {recipeId && (
-          <p style={{ margin: '0 0 10px', fontSize: 15, color: 'var(--color-text-muted)' }}>
-            Editing recipe #{recipeId} — saving updates it.
-          </p>
-        )}
 
         <div style={{ marginBottom: 16 }}>
           <label>Meal name</label>
@@ -123,32 +118,22 @@ export default function StepReview({
           </button>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
-            <div>
-              <button
-                type="button"
-                onClick={onLogOnce}
-                className={loggingOnce ? 'btn-secondary btn-loading' : 'btn-secondary'}
-                disabled={loggingOnce}
-                style={{ width: '100%', minHeight: 60, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
-              >
-                {loggingOnce ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>) : 'Log once'}
-              </button>
-              <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
-                Logs to today only — not saved to your library.
-              </p>
-            </div>
-            <div>
-              <button
-                type="submit"
-                className="btn-primary"
-                style={{ width: '100%', minHeight: 60, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
-              >
-                Save as recipe
-              </button>
-              <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
-                Saves to your library so you can log it again.
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={onLogOnce}
+              className={loggingOnce ? 'btn-secondary btn-loading' : 'btn-secondary'}
+              disabled={loggingOnce}
+              style={{ width: '100%', minHeight: 60, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
+            >
+              {loggingOnce ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>) : 'Log once'}
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              style={{ width: '100%', minHeight: 60, fontSize: '1.1rem', fontWeight: 700, borderRadius: 12 }}
+            >
+              Save as recipe
+            </button>
           </div>
         )}
         {(mealSaved || mealLoggedOnce) && (

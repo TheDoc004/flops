@@ -206,7 +206,7 @@ export default function History() {
       <Reveal delay={60} id="goal-adherence" className="card" style={{ marginBottom: 20, scrollMarginTop: 90 }}>
         <h2 className="section-title" style={{ marginBottom: 4 }}>Calendar & adherence</h2>
         <p style={{ margin: '0 0 14px', fontSize: 13, color: '#9ca3af' }}>
-          Days are colored by goal adherence. Click a day to see its detail and add it to the report below; presets pick a range.
+          Days are colored by adherence.
         </p>
 
         {/* Preset ranges */}
@@ -270,10 +270,7 @@ export default function History() {
       {/* ── Logged Day Explorer (edit/add/delete) ── */}
       <Reveal>
       <div ref={editRef} className="card" style={{ scrollMarginTop: 120 }}>
-        <h2 className="section-title" style={{ marginBottom: 4 }}>Edit a logged day</h2>
-        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>
-          Pick a day to add, edit, correct, or delete its meals. This is separate from the report selection above.
-        </p>
+        <h2 className="section-title" style={{ marginBottom: 16 }}>Edit a logged day</h2>
 
         {/* Single-day calendar picker for editing (independent of the report
             selection). The card heading above explains it, so no inner header. */}
@@ -313,9 +310,6 @@ export default function History() {
         {!selectedDate && (
           <div style={{ padding: '24px 0 8px', textAlign: 'center' }}>
             <p style={{ margin: 0, fontSize: 14, color: '#6b7280', fontWeight: 500 }}>No day selected.</p>
-            <p style={{ margin: '6px 0 0', fontSize: 13, color: '#9ca3af' }}>
-              Pick a day from the calendar above, or type a date and press Go.
-            </p>
           </div>
         )}
 

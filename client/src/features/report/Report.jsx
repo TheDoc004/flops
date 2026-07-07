@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { fetchLogRange } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
@@ -62,7 +61,7 @@ export default function Report() {
       <Reveal>
         <h1 className="page-title" style={{ marginBottom: 6 }}>Export report</h1>
         <p className="page-subtitle">
-          Download a PDF summary of your logged intake — useful for a coach or to paste into an AI tool.
+          Download a PDF summary of your logged intake.
         </p>
       </Reveal>
 
@@ -142,15 +141,6 @@ export default function Report() {
         </button>
       </Reveal>
 
-      <Reveal delay={120}>
-        <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-          Tip: set your weekly targets on{' '}
-          <Link to="/plan/goals" style={{ color: 'var(--color-primary)' }}>Goals</Link>{' '}
-          and your stats on{' '}
-          <Link to="/plan/profile" style={{ color: 'var(--color-primary)' }}>Profile</Link>{' '}
-          so they appear in the report.
-        </p>
-      </Reveal>
     </div>
   );
 }
