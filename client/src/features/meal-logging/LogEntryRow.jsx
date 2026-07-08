@@ -117,7 +117,7 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
                 Calorie share by macro
               </p>
               {pie.total <= 0 ? (
-                <p style={{ margin: 0, fontSize: 14, color: '#9ca3af' }}>
+                <p style={{ margin: 0, fontSize: 14, color: 'var(--color-text-faint)' }}>
                   Not enough macro data to chart this meal.
                 </p>
               ) : everOpened ? (
@@ -166,7 +166,7 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
             {entry.servings}x {entry.serving_size}
           </span>
           {entry.notes && (
-            <span style={{ color: '#9ca3af', fontSize: 12, marginLeft: 8 }}>· {entry.notes}</span>
+            <span style={{ color: 'var(--color-text-faint)', fontSize: 12, marginLeft: 8 }}>· {entry.notes}</span>
           )}
         </div>
         <div style={{ display: 'flex', gap: 16, fontSize: 13, flexWrap: 'wrap', alignItems: 'center' }}>

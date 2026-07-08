@@ -230,7 +230,7 @@ export default function Profile() {
       />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: '#1e1b4b', lineHeight: 1.3 }}>{label}</div>
-        <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{sub}</div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>{sub}</div>
       </div>
     </label>
   );
@@ -298,7 +298,7 @@ export default function Profile() {
               <div style={{ fontSize: 13, fontWeight: 500, color: '#374151', lineHeight: 1.3 }}>
                 Show weight trend chart
               </div>
-              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>
                 Visible on Dashboard
               </div>
             </div>
@@ -363,9 +363,6 @@ export default function Profile() {
             <button type="submit" className="btn-primary">Save weight</button>
           </form>
           {weightError && <p className="error" style={{ marginTop: 8 }}>{weightError}</p>}
-          <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 8 }}>
-            Saving again on the same day updates that entry.
-          </p>
         </div>
       </Reveal>
 

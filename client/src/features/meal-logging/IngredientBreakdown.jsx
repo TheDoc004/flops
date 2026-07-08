@@ -92,7 +92,7 @@ export default function IngredientBreakdown({ rows, servings = 1, macroUnits, op
             <span style={{ color: '#1f2937', fontSize: 'var(--text-body)', fontWeight: 600, padding: '7px 12px 7px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name}>
               {r.name}
               {(r.source === 'ai' || r.source === 'estimated') && (
-                <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: '#9ca3af' }} title="AI estimate — not from your saved library">est</span>
+                <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: 'var(--color-text-faint)' }} title="AI estimate — not from your saved library">est</span>
               )}
             </span>
             <span style={{ color: '#6b7280', padding: '7px 14px 7px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

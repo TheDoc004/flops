@@ -33,7 +33,9 @@
   --color-text-strong: #111827;
   --color-text-body: #374151;
   --color-text-muted: #6b7280;
-  --color-text-faint: #9ca3af;
+  /* Was #9ca3af — too light to read on white (~2.5:1). Darkened to a legible
+     grey; "faint" now reads as secondary via size/weight, not near-invisibility. */
+  --color-text-faint: #6b7280;
 
   /* ── Color · status (adherence / calendar) ── */
   --status-hit-bg: #d1fae5;       --status-hit-border: #6ee7b7;      --status-hit-text: #065f46;
@@ -888,6 +890,23 @@ dialog[open]::backdrop {
 .cal-day:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* Leading/trailing days that belong to the previous/next month — shown (dates
+   visible) but visually recessed so the grid always forms a full rectangle
+   instead of blank gaps. Inert: dashed border, faint number, no hover. */
+.cal-day--outside {
+  display: flex;
+  border-radius: 10px;
+  border: 1px dashed #e2ddd4;
+  background: transparent;
+  cursor: default;
+  opacity: 0.55;
+}
+.cal-day--outside:hover {
+  filter: none;
+  box-shadow: none;
+  transform: none;
 }
 
 /* ── Adherence calendar grid + in-cell text (never overflow the tile) ── */

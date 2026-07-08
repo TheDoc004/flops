@@ -351,7 +351,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           >
             Open Meal Builder →
           </Link>
-          <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--color-text-faint)' }}>Build a new recipe first</span>
         </div>
 
         <div className="panel-in" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

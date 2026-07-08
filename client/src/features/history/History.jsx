@@ -205,7 +205,7 @@ export default function History() {
             "Open full adherence in History →" button) ── */}
       <Reveal delay={60} id="goal-adherence" className="card" style={{ marginBottom: 20, scrollMarginTop: 90 }}>
         <h2 className="section-title" style={{ marginBottom: 4 }}>Calendar & adherence</h2>
-        <p style={{ margin: '0 0 14px', fontSize: 13, color: '#9ca3af' }}>
+        <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--color-text-faint)' }}>
           Days are colored by adherence.
         </p>
 

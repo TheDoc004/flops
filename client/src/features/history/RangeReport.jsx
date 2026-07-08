@@ -66,10 +66,10 @@ function StatChip({ label, value, unit, color }) {
     <div style={{ background: '#f8f6f2', border: '1px solid #e8e4dc', borderRadius: 12, padding: '12px 14px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
         {color && <span style={{ width: 7, height: 7, borderRadius: '50%', background: color }} />}
-        <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-faint)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</span>
       </div>
       <div style={{ fontSize: 20, fontWeight: 700, color: '#111827', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{value}</div>
-      {unit && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{unit}</div>}
+      {unit && <div style={{ fontSize: 11, color: 'var(--color-text-faint)', marginTop: 3 }}>{unit}</div>}
     </div>
   );
 }
@@ -150,7 +150,7 @@ export default function RangeReport({ days }) {
   return (
     <div>
       {/* ── Averages first ── */}
-      <p style={{ margin: '0 0 14px', fontSize: 13, color: '#9ca3af' }}>
+      <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--color-text-faint)' }}>
         {days.length} day{days.length === 1 ? '' : 's'} selected · {logged.length} logged
       </p>
 
@@ -213,7 +213,6 @@ export default function RangeReport({ days }) {
             </p>
           )}
           <h3 className="subsection-title" style={{ marginBottom: 10 }}>Average micronutrients</h3>
-          <p style={{ margin: '0 0 12px', fontSize: 12, color: '#9ca3af' }}>Averaged over days that have estimates.</p>
           <MicroNutrientPanel values={avgMicroValues} />
         </div>
       )}
@@ -223,7 +222,7 @@ export default function RangeReport({ days }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <h3 className="subsection-title" style={{ margin: 0 }}>
             Individual days
-            <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: '#9ca3af' }}>({sortedDays.length})</span>
+            <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: 'var(--color-text-faint)' }}>({sortedDays.length})</span>
           </h3>
           <SortMenu value={sortKey} options={DAY_SORTS} onChange={setSortKey} />
         </div>
@@ -249,8 +248,8 @@ export default function RangeReport({ days }) {
                   <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 10 }}>{isOpen ? '▲' : '▼'}</span>
                     <strong style={{ fontSize: 14, color: '#1e1b4b' }}>{getWeekdayLongNameFromIsoDate(d.date)}</strong>
-                    <span style={{ fontSize: 12, color: '#9ca3af' }}>{d.date}</span>
-                    <span style={{ fontSize: 12, color: '#9ca3af' }}>{d.entries.length} meal{d.entries.length === 1 ? '' : 's'}</span>
+                    <span style={{ fontSize: 12, color: 'var(--color-text-faint)' }}>{d.date}</span>
+                    <span style={{ fontSize: 12, color: 'var(--color-text-faint)' }}>{d.entries.length} meal{d.entries.length === 1 ? '' : 's'}</span>
                   </span>
                   <span style={{ fontSize: 13, color: '#374151', fontVariantNumeric: 'tabular-nums' }}>
                     <strong>{Math.round(d.totals.calories).toLocaleString('en-US')}</strong> cal

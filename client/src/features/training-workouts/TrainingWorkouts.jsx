@@ -134,7 +134,7 @@ function ExerciseCard({ exercise, draft, prev, unit, onChangeDraft, onViewProgre
             style={{ marginBottom: 4 }}
           />
           {prev?.weight != null && (
-            <div style={{ fontSize: 12, color: '#9ca3af' }}>prev: {prev.weight}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-faint)' }}>prev: {prev.weight}</div>
           )}
         </div>
         <div>
@@ -148,7 +148,7 @@ function ExerciseCard({ exercise, draft, prev, unit, onChangeDraft, onViewProgre
             style={{ marginBottom: 4 }}
           />
           {prev?.reps != null && (
-            <div style={{ fontSize: 12, color: '#9ca3af' }}>prev: {prev.reps}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-faint)' }}>prev: {prev.reps}</div>
           )}
         </div>
         <div>
@@ -162,7 +162,7 @@ function ExerciseCard({ exercise, draft, prev, unit, onChangeDraft, onViewProgre
             style={{ marginBottom: 4 }}
           />
           {prev?.sets != null && (
-            <div style={{ fontSize: 12, color: '#9ca3af' }}>prev: {prev.sets}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-faint)' }}>prev: {prev.sets}</div>
           )}
         </div>
       </div>
@@ -817,7 +817,7 @@ export default function TrainingWorkouts() {
                           <span
                             style={{
                               fontSize: 12,
-                              color: '#9ca3af',
+                              color: 'var(--color-text-faint)',
                               fontWeight: 600,
                               minWidth: 18,
                             }}

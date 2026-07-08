@@ -101,7 +101,7 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
       {loadError && <p className="error" style={{ marginTop: 0 }}>{loadError}</p>}
 
       {!hasAnyWeight && !loadError ? (
-        <p style={{ margin: 0, fontSize: 13, color: '#9ca3af' }}>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>
           No weight entries in this range yet.
         </p>
       ) : (

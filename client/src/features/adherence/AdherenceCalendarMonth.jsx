@@ -108,6 +108,29 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
 
   const blanks = sundayFirstIndex(firstWeekday); // leading tiles before a Sunday-first grid
 
+  // Fill the leading/trailing grid cells with the real dates from the adjacent
+  // months (recessed) so the calendar always reads as a full rectangle instead
+  // of a grid with blank holes in the corners.
+  const leadingDates = useMemo(() => {
+    const out = [];
+    let d = monthStartIso(month);
+    for (let i = 0; i < blanks; i++) { d = addDaysLocal(d, -1); out.unshift(d); }
+    return out;
+  }, [month, blanks]);
+  const trailingDates = useMemo(() => {
+    const trailing = (7 - ((blanks + monthDates.length) % 7)) % 7;
+    const out = [];
+    let d = monthEndIso(month);
+    for (let i = 0; i < trailing; i++) { d = addDaysLocal(d, 1); out.push(d); }
+    return out;
+  }, [month, blanks, monthDates.length]);
+
+  const renderOutsideDay = d => (
+    <div key={`out-${d}`} className="cal-day cal-day--outside" aria-hidden="true" style={{ minHeight: dayMinHeight }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-faint)' }}>{Number(d.slice(8, 10))}</span>
+    </div>
+  );
+
   function prevMonth() {
     const [y, m] = month.split('-').map(Number);
     const dt = new Date(y, m - 2, 1);
@@ -156,9 +179,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
             {ISO_WEEKDAY_LABELS[k].slice(0, 3)}
           </div>
         ))}
-        {Array.from({ length: blanks }).map((_, i) => (
-          <div key={`blank-${i}`} />
-        ))}
+        {leadingDates.map(renderOutsideDay)}
         {dayRows.map(row => {
           const m = STATUS_META[row.status] || STATUS_META.no_target;
           const dayNum = Number(row.date.slice(8, 10));
@@ -238,6 +259,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
             </div>
           );
         })}
+        {trailingDates.map(renderOutsideDay)}
       </div>
 
       {/* Inline day detail: drops down under the grid as days are clicked,

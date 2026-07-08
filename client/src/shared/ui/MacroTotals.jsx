@@ -119,7 +119,7 @@ function MacroRing({ label, value, target, macroUnits }) {
           </p>
         )}
         {!hasTarget && (
-          <p style={{ margin: 0, fontSize: 'clamp(12px, 0.95vw, 13.5px)', color: '#c4b5fd' }}>No goal set</p>
+          <p style={{ margin: 0, fontSize: 'clamp(12px, 0.95vw, 13.5px)', color: 'var(--color-text-muted)' }}>No goal set</p>
         )}
       </div>
     </div>

@@ -78,7 +78,7 @@ export default function MicroNutrientPanel({ values, confidence = null, coverage
               ))}
             </div>
           ))}
-          <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
+          <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)', lineHeight: 1.5 }}>
             {MICRO_ESTIMATE_NOTE}
           </p>
         </>
