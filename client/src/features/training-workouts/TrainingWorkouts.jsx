@@ -29,6 +29,10 @@ import Reveal from '@shared/ui/Reveal';
 import ChartReveal from '@shared/ui/ChartReveal';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
 import ExerciseCombobox from './components/ExerciseCombobox';
+import ScheduleTab from './components/ScheduleTab';
+import FeedbackCard from './components/FeedbackCard';
+import ExerciseTrend from './components/ExerciseTrend';
+import TodayPlanCard from './components/TodayPlanCard';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -50,6 +54,7 @@ function formatDateHeader(iso) {
 function TabBar({ active, onChange }) {
   const tabs = [
     { key: 'today', label: 'Today' },
+    { key: 'schedule', label: 'Schedule' },
     { key: 'workouts', label: 'Workouts' },
     { key: 'progress', label: 'Progress' },
   ];
@@ -120,7 +125,7 @@ function ExerciseCard({ exercise, draft, prev, unit, onChangeDraft, onViewProgre
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(88px, 1fr))', gap: 12 }}>
         <div>
           <label style={{ fontSize: 13, marginBottom: 4, display: 'block' }}>
             Weight ({unit})
@@ -166,6 +171,8 @@ function ExerciseCard({ exercise, draft, prev, unit, onChangeDraft, onViewProgre
           )}
         </div>
       </div>
+
+      <ExerciseTrend exercise={exercise.name} unit={unit} />
     </div>
   );
 }
@@ -498,6 +505,7 @@ export default function TrainingWorkouts() {
       {/* ── TODAY TAB ─────────────────────────────────────────────────── */}
       {activeTab === 'today' && (
         <div>
+          <TodayPlanCard date={today} onNotify={notify} />
           <Reveal className="card" style={{ marginBottom: 16 }} delay={120}>
             <div
               style={{
@@ -572,9 +580,15 @@ export default function TrainingWorkouts() {
                   {savingLogs ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>) : "Save today's logs"}
                 </button>
               </div>
+              <FeedbackCard date={today} onNotify={notify} />
             </>
           )}
         </div>
+      )}
+
+      {/* ── SCHEDULE TAB ──────────────────────────────────────────────── */}
+      {activeTab === 'schedule' && (
+        <ScheduleTab presets={presets} today={today} onNotify={notify} />
       )}
 
       {/* ── WORKOUTS TAB ──────────────────────────────────────────────── */}

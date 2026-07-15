@@ -440,10 +440,9 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
     updateRow(idx, ing => applyFinal(toManual({ ...ing, basis: { ...ing.basis, [field]: value === '' ? 0 : Number(value) } })));
   }
 
-  // Always-available source switch: estimate baseline, manual entry, a specific
-  // saved ingredient, or "search the full library". Every option is reversible.
+  // Always-available source switch: estimate baseline, manual entry, or a
+  // specific saved ingredient (found via the search box). Every option is reversible.
   function setRowSource(idx, value) {
-    if (value === '__search__') { updateRow(idx, ing => ({ ...ing, expanded: true })); return; }
     if (value === 'manual') {
       // Keep the current numbers as the starting point the user will edit; drop
       // the library link so the source is genuinely "manual".
@@ -955,13 +954,6 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
                 if (cur) options = [cur, ...options];
               }
               const ambiguous = !ing.userPicked && !ing.overridden && ing.source === 'library' && strongMatchCount(ing.name, library) >= 2;
-              // Always-visible source switch: baseline estimate / manual / a few
-              // likely saved matches (+ the current one) / open full-library search.
-              let srcLibOpts = likelyLibraryMatches(ing.name, library).slice(0, 6);
-              if (ing.label_ingredient_id != null && !srcLibOpts.some(o => Number(o.id) === Number(ing.label_ingredient_id))) {
-                const cur = labelById.get(Number(ing.label_ingredient_id));
-                if (cur) srcLibOpts = [cur, ...srcLibOpts];
-              }
               const estimateLabel = ing.macroSource === 'provided' ? 'Provided in message' : 'AI estimate';
               const srcValue = ing.source === 'library' && ing.label_ingredient_id != null
                 ? String(ing.label_ingredient_id)
@@ -1012,26 +1004,41 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
                   {/* --- Expanded basis editor --- */}
                   {ing.expanded && (
                     <div style={{ padding: 10, background: '#fff', borderTop: `1px solid ${meta.border}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {/* Source switch (lives here to keep the collapsed row to one line) */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <label htmlFor={`ai-source-${idx}`} style={{ fontSize: 11, color: 'var(--color-text-muted)', whiteSpace: 'nowrap', margin: 0 }}>Source</label>
+                      {/* Ingredient source — one control: the AI estimate, a saved ingredient, or manual macros */}
+                      <div style={{ background: '#f9fafb', border: '1px solid #eef0f3', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <label htmlFor={`ai-source-${idx}`} style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: 0 }}>Ingredient source</label>
                         <select
                           id={`ai-source-${idx}`}
                           value={srcValue}
                           onChange={e => setRowSource(idx, e.target.value)}
-                          style={{ flex: 1, minWidth: 0, fontSize: 13 }}
+                          style={{ width: '100%', fontSize: 13 }}
                         >
                           <option value="estimate">{estimateLabel}</option>
                           <option value="manual">Manual entry</option>
-                          {srcLibOpts.length > 0 && (
-                            <optgroup label="Ingredient library">
-                              {srcLibOpts.map(li => (
+                          {options.length > 0 && (
+                            <optgroup label={q ? 'Search results' : 'From your library'}>
+                              {options.map(li => (
                                 <option key={li.id} value={String(li.id)}>{li.name}</option>
                               ))}
                             </optgroup>
                           )}
-                          <option value="__search__">Search full library…</option>
                         </select>
+                        <input
+                          value={ing.matchSearch || ''}
+                          onChange={e => setRowSearch(idx, e.target.value)}
+                          placeholder="Search your library for a saved ingredient…"
+                          style={{ fontSize: 13 }}
+                        />
+                        {q && options.length === 0 && (
+                          <p style={{ margin: 0, fontSize: 11.5, color: 'var(--color-text-muted)' }}>
+                            No saved ingredient matches “{q}”.
+                          </p>
+                        )}
+                        {ing.incompatible && (
+                          <p style={{ margin: 0, fontSize: 11.5, color: '#92400e' }}>
+                            Couldn’t auto-scale that saved item to “{ing.unit || 'this unit'}” — adjust the basis below.
+                          </p>
+                        )}
                       </div>
                       {sourceGap && (
                         <div style={{ padding: 10, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 12.5, color: '#92400e' }}>
@@ -1068,38 +1075,6 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
                             <input value={ing.unit} onChange={e => updateUnit(idx, e.target.value)} placeholder="g" />
                           </div>
                         </div>
-                      </div>
-
-                      {/* Matched saved ingredient — likely matches first, search for the rest */}
-                      <div>
-                        <label htmlFor={`ai-match-${idx}`} style={{ fontSize: 11 }}>Saved ingredient</label>
-                        <input
-                          value={ing.matchSearch || ''}
-                          onChange={e => setRowSearch(idx, e.target.value)}
-                          placeholder="Search your ingredient library…"
-                          style={{ marginBottom: 6 }}
-                        />
-                        <select
-                          id={`ai-match-${idx}`}
-                          value={ing.label_ingredient_id ?? ''}
-                          onChange={e => setRowIngredient(idx, e.target.value)}
-                          style={{ width: '100%', fontSize: 13 }}
-                        >
-                          <option value="">— No saved ingredient (estimate) —</option>
-                          {options.map(li => (
-                            <option key={li.id} value={li.id}>{li.name}</option>
-                          ))}
-                        </select>
-                        {!q && options.length === 0 && (
-                          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-text-muted)' }}>
-                            No likely matches — search above to browse your full library.
-                          </p>
-                        )}
-                        {ing.incompatible && (
-                          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#92400e' }}>
-                            Couldn’t auto-scale that saved item to “{ing.unit || 'this unit'}” — adjust the basis below.
-                          </p>
-                        )}
                       </div>
 
                       {/* Nutrition basis */}
