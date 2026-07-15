@@ -1,0 +1,196 @@
+const express = require('express');
+
+function normalizeNumberOrZero(v, { min = 0 } = {}) {
+  if (v === null || v === undefined || v === '') return 0;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < min) return 0;
+  return n;
+}
+
+function normalizeOptionalString(v, { maxLen = 120 } = {}) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  return s.slice(0, maxLen);
+}
+
+function normalizeBoolInt(v, def = 0) {
+  if (v === null || v === undefined || v === '') return def;
+  if (v === true || v === 1 || v === '1') return 1;
+  if (v === false || v === 0 || v === '0') return 0;
+  return def;
+}
+
+function isoDateOrNull(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+}
+
+const SELECT_COLS =
+  'id, user_id, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, sort_order';
+
+function createSupplementsRouter(db) {
+  const router = express.Router();
+
+  // --- Definitions ---------------------------------------------------------
+
+  router.get('/', (req, res) => {
+    const userId = Number(req.query.user_id ?? 0);
+    if (!Number.isInteger(userId) || userId < 0) {
+      return res.status(400).json({ error: 'Invalid user_id' });
+    }
+    const rows = db
+      .prepare(
+        `SELECT ${SELECT_COLS} FROM supplements
+          WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0
+          ORDER BY sort_order, name`
+      )
+      .all(userId);
+    res.json(rows);
+  });
+
+  router.post('/', (req, res) => {
+    const userId = Number(req.body?.user_id ?? 0);
+    if (!Number.isInteger(userId) || userId < 0) {
+      return res.status(400).json({ error: 'Invalid user_id' });
+    }
+    const name = String(req.body?.name ?? '').trim();
+    if (!name) return res.status(400).json({ error: 'name is required' });
+
+    const dose_text = normalizeOptionalString(req.body?.dose_text, { maxLen: 120 });
+    const calories = normalizeNumberOrZero(req.body?.calories);
+    const protein_g = normalizeNumberOrZero(req.body?.protein_g);
+    const carbs_g = normalizeNumberOrZero(req.body?.carbs_g);
+    const fat_g = normalizeNumberOrZero(req.body?.fat_g);
+    const counts_toward_macros = normalizeBoolInt(req.body?.counts_toward_macros, 0);
+    const nextSort =
+      db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM supplements WHERE user_id = ?').get(userId).n;
+
+    const r = db
+      .prepare(
+        `INSERT INTO supplements
+           (user_id, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(userId, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, nextSort);
+
+    const row = db.prepare(`SELECT ${SELECT_COLS} FROM supplements WHERE id = ?`).get(r.lastInsertRowid);
+    res.status(201).json(row);
+  });
+
+  // --- Daily checklist -----------------------------------------------------
+
+  // Today's checklist: every active supplement + whether it's been taken on the
+  // date, plus the macro totals contributed by taken items flagged to count.
+  router.get('/today', (req, res) => {
+    const userId = Number(req.query.user_id ?? 0);
+    if (!Number.isInteger(userId) || userId < 0) {
+      return res.status(400).json({ error: 'Invalid user_id' });
+    }
+    const date = isoDateOrNull(req.query.date);
+    if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
+
+    const rows = db
+      .prepare(
+        `SELECT s.id, s.name, s.dose_text, s.calories, s.protein_g, s.carbs_g, s.fat_g,
+                s.counts_toward_macros, s.sort_order,
+                CASE WHEN sl.taken = 1 THEN 1 ELSE 0 END AS taken
+           FROM supplements s
+           LEFT JOIN supplement_log sl
+             ON sl.supplement_id = s.id AND sl.user_id = s.user_id AND sl.date = ?
+          WHERE s.user_id = ? AND COALESCE(s.is_deleted, 0) = 0
+          ORDER BY s.sort_order, s.name`
+      )
+      .all(date, userId);
+
+    const totals = rows.reduce(
+      (acc, r) => {
+        if (r.taken && r.counts_toward_macros) {
+          acc.calories += r.calories;
+          acc.protein_g += r.protein_g;
+          acc.carbs_g += r.carbs_g;
+          acc.fat_g += r.fat_g;
+        }
+        return acc;
+      },
+      { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+    );
+
+    res.json({ date, supplements: rows, totals });
+  });
+
+  // Toggle/set taken state for a supplement on a date.
+  router.put('/log', (req, res) => {
+    const userId = Number(req.body?.user_id ?? 0);
+    if (!Number.isInteger(userId) || userId < 0) {
+      return res.status(400).json({ error: 'Invalid user_id' });
+    }
+    const date = isoDateOrNull(req.body?.date);
+    if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
+    const supplementId = Number(req.body?.supplement_id);
+    if (!Number.isInteger(supplementId) || supplementId <= 0) {
+      return res.status(400).json({ error: 'Invalid supplement_id' });
+    }
+    const taken = normalizeBoolInt(req.body?.taken, 0);
+
+    const exists = db
+      .prepare('SELECT id FROM supplements WHERE id = ? AND user_id = ? AND COALESCE(is_deleted, 0) = 0')
+      .get(supplementId, userId);
+    if (!exists) return res.status(404).json({ error: 'Supplement not found' });
+
+    db.prepare(
+      `INSERT INTO supplement_log (user_id, date, supplement_id, taken)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, date, supplement_id) DO UPDATE SET taken = excluded.taken`
+    ).run(userId, date, supplementId, taken);
+
+    res.json({ date, supplement_id: supplementId, taken });
+  });
+
+  // --- Definitions: update / delete ----------------------------------------
+  // Declared AFTER the literal /today and /log routes so Express doesn't match
+  // those paths as :id.
+  router.put('/:id', (req, res) => {
+    const userId = Number(req.body?.user_id ?? 0);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+
+    const existing = db.prepare('SELECT id FROM supplements WHERE id = ? AND user_id = ?').get(id, userId);
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+
+    const name = String(req.body?.name ?? '').trim();
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    const dose_text = normalizeOptionalString(req.body?.dose_text, { maxLen: 120 });
+    const calories = normalizeNumberOrZero(req.body?.calories);
+    const protein_g = normalizeNumberOrZero(req.body?.protein_g);
+    const carbs_g = normalizeNumberOrZero(req.body?.carbs_g);
+    const fat_g = normalizeNumberOrZero(req.body?.fat_g);
+    const counts_toward_macros = normalizeBoolInt(req.body?.counts_toward_macros, 0);
+
+    db.prepare(
+      `UPDATE supplements
+          SET name = ?, dose_text = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, counts_toward_macros = ?
+        WHERE id = ? AND user_id = ?`
+    ).run(name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, id, userId);
+
+    const row = db.prepare(`SELECT ${SELECT_COLS} FROM supplements WHERE id = ?`).get(id);
+    res.json(row);
+  });
+
+  // Soft delete — keeps historical supplement_log rows meaningful.
+  router.delete('/:id', (req, res) => {
+    const userId = Number(req.query.user_id ?? 0);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+    const r = db
+      .prepare('UPDATE supplements SET is_deleted = 1 WHERE id = ? AND user_id = ?')
+      .run(id, userId);
+    if (r.changes === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  });
+
+  return router;
+}
+
+module.exports = { createSupplementsRouter };

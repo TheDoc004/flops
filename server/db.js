@@ -99,6 +99,7 @@ function createDb(dbPath) {
       dash_weight_chart_enabled INTEGER DEFAULT 1,
       dash_weight_days      INTEGER DEFAULT 30,
       dash_adherence_view   TEXT DEFAULT '7d',
+      dash_supplements_enabled INTEGER DEFAULT 1,
       /* RETAINED, UNUSED: the three columns below belonged to the removed
          nutrition-training fuel features (archive/nutrition-training-integration).
          Kept because SQLite DROP COLUMN requires a table rebuild and the stored
@@ -222,6 +223,34 @@ function createDb(dbPath) {
       secondary_muscles  TEXT NOT NULL DEFAULT '[]',
       movement_type      TEXT NOT NULL,
       equipment          TEXT NOT NULL
+    );
+
+    /* --- Supplement tracker (Nutrition) ---
+       Definitions the user maintains; some carry macros, some are checklist-only.
+       counts_toward_macros=1 means a taken dose feeds that day's macro totals. */
+    CREATE TABLE IF NOT EXISTS supplements (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id              INTEGER NOT NULL DEFAULT 0,
+      name                 TEXT NOT NULL,
+      dose_text            TEXT,
+      calories             REAL NOT NULL DEFAULT 0,
+      protein_g            REAL NOT NULL DEFAULT 0,
+      carbs_g              REAL NOT NULL DEFAULT 0,
+      fat_g                REAL NOT NULL DEFAULT 0,
+      counts_toward_macros INTEGER NOT NULL DEFAULT 0,
+      sort_order           INTEGER NOT NULL DEFAULT 0,
+      is_deleted           INTEGER NOT NULL DEFAULT 0,
+      created_at           TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    /* Per-calendar-day taken state for a supplement (local date) */
+    CREATE TABLE IF NOT EXISTS supplement_log (
+      user_id       INTEGER NOT NULL DEFAULT 0,
+      date          TEXT NOT NULL,
+      supplement_id INTEGER NOT NULL,
+      taken         INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, date, supplement_id),
+      FOREIGN KEY (supplement_id) REFERENCES supplements(id)
     );
   `);
   const recipeCols = db.prepare('PRAGMA table_info(recipes)').all().map(c => c.name);
@@ -387,6 +416,9 @@ function createDb(dbPath) {
   }
   if (profileCols.length && !profileCols.includes('dash_adherence_view')) {
     db.exec(`ALTER TABLE user_profile ADD COLUMN dash_adherence_view TEXT DEFAULT '7d'`);
+  }
+  if (profileCols.length && !profileCols.includes('dash_supplements_enabled')) {
+    db.exec(`ALTER TABLE user_profile ADD COLUMN dash_supplements_enabled INTEGER DEFAULT 1`);
   }
 
   // Workout preset tables may already exist (noop if created above)

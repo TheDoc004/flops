@@ -15,6 +15,7 @@ import { buildWeeklyAdherenceRows, listLocalDatesInclusive, goalsToTargets, hasA
 import DashboardAdherenceSection from './DashboardAdherenceSection';
 import DashboardWeightRow from './DashboardWeightRow';
 import DashboardWeightTrend from './DashboardWeightTrend';
+import { SupplementsCard } from '@features/supplements';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 
 function getGreeting() {
@@ -48,6 +49,8 @@ export default function Dashboard() {
   const [dashWeightPrefs, setDashWeightPrefs] = useState({ enabled: true, days: 30 });
   const [dashAdherenceView, setDashAdherenceView] = useState('7d');
   const [weightTrendRefresh, setWeightTrendRefresh] = useState(0);
+  const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
+  const [supplementMacros, setSupplementMacros] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 
   const greeting = useMemo(() => getGreeting(), []);
 
@@ -102,6 +105,8 @@ export default function Dashboard() {
         days: [14, 30, 90].includes(d) ? d : 30,
       });
       setDashAdherenceView(['7d', '2w', '3w', 'calendar'].includes(p.dash_adherence_view) ? p.dash_adherence_view : '7d');
+      const se = p.dash_supplements_enabled;
+      setDashSupplementsEnabled(se !== 0 && se !== false && se !== '0');
     }
 
     if (logResult.status === 'fulfilled') {
@@ -157,6 +162,15 @@ export default function Dashboard() {
 
   const totals = sumMacros(entries);
   const totalLoggedCal = Math.round(totals.calories);
+  // Fold in macros from supplements taken today that are flagged to count.
+  const combinedTotals = dashSupplementsEnabled
+    ? {
+        calories: totals.calories + supplementMacros.calories,
+        protein_g: totals.protein_g + supplementMacros.protein_g,
+        carbs_g: totals.carbs_g + supplementMacros.carbs_g,
+        fat_g: totals.fat_g + supplementMacros.fat_g,
+      }
+    : totals;
 
   // Larger, presence-boosted actions for the two primary dashboard buttons.
   // Scoped to these instances (inline) so the global .btn-* sizing is untouched.
@@ -216,9 +230,9 @@ export default function Dashboard() {
         </p>
       )}
 
-      {/* ── Macro totals ── */}
+      {/* ── Macro totals (meals + any macro-counting supplements taken today) ── */}
       <Reveal delay={60}>
-        <MacroTotals totals={totals} targets={targets} />
+        <MacroTotals totals={combinedTotals} targets={targets} />
       </Reveal>
 
       {/* ── Today's meals ── */}
@@ -283,6 +297,11 @@ export default function Dashboard() {
           )
         }
       </Reveal>
+
+      {/* ── Supplements today ── */}
+      {dashSupplementsEnabled && (
+        <SupplementsCard date={today} onMacrosChange={setSupplementMacros} />
+      )}
 
       {/* ── Trends ── */}
       {dashWeightPrefs.enabled ? (
