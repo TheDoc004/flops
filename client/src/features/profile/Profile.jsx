@@ -45,6 +45,7 @@ export default function Profile() {
   const [dashChartEnabled, setDashChartEnabled] = useState(true);
   const [dashChartDays, setDashChartDays] = useState(30);
   const [dashAdherenceView, setDashAdherenceView] = useState('7d');
+  const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
   const [dashPrefsSaved, setDashPrefsSaved] = useState(false);
   const [dashPrefsError, setDashPrefsError] = useState('');
   // Tracks whether the user has interacted with dash prefs yet.
@@ -71,6 +72,7 @@ export default function Profile() {
         const dd = Number(p.dash_weight_days);
         setDashChartDays([14, 30, 90].includes(dd) ? dd : 30);
         setDashAdherenceView(['7d', '2w', '3w', 'calendar'].includes(p.dash_adherence_view) ? p.dash_adherence_view : '7d');
+        setDashSupplementsEnabled(p.dash_supplements_enabled !== 0 && p.dash_supplements_enabled !== false);
       } catch (e) {
         if (!cancelled) setError(e.message);
       } finally {
@@ -179,6 +181,7 @@ export default function Profile() {
       dash_weight_chart_enabled: dashChartEnabled ? 1 : 0,
       dash_weight_days: dashChartDays,
       dash_adherence_view: dashAdherenceView,
+      dash_supplements_enabled: dashSupplementsEnabled ? 1 : 0,
     }).then(() => {
       if (!cancelled) {
         setDashPrefsSaved(true);
@@ -188,7 +191,7 @@ export default function Profile() {
       if (!cancelled) setDashPrefsError(err.message);
     });
     return () => { cancelled = true; };
-  }, [dashChartEnabled, dashChartDays, dashAdherenceView]);
+  }, [dashChartEnabled, dashChartDays, dashAdherenceView, dashSupplementsEnabled]);
 
   if (loading) {
     return <p style={{ color: '#6b7280' }}>Loading…</p>;
@@ -300,6 +303,32 @@ export default function Profile() {
               </div>
               <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>
                 Visible on Dashboard
+              </div>
+            </div>
+          </label>
+          {/* Supplements checklist toggle */}
+          <label style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
+            padding: '8px 10px', marginBottom: 10, borderRadius: 9,
+            border: `1px solid ${dashSupplementsEnabled ? '#c4b5fd' : '#e8e4dc'}`,
+            background: dashSupplementsEnabled ? '#f5f3ff' : 'transparent',
+            transition: 'border-color 0.12s, background 0.12s',
+          }}>
+            <input
+              type="checkbox"
+              checked={dashSupplementsEnabled}
+              onChange={e => {
+                dashInteracted.current = true;
+                setDashSupplementsEnabled(e.target.checked);
+              }}
+              style={{ flexShrink: 0, marginTop: 3, width: 'auto' }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: '#374151', lineHeight: 1.3 }}>
+                Show supplements checklist
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>
+                Daily check-off card on Dashboard
               </div>
             </div>
           </label>
