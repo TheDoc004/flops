@@ -1,10 +1,17 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-07-14_
+_Last updated: 2026-07-25_
 
 Snapshot of where the app stands so any session (human or Claude) can pick up quickly.
 For conventions, architecture, and the phase vision, see `CLAUDE.md` — this file is the
 _current-state_ companion to it.
+
+> **⚠️ Repo location changed (2026-07-25):** the project now lives at **`~/dev/FLOPS`**.
+> It used to be under `~/Documents/FLOPS workspace/…`, which macOS was syncing to iCloud
+> with "Optimize Mac Storage" on. iCloud evicted files to placeholders, so `node_modules`
+> re-downloaded on demand and the API took ~60s to boot — the frontend timed out with
+> **"Failed to fetch."** Moving out of iCloud fixed it (cold boot is now instant; Vite
+> ~525ms). **Do not put this project back in `~/Documents` or any cloud-synced folder.**
 
 ---
 
@@ -21,7 +28,11 @@ Phases: **1 Nutrition** (feature-complete), **2 Training** (frontend now built o
 
 ## 2. How to run
 
+Repo root: **`~/dev/FLOPS`**. One-shot: `bash ~/dev/FLOPS/start-app.sh`. Or two terminals:
+
 ```bash
+cd ~/dev/FLOPS
+
 # Terminal 1 — API (port 3001)
 cd server && npm run dev        # plain `node --watch index.js`; does NOT auto-restart if launched as `node index.js`
 
