@@ -73,6 +73,45 @@ export function sumDayMicros(entries) {
   };
 }
 
+/**
+ * A day's micros combining logged meals (AI estimates) with taken supplements
+ * (label-exact). Supplement micros are summed on top of the meal totals and are
+ * treated as HIGH confidence, so they never drag down the day's confidence
+ * (which reflects the food estimates). Returns the same shape as sumDayMicros,
+ * plus `supplementCount` for a UI note.
+ *
+ * @param entries      log entries for the day
+ * @param supplements  taken supplements for the day, each with a `micros`
+ *                     object { key: amount } (from GET /api/supplements/range)
+ */
+export function sumDayTotalMicros({ entries, supplements } = {}) {
+  const base = sumDayMicros(entries);
+  const suppList = Array.isArray(supplements) ? supplements : [];
+  const values = { ...base.values };
+  let supplementCount = 0;
+  for (const s of suppList) {
+    const m = s?.micros;
+    if (!m || typeof m !== 'object') continue;
+    let contributed = false;
+    for (const k of MICRO_KEYS) {
+      const v = Number(m[k]);
+      if (Number.isFinite(v) && v > 0) {
+        values[k] = (values[k] || 0) + v;
+        contributed = true;
+      }
+    }
+    if (contributed) supplementCount += 1;
+  }
+  return {
+    values,
+    coverage: base.coverage,
+    // Foods drive confidence; supplements are exact and only added when present.
+    confidence: base.hasMicros ? base.confidence : (supplementCount > 0 ? 'high' : base.confidence),
+    hasMicros: base.hasMicros || supplementCount > 0,
+    supplementCount,
+  };
+}
+
 /** Status (% of target, fill, color, label) for one nutrient value. */
 export function statusFor(key, value) {
   const def = MICRO_BY_KEY[key];
