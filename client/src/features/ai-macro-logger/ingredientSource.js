@@ -219,14 +219,45 @@ export function libraryMacrosFor(ing, quantity, unit) {
 const r1 = x => Math.round(x * 10) / 10;
 
 /**
+ * True when a saved ingredient's computed macros (at the logged amount/unit)
+ * match the user-provided macros closely enough to be the same food. A small
+ * tolerance absorbs rounding (users type whole numbers; the library stores
+ * precise per-serving values). Used to dedupe: provided macros that equal a
+ * saved ingredient reuse it instead of creating a duplicate on recipe save.
+ */
+function macrosMatchProvided(ing, m) {
+  const close = (a, b, floor) =>
+    Math.abs(Number(a) - Number(b)) <= Math.max(floor, Math.abs(Number(b)) * 0.02);
+  return (
+    close(ing.calories, m.calories, 2) &&
+    close(ing.protein, m.protein_g, 1) &&
+    close(ing.carbs, m.carbs_g, 1) &&
+    close(ing.fat, m.fat_g, 1)
+  );
+}
+
+/**
  * Resolve one AI ingredient to its best macro source. Returns
  * { calories, protein, carbs, fat, source, matchedName, label_ingredient_id }.
  * matchedName is set only for a NON-exact match (so the UI can show what it used).
  */
 export function resolveIngredientSource(ing, library, quickFoods = QUICK_FOODS) {
-  // 1. Explicit macros provided in the current message — authoritative. Lock the
-  //    user's numbers and skip every generic/library lookup for this ingredient.
+  // 1. Explicit macros provided in the current message — authoritative. The
+  //    user's numbers win, EXCEPT when they identically match a saved ingredient
+  //    of the same name: then prefer the saved one so we reuse it (and its id)
+  //    instead of spawning a duplicate when the meal is saved as a recipe.
   if (ing.macroSource === 'provided') {
+    const lib = bestMatch(ing.name, library, x => x.name);
+    if (lib.best && lib.score >= MATCH_THRESHOLD) {
+      const m = libraryMacrosFor(lib.best, ing.quantity, ing.unit);
+      if (m && macrosMatchProvided(ing, m)) {
+        const exact = norm(ing.name) === norm(lib.best.name);
+        return {
+          calories: r1(m.calories), protein: r1(m.protein_g), carbs: r1(m.carbs_g), fat: r1(m.fat_g),
+          source: 'library', label_ingredient_id: lib.best.id, matchedName: exact ? null : lib.best.name,
+        };
+      }
+    }
     return {
       calories: ing.calories, protein: ing.protein, carbs: ing.carbs, fat: ing.fat,
       source: 'provided', label_ingredient_id: undefined, matchedName: null,
