@@ -35,8 +35,19 @@ function resolveProvider() {
   return null;
 }
 
-async function callOpenAIJson({ system, user, maxTokens }) {
+/** Parse a base64 data: URL into { mediaType, base64 }, or null if not one. */
+function parseDataUrl(dataUrl) {
+  const m = /^data:([^;,]+)?;base64,(.*)$/s.exec(String(dataUrl || ''));
+  if (!m) return null;
+  return { mediaType: m[1] || 'image/jpeg', base64: m[2] || '' };
+}
+
+async function callOpenAIJson({ system, user, maxTokens, imageDataUrl }) {
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  // Vision: OpenAI takes the image inline in the user message content array.
+  const userContent = imageDataUrl
+    ? [{ type: 'text', text: user }, { type: 'image_url', image_url: { url: imageDataUrl } }]
+    : user;
   let res;
   try {
     res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -49,7 +60,7 @@ async function callOpenAIJson({ system, user, maxTokens }) {
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: system },
-          { role: 'user', content: user },
+          { role: 'user', content: userContent },
         ],
       }),
     });
@@ -66,8 +77,19 @@ async function callOpenAIJson({ system, user, maxTokens }) {
   return text;
 }
 
-async function callAnthropicJson({ system, user, maxTokens }) {
+async function callAnthropicJson({ system, user, maxTokens, imageDataUrl }) {
   const model = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5';
+  // Vision: Anthropic takes a base64 image block in the user message content.
+  let userContent = user;
+  if (imageDataUrl) {
+    const parsed = parseDataUrl(imageDataUrl);
+    if (parsed) {
+      userContent = [
+        { type: 'text', text: user },
+        { type: 'image', source: { type: 'base64', media_type: parsed.mediaType, data: parsed.base64 } },
+      ];
+    }
+  }
   let res;
   try {
     res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -81,7 +103,7 @@ async function callAnthropicJson({ system, user, maxTokens }) {
         model,
         max_tokens: maxTokens,
         system,
-        messages: [{ role: 'user', content: user }],
+        messages: [{ role: 'user', content: userContent }],
       }),
     });
   } catch (e) {
@@ -100,18 +122,20 @@ async function callAnthropicJson({ system, user, maxTokens }) {
 }
 
 /**
- * Run a JSON-only chat completion against the configured provider.
+ * Run a JSON-only chat completion against the configured provider. Pass
+ * `imageDataUrl` (a base64 data: URL) to attach an image for vision features
+ * (both providers' default models are vision-capable).
  * @returns {Promise<string>} the model's raw text (expected to be JSON).
  * @throws {AiConfigError|AiProviderError|AiQuotaError|AiResponseError}
  */
-async function callProviderJson({ system, user, maxTokens = 1500 }) {
+async function callProviderJson({ system, user, maxTokens = 1500, imageDataUrl }) {
   const provider = resolveProvider();
   if (!provider) {
     throw new AiConfigError('AI estimation is not configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY on the server.');
   }
   return provider === 'anthropic'
-    ? callAnthropicJson({ system, user, maxTokens })
-    : callOpenAIJson({ system, user, maxTokens });
+    ? callAnthropicJson({ system, user, maxTokens, imageDataUrl })
+    : callOpenAIJson({ system, user, maxTokens, imageDataUrl });
 }
 
 /** Pull the JSON object out of a model response (tolerates stray prose / code fences). */
@@ -133,6 +157,7 @@ function extractJson(text) {
 module.exports = {
   callProviderJson,
   extractJson,
+  parseDataUrl,
   resolveProvider,
   classifyProviderError,
   AiConfigError,
