@@ -1,5 +1,12 @@
 const express = require('express');
 const { buildMicrosBlob, MICRO_KEYS } = require('../microNutrients');
+const {
+  scanSupplementLabel,
+  AiConfigError,
+  AiProviderError,
+  AiResponseError,
+  AiQuotaError,
+} = require('../supplementLabelService');
 
 function normalizeNumberOrZero(v, { min = 0 } = {}) {
   if (v === null || v === undefined || v === '') return 0;
@@ -215,6 +222,27 @@ function createSupplementsRouter(db) {
       (byDate[r.date] ||= []).push({ id: r.id, name: r.name, micros });
     }
     res.json({ start: from, end: to, byDate });
+  });
+
+  // Scan a Supplement Facts photo → suggested { name, dose_text, macros, micros }.
+  // The image arrives as a raw binary body (like /api/ai/transcribe) so it skips
+  // the small global JSON limit. Nothing is stored — the client reviews first.
+  router.post('/scan-label', express.raw({ type: 'image/*', limit: '12mb' }), async (req, res) => {
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ error: 'No image received.' });
+    }
+    const mediaType = String(req.headers['content-type'] || 'image/jpeg').split(';')[0].trim();
+    const imageDataUrl = `data:${mediaType};base64,${req.body.toString('base64')}`;
+    try {
+      const result = await scanSupplementLabel({ imageDataUrl });
+      return res.json(result);
+    } catch (e) {
+      if (e instanceof AiConfigError) return res.status(503).json({ error: e.message });
+      if (e instanceof AiQuotaError) return res.status(402).json({ error: e.message });
+      if (e instanceof AiProviderError) return res.status(502).json({ error: 'The AI service had a problem. Please try again.' });
+      if (e instanceof AiResponseError) return res.status(502).json({ error: "Couldn't read the label. Try a clearer, cropped photo of the Supplement Facts panel." });
+      return res.status(500).json({ error: 'Failed to scan the supplement label.' });
+    }
   });
 
   // --- Definitions: update / delete ----------------------------------------
