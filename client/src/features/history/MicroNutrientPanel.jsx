@@ -26,8 +26,9 @@ function MicroLegend() {
  * @param values    summed day micros { key: amount }
  * @param confidence day-level confidence (low|medium|high) or null
  * @param coverage  { withMicros, total } meals contributing estimates
+ * @param supplementCount how many taken supplements contributed exact micros
  */
-export default function MicroNutrientPanel({ values, confidence = null, coverage = null }) {
+export default function MicroNutrientPanel({ values, confidence = null, coverage = null, supplementCount = 0 }) {
   const hasMicros = values && Object.keys(values).length > 0;
 
   return (
@@ -39,6 +40,15 @@ export default function MicroNutrientPanel({ values, confidence = null, coverage
             {coverage && coverage.total > 0 && (
               <span style={{ fontSize: 12, color: '#6b7280' }}>
                 {coverage.withMicros} of {coverage.total} meal{coverage.total === 1 ? '' : 's'} estimated
+              </span>
+            )}
+            {supplementCount > 0 && (
+              <span style={{
+                fontSize: 11, fontWeight: 600, color: '#1d7a5f',
+                background: '#ecfdf5', border: '1px solid #6ee7b7',
+                borderRadius: 999, padding: '3px 10px',
+              }}>
+                + {supplementCount} supplement{supplementCount === 1 ? '' : 's'}
               </span>
             )}
             {confidence && (
@@ -80,6 +90,7 @@ export default function MicroNutrientPanel({ values, confidence = null, coverage
           ))}
           <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)', lineHeight: 1.5 }}>
             {MICRO_ESTIMATE_NOTE}
+            {supplementCount > 0 ? ' Supplement values are taken exactly from their labels.' : ''}
           </p>
         </>
       )}

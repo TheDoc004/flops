@@ -1,4 +1,5 @@
 const express = require('express');
+const { buildMicrosBlob, MICRO_KEYS } = require('../microNutrients');
 
 function normalizeNumberOrZero(v, { min = 0 } = {}) {
   if (v === null || v === undefined || v === '') return 0;
@@ -27,7 +28,41 @@ function isoDateOrNull(raw) {
 }
 
 const SELECT_COLS =
-  'id, user_id, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, sort_order';
+  'id, user_id, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json, sort_order';
+
+/**
+ * Build the micros_json string to store for a supplement from a request body's
+ * `micros` object, or null when none/all-zero. Supplement micros come straight
+ * off the label, so they are stored at HIGH confidence (unlike AI food estimates).
+ */
+function microsJsonFromBody(body) {
+  const blob = buildMicrosBlob(body?.micros, { confidence: 'high', notes: 'From supplement label' });
+  return blob ? JSON.stringify(blob) : null;
+}
+
+/** Flat { key: amount } micros object parsed from a stored blob, or null. */
+function parseMicrosValues(micros_json) {
+  if (!micros_json) return null;
+  try {
+    const p = typeof micros_json === 'string' ? JSON.parse(micros_json) : micros_json;
+    if (!p || typeof p !== 'object' || !p.micros || typeof p.micros !== 'object') return null;
+    const out = {};
+    for (const k of MICRO_KEYS) {
+      const v = Number(p.micros[k]);
+      if (Number.isFinite(v) && v > 0) out[k] = v;
+    }
+    return Object.keys(out).length ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Replace a row's raw micros_json with a parsed `micros` object for the API. */
+function shapeRow(row) {
+  if (!row) return row;
+  const { micros_json, ...rest } = row;
+  return { ...rest, micros: parseMicrosValues(micros_json) };
+}
 
 function createSupplementsRouter(db) {
   const router = express.Router();
@@ -46,7 +81,7 @@ function createSupplementsRouter(db) {
           ORDER BY sort_order, name`
       )
       .all(userId);
-    res.json(rows);
+    res.json(rows.map(shapeRow));
   });
 
   router.post('/', (req, res) => {
@@ -63,19 +98,20 @@ function createSupplementsRouter(db) {
     const carbs_g = normalizeNumberOrZero(req.body?.carbs_g);
     const fat_g = normalizeNumberOrZero(req.body?.fat_g);
     const counts_toward_macros = normalizeBoolInt(req.body?.counts_toward_macros, 0);
+    const micros_json = microsJsonFromBody(req.body);
     const nextSort =
       db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM supplements WHERE user_id = ?').get(userId).n;
 
     const r = db
       .prepare(
         `INSERT INTO supplements
-           (user_id, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (user_id, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(userId, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, nextSort);
+      .run(userId, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json, nextSort);
 
     const row = db.prepare(`SELECT ${SELECT_COLS} FROM supplements WHERE id = ?`).get(r.lastInsertRowid);
-    res.status(201).json(row);
+    res.status(201).json(shapeRow(row));
   });
 
   // --- Daily checklist -----------------------------------------------------
@@ -90,10 +126,10 @@ function createSupplementsRouter(db) {
     const date = isoDateOrNull(req.query.date);
     if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
 
-    const rows = db
+    const raw = db
       .prepare(
         `SELECT s.id, s.name, s.dose_text, s.calories, s.protein_g, s.carbs_g, s.fat_g,
-                s.counts_toward_macros, s.sort_order,
+                s.counts_toward_macros, s.micros_json, s.sort_order,
                 CASE WHEN sl.taken = 1 THEN 1 ELSE 0 END AS taken
            FROM supplements s
            LEFT JOIN supplement_log sl
@@ -102,6 +138,7 @@ function createSupplementsRouter(db) {
           ORDER BY s.sort_order, s.name`
       )
       .all(date, userId);
+    const rows = raw.map(shapeRow);
 
     const totals = rows.reduce(
       (acc, r) => {
@@ -147,6 +184,39 @@ function createSupplementsRouter(db) {
     res.json({ date, supplement_id: supplementId, taken });
   });
 
+  // Taken supplements that carry micronutrients, grouped by date, over a range.
+  // History uses this to add exact supplement micros to each day's micro totals.
+  // Only taken items with real micros are returned, keeping the payload small.
+  router.get('/range', (req, res) => {
+    const userId = Number(req.query.user_id ?? 0);
+    if (!Number.isInteger(userId) || userId < 0) {
+      return res.status(400).json({ error: 'Invalid user_id' });
+    }
+    const start = isoDateOrNull(req.query.start);
+    const end = isoDateOrNull(req.query.end);
+    if (!start || !end) return res.status(400).json({ error: 'Invalid start/end (use YYYY-MM-DD)' });
+    const [from, to] = start <= end ? [start, end] : [end, start];
+
+    const rows = db
+      .prepare(
+        `SELECT sl.date AS date, s.id AS id, s.name AS name, s.micros_json AS micros_json
+           FROM supplement_log sl
+           JOIN supplements s ON s.id = sl.supplement_id AND s.user_id = sl.user_id
+          WHERE sl.user_id = ? AND sl.taken = 1 AND sl.date >= ? AND sl.date <= ?
+            AND s.micros_json IS NOT NULL
+          ORDER BY sl.date, s.sort_order, s.name`
+      )
+      .all(userId, from, to);
+
+    const byDate = {};
+    for (const r of rows) {
+      const micros = parseMicrosValues(r.micros_json);
+      if (!micros) continue;
+      (byDate[r.date] ||= []).push({ id: r.id, name: r.name, micros });
+    }
+    res.json({ start: from, end: to, byDate });
+  });
+
   // --- Definitions: update / delete ----------------------------------------
   // Declared AFTER the literal /today and /log routes so Express doesn't match
   // those paths as :id.
@@ -167,15 +237,17 @@ function createSupplementsRouter(db) {
     const carbs_g = normalizeNumberOrZero(req.body?.carbs_g);
     const fat_g = normalizeNumberOrZero(req.body?.fat_g);
     const counts_toward_macros = normalizeBoolInt(req.body?.counts_toward_macros, 0);
+    const micros_json = microsJsonFromBody(req.body);
 
     db.prepare(
       `UPDATE supplements
-          SET name = ?, dose_text = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, counts_toward_macros = ?
+          SET name = ?, dose_text = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?,
+              counts_toward_macros = ?, micros_json = ?
         WHERE id = ? AND user_id = ?`
-    ).run(name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, id, userId);
+    ).run(name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json, id, userId);
 
     const row = db.prepare(`SELECT ${SELECT_COLS} FROM supplements WHERE id = ?`).get(id);
-    res.json(row);
+    res.json(shapeRow(row));
   });
 
   // Soft delete — keeps historical supplement_log rows meaningful.

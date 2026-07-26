@@ -18,6 +18,14 @@ export async function fetchSupplementsToday(date) {
   return jsonOrThrow(res, "Failed to load today's supplements");
 }
 
+// Taken supplements with micros, grouped by date, for a range (History micros).
+export async function fetchSupplementRange(start, end) {
+  const res = await fetch(
+    apiUrl(`/api/supplements/range?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`)
+  );
+  return jsonOrThrow(res, 'Failed to load supplement range');
+}
+
 export async function createSupplement(payload) {
   const res = await fetch(apiUrl('/api/supplements'), {
     method: 'POST',

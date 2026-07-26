@@ -303,6 +303,19 @@ export default function Dashboard() {
         <SupplementsCard date={today} onMacrosChange={setSupplementMacros} />
       )}
 
+      {/* Quick hop to the micronutrient breakdown (supplements feed into it). */}
+      {dashSupplementsEnabled && (
+        <Reveal delay={40} style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+          <Link
+            to="/history#micronutrients"
+            className="btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 40, padding: '0 16px', textDecoration: 'none' }}
+          >
+            View micronutrients →
+          </Link>
+        </Reveal>
+      )}
+
       {/* ── Trends ── */}
       {dashWeightPrefs.enabled ? (
         <>

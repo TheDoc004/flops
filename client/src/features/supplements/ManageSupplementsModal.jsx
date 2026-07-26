@@ -5,6 +5,7 @@ import {
   fetchSupplements,
   updateSupplement,
 } from '@shared/api/supplements';
+import { MICRO_GROUPS } from '@shared/config/microNutrients';
 
 const EMPTY_FORM = {
   name: '',
@@ -14,7 +15,24 @@ const EMPTY_FORM = {
   protein_g: '',
   carbs_g: '',
   fat_g: '',
+  micros: {},
 };
+
+/** Saved micros ({ key: number }) → editable form strings, positives only. */
+function microsToForm(micros) {
+  const out = {};
+  if (micros && typeof micros === 'object') {
+    for (const [k, v] of Object.entries(micros)) {
+      if (Number(v) > 0) out[k] = String(v);
+    }
+  }
+  return out;
+}
+
+/** True when a supplement carries any micronutrient values. */
+function hasMicros(s) {
+  return !!(s?.micros && typeof s.micros === 'object' && Object.keys(s.micros).length > 0);
+}
 
 function toForm(s) {
   return {
@@ -25,6 +43,7 @@ function toForm(s) {
     protein_g: s.protein_g ? String(s.protein_g) : '',
     carbs_g: s.carbs_g ? String(s.carbs_g) : '',
     fat_g: s.fat_g ? String(s.fat_g) : '',
+    micros: microsToForm(s.micros),
   };
 }
 
@@ -38,6 +57,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null); // null = add mode
   const [form, setForm] = useState(EMPTY_FORM);
+  const [microsOpen, setMicrosOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -58,11 +78,13 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
   function startEdit(s) {
     setEditingId(s.id);
     setForm(toForm(s));
+    setMicrosOpen(hasMicros(s)); // auto-expand when there are values to see
     setError('');
   }
   function resetForm() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setMicrosOpen(false);
   }
 
   async function handleSubmit(e) {
@@ -71,6 +93,11 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
     setBusy(true);
     setError('');
     const counts = form.counts_toward_macros;
+    // Positive micro values only; the server whitelists keys and drops all-zero.
+    const micros = {};
+    for (const [k, v] of Object.entries(form.micros || {})) {
+      if (v !== '' && Number.isFinite(Number(v)) && Number(v) > 0) micros[k] = Number(v);
+    }
     const payload = {
       name: form.name.trim(),
       dose_text: form.dose_text.trim() || null,
@@ -79,6 +106,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
       protein_g: counts && form.protein_g !== '' ? Number(form.protein_g) : 0,
       carbs_g: counts && form.carbs_g !== '' ? Number(form.carbs_g) : 0,
       fat_g: counts && form.fat_g !== '' ? Number(form.fat_g) : 0,
+      micros,
     };
     try {
       if (editingId) await updateSupplement(editingId, payload);
@@ -156,6 +184,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                   <div style={{ fontSize: 12, color: '#6b7280' }}>
                     {s.dose_text || 'No dose set'}
                     {s.counts_toward_macros ? ` · ${Math.round(s.calories)} cal counted` : ' · checklist only'}
+                    {hasMicros(s) ? ` · ${Object.keys(s.micros).length} micro${Object.keys(s.micros).length === 1 ? '' : 's'}` : ''}
                   </div>
                 </div>
                 <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '5px 10px', minHeight: 32 }} onClick={() => startEdit(s)}>
@@ -201,6 +230,51 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
               ))}
             </div>
           )}
+          {/* Micronutrients (optional) — exact label values that count toward
+              your daily micros in History whenever this supplement is checked. */}
+          <div style={{ borderTop: '1px solid #f0ede8', paddingTop: 10 }}>
+            <button
+              type="button"
+              onClick={() => setMicrosOpen(o => !o)}
+              aria-expanded={microsOpen}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                fontSize: 13, fontWeight: 600, color: '#374151',
+              }}
+            >
+              <span aria-hidden="true" style={{ display: 'inline-block', transform: microsOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▸</span>
+              Micronutrients (optional)
+            </button>
+            {microsOpen && (
+              <div style={{ marginTop: 10 }}>
+                <p style={{ margin: '0 0 10px', fontSize: 12, color: '#6b7280', lineHeight: 1.5 }}>
+                  Enter values straight from the label. They count toward your daily micronutrients
+                  (in History) on any day this supplement is checked.
+                </p>
+                {MICRO_GROUPS.map(group => (
+                  <div key={group.key} style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 6 }}>
+                      {group.label}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
+                      {group.nutrients.map(n => (
+                        <div key={n.key}>
+                          <label style={{ fontSize: 12, color: '#6b7280' }}>{n.name} ({n.unit})</label>
+                          <input
+                            type="number" min="0" step="any"
+                            value={form.micros?.[n.key] ?? ''}
+                            onChange={e => setForm(f => ({ ...f, micros: { ...f.micros, [n.key]: e.target.value } }))}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             {editingId && (
               <button type="button" className="btn-secondary" style={{ minHeight: 40 }} onClick={resetForm} disabled={busy}>

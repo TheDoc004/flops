@@ -238,6 +238,7 @@ function createDb(dbPath) {
       carbs_g              REAL NOT NULL DEFAULT 0,
       fat_g                REAL NOT NULL DEFAULT 0,
       counts_toward_macros INTEGER NOT NULL DEFAULT 0,
+      micros_json          TEXT,
       sort_order           INTEGER NOT NULL DEFAULT 0,
       is_deleted           INTEGER NOT NULL DEFAULT 0,
       created_at           TEXT DEFAULT CURRENT_TIMESTAMP
@@ -419,6 +420,12 @@ function createDb(dbPath) {
   }
   if (profileCols.length && !profileCols.includes('dash_supplements_enabled')) {
     db.exec(`ALTER TABLE user_profile ADD COLUMN dash_supplements_enabled INTEGER DEFAULT 1`);
+  }
+
+  // Supplements may predate micronutrient tracking — add the exact-micros column.
+  const supplementCols = db.prepare('PRAGMA table_info(supplements)').all().map(c => c.name);
+  if (supplementCols.length && !supplementCols.includes('micros_json')) {
+    db.exec(`ALTER TABLE supplements ADD COLUMN micros_json TEXT`);
   }
 
   // Workout preset tables may already exist (noop if created above)

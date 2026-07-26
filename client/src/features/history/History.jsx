@@ -9,7 +9,8 @@ import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import Reveal from '@shared/ui/Reveal';
 import { AdherenceCalendarMonth, DashboardAdherencePicker } from '@features/adherence';
-import { sumDayMicros } from '@shared/utils/microNutrients';
+import { sumDayTotalMicros } from '@shared/utils/microNutrients';
+import { fetchSupplementRange } from '@shared/api/supplements';
 import NutritionReport from './NutritionReport';
 
 /** Inclusive list of ISO dates from start..end (capped for safety). */
@@ -48,11 +49,12 @@ export default function History() {
   // above the target streams in after mount (calendar/report data), so a
   // single scroll lands short — nudge it a few times until layout settles.
   useEffect(() => {
-    if (location.hash !== '#goal-adherence') return undefined;
+    const id = location.hash.slice(1); // e.g. #goal-adherence, #micronutrients
+    if (!id) return undefined;
     const scroll = () =>
-      document.getElementById('goal-adherence')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    // Long tail: the calendar above the target fetches its month data, so the
-    // layout can still be growing well past the first second.
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Long tail: content above the target streams in (calendar month data, the
+    // report), so the layout can still be growing well past the first second.
     const timers = [0, 250, 600, 1100, 1800].map(ms => setTimeout(scroll, ms));
     return () => timers.forEach(clearTimeout);
   }, [location.hash]);
@@ -91,12 +93,25 @@ export default function History() {
     setReportLoading(true);
     setReportError('');
     try {
-      const entries = await fetchLogRange(list[0], list[list.length - 1]);
+      const start = list[0];
+      const end = list[list.length - 1];
+      // Meal entries drive macros + micros; taken supplements add exact micros.
+      // The supplement fetch is best-effort so micros still render if it fails.
+      const [entries, suppRange] = await Promise.all([
+        fetchLogRange(start, end),
+        fetchSupplementRange(start, end).catch(() => ({ byDate: {} })),
+      ]);
+      const suppByDate = suppRange?.byDate || {};
       const byDate = {};
       for (const e of entries) (byDate[e.date] ||= []).push(e);
       const days = list.map(date => {
         const es = byDate[date] || [];
-        return { date, entries: es, totals: sumMacros(es), micros: sumDayMicros(es) };
+        return {
+          date,
+          entries: es,
+          totals: sumMacros(es),
+          micros: sumDayTotalMicros({ entries: es, supplements: suppByDate[date] || [] }),
+        };
       });
       setReportDays(days);
       setReportDates(list);
@@ -259,9 +274,9 @@ export default function History() {
         </div>
       </Reveal>
 
-      {/* ── Report ── */}
+      {/* ── Report (micronutrient panel lives inside — anchor for #micronutrients) ── */}
       <Reveal>
-        <div ref={reportRef}>
+        <div ref={reportRef} id="micronutrients" style={{ scrollMarginTop: 90 }}>
           <NutritionReport days={reportDays} loading={reportLoading} error={reportError} />
         </div>
       </Reveal>
