@@ -67,6 +67,26 @@ describe('resolveIngredientSource — macro source hierarchy', () => {
     expect(r.label_ingredient_id).toBeUndefined();
   });
 
+  it('4b. provided macros that identically match a saved ingredient reuse it (dedupe)', () => {
+    // "chicken breast, 165 cal / 31p / 0c / 3.6f per 100g" and the user already
+    // has exactly that saved → link the saved item so recipe-save reuses its id.
+    const ing = row({ name: 'chicken breast', macroSource: 'provided', quantity: 100, unit: 'g', calories: 165, protein: 31, carbs: 0, fat: 3.6 });
+    const library = [lib('Chicken breast', 165, { id: 20, protein_g: 31, carbs_g: 0, fat_g: 3.6 })];
+    const r = resolveIngredientSource(ing, library, []);
+    expect(r.source).toBe('library');
+    expect(r.label_ingredient_id).toBe(20);
+    expect(r.calories).toBe(165);
+  });
+
+  it('4c. provided macros within rounding of a saved ingredient still reuse it', () => {
+    // User typed whole numbers; the saved item has precise decimals.
+    const ing = row({ name: 'oats', macroSource: 'provided', quantity: 50, unit: 'g', calories: 195, protein: 6.5, carbs: 33, fat: 3.5 });
+    const library = [lib('Oats', 389.2, { id: 21, protein_g: 13.1, carbs_g: 66.3, fat_g: 6.9, grams_per_serving: 100 })];
+    const r = resolveIngredientSource(ing, library, []);
+    expect(r.source).toBe('library');
+    expect(r.label_ingredient_id).toBe(21);
+  });
+
   it('5. no macros in the message → falls back to the ingredient library', () => {
     const ing = row({ name: 'carrots', macroSource: 'estimated', quantity: 100, unit: 'g', calories: 999 });
     const library = [lib('Carrots', 41, { id: 7, protein_g: 0.9, carbs_g: 9.6, fat_g: 0.2 })];

@@ -478,6 +478,36 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
     setError('');
   }
 
+  // Create one library ingredient from a reviewed row's nutrition basis. Returns
+  // the new id, or null if the row can't be stored (no basis) or the save fails.
+  // Best-effort: callers never let a failure here block logging/saving.
+  async function createLibraryIngredientFromRow(i) {
+    if (!i || !i.basis || !String(i.name || '').trim()) return null;
+    try {
+      const b = i.basis;
+      const known = SERVING_UNITS.includes(b.unit);
+      const stored = servingToStored({
+        serving_amount: b.amount,
+        serving_unit: known ? b.unit : 'custom',
+        serving_unit_custom: known ? '' : b.unit,
+        gram_equivalent: '',
+      });
+      const created = await createLabelIngredient({
+        name: i.name.trim(),
+        serving_size_text: stored.serving_size_text,
+        calories: b.calories, protein_g: b.protein, carbs_g: b.carbs, fat_g: b.fat,
+        tracking_type: stored.tracking_type,
+        ...(stored.grams_per_serving != null ? { grams_per_serving: stored.grams_per_serving } : {}),
+        ...(stored.serving_quantity != null ? { serving_quantity: stored.serving_quantity } : {}),
+        ...(stored.unit_name != null ? { unit_name: stored.unit_name } : {}),
+        ...(stored.grams_per_unit != null ? { grams_per_unit: stored.grams_per_unit } : {}),
+      });
+      return created && created.id != null ? Number(created.id) : null;
+    } catch {
+      return null; // best-effort — skip this row
+    }
+  }
+
   // Create label-ingredient records for the rows the user checked "Save to
   // library" on (and that aren't already a saved match). Best-effort: a failure
   // on one row never blocks logging. Returns { [idx]: newLabelIngredientId }.
@@ -486,29 +516,52 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
     for (let idx = 0; idx < rows.length; idx++) {
       const i = rows[idx];
       if (!i || !i.saveToLibrary || i.label_ingredient_id || !i.basis || !String(i.name || '').trim()) continue;
-      try {
-        const b = i.basis;
-        const known = SERVING_UNITS.includes(b.unit);
-        const stored = servingToStored({
-          serving_amount: b.amount,
-          serving_unit: known ? b.unit : 'custom',
-          serving_unit_custom: known ? '' : b.unit,
-          gram_equivalent: '',
-        });
-        const created = await createLabelIngredient({
-          name: i.name.trim(),
-          serving_size_text: stored.serving_size_text,
-          calories: b.calories, protein_g: b.protein, carbs_g: b.carbs, fat_g: b.fat,
-          tracking_type: stored.tracking_type,
-          ...(stored.grams_per_serving != null ? { grams_per_serving: stored.grams_per_serving } : {}),
-          ...(stored.serving_quantity != null ? { serving_quantity: stored.serving_quantity } : {}),
-          ...(stored.unit_name != null ? { unit_name: stored.unit_name } : {}),
-          ...(stored.grams_per_unit != null ? { grams_per_unit: stored.grams_per_unit } : {}),
-        });
-        if (created && created.id != null) out[idx] = Number(created.id);
-      } catch { /* best-effort — skip this row, still log the meal */ }
+      const id = await createLibraryIngredientFromRow(i);
+      if (id != null) out[idx] = id;
     }
     return out;
+  }
+
+  // For each reviewed row, resolve a library ingredient id so the saved recipe's
+  // amounts stay editable at log time. Rows already matched to a saved ingredient
+  // reuse that id; every other row with a real quantity gets a NEW library entry
+  // created from its basis. Rows with no quantity ("as estimated") get null and
+  // stay as plain, non-editable recipe lines. Returns an array aligned to `rows`.
+  async function resolveLibraryIdsForRows(rows) {
+    const ids = [];
+    for (let idx = 0; idx < rows.length; idx++) {
+      const i = rows[idx];
+      if (!i || !String(i.name || '').trim()) { ids[idx] = null; continue; }
+      if (i.label_ingredient_id) { ids[idx] = Number(i.label_ingredient_id); continue; }
+      if (!(Number(i.quantity) > 0) || !i.basis) { ids[idx] = null; continue; }
+      ids[idx] = await createLibraryIngredientFromRow(i);
+    }
+    return ids;
+  }
+
+  // Build a recipe's `ingredients` (display lines) and matching
+  // `meal_builder_meta.lines` (library links) from reviewed rows. A line backed
+  // by a library id + a real amount becomes an editable slot at log time; the
+  // rest are plain text lines. `divisor` splits amounts for meal-prep servings.
+  // The two arrays stay index-aligned so listLoggingSlotsFromRecipe pairs them.
+  function buildLibraryBackedIngredients(rows, ids, divisor = 1) {
+    const ingredients = [];
+    const lines = [];
+    rows.forEach((i, idx) => {
+      const name = String(i?.name || '').trim();
+      if (!name) return;
+      const qty = Number(i.quantity) > 0 ? Number(i.quantity) / divisor : 0;
+      const amountText = qty > 0 ? `${fmt(qty)} ${i.unit || ''}`.trim() : 'as estimated';
+      ingredients.push({ kind: 'line', name, amount: amountText });
+      const id = ids[idx];
+      if (id && qty > 0) {
+        const unit = /^(oz|ounce|ounces)$/i.test(i.unit || '') ? 'oz' : 'g';
+        lines.push({ label_ingredient_id: id, amount: String(qty), unit, slot_id: `ai_line_${ingredients.length - 1}` });
+      } else {
+        lines.push({}); // keep index alignment; plain non-editable line
+      }
+    });
+    return { ingredients, lines };
   }
 
   async function logOnce() {
@@ -583,15 +636,11 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
     setError('');
     try {
       const perServing = v => Math.round((v / nServings) * 10) / 10;
-      const ingredients = estimate.ingredients
-        .map(i => {
-          const amount = i.quantity > 0
-            ? `${fmt(i.quantity / nServings)} ${i.unit || ''}`.trim()
-            : 'as estimated';
-          return { kind: 'line', name: i.name, amount };
-        })
-        .filter(i => i.name);
-      const created = await createRecipe({
+      // Back each ingredient with a library entry so per-serving amounts stay
+      // editable at log time; amounts are split across the N servings.
+      const ids = await resolveLibraryIdsForRows(estimate.ingredients);
+      const { ingredients, lines } = buildLibraryBackedIngredients(estimate.ingredients, ids, nServings);
+      await createRecipe({
         name: estimate.mealName.trim() || 'Meal prep',
         serving_size: `1 of ${nServings} meal-prep servings`,
         calories: perServing(totals.calories),
@@ -602,7 +651,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
         recipe_kind: 'limited',
         remaining_uses: nServings,
         max_uses: nServings,
-        meal_builder_meta: { source: 'ai_meal_prep' },
+        meal_builder_meta: { source: 'ai_meal_prep', lines },
       });
       navigate(`/recipes?saved=${encodeURIComponent(`Meal prep saved — ${nServings} servings ready to log.`)}`);
     } catch (e) {
@@ -616,12 +665,11 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
     setBusy('save');
     setError('');
     try {
-      const ingredients = estimate.ingredients
-        .map(i => {
-          const amount = `${i.quantity ? i.quantity : ''} ${i.unit || ''}`.trim() || 'as estimated';
-          return { kind: 'line', name: i.name, amount };
-        })
-        .filter(i => i.name);
+      // Back each ingredient with a library entry and record the link in
+      // meal_builder_meta.lines so every amount is editable when this recipe is
+      // later logged from "Log a Meal" (macros recompute from the library item).
+      const ids = await resolveLibraryIdsForRows(estimate.ingredients);
+      const { ingredients, lines } = buildLibraryBackedIngredients(estimate.ingredients, ids);
       await createRecipe({
         name: estimate.mealName.trim() || 'Meal',
         serving_size: '1 meal',
@@ -630,8 +678,9 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
         carbs_g: totals.carbs,
         fat_g: totals.fat,
         ingredients,
+        meal_builder_meta: { source: 'ai_recipe', lines },
       });
-      navigate(`/recipes?saved=${encodeURIComponent('Recipe saved from AI estimate.')}`);
+      navigate(`/recipes?saved=${encodeURIComponent('Recipe saved — ingredient amounts are editable when you log it.')}`);
     } catch (e) {
       setError(e.message);
       setBusy('');
