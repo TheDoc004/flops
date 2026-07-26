@@ -86,6 +86,7 @@ export default function DayReport({ day }) {
         values={micros?.values}
         confidence={micros?.confidence}
         coverage={micros?.coverage}
+        supplementCount={micros?.supplementCount}
       />
     </div>
   );

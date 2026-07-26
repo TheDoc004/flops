@@ -9,7 +9,8 @@ import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import Reveal from '@shared/ui/Reveal';
 import { AdherenceCalendarMonth, DashboardAdherencePicker } from '@features/adherence';
-import { sumDayMicros } from '@shared/utils/microNutrients';
+import { sumDayTotalMicros } from '@shared/utils/microNutrients';
+import { fetchSupplementRange } from '@shared/api/supplements';
 import NutritionReport from './NutritionReport';
 
 /** Inclusive list of ISO dates from start..end (capped for safety). */
@@ -91,12 +92,25 @@ export default function History() {
     setReportLoading(true);
     setReportError('');
     try {
-      const entries = await fetchLogRange(list[0], list[list.length - 1]);
+      const start = list[0];
+      const end = list[list.length - 1];
+      // Meal entries drive macros + micros; taken supplements add exact micros.
+      // The supplement fetch is best-effort so micros still render if it fails.
+      const [entries, suppRange] = await Promise.all([
+        fetchLogRange(start, end),
+        fetchSupplementRange(start, end).catch(() => ({ byDate: {} })),
+      ]);
+      const suppByDate = suppRange?.byDate || {};
       const byDate = {};
       for (const e of entries) (byDate[e.date] ||= []).push(e);
       const days = list.map(date => {
         const es = byDate[date] || [];
-        return { date, entries: es, totals: sumMacros(es), micros: sumDayMicros(es) };
+        return {
+          date,
+          entries: es,
+          totals: sumMacros(es),
+          micros: sumDayTotalMicros({ entries: es, supplements: suppByDate[date] || [] }),
+        };
       });
       setReportDays(days);
       setReportDates(list);
