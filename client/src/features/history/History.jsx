@@ -49,11 +49,12 @@ export default function History() {
   // above the target streams in after mount (calendar/report data), so a
   // single scroll lands short — nudge it a few times until layout settles.
   useEffect(() => {
-    if (location.hash !== '#goal-adherence') return undefined;
+    const id = location.hash.slice(1); // e.g. #goal-adherence, #micronutrients
+    if (!id) return undefined;
     const scroll = () =>
-      document.getElementById('goal-adherence')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    // Long tail: the calendar above the target fetches its month data, so the
-    // layout can still be growing well past the first second.
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Long tail: content above the target streams in (calendar month data, the
+    // report), so the layout can still be growing well past the first second.
     const timers = [0, 250, 600, 1100, 1800].map(ms => setTimeout(scroll, ms));
     return () => timers.forEach(clearTimeout);
   }, [location.hash]);
@@ -273,9 +274,9 @@ export default function History() {
         </div>
       </Reveal>
 
-      {/* ── Report ── */}
+      {/* ── Report (micronutrient panel lives inside — anchor for #micronutrients) ── */}
       <Reveal>
-        <div ref={reportRef}>
+        <div ref={reportRef} id="micronutrients" style={{ scrollMarginTop: 90 }}>
           <NutritionReport days={reportDays} loading={reportLoading} error={reportError} />
         </div>
       </Reveal>
