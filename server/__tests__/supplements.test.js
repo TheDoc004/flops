@@ -97,3 +97,46 @@ describe('/api/supplements — micronutrients', () => {
     expect(res.body.byDate['2026-07-24']).toBeUndefined();
   });
 });
+
+describe('/api/supplements/scan-label', () => {
+  const OLD_ENV = { ...process.env };
+  afterEach(() => {
+    process.env = { ...OLD_ENV };
+    delete global.fetch;
+  });
+
+  it('400 when no image body is sent', async () => {
+    const { app } = buildApp();
+    const res = await request(app).post('/api/supplements/scan-label').set('Content-Type', 'image/jpeg').send(Buffer.alloc(0));
+    expect(res.status).toBe(400);
+  });
+
+  it('503 when no AI provider is configured', async () => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.AI_PROVIDER;
+    const { app } = buildApp();
+    const res = await request(app).post('/api/supplements/scan-label').set('Content-Type', 'image/jpeg').send(Buffer.from([1, 2, 3]));
+    expect(res.status).toBe(503);
+  });
+
+  it('returns the shaped label suggestion from the vision AI', async () => {
+    process.env.AI_PROVIDER = 'openai';
+    process.env.OPENAI_API_KEY = 'test';
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: JSON.stringify({
+          name: 'Daily Multi', dose_text: '1 tablet',
+          micros: { vitamin_d_mcg: 25, iron_mg: 8, junk: 5 }, confidence: 'high',
+        }) } }],
+      }),
+    }));
+    const { app } = buildApp();
+    const res = await request(app).post('/api/supplements/scan-label').set('Content-Type', 'image/jpeg').send(Buffer.from([1, 2, 3]));
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('Daily Multi');
+    expect(res.body.dose_text).toBe('1 tablet');
+    expect(res.body.micros).toEqual({ vitamin_d_mcg: 25, iron_mg: 8 });
+  });
+});

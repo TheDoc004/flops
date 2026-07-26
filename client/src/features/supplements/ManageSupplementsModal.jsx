@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   createSupplement,
   deleteSupplement,
   fetchSupplements,
+  scanSupplementLabel,
   updateSupplement,
 } from '@shared/api/supplements';
 import { MICRO_GROUPS } from '@shared/config/microNutrients';
+import { LabelCropModal } from '@features/label-ocr';
 
 const EMPTY_FORM = {
   name: '',
@@ -60,6 +62,11 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
   const [microsOpen, setMicrosOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Label-scan flow: pick/take a photo → crop → AI reads it → prefill the form.
+  const [scanImageSrc, setScanImageSrc] = useState(null);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanNote, setScanNote] = useState('');
+  const fileInputRef = useRef(null);
 
   async function reload() {
     const list = await fetchSupplements();
@@ -85,6 +92,60 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
     setEditingId(null);
     setForm(EMPTY_FORM);
     setMicrosOpen(false);
+    setScanNote('');
+  }
+
+  // Chosen/taken photo → open the crop modal.
+  function onPickScanPhoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+    setError('');
+    setScanNote('');
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') setScanImageSrc(reader.result);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Cropped image → AI reads the panel → prefill the form (never auto-saves).
+  async function runScan(croppedUri) {
+    setScanImageSrc(null);
+    setScanBusy(true);
+    setError('');
+    setScanNote('');
+    try {
+      const blob = await (await fetch(croppedUri)).blob();
+      const r = await scanSupplementLabel(blob);
+      const microKeys = Object.keys(r.micros || {});
+      const hasAny = microKeys.length > 0 || r.macros || r.name || r.dose_text;
+      if (!hasAny) {
+        setScanNote("Couldn't read any values — try a clearer, closer photo of the Supplement Facts panel.");
+        return;
+      }
+      setForm(f => ({
+        ...f,
+        // Don't clobber anything the user already typed; fill blanks only.
+        name: f.name.trim() ? f.name : (r.name || ''),
+        dose_text: f.dose_text.trim() ? f.dose_text : (r.dose_text || ''),
+        // Macros: if the label listed them, turn on counting and fill.
+        counts_toward_macros: r.macros ? true : f.counts_toward_macros,
+        calories: r.macros ? String(r.macros.calories) : f.calories,
+        protein_g: r.macros ? String(r.macros.protein_g) : f.protein_g,
+        carbs_g: r.macros ? String(r.macros.carbs_g) : f.carbs_g,
+        fat_g: r.macros ? String(r.macros.fat_g) : f.fat_g,
+        // Micros: scanned values win for the keys read.
+        micros: { ...f.micros, ...Object.fromEntries(microKeys.map(k => [k, String(r.micros[k])])) },
+      }));
+      if (microKeys.length > 0) setMicrosOpen(true);
+      const conf = r.confidence === 'high' ? '' : ` (${r.confidence} confidence — double-check the values)`;
+      setScanNote(`Read ${microKeys.length} micronutrient${microKeys.length === 1 ? '' : 's'} from the label${conf}. Review and save.`);
+    } catch (err) {
+      setError(err.message || 'Failed to scan the label.');
+    } finally {
+      setScanBusy(false);
+    }
   }
 
   async function handleSubmit(e) {
@@ -138,6 +199,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
   }
 
   return (
+    <>
     <div
       onClick={onClose}
       style={{
@@ -203,6 +265,30 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
           <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
             {editingId ? 'Edit supplement' : 'Add a supplement'}
           </div>
+
+          {/* Fast path: read name/dose/macros/micros straight off the label. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={onPickScanPhoto}
+            style={{ display: 'none' }}
+          />
+          <button
+            type="button"
+            className={scanBusy ? 'btn-secondary btn-loading' : 'btn-secondary'}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={scanBusy || busy}
+            style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start' }}
+          >
+            {scanBusy ? 'Reading label…' : '📷 Scan Supplement Facts label'}
+          </button>
+          {scanNote && (
+            <p style={{ margin: 0, fontSize: 12.5, color: '#1d7a5f', background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5 }}>
+              {scanNote}
+            </p>
+          )}
           <div>
             <label style={{ fontSize: 12, color: '#6b7280' }}>Name</label>
             <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Whey Protein" required />
@@ -288,5 +374,20 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
         </form>
       </div>
     </div>
+
+      {/* Crop the photo before sending it to the AI reader. Rendered outside the
+          overlay above, in a higher stacking context, so it sits on top and its
+          backdrop clicks don't close the manage sheet. */}
+      {scanImageSrc && (
+        <div style={{ position: 'relative', zIndex: 2000 }}>
+          <LabelCropModal
+            open
+            imageSrc={scanImageSrc}
+            onClose={() => setScanImageSrc(null)}
+            onApply={uri => void runScan(uri)}
+          />
+        </div>
+      )}
+    </>
   );
 }

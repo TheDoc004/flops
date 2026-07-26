@@ -26,6 +26,17 @@ export async function fetchSupplementRange(start, end) {
   return jsonOrThrow(res, 'Failed to load supplement range');
 }
 
+// Send a (cropped) Supplement Facts photo → suggested { name, dose_text, macros, micros }.
+// The image is posted as a raw binary body, matching the server's express.raw route.
+export async function scanSupplementLabel(imageBlob) {
+  const res = await fetch(apiUrl('/api/supplements/scan-label'), {
+    method: 'POST',
+    headers: { 'Content-Type': imageBlob.type || 'image/jpeg' },
+    body: imageBlob,
+  });
+  return jsonOrThrow(res, 'Failed to scan supplement label');
+}
+
 export async function createSupplement(payload) {
   const res = await fetch(apiUrl('/api/supplements'), {
     method: 'POST',
