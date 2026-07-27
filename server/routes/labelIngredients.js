@@ -1,5 +1,16 @@
 const express = require('express');
 const { normalizeBarcode } = require('../openFoodFactsService');
+const { buildMicrosBlob } = require('../microNutrients');
+
+/**
+ * Micros supplied with an ingredient come off the manufacturer's panel (barcode
+ * import), so they store at high confidence — the log route prefers them over
+ * an AI estimate. Returns null when nothing usable was sent.
+ */
+function microsJsonFromBody(body) {
+  const blob = buildMicrosBlob(body?.micros, { confidence: 'high', notes: 'From product label' });
+  return blob ? JSON.stringify(blob) : null;
+}
 
 function normalizeOptionalNumber(v, { min = 0 } = {}) {
   if (v === null || v === undefined || v === '') return null;
@@ -32,7 +43,7 @@ function createLabelIngredientsRouter(db) {
     const rows = db
       .prepare(
         `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
-                source_type, use_count, last_used_at, barcode,
+                source_type, use_count, last_used_at, barcode, micros_json,
                 tracking_type, unit_name, serving_quantity, grams_per_unit,
                 CASE WHEN photo_data_uri IS NOT NULL AND LENGTH(photo_data_uri) > 0 THEN 1 ELSE 0 END AS has_photo
          FROM label_ingredients WHERE user_id = ? ORDER BY name`
@@ -48,7 +59,7 @@ function createLabelIngredientsRouter(db) {
     const row = db
       .prepare(
         `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri,
-                source_type, use_count, last_used_at, barcode,
+                source_type, use_count, last_used_at, barcode, micros_json,
                 tracking_type, unit_name, serving_quantity, grams_per_unit
          FROM label_ingredients WHERE id = ? AND user_id = ?`
       )
@@ -85,6 +96,7 @@ function createLabelIngredientsRouter(db) {
     // Unusable barcodes are dropped rather than rejected — a bad code should
     // never block saving an otherwise-good ingredient.
     const barcode = normalizeBarcode(req.body?.barcode);
+    const micros_json = microsJsonFromBody(req.body);
     let photo_data_uri = req.body?.photo_data_uri;
     if (photo_data_uri != null) {
       photo_data_uri = String(photo_data_uri);
@@ -102,8 +114,8 @@ function createLabelIngredientsRouter(db) {
       .prepare(
         `INSERT INTO label_ingredients (
           user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri,
-          source_type, use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit, barcode
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?)`
+          source_type, use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit, barcode, micros_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         userId,
@@ -123,13 +135,14 @@ function createLabelIngredientsRouter(db) {
         unit_name,
         serving_quantity,
         grams_per_unit,
-        barcode
+        barcode,
+        micros_json
       );
 
     const row = db
       .prepare(
         `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
-                source_type, use_count, last_used_at, barcode, tracking_type, unit_name, serving_quantity, grams_per_unit,
+                source_type, use_count, last_used_at, barcode, micros_json, tracking_type, unit_name, serving_quantity, grams_per_unit,
                 CASE WHEN photo_data_uri IS NOT NULL AND LENGTH(photo_data_uri) > 0 THEN 1 ELSE 0 END AS has_photo
          FROM label_ingredients WHERE id = ?`
       )
@@ -169,13 +182,17 @@ function createLabelIngredientsRouter(db) {
     // Only set when supplied (COALESCE below) — the edit form never sends a
     // barcode, and an edit must not wipe one an earlier scan attached.
     const barcode = normalizeBarcode(req.body?.barcode);
+    // Same rule as barcode: absent means "leave what's stored", so editing an
+    // ingredient's macros never silently drops its label micros.
+    const micros_json = microsJsonFromBody(req.body);
 
     db.prepare(
       `UPDATE label_ingredients
        SET name = ?, base_label = ?, brand_name = ?, serving_size_text = ?, grams_per_serving = ?,
            calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
            tracking_type = ?, unit_name = ?, serving_quantity = ?, grams_per_unit = ?,
-           barcode = COALESCE(?, barcode)
+           barcode = COALESCE(?, barcode),
+           micros_json = COALESCE(?, micros_json)
        WHERE id = ? AND user_id = ?`
     ).run(
       name,
@@ -193,13 +210,14 @@ function createLabelIngredientsRouter(db) {
       serving_quantity,
       grams_per_unit,
       barcode,
+      micros_json,
       id,
       userId
     );
 
     const row = db.prepare(
       `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
-              source_type, use_count, last_used_at, barcode, tracking_type, unit_name, serving_quantity, grams_per_unit,
+              source_type, use_count, last_used_at, barcode, micros_json, tracking_type, unit_name, serving_quantity, grams_per_unit,
               CASE WHEN photo_data_uri IS NOT NULL AND LENGTH(photo_data_uri) > 0 THEN 1 ELSE 0 END AS has_photo
        FROM label_ingredients WHERE id = ? AND user_id = ?`
     ).get(id, userId);

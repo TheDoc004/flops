@@ -68,6 +68,41 @@ function kcalFor(nutriments, suffix) {
   return kj == null ? null : kj / 4.184;
 }
 
+/**
+ * Open Food Facts nutriment -> our canonical micro key, with the factor that
+ * converts OFF's value into our unit. OFF stores these in GRAMS (Cheerios
+ * lists vitamin-a as 0.00015, i.e. 150 mcg), so everything scales up.
+ */
+const MICRO_SOURCES = {
+  sodium: ['sodium_mg', 1000],
+  potassium: ['potassium_mg', 1000],
+  calcium: ['calcium_mg', 1000],
+  iron: ['iron_mg', 1000],
+  magnesium: ['magnesium_mg', 1000],
+  zinc: ['zinc_mg', 1000],
+  'vitamin-a': ['vitamin_a_mcg', 1e6],
+  'vitamin-c': ['vitamin_c_mg', 1000],
+  'vitamin-d': ['vitamin_d_mcg', 1e6],
+  folates: ['folate_mcg', 1e6],
+  'vitamin-b12': ['vitamin_b12_mcg', 1e6],
+  fiber: ['fiber_g', 1],
+};
+
+/**
+ * Micronutrients for one basis, as { key: amount } in our units. These are off
+ * the manufacturer's own panel, so they beat an AI estimate — the log route
+ * prefers them and only asks the AI to fill what's missing.
+ */
+function microsFor(nutriments, suffix) {
+  const out = {};
+  for (const [offKey, [key, factor]] of Object.entries(MICRO_SOURCES)) {
+    const raw = num(nutriments[`${offKey}_${suffix}`]);
+    if (raw == null || raw <= 0) continue;
+    out[key] = Math.round(raw * factor * 100) / 100;
+  }
+  return out;
+}
+
 /** Macros for one basis. Missing values stay null so the UI can leave them blank. */
 function macrosFor(nutriments, suffix) {
   return {
@@ -117,28 +152,38 @@ function shapeOffProduct(product, code) {
   let serving_amount;
   let serving_unit;
   let macros;
+  // Micros follow the macros' basis exactly, so the two always describe the
+  // same portion — a serving's macros can't sit next to per-100g micros.
+  let micros;
   if (servingAmount != null && servingAmount > 0 && hasAnyMacro(perServing)) {
     basis = 'serving';
     serving_amount = servingAmount;
     serving_unit = servingUnit;
     macros = perServing;
+    micros = microsFor(nutriments, 'serving');
   } else if (servingAmount != null && servingAmount > 0 && hasAnyMacro(per100)) {
     basis = 'serving_derived';
     serving_amount = servingAmount;
     serving_unit = servingUnit;
     macros = scaleMacros(per100, servingAmount / 100);
+    micros = roundMacros(scaleMacros(microsFor(nutriments, '100g'), servingAmount / 100));
   } else if (hasAnyMacro(per100)) {
     basis = '100g';
     serving_amount = 100;
     serving_unit = 'g';
     macros = per100;
+    micros = microsFor(nutriments, '100g');
   } else {
-    // Product exists but carries no usable nutrition — the form still gets the
-    // name/brand so OCR or manual entry can finish the job.
+    // Product exists but carries no usable macros — the form still gets the
+    // name/brand so OCR or manual entry can finish the job. Micros can still be
+    // on record though (mineral water lists calcium and no calories), so keep
+    // whichever basis has them rather than throwing them away.
     basis = 'none';
     serving_amount = null;
     serving_unit = 'g';
     macros = { calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null };
+    const perServingMicros = microsFor(nutriments, 'serving');
+    micros = Object.keys(perServingMicros).length ? perServingMicros : microsFor(nutriments, '100g');
   }
 
   return {
@@ -153,6 +198,8 @@ function shapeOffProduct(product, code) {
     serving_size_text: String(product?.serving_size || '').trim().slice(0, 120),
     package_quantity: String(product?.quantity || '').trim().slice(0, 64),
     macros: roundMacros(macros),
+    // Straight off the manufacturer's panel — more trustworthy than an estimate.
+    micros,
     image_url: String(product?.image_front_small_url || '').trim(),
   };
 }

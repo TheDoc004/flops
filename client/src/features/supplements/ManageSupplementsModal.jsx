@@ -70,6 +70,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
   const [scanBusy, setScanBusy] = useState(false);
   const [scanNote, setScanNote] = useState('');
   const fileInputRef = useRef(null);
+  const dialogRef = useRef(null);
   // Name-lookup flow: type a product → NIH database results → pick → prefill.
   // This is the primary path; the photo scan is the fallback for what it lacks.
   const [lookupQuery, setLookupQuery] = useState('');
@@ -328,25 +329,18 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
 
   return (
     <>
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.45)',
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 0,
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: '#fff', width: '100%', maxWidth: 520, maxHeight: '92vh', overflowY: 'auto',
-          borderRadius: '16px 16px 0 0', padding: '20px 18px calc(20px + env(safe-area-inset-bottom))',
-          boxShadow: '0 -6px 30px rgba(0,0,0,0.18)',
-        }}
+      {/* Native <dialog>, like Log a Meal and the ingredient form: centered, with
+          the shared backdrop, rise-in animation and Esc handling from index.css
+          rather than a hand-rolled bottom sheet. */}
+      <dialog
+        ref={el => { dialogRef.current = el; if (el && !el.open) el.showModal(); }}
+        onClose={onClose}
+        style={{ width: 'min(560px, 92vw)', maxHeight: '88vh', overflowY: 'auto' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <h3 style={{ margin: 0 }}>Manage supplements</h3>
-          <button type="button" className="btn-secondary" onClick={onClose} style={{ minHeight: 36, padding: '4px 12px' }}>
-            Done
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+          <h2 style={{ margin: 0 }}>Manage supplements</h2>
+          <button type="button" className="modal-close-x" aria-label="Close" onClick={() => dialogRef.current?.close()}>
+            ✕
           </button>
         </div>
 
@@ -667,12 +661,11 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </dialog>
 
       {/* Crop the photo before sending it to the AI reader. Rendered outside the
-          overlay above, in a higher stacking context, so it sits on top and its
-          backdrop clicks don't close the manage sheet. */}
+          dialog above, in a higher stacking context, so it sits on top and its
+          backdrop clicks don't close the manage dialog. */}
       {scanImageSrc && (
         <div style={{ position: 'relative', zIndex: 2000 }}>
           <LabelCropModal

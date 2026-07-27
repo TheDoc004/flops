@@ -84,6 +84,8 @@ export default function Ingredients() {
   // The scanned code travels with the form so it is saved on the ingredient —
   // that is what makes a later re-scan find this item instead of duplicating it.
   const [scannedBarcode, setScannedBarcode] = useState(null);
+  // Label micros from a barcode lookup, saved with the ingredient.
+  const [scannedMicros, setScannedMicros] = useState(null);
   const [notice, setNotice] = useState('');
 
   async function load() {
@@ -138,6 +140,7 @@ export default function Ingredients() {
     setLabelScanFeedback(null);
     setLabelScanFieldStatus(null);
     setScannedBarcode(null);
+    setScannedMicros(null);
   }
 
   /**
@@ -157,7 +160,15 @@ export default function Ingredients() {
     const { next, scanFeedback, fieldStatus } = mergeBarcodeProductIntoIngredientForm(form, product);
     setForm(next);
     setScannedBarcode(product?.barcode || null);
-    setLabelScanFeedback(scanFeedback);
+    // Micronutrients off the manufacturer's panel. There's no UI to edit 12
+    // nutrients here, so they ride along invisibly and are stored with the
+    // ingredient — where they later beat an AI estimate at log time.
+    const micros = product?.micros && Object.keys(product.micros).length ? product.micros : null;
+    setScannedMicros(micros);
+    const microNote = micros
+      ? [`Captured ${Object.keys(micros).length} micronutrients from the label — these will be used instead of estimates.`]
+      : [];
+    setLabelScanFeedback(scanFeedback ? [...scanFeedback, ...microNote] : microNote.length ? microNote : null);
     setLabelScanFieldStatus(fieldStatus);
   }
 
@@ -265,6 +276,7 @@ export default function Ingredients() {
         fiber_g: form.fiber_g === '' ? undefined : Number(form.fiber_g),
         source_type,
         barcode: scannedBarcode || undefined,
+        micros: scannedMicros || undefined,
         tracking_type: stored.tracking_type,
         unit_name: stored.unit_name,
         serving_quantity: stored.serving_quantity,

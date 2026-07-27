@@ -198,6 +198,19 @@ Coverage is uneven — niche and store-brand products are often missing, so OCR 
 stay as fallbacks and the not-found message points at them. Open Food Facts is crowd-sourced,
 so the review box always says to check the numbers against the packaging.
 
+**Micronutrients from the label (2026-07-27).** Barcode import also captures OFF's
+micronutrients into `label_ingredients.micros_json` (per serving, high confidence). At log time
+`server/labelMicros.js` prefers those measured values over AI estimates, asking the AI only about
+ingredients with nothing stored and merging **per nutrient**. A meal built entirely from barcoded
+ingredients makes **no AI call at all**. Coverage varies: Honey Nut Cheerios gives 9 of 12
+nutrients, Oreo 7, Pringles 4, Nutella 1 — fortified foods do best.
+
+> **Typing a barcode already works** (the scanner modal has a number box), which is what makes
+> this usable on desktop. But it only helps for *food*: supplement micros cannot be reached by
+> barcode — the NIH database isn't UPC-searchable (digit queries return 0 hits, there is no `upc`
+> parameter, and querying the stored formatted string returns unrelated products), and Open Food
+> Facts' supplement records carry no vitamins or minerals. Use the name lookup for supplements.
+
 **Known limits / next steps:** camera needs a secure context, so scanning from a phone over the
 LAN dev IP won't work (localhost and real HTTPS do). Supplements do not have barcode scanning
 yet — deliberately deferred, and OFF coverage is weakest there. Values are **as-sold**, which

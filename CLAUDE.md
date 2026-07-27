@@ -190,7 +190,9 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 `body_weights` — `user_id, date, weight_kg`
 
 ### Ingredients
-`label_ingredients` — `id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri, source_type (manual|scanned_label|built_in|barcode), use_count, last_used_at, barcode`
+`label_ingredients` — `id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri, source_type (manual|scanned_label|built_in|barcode), use_count, last_used_at, barcode, micros_json`
+
+**Micronutrient precedence (log time).** `server/labelMicros.js` sums micros from logged rows whose `label_ingredient_id` has a stored `micros_json` (captured on barcode import, per serving), scaled by the amount logged. The AI estimator is asked only about the remaining rows, and results merge **per nutrient** — a measured value always beats an estimate. All rows covered → no AI call and `high` confidence; a partial mix stores `medium`.
 
 ### Training / Workouts
 `exercise_library` — `id, name, primary_muscle, secondary_muscles (JSON array), movement_type (push|pull|legs|core|cardio), equipment (barbell|dumbbell|cable|bodyweight|machine)` — seeded with ~54 common exercises; not user-editable yet
