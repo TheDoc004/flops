@@ -12,6 +12,20 @@ import {
 import { MICRO_GROUPS } from '@shared/config/microNutrients';
 import { LabelCropModal } from '@features/label-ocr';
 
+// Section headings match the ingredient form's serif treatment so the two
+// "add a thing" surfaces read as one family.
+const SECTION_HEADING = {
+  margin: '0 0 10px',
+  fontSize: 15,
+  fontWeight: 400,
+  color: 'var(--color-primary-ink)',
+  fontFamily: "'DM Serif Display', Georgia, serif",
+};
+
+// Field labels sit at 13px, not 12px — small enough to defer to the value,
+// big enough to actually read.
+const FIELD_LABEL = { fontSize: 13, color: '#6b7280' };
+
 const EMPTY_FORM = {
   name: '',
   dose_text: '',
@@ -82,6 +96,12 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
   // tell near-identical database entries apart.
   const [preview, setPreview] = useState(null);
   const [expandedVersions, setExpandedVersions] = useState(null); // group id
+
+  // Shown on the collapsed micros header, so a filled-in section isn't hidden
+  // behind a closed expander that looks identical to an empty one.
+  const microCount = Object.values(form.micros || {}).filter(
+    v => v !== '' && Number.isFinite(Number(v)) && Number(v) > 0
+  ).length;
   // Where the current micro values came from — decides the confidence stored.
   const [microsSource, setMicrosSource] = useState(null); // 'label' | 'estimate'
 
@@ -347,6 +367,9 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
         {error && <p className="error">{error}</p>}
 
         {/* Existing list */}
+        {!loading && items.length > 0 && (
+          <h4 style={SECTION_HEADING}>Your supplements ({items.length})</h4>
+        )}
         {loading ? (
           <p className="empty-state" style={{ padding: '12px 0' }}>Loading…</p>
         ) : items.length === 0 ? (
@@ -354,7 +377,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
             No supplements yet — add your first below.
           </p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
             {items.map(s => (
               <div
                 key={s.id}
@@ -383,210 +406,234 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
         )}
 
         {/* Add / edit form */}
-        <form onSubmit={handleSubmit} style={{ borderTop: '1px solid #f0ede8', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-            {editingId ? 'Edit supplement' : 'Add a supplement'}
-          </div>
-
-          {/* Primary path: type the product name, no photo needed. */}
-          {!editingId && (
-            <div style={{ padding: '12px 14px', background: '#f9fafb', border: '1px solid #f0ede8', borderRadius: 10 }}>
-              <strong style={{ display: 'block', fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
-                Find it by name:
-              </strong>
-              <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-                Searches the NIH supplement label database — real label values, no photo.
-              </p>
-              <input
-                value={lookupQuery}
-                onChange={e => {
-                  setLookupQuery(e.target.value);
-                  if (e.target.value.trim().length < 2) {
-                    setLookupResults([]);
-                    setLookupSearched(false);
-                  }
-                }}
-                placeholder="e.g. Centrum Men, Nordic Naturals Omega"
-                aria-label="Search supplements by name"
-                style={{ width: '100%' }}
-              />
-
-              {lookupBusy && (
-                <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>Searching…</p>
-              )}
-
-              {/* Preview: see the actual values before they touch the form. */}
-              {preview && (
-                <div style={{ marginTop: 10, padding: '10px 12px', background: '#fff', border: '1px solid #c7d2fe', borderRadius: 8 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{preview.name}</div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
-                    {[preview.brand, preview.dose_text && `per ${preview.dose_text}`].filter(Boolean).join(' · ')}
-                  </div>
-
-                  {Object.keys(preview.micros || {}).length > 0 ? (
-                    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '2px 12px' }}>
-                      {MICRO_GROUPS.flatMap(g => g.nutrients)
-                        .filter(n => preview.micros[n.key] != null)
-                        .map(n => (
-                          <li key={n.key} style={{ fontSize: 13, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                            <span style={{ color: '#4b5563' }}>{n.name}</span>
-                            <span style={{ fontWeight: 600 }}>{preview.micros[n.key]} {n.unit}</span>
-                          </li>
-                        ))}
-                    </ul>
-                  ) : (
-                    <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>
-                      No micronutrients this app tracks.
-                    </p>
-                  )}
-
-                  {preview.macros && (
-                    <p style={{ margin: '8px 0 0', fontSize: 13, color: '#4b5563' }}>
-                      {Math.round(preview.macros.calories)} cal · P {preview.macros.protein_g} · C {preview.macros.carbs_g} · F {preview.macros.fat_g}
-                    </p>
-                  )}
-                  {preview.notes && (
-                    <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#92400e', lineHeight: 1.5 }}>{preview.notes}</p>
-                  )}
-
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                    <button type="button" className="btn-primary" style={{ minHeight: 40 }} onClick={usePreviewedProduct}>
-                      Use this product
-                    </button>
-                    <button type="button" className="btn-secondary" style={{ minHeight: 40 }} onClick={() => setPreview(null)}>
-                      Back to results
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {!preview && lookupResults.length > 0 && (
-                <ul style={{ listStyle: 'none', margin: '10px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
-                  {lookupResults.map(hit => {
-                    // The details that actually separate near-identical entries.
-                    const facts = [
-                      hit.form,
-                      hit.net_contents,
-                      hit.nutrient_count ? `${hit.nutrient_count} nutrients` : '',
-                      hit.entry_date ? `label from ${hit.entry_date.slice(0, 4)}` : '',
-                    ].filter(Boolean);
-                    return (
-                      <li key={hit.id}>
-                        <button
-                          type="button"
-                          onClick={() => void previewFromDatabase(hit.id)}
-                          disabled={lookupBusy}
-                          style={{
-                            width: '100%', textAlign: 'left', background: '#fff', border: '1px solid #e5e7eb',
-                            borderRadius: 8, padding: '8px 10px', minHeight: 44, cursor: 'pointer', font: 'inherit',
-                          }}
-                        >
-                          <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>
-                            {hit.name}
-                            {hit.off_market && (
-                              <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 4, padding: '1px 5px' }}>
-                                discontinued
-                              </span>
-                            )}
-                          </span>
-                          <span style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>
-                            {hit.brand || 'Unknown brand'}
-                          </span>
-                          <span style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>{facts.join(' · ')}</span>
-                        </button>
-
-                        {/* Same product, earlier labels — kept out of the way. */}
-                        {hit.older_versions?.length > 0 && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setExpandedVersions(expandedVersions === hit.id ? null : hit.id)}
-                              style={{ background: 'none', border: 'none', padding: '4px 10px', font: 'inherit', fontSize: 12, color: 'var(--color-text-muted)', cursor: 'pointer', textDecoration: 'underline' }}
-                            >
-                              {expandedVersions === hit.id ? 'Hide' : `${hit.older_versions.length} earlier label${hit.older_versions.length === 1 ? '' : 's'}`}
-                            </button>
-                            {expandedVersions === hit.id && (
-                              <ul style={{ listStyle: 'none', margin: '2px 0 0 12px', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                {hit.older_versions.map(v => (
-                                  <li key={v.id}>
-                                    <button
-                                      type="button"
-                                      onClick={() => void previewFromDatabase(v.id)}
-                                      disabled={lookupBusy}
-                                      style={{
-                                        width: '100%', textAlign: 'left', background: '#f9fafb', border: '1px solid #e5e7eb',
-                                        borderRadius: 6, padding: '6px 10px', minHeight: 36, cursor: 'pointer', font: 'inherit', fontSize: 12, color: '#4b5563',
-                                      }}
-                                    >
-                                      {[v.entry_date ? `label from ${v.entry_date.slice(0, 4)}` : '', v.net_contents, v.nutrient_count ? `${v.nutrient_count} nutrients` : '', v.off_market ? 'discontinued' : '']
-                                        .filter(Boolean)
-                                        .join(' · ')}
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-
-              {lookupSearched && !lookupBusy && lookupResults.length === 0 && (
-                <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
-                  Nothing found — it may not be in the database (it covers US products).
-                </p>
-              )}
-
-              {/* Fallback when the database comes up short. */}
-              {lookupQuery.trim().length >= 2 && (
-                <button
-                  type="button"
-                  className={estimateBusy ? 'btn-secondary btn-loading' : 'btn-secondary'}
-                  onClick={() => void runEstimate()}
-                  disabled={estimateBusy || lookupBusy || busy}
-                  style={{ marginTop: 10, minHeight: 40 }}
-                >
-                  {estimateBusy ? 'Estimating…' : '✨ Estimate from the name instead'}
-                </button>
-              )}
+        <form onSubmit={handleSubmit} style={{ borderTop: '1px solid #f0ede8', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Editing is easy to miss when the form sits below the list, so say
+              plainly which supplement is being changed. */}
+          {editingId ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8 }}>
+              <span style={{ fontSize: 14 }}>
+                Editing <strong>{form.name || 'supplement'}</strong>
+              </span>
+              <button type="button" className="btn-secondary" style={{ fontSize: 13, padding: '4px 12px', minHeight: 32 }} onClick={resetForm} disabled={busy}>
+                Add a new one instead
+              </button>
             </div>
+          ) : (
+            <h4 style={SECTION_HEADING}>Add a supplement</h4>
           )}
 
-          {/* Fallback path: read name/dose/macros/micros straight off the label. */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={onPickScanPhoto}
-            style={{ display: 'none' }}
-          />
-          <button
-            type="button"
-            className={scanBusy ? 'btn-secondary btn-loading' : 'btn-secondary'}
-            onClick={() => fileInputRef.current?.click()}
-            disabled={scanBusy || busy}
-            style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start' }}
-          >
-            {scanBusy ? 'Reading label…' : '📷 Scan Supplement Facts label'}
-          </button>
+          {/* Two ways to fill this in without typing, framed as alternatives —
+              you pick based on whether the product is in the database. Available
+              while editing too, so an existing entry can be refreshed from a
+              label rather than retyped. */}
+          <div style={{ padding: '12px 14px', background: '#f9fafb', border: '1px solid #f0ede8', borderRadius: 10 }}>
+            <strong style={{ display: 'block', fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
+              {editingId ? 'Refresh from a label:' : 'Fill it in for me:'}
+            </strong>
+            <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+              Search the NIH supplement label database — real label values, no photo needed.
+            </p>
+            <input
+              value={lookupQuery}
+              onChange={e => {
+                setLookupQuery(e.target.value);
+                if (e.target.value.trim().length < 2) {
+                  setLookupResults([]);
+                  setLookupSearched(false);
+                }
+              }}
+              placeholder="e.g. Centrum Men, Nordic Naturals Omega"
+              aria-label="Search supplements by name"
+              style={{ width: '100%' }}
+            />
+
+            {lookupBusy && (
+              <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>Searching…</p>
+            )}
+
+            {/* Preview: see the actual values before they touch the form. */}
+            {preview && (
+              <div style={{ marginTop: 10, padding: '10px 12px', background: '#fff', border: '1px solid #c7d2fe', borderRadius: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{preview.name}</div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+                  {[preview.brand, preview.dose_text && `per ${preview.dose_text}`].filter(Boolean).join(' · ')}
+                </div>
+
+                {Object.keys(preview.micros || {}).length > 0 ? (
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '2px 12px' }}>
+                    {MICRO_GROUPS.flatMap(g => g.nutrients)
+                      .filter(n => preview.micros[n.key] != null)
+                      .map(n => (
+                        <li key={n.key} style={{ fontSize: 13, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <span style={{ color: '#4b5563' }}>{n.name}</span>
+                          <span style={{ fontWeight: 600 }}>{preview.micros[n.key]} {n.unit}</span>
+                        </li>
+                      ))}
+                  </ul>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>
+                    No micronutrients this app tracks.
+                  </p>
+                )}
+
+                {preview.macros && (
+                  <p style={{ margin: '8px 0 0', fontSize: 13, color: '#4b5563' }}>
+                    {Math.round(preview.macros.calories)} cal · P {preview.macros.protein_g} · C {preview.macros.carbs_g} · F {preview.macros.fat_g}
+                  </p>
+                )}
+                {preview.notes && (
+                  <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#92400e', lineHeight: 1.5 }}>{preview.notes}</p>
+                )}
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn-primary" style={{ minHeight: 40 }} onClick={usePreviewedProduct}>
+                    Use this product
+                  </button>
+                  <button type="button" className="btn-secondary" style={{ minHeight: 40 }} onClick={() => setPreview(null)}>
+                    Back to results
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!preview && lookupResults.length > 0 && (
+              <ul style={{ listStyle: 'none', margin: '10px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+                {lookupResults.map(hit => {
+                  // The details that actually separate near-identical entries.
+                  const facts = [
+                    hit.form,
+                    hit.net_contents,
+                    hit.nutrient_count ? `${hit.nutrient_count} nutrients` : '',
+                    hit.entry_date ? `label from ${hit.entry_date.slice(0, 4)}` : '',
+                  ].filter(Boolean);
+                  return (
+                    <li key={hit.id}>
+                      <button
+                        type="button"
+                        onClick={() => void previewFromDatabase(hit.id)}
+                        disabled={lookupBusy}
+                        style={{
+                          width: '100%', textAlign: 'left', background: '#fff', border: '1px solid #e5e7eb',
+                          borderRadius: 8, padding: '8px 10px', minHeight: 44, cursor: 'pointer', font: 'inherit',
+                        }}
+                      >
+                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>
+                          {hit.name}
+                          {hit.off_market && (
+                            <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 4, padding: '1px 5px' }}>
+                              discontinued
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>
+                          {hit.brand || 'Unknown brand'}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>{facts.join(' · ')}</span>
+                      </button>
+
+                      {/* Same product, earlier labels — kept out of the way. */}
+                      {hit.older_versions?.length > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedVersions(expandedVersions === hit.id ? null : hit.id)}
+                            style={{ background: 'none', border: 'none', padding: '4px 10px', font: 'inherit', fontSize: 12, color: 'var(--color-text-muted)', cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                            {expandedVersions === hit.id ? 'Hide' : `${hit.older_versions.length} earlier label${hit.older_versions.length === 1 ? '' : 's'}`}
+                          </button>
+                          {expandedVersions === hit.id && (
+                            <ul style={{ listStyle: 'none', margin: '2px 0 0 12px', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {hit.older_versions.map(v => (
+                                <li key={v.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() => void previewFromDatabase(v.id)}
+                                    disabled={lookupBusy}
+                                    style={{
+                                      width: '100%', textAlign: 'left', background: '#f9fafb', border: '1px solid #e5e7eb',
+                                      borderRadius: 6, padding: '6px 10px', minHeight: 36, cursor: 'pointer', font: 'inherit', fontSize: 12, color: '#4b5563',
+                                    }}
+                                  >
+                                    {[v.entry_date ? `label from ${v.entry_date.slice(0, 4)}` : '', v.net_contents, v.nutrient_count ? `${v.nutrient_count} nutrients` : '', v.off_market ? 'discontinued' : '']
+                                      .filter(Boolean)
+                                      .join(' · ')}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {lookupSearched && !lookupBusy && lookupResults.length === 0 && (
+              <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                Nothing found — it may not be in the database (it covers US products).
+              </p>
+            )}
+
+            {/* The two fallbacks, only once there's something to act on. */}
+            {lookupQuery.trim().length >= 2 && (
+              <button
+                type="button"
+                className={estimateBusy ? 'btn-secondary btn-loading' : 'btn-secondary'}
+                onClick={() => void runEstimate()}
+                disabled={estimateBusy || lookupBusy || busy}
+                style={{ marginTop: 10, minHeight: 40 }}
+              >
+                {estimateBusy ? 'Estimating…' : '✨ Estimate from the name instead'}
+              </button>
+            )}
+
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed #e5e7eb' }}>
+              <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                Not in the database? Read it off the bottle instead:
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={onPickScanPhoto}
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                className={scanBusy ? 'btn-secondary btn-loading' : 'btn-secondary'}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={scanBusy || busy}
+                style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              >
+                {scanBusy ? 'Reading label…' : '📷 Scan Supplement Facts label'}
+              </button>
+            </div>
+          </div>
+
           {scanNote && (
-            <p style={{ margin: 0, fontSize: 12.5, color: '#1d7a5f', background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: 13, color: '#1d7a5f', background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5 }}>
               {scanNote}
             </p>
           )}
+
           <div>
-            <label style={{ fontSize: 12, color: '#6b7280' }}>Name</label>
-            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Whey Protein" required />
+            <h4 style={SECTION_HEADING}>Details</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <label style={FIELD_LABEL}>Name</label>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Whey Protein" required />
+              </div>
+              <div>
+                <label style={FIELD_LABEL}>Dose (optional)</label>
+                <input value={form.dose_text} onChange={e => setForm(f => ({ ...f, dose_text: e.target.value }))} placeholder="e.g. 1 scoop, 2000 IU" />
+              </div>
+            </div>
           </div>
-          <div>
-            <label style={{ fontSize: 12, color: '#6b7280' }}>Dose (optional)</label>
-            <input value={form.dose_text} onChange={e => setForm(f => ({ ...f, dose_text: e.target.value }))} placeholder="e.g. 1 scoop, 2000 IU" />
-          </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, cursor: 'pointer' }}>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={form.counts_toward_macros}
@@ -596,10 +643,10 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
             Count its calories/macros toward my daily totals
           </label>
           {form.counts_toward_macros && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))', gap: 8, marginTop: -2 }}>
               {[['calories', 'Cal'], ['protein_g', 'P (g)'], ['carbs_g', 'C (g)'], ['fat_g', 'F (g)']].map(([key, label]) => (
                 <div key={key}>
-                  <label style={{ fontSize: 12, color: '#6b7280' }}>{label}</label>
+                  <label style={FIELD_LABEL}>{label}</label>
                   <input type="number" min="0" step="0.1" value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
                 </div>
               ))}
@@ -615,27 +662,27 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
                 background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                fontSize: 13, fontWeight: 600, color: '#374151',
+                fontSize: 15, fontWeight: 600, color: 'var(--color-text-body)',
               }}
             >
               <span aria-hidden="true" style={{ display: 'inline-block', transform: microsOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▸</span>
-              Micronutrients (optional)
+              Micronutrients{microCount > 0 ? ` (${microCount} filled)` : ' (optional)'}
             </button>
             {microsOpen && (
               <div style={{ marginTop: 10 }}>
-                <p style={{ margin: '0 0 10px', fontSize: 12, color: '#6b7280', lineHeight: 1.5 }}>
+                <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
                   Enter values straight from the label. They count toward your daily micronutrients
                   (in History) on any day this supplement is checked.
                 </p>
                 {MICRO_GROUPS.map(group => (
                   <div key={group.key} style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 6 }}>
                       {group.label}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
                       {group.nutrients.map(n => (
                         <div key={n.key}>
-                          <label style={{ fontSize: 12, color: '#6b7280' }}>{n.name} ({n.unit})</label>
+                          <label style={FIELD_LABEL}>{n.name} ({n.unit})</label>
                           <input
                             type="number" min="0" step="any"
                             value={form.micros?.[n.key] ?? ''}
