@@ -157,6 +157,12 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 - `POST /api/workouts/logs` — log a single exercise (weight/reps/sets)
 - `GET /api/workouts/progress?exercise_name=` — historical logs for an exercise
 
+### Supplements (lookup)
+- `GET /api/supplements/search?q=` — search the NIH Dietary Supplement Label Database (DSLD) by product/brand name. Free, no API key. Off-market products rank last.
+- `GET /api/supplements/dsld/:id` — one matched label, shaped exactly like `scan-label` (`{name, dose_text, macros, micros, confidence, notes}`) so all prefill paths share client code. Label-exact → `high` confidence.
+- `POST /api/supplements/estimate` — AI estimate from a product name, for what DSLD lacks. Capped at `medium` confidence in both the service and the route; never `high`.
+- Storing micros accepts optional `micros_confidence` / `micros_source`; anything but `medium`/`low` falls back to label confidence.
+
 ### Barcode
 - `GET /api/barcode/:code` — proxies Open Food Facts (free, no API key) and normalizes the product into ingredient-form fields. Returns `basis` (`serving` | `serving_derived` | `100g` | `none`) so the UI can say where the numbers came from, plus `existing_ingredient` when that barcode is already saved. 404 = not on record, 502 = database unreachable.
 

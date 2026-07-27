@@ -7,6 +7,8 @@ const {
   AiResponseError,
   AiQuotaError,
 } = require('../supplementLabelService');
+const { searchSupplements, fetchSupplementLabel, DsldError } = require('../dsldService');
+const { estimateSupplementMicros } = require('../supplementEstimateService');
 
 function normalizeNumberOrZero(v, { min = 0 } = {}) {
   if (v === null || v === undefined || v === '') return 0;
@@ -42,8 +44,21 @@ const SELECT_COLS =
  * `micros` object, or null when none/all-zero. Supplement micros come straight
  * off the label, so they are stored at HIGH confidence (unlike AI food estimates).
  */
+/**
+ * Micros default to high confidence because they normally come off a real label
+ * (photo scan or an NIH database match). A name-only AI estimate is the one
+ * exception and says so explicitly, so it can never be mistaken for label data.
+ */
 function microsJsonFromBody(body) {
-  const blob = buildMicrosBlob(body?.micros, { confidence: 'high', notes: 'From supplement label' });
+  const claimed = body?.micros_confidence;
+  const confidence = claimed === 'medium' || claimed === 'low' ? claimed : 'high';
+  const source =
+    typeof body?.micros_source === 'string' && body.micros_source.trim()
+      ? body.micros_source.trim().slice(0, 80)
+      : confidence === 'high'
+        ? 'From supplement label'
+        : 'Estimated from the product name';
+  const blob = buildMicrosBlob(body?.micros, { confidence, notes: source });
   return blob ? JSON.stringify(blob) : null;
 }
 
@@ -242,6 +257,50 @@ function createSupplementsRouter(db) {
       if (e instanceof AiProviderError) return res.status(502).json({ error: 'The AI service had a problem. Please try again.' });
       if (e instanceof AiResponseError) return res.status(502).json({ error: "Couldn't read the label. Try a clearer, cropped photo of the Supplement Facts panel." });
       return res.status(500).json({ error: 'Failed to scan the supplement label.' });
+    }
+  });
+
+  // --- Lookup by name (no photo needed) ------------------------------------
+
+  // Search the NIH Dietary Supplement Label Database by product/brand name.
+  router.get('/search', async (req, res) => {
+    const q = String(req.query.q ?? '').trim();
+    if (q.length < 2) return res.json({ results: [] });
+    try {
+      const results = await searchSupplements(q, { limit: req.query.limit });
+      return res.json({ results });
+    } catch (e) {
+      if (e instanceof DsldError) return res.status(502).json({ error: e.message });
+      return res.status(500).json({ error: 'Supplement search failed.' });
+    }
+  });
+
+  // Pull one matched label and shape it exactly like a scanned one.
+  router.get('/dsld/:id', async (req, res) => {
+    try {
+      const label = await fetchSupplementLabel(req.params.id);
+      if (!label) return res.status(404).json({ error: 'That product is no longer in the database.' });
+      return res.json(label);
+    } catch (e) {
+      if (e instanceof DsldError) return res.status(502).json({ error: e.message });
+      return res.status(500).json({ error: 'Failed to load that supplement.' });
+    }
+  });
+
+  // Fallback for products the database doesn't carry: estimate from the name.
+  // Always an estimate — capped below label confidence by the service.
+  router.post('/estimate', async (req, res) => {
+    const name = String(req.body?.name ?? '').trim();
+    if (name.length < 2) return res.status(400).json({ error: 'Enter a supplement name.' });
+    try {
+      const result = await estimateSupplementMicros(name);
+      return res.json(result);
+    } catch (e) {
+      if (e instanceof AiConfigError) return res.status(503).json({ error: e.message });
+      if (e instanceof AiQuotaError) return res.status(402).json({ error: e.message });
+      if (e instanceof AiProviderError) return res.status(502).json({ error: 'The AI service had a problem. Please try again.' });
+      if (e instanceof AiResponseError) return res.status(502).json({ error: "Couldn't estimate that supplement. Try a more specific name." });
+      return res.status(500).json({ error: 'Failed to estimate that supplement.' });
     }
   });
 

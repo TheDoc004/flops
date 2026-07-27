@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import {
   createSupplement,
   deleteSupplement,
+  estimateSupplementFromName,
+  fetchSupplementFromDatabase,
   fetchSupplements,
   scanSupplementLabel,
+  searchSupplementDatabase,
   updateSupplement,
 } from '@shared/api/supplements';
 import { MICRO_GROUPS } from '@shared/config/microNutrients';
@@ -67,6 +70,15 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
   const [scanBusy, setScanBusy] = useState(false);
   const [scanNote, setScanNote] = useState('');
   const fileInputRef = useRef(null);
+  // Name-lookup flow: type a product → NIH database results → pick → prefill.
+  // This is the primary path; the photo scan is the fallback for what it lacks.
+  const [lookupQuery, setLookupQuery] = useState('');
+  const [lookupResults, setLookupResults] = useState([]);
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupSearched, setLookupSearched] = useState(false);
+  const [estimateBusy, setEstimateBusy] = useState(false);
+  // Where the current micro values came from — decides the confidence stored.
+  const [microsSource, setMicrosSource] = useState(null); // 'label' | 'estimate'
 
   async function reload() {
     const list = await fetchSupplements();
@@ -93,6 +105,10 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
     setForm(EMPTY_FORM);
     setMicrosOpen(false);
     setScanNote('');
+    setLookupQuery('');
+    setLookupResults([]);
+    setLookupSearched(false);
+    setMicrosSource(null);
   }
 
   // Chosen/taken photo → open the crop modal.
@@ -109,6 +125,112 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
     reader.readAsDataURL(file);
   }
 
+  // Debounced name search. Nothing is set synchronously here — the state
+  // changes all happen inside the timer, after the user stops typing.
+  useEffect(() => {
+    const q = lookupQuery.trim();
+    if (q.length < 2) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setLookupBusy(true);
+      try {
+        const r = await searchSupplementDatabase(q);
+        if (!cancelled) {
+          setLookupResults(r?.results || []);
+          setLookupSearched(true);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setLookupResults([]);
+          setLookupSearched(true);
+          setError(e.message);
+        }
+      } finally {
+        if (!cancelled) setLookupBusy(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [lookupQuery]);
+
+  // A search hit → pull its full label → prefill. Label-exact, like a scan.
+  async function pickFromDatabase(hit) {
+    setError('');
+    setScanNote('');
+    setLookupBusy(true);
+    try {
+      const label = await fetchSupplementFromDatabase(hit.id);
+      const filled = applyLabelToForm(label);
+      setMicrosSource('label');
+      setLookupResults([]);
+      setLookupQuery('');
+      const extra = label.notes ? ` ${label.notes}` : '';
+      setScanNote(
+        filled > 0
+          ? `Filled ${filled} micronutrient${filled === 1 ? '' : 's'} from the ${label.brand || 'product'} label.${extra} Review and save.`
+          : `That label lists no micronutrients this app tracks.${extra}`
+      );
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLookupBusy(false);
+    }
+  }
+
+  // Nothing in the database → ask the AI from the name. Always an estimate,
+  // and stored as one, so it can't be mistaken for label data later.
+  async function runEstimate() {
+    const q = (lookupQuery.trim() || form.name.trim()).slice(0, 200);
+    if (q.length < 2) return;
+    setError('');
+    setScanNote('');
+    setEstimateBusy(true);
+    try {
+      const r = await estimateSupplementFromName(q);
+      if (!r.recognized || Object.keys(r.micros || {}).length === 0) {
+        setScanNote(`Couldn't estimate "${q}" — try the full product name, or scan the label.`);
+        return;
+      }
+      const filled = applyLabelToForm(r);
+      setMicrosSource('estimate');
+      setLookupResults([]);
+      setScanNote(
+        `Estimated ${filled} micronutrient${filled === 1 ? '' : 's'} from the name (${r.confidence} confidence). ` +
+          'These are NOT read off a label — check them against the bottle before saving.'
+      );
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setEstimateBusy(false);
+    }
+  }
+
+  /**
+   * Fill the form from a label-shaped result — shared by all three sources
+   * (photo scan, NIH database match, name estimate), which is why the server
+   * gives them all the same shape. Never auto-saves; blanks only for text the
+   * user already typed.
+   * @returns {number} how many micronutrients were filled
+   */
+  function applyLabelToForm(r) {
+    const microKeys = Object.keys(r.micros || {});
+    setForm(f => ({
+      ...f,
+      name: f.name.trim() ? f.name : (r.name || ''),
+      dose_text: f.dose_text.trim() ? f.dose_text : (r.dose_text || ''),
+      counts_toward_macros: r.macros ? true : f.counts_toward_macros,
+      calories: r.macros ? String(r.macros.calories) : f.calories,
+      protein_g: r.macros ? String(r.macros.protein_g) : f.protein_g,
+      carbs_g: r.macros ? String(r.macros.carbs_g) : f.carbs_g,
+      fat_g: r.macros ? String(r.macros.fat_g) : f.fat_g,
+      micros: { ...f.micros, ...Object.fromEntries(microKeys.map(k => [k, String(r.micros[k])])) },
+    }));
+    if (microKeys.length > 0) setMicrosOpen(true);
+    return microKeys.length;
+  }
+
   // Cropped image → AI reads the panel → prefill the form (never auto-saves).
   async function runScan(croppedUri) {
     setScanImageSrc(null);
@@ -118,29 +240,15 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
     try {
       const blob = await (await fetch(croppedUri)).blob();
       const r = await scanSupplementLabel(blob);
-      const microKeys = Object.keys(r.micros || {});
-      const hasAny = microKeys.length > 0 || r.macros || r.name || r.dose_text;
+      const hasAny = Object.keys(r.micros || {}).length > 0 || r.macros || r.name || r.dose_text;
       if (!hasAny) {
         setScanNote("Couldn't read any values — try a clearer, closer photo of the Supplement Facts panel.");
         return;
       }
-      setForm(f => ({
-        ...f,
-        // Don't clobber anything the user already typed; fill blanks only.
-        name: f.name.trim() ? f.name : (r.name || ''),
-        dose_text: f.dose_text.trim() ? f.dose_text : (r.dose_text || ''),
-        // Macros: if the label listed them, turn on counting and fill.
-        counts_toward_macros: r.macros ? true : f.counts_toward_macros,
-        calories: r.macros ? String(r.macros.calories) : f.calories,
-        protein_g: r.macros ? String(r.macros.protein_g) : f.protein_g,
-        carbs_g: r.macros ? String(r.macros.carbs_g) : f.carbs_g,
-        fat_g: r.macros ? String(r.macros.fat_g) : f.fat_g,
-        // Micros: scanned values win for the keys read.
-        micros: { ...f.micros, ...Object.fromEntries(microKeys.map(k => [k, String(r.micros[k])])) },
-      }));
-      if (microKeys.length > 0) setMicrosOpen(true);
+      const filled = applyLabelToForm(r);
+      setMicrosSource('label');
       const conf = r.confidence === 'high' ? '' : ` (${r.confidence} confidence — double-check the values)`;
-      setScanNote(`Read ${microKeys.length} micronutrient${microKeys.length === 1 ? '' : 's'} from the label${conf}. Review and save.`);
+      setScanNote(`Read ${filled} micronutrient${filled === 1 ? '' : 's'} from the label${conf}. Review and save.`);
     } catch (err) {
       setError(err.message || 'Failed to scan the label.');
     } finally {
@@ -168,6 +276,11 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
       carbs_g: counts && form.carbs_g !== '' ? Number(form.carbs_g) : 0,
       fat_g: counts && form.fat_g !== '' ? Number(form.fat_g) : 0,
       micros,
+      // An AI estimate must never be stored at label confidence — History
+      // treats supplement micros as exact, and this is the one path that isn't.
+      ...(microsSource === 'estimate'
+        ? { micros_confidence: 'medium', micros_source: 'Estimated from the product name' }
+        : {}),
     };
     try {
       if (editingId) await updateSupplement(editingId, payload);
@@ -266,7 +379,80 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
             {editingId ? 'Edit supplement' : 'Add a supplement'}
           </div>
 
-          {/* Fast path: read name/dose/macros/micros straight off the label. */}
+          {/* Primary path: type the product name, no photo needed. */}
+          {!editingId && (
+            <div style={{ padding: '12px 14px', background: '#f9fafb', border: '1px solid #f0ede8', borderRadius: 10 }}>
+              <strong style={{ display: 'block', fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
+                Find it by name:
+              </strong>
+              <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                Searches the NIH supplement label database — real label values, no photo.
+              </p>
+              <input
+                value={lookupQuery}
+                onChange={e => {
+                  setLookupQuery(e.target.value);
+                  if (e.target.value.trim().length < 2) {
+                    setLookupResults([]);
+                    setLookupSearched(false);
+                  }
+                }}
+                placeholder="e.g. Centrum Men, Nordic Naturals Omega"
+                aria-label="Search supplements by name"
+                style={{ width: '100%' }}
+              />
+
+              {lookupBusy && (
+                <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>Searching…</p>
+              )}
+
+              {lookupResults.length > 0 && (
+                <ul style={{ listStyle: 'none', margin: '10px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
+                  {lookupResults.map(hit => (
+                    <li key={hit.id}>
+                      <button
+                        type="button"
+                        onClick={() => void pickFromDatabase(hit)}
+                        disabled={lookupBusy}
+                        style={{
+                          width: '100%', textAlign: 'left', background: '#fff', border: '1px solid #e5e7eb',
+                          borderRadius: 8, padding: '8px 10px', minHeight: 44, cursor: 'pointer', font: 'inherit',
+                        }}
+                      >
+                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>{hit.name}</span>
+                        <span style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>
+                          {hit.brand || 'Unknown brand'}
+                          {hit.entry_date ? ` · label from ${hit.entry_date.slice(0, 4)}` : ''}
+                          {hit.off_market ? ' · discontinued' : ''}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {lookupSearched && !lookupBusy && lookupResults.length === 0 && (
+                <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                  Nothing found — it may not be in the database (it covers US products).
+                </p>
+              )}
+
+              {/* Fallback when the database comes up short. */}
+              {lookupQuery.trim().length >= 2 && (
+                <button
+                  type="button"
+                  className={estimateBusy ? 'btn-secondary btn-loading' : 'btn-secondary'}
+                  onClick={() => void runEstimate()}
+                  disabled={estimateBusy || lookupBusy || busy}
+                  style={{ marginTop: 10, minHeight: 40 }}
+                >
+                  {estimateBusy ? 'Estimating…' : '✨ Estimate from the name instead'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Fallback path: read name/dose/macros/micros straight off the label. */}
           <input
             ref={fileInputRef}
             type="file"

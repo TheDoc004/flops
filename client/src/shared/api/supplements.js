@@ -71,3 +71,31 @@ export async function setSupplementTaken({ date, supplement_id, taken }) {
   });
   return jsonOrThrow(res, 'Failed to update supplement');
 }
+
+/**
+ * Search the NIH Dietary Supplement Label Database by product/brand name —
+ * the no-photo path to a supplement's micros.
+ */
+export async function searchSupplementDatabase(q) {
+  const res = await fetch(apiUrl(`/api/supplements/search?q=${encodeURIComponent(q)}`));
+  return jsonOrThrow(res, 'Supplement search failed');
+}
+
+/** Pull one matched product's label, shaped exactly like a scanned label. */
+export async function fetchSupplementFromDatabase(id) {
+  const res = await fetch(apiUrl(`/api/supplements/dsld/${encodeURIComponent(id)}`));
+  return jsonOrThrow(res, 'Failed to load that supplement');
+}
+
+/**
+ * Fallback for products the database doesn't carry: estimate micros from the
+ * name. Always an estimate — the result is stored below label confidence.
+ */
+export async function estimateSupplementFromName(name) {
+  const res = await fetch(apiUrl('/api/supplements/estimate'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  return jsonOrThrow(res, 'Failed to estimate that supplement');
+}

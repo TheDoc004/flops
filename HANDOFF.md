@@ -86,6 +86,16 @@ shared helper `sumDayTotalMicros({entries, supplements})` in `shared/utils/micro
 `supplement_log` makes past days accurate retroactively. The micro panel shows a "+ N
 supplements" badge; the Dashboard has a "View micronutrients →" link to `/history#micronutrients`.
 
+**Find by name (2026-07-26).** The primary way to add a supplement: type the product name in
+Manage Supplements → results from the **NIH Dietary Supplement Label Database** (`dsldService.js`,
+free, no API key) → pick one → name/dose/macros/micros prefill for review. Because DSLD holds
+transcribed label data, a match stores at **high** confidence, same as a photo scan. IU values are
+converted (vitamin A assumes retinol, which is why every conversion is flagged) and the note lists
+nutrients on the label that the 12-key schema drops. When DSLD has nothing,
+`POST /api/supplements/estimate` (`supplementEstimateService.js`) estimates from the name — capped
+at **medium** confidence in the service *and* the route, so a guess can never masquerade as label
+data. All three sources return the same shape, so they share one prefill path in the modal.
+
 **Label scanning (2026-07-26).** "📷 Scan Supplement Facts label" in Manage Supplements: photo →
 crop (reuses `LabelCropModal`) → `POST /api/supplements/scan-label` → AI **vision** transcribes
 the panel (per-serving, absolute amounts not %DV, IU→mcg) → prefills the form for review (never
@@ -104,11 +114,13 @@ by any future feature (e.g. barcode/label flows).
 
 ## 4. Git state
 
-**Current branch: `feature/barcode-scanning`** (2 commits, not yet merged) — the barcode feature
-in section 7. Server **135** tests, client **122**, all passing; client builds clean.
+**Current branch: `feature/supplement-name-lookup`** (1 commit, not yet merged) — supplement
+lookup by name, above. Server **170** tests, client **132**, all passing; client builds clean.
 
-`main` was **pushed and in sync with `origin/main`** as of 2026-07-26. Three features merged
-earlier that day as `--no-ff` merge commits, then their branches deleted:
+`main` is **pushed and in sync with `origin/main`** (2026-07-26) and includes barcode scanning
+(section 7) plus a fix making logged unit-ingredients display their own unit ("3 eggs", not
+"3 g") with a boot-time repair of older entries. Earlier that day, three features merged as
+`--no-ff` merge commits, then their branches deleted:
 
 - **AI-logger editable recipes** — editable AI-saved recipe amounts + provided-macro dedup
 - **Supplement micronutrients** — supplements contribute exact micros to History
