@@ -52,9 +52,9 @@ SQLite DB: `server/nutrition.db` (a stale copy at repo root — ignore it). Sing
 ## 3. Current state by area
 
 ### Nutrition (Phase 1) — solid / feature-complete
-Dashboard, Recipe Library, Ingredient Library (OCR label scan), Meal Builder (wizard +
-slots), History, Goals (versioned weekly min/max), Report (PDF), Profile, Adherence, and the
-AI Macro Logger all work. Rough edges are **code-size/debt**, not missing features.
+Dashboard, Recipe Library, Ingredient Library (OCR label scan + **barcode scan**), Meal Builder
+(wizard + slots), History, Goals (versioned weekly min/max), Report (PDF), Profile, Adherence,
+and the AI Macro Logger all work. Rough edges are **code-size/debt**, not missing features.
 
 **AI Macro Logger — recipe saving fixed (2026-07-26).** "Save as recipe" (and meal-prep
 save) now back each ingredient with an Ingredient Library entry and record the link in
@@ -104,15 +104,18 @@ by any future feature (e.g. barcode/label flows).
 
 ## 4. Git state
 
-`main` is **pushed and in sync with `origin/main`** (2026-07-26). Three features merged this
-session as `--no-ff` merge commits, then their branches deleted:
+**Current branch: `feature/barcode-scanning`** (2 commits, not yet merged) — the barcode feature
+in section 7. Server **135** tests, client **122**, all passing; client builds clean.
+
+`main` was **pushed and in sync with `origin/main`** as of 2026-07-26. Three features merged
+earlier that day as `--no-ff` merge commits, then their branches deleted:
 
 - **AI-logger editable recipes** — editable AI-saved recipe amounts + provided-macro dedup
 - **Supplement micronutrients** — supplements contribute exact micros to History
 - **Supplement label scan** — AI vision reads a Supplement Facts photo into the form
 
 Prior session (already in `main`): training Phase 2 UI, supplement tracker, ai-logger source
-consolidation. Combined tree passes all tests (**server 112, client 105**) and builds clean.
+consolidation. That tree passed server 112 / client 105.
 
 **Deploy:** paused. Only `server/.env.example` exists; no Render/Vercel/Docker config
 (the Render+Vercel plan was paused on ~$7/mo persistent-disk cost).
@@ -122,12 +125,15 @@ consolidation. Combined tree passes all tests (**server 112, client 105**) and b
 ## 5. Known issues & tech debt
 
 - **Oversized components** (refactor when next touched): `AiMacroLogger.jsx` (~1,360),
-  `TrainingWorkouts.jsx` (~900), `MealBuilder.jsx` (~720), `Ingredients.jsx` (~694),
-  `LogMealModal.jsx` (~567). `ManageSupplementsModal.jsx` (~393) is now borderline after the
-  micro + label-scan additions. `client/src/hooks/` is empty; extract custom hooks here.
+  `TrainingWorkouts.jsx` (~900), `Ingredients.jsx` (~777, grew with the barcode entry point),
+  `MealBuilder.jsx` (~720), `LogMealModal.jsx` (~567). `ManageSupplementsModal.jsx` (~393) is
+  borderline after the micro + label-scan additions. `client/src/hooks/` is empty; extract
+  custom hooks here.
 - **Pre-existing lint errors** in `Profile.jsx` (`H3`/`UnitOption` components declared inside
   render — `react-hooks/static-components`). Not from recent work; fix by hoisting them out.
-- **No client page-level tests** (Dashboard, Recipes, History, etc.). Utils/server are tested.
+- **Barely any client component tests** — `BarcodeScannerModal.test.jsx` is the first one
+  (Testing Library was already installed, unused). Pages (Dashboard, Recipes, History) still
+  have none. Utils/server are well covered.
 - **Test/placeholder recipes** ("c", "c2", "c6") still in the DB — clean before polishing the
   Recipe Library UI.
 - Two React pitfalls worth remembering: `{0 && <x>}` renders a stray `0` (use `n > 0 &&`);
@@ -150,25 +156,35 @@ consolidation. Combined tree passes all tests (**server 112, client 105**) and b
 
 ---
 
-## 7. Next planned feature — barcode scanning
+## 7. Barcode scanning — shipped (2026-07-26)
 
-Scan a product barcode → save it as an ingredient. Agreed approach (**no MCP, no self-hosted
-database**):
+Scan a product barcode in the **Ingredient Library** add form → the form prefills for review.
+Built as agreed: **no MCP, no self-hosted product database**.
 
-1. Read the barcode **in-browser** with the camera (`BarcodeDetector` or `@zxing/browser`),
-   same spirit as the existing Tesseract OCR label flow.
-2. Barcode number → product + nutrition via **Open Food Facts** (free, no API key). Proxy the
-   call through the Express server (avoids CORS, one place to normalize) and save into the
-   existing `label_ingredients` table.
+- **Server.** `GET /api/barcode/:code` (`routes/barcode.js` + `openFoodFactsService.js`)
+  proxies Open Food Facts (free, no key, Node's global `fetch`) and normalizes the very uneven
+  response. `basis` reports where the numbers came from — `serving` (listed per serving),
+  `serving_derived` (scaled from per-100 g), `100g` (no serving on record), `none` (no
+  nutrition data). Handles kJ→kcal and retries a 12-digit UPC as a 13-digit EAN.
+- **Client.** `features/barcode/` — `BarcodeScannerModal` (camera + always-available manual
+  number entry), `barcodeReader` (native `BarcodeDetector`, else lazily imported
+  `@zxing/browser` — iPhone Safari has no native API; the library sits in its own 444 KB chunk,
+  not the initial bundle), `gtin` (check-digit validation so a misread frame is ignored instead
+  of coming back as "not found"), and `mergeBarcodeProductIntoIngredientForm` (fills the form,
+  highlights what to check — never overwrites a typed name/brand, never auto-saves).
+- **Schema.** `label_ingredients.barcode` (+ index) and `source_type = 'barcode'`. Re-scanning a
+  saved product **opens that entry** instead of creating a near-duplicate. An edit that omits
+  the field keeps the stored code (`COALESCE`).
 
-Not every product (esp. niche supplements) is in Open Food Facts — keep OCR/manual as
-fallback. Camera needs HTTPS in production. Can also pre-fill new supplements.
+Coverage is uneven — niche and store-brand products are often missing, so OCR and manual entry
+stay as fallbacks and the not-found message points at them. Open Food Facts is crowd-sourced,
+so the review box always says to check the numbers against the packaging.
 
-> **Templates now available (2026-07-26):** the supplement **label-scan** flow (photo → crop →
-> server AI → prefill-for-review) and the new **`aiClient` vision** support are a ready model
-> for barcode. Barcode could try Open Food Facts first and fall back to the label scan. The
-> `express.raw` raw-image-body pattern on `/api/supplements/scan-label` is the way to send
-> photos to the server without hitting the 1 MB JSON limit.
+**Known limits / next steps:** camera needs a secure context, so scanning from a phone over the
+LAN dev IP won't work (localhost and real HTTPS do). Supplements do not have barcode scanning
+yet — deliberately deferred, and OFF coverage is weakest there. Values are **as-sold**, which
+runs into the existing dry/cooked basis gap: a dry-basis product scanned and later logged by
+cooked weight still overcounts.
 
 ---
 

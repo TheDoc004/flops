@@ -1,4 +1,5 @@
 const express = require('express');
+const { normalizeBarcode } = require('../openFoodFactsService');
 
 function normalizeOptionalNumber(v, { min = 0 } = {}) {
   if (v === null || v === undefined || v === '') return null;
@@ -31,7 +32,7 @@ function createLabelIngredientsRouter(db) {
     const rows = db
       .prepare(
         `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
-                source_type, use_count, last_used_at,
+                source_type, use_count, last_used_at, barcode,
                 tracking_type, unit_name, serving_quantity, grams_per_unit,
                 CASE WHEN photo_data_uri IS NOT NULL AND LENGTH(photo_data_uri) > 0 THEN 1 ELSE 0 END AS has_photo
          FROM label_ingredients WHERE user_id = ? ORDER BY name`
@@ -47,7 +48,7 @@ function createLabelIngredientsRouter(db) {
     const row = db
       .prepare(
         `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri,
-                source_type, use_count, last_used_at,
+                source_type, use_count, last_used_at, barcode,
                 tracking_type, unit_name, serving_quantity, grams_per_unit
          FROM label_ingredients WHERE id = ? AND user_id = ?`
       )
@@ -78,9 +79,12 @@ function createLabelIngredientsRouter(db) {
     }
     const fiber_g = normalizeOptionalNumber(req.body?.fiber_g);
     const source_type = String(req.body?.source_type ?? '').trim() || 'manual';
-    if (!['manual', 'scanned_label', 'built_in'].includes(source_type)) {
-      return res.status(400).json({ error: 'source_type must be one of: manual, scanned_label, built_in' });
+    if (!['manual', 'scanned_label', 'built_in', 'barcode'].includes(source_type)) {
+      return res.status(400).json({ error: 'source_type must be one of: manual, scanned_label, built_in, barcode' });
     }
+    // Unusable barcodes are dropped rather than rejected — a bad code should
+    // never block saving an otherwise-good ingredient.
+    const barcode = normalizeBarcode(req.body?.barcode);
     let photo_data_uri = req.body?.photo_data_uri;
     if (photo_data_uri != null) {
       photo_data_uri = String(photo_data_uri);
@@ -98,8 +102,8 @@ function createLabelIngredientsRouter(db) {
       .prepare(
         `INSERT INTO label_ingredients (
           user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri,
-          source_type, use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?)`
+          source_type, use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit, barcode
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?)`
       )
       .run(
         userId,
@@ -118,13 +122,14 @@ function createLabelIngredientsRouter(db) {
         tracking_type,
         unit_name,
         serving_quantity,
-        grams_per_unit
+        grams_per_unit,
+        barcode
       );
 
     const row = db
       .prepare(
         `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
-                source_type, use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit,
+                source_type, use_count, last_used_at, barcode, tracking_type, unit_name, serving_quantity, grams_per_unit,
                 CASE WHEN photo_data_uri IS NOT NULL AND LENGTH(photo_data_uri) > 0 THEN 1 ELSE 0 END AS has_photo
          FROM label_ingredients WHERE id = ?`
       )
@@ -161,12 +166,16 @@ function createLabelIngredientsRouter(db) {
     const unit_name = normalizeOptionalString(req.body?.unit_name, { maxLen: 64 });
     const serving_quantity = normalizeOptionalNumber(req.body?.serving_quantity, { min: 0.0001 });
     const grams_per_unit = normalizeOptionalNumber(req.body?.grams_per_unit, { min: 0.0001 });
+    // Only set when supplied (COALESCE below) — the edit form never sends a
+    // barcode, and an edit must not wipe one an earlier scan attached.
+    const barcode = normalizeBarcode(req.body?.barcode);
 
     db.prepare(
       `UPDATE label_ingredients
        SET name = ?, base_label = ?, brand_name = ?, serving_size_text = ?, grams_per_serving = ?,
            calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
-           tracking_type = ?, unit_name = ?, serving_quantity = ?, grams_per_unit = ?
+           tracking_type = ?, unit_name = ?, serving_quantity = ?, grams_per_unit = ?,
+           barcode = COALESCE(?, barcode)
        WHERE id = ? AND user_id = ?`
     ).run(
       name,
@@ -183,13 +192,14 @@ function createLabelIngredientsRouter(db) {
       unit_name,
       serving_quantity,
       grams_per_unit,
+      barcode,
       id,
       userId
     );
 
     const row = db.prepare(
       `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
-              source_type, use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit,
+              source_type, use_count, last_used_at, barcode, tracking_type, unit_name, serving_quantity, grams_per_unit,
               CASE WHEN photo_data_uri IS NOT NULL AND LENGTH(photo_data_uri) > 0 THEN 1 ELSE 0 END AS has_photo
        FROM label_ingredients WHERE id = ? AND user_id = ?`
     ).get(id, userId);

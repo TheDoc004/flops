@@ -19,6 +19,7 @@ const { createLabelIngredientsRouter } = require('./routes/labelIngredients');
 const { createWorkoutsRouter } = require('./routes/workouts');
 const { createSupplementsRouter } = require('./routes/supplements');
 const { createAiRouter } = require('./routes/ai');
+const { createBarcodeRouter } = require('./routes/barcode');
 
 const db = createDb(process.env.DB_PATH || './nutrition.db');
 const app = express();
@@ -59,6 +60,7 @@ app.use('/api/training', createTrainingRouter(db));
 app.use('/api/workouts', createWorkoutsRouter(db));
 app.use('/api/supplements', createSupplementsRouter(db));
 app.use('/api/ai', createAiRouter());
+app.use('/api/barcode', createBarcodeRouter(db));
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

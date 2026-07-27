@@ -390,6 +390,12 @@ function createDb(dbPath) {
   if (labelCols.length && !labelCols.includes('grams_per_unit')) {
     db.exec(`ALTER TABLE label_ingredients ADD COLUMN grams_per_unit REAL`);
   }
+  // Product barcode (EAN/UPC digits) when the ingredient came from a scan —
+  // lets a re-scan find the saved item instead of adding a near-duplicate.
+  if (labelCols.length && !labelCols.includes('barcode')) {
+    db.exec(`ALTER TABLE label_ingredients ADD COLUMN barcode TEXT`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_label_ingredients_barcode ON label_ingredients (user_id, barcode)`);
+  }
   const profileCols = db.prepare('PRAGMA table_info(user_profile)').all().map(c => c.name);
   if (profileCols.length && !profileCols.includes('macro_units')) {
     db.exec(`ALTER TABLE user_profile ADD COLUMN macro_units TEXT DEFAULT 'metric'`);
