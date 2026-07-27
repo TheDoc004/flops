@@ -158,15 +158,78 @@ describe('fetchSupplementLabel', () => {
 
 describe('searchSupplements', () => {
   const hits = payload => okFetch({ hits: payload });
+  const hit = (id, over = {}) => ({
+    _id: id,
+    _source: {
+      fullName: 'Centrum Men',
+      brandName: 'Centrum',
+      offMarket: 0,
+      entryDate: '2021-01-01',
+      physicalState: { langualCodeDescription: 'Tablet or Pill' },
+      netContents: [{ display: '100 Tablet(s)' }],
+      allIngredients: new Array(40).fill({}),
+      ...over,
+    },
+  });
 
   it('shapes results and ranks off-market products last', async () => {
     const fetchImpl = hits([
-      { _id: '1', _source: { fullName: 'Old Formula', brandName: 'B', offMarket: 1, entryDate: '2010-01-01' } },
-      { _id: '2', _source: { fullName: 'Current', brandName: 'B', offMarket: 0, entryDate: '2021-01-01' } },
+      hit('1', { fullName: 'Old Formula', offMarket: 1, entryDate: '2010-01-01' }),
+      hit('2', { fullName: 'Current' }),
     ]);
     const results = await searchSupplements('brand', { fetchImpl });
     expect(results.map(r => r.id)).toEqual(['2', '1']);
     expect(results[1].off_market).toBe(true);
+  });
+
+  it('carries the fields that tell near-identical products apart', async () => {
+    const results = await searchSupplements('centrum', { fetchImpl: hits([hit('1')]) });
+    expect(results[0]).toMatchObject({
+      form: 'Tablet',
+      net_contents: '100 Tablets', // DSLD's "(s)" cleaned up
+      nutrient_count: 40,
+    });
+  });
+
+  it('tidies awkward plural markers', async () => {
+    const results = await searchSupplements('gummy', {
+      fetchImpl: hits([hit('1', { netContents: [{ display: '120 Gummy(ies)' }] })]),
+    });
+    expect(results[0].net_contents).toBe('120 Gummies');
+  });
+
+  it('collapses repeat versions of one product, keeping the newest label', async () => {
+    // The real "centrum men" problem: one product, three label entries.
+    const fetchImpl = hits([
+      hit('old', { entryDate: '2013-01-25', allIngredients: new Array(80).fill({}) }),
+      hit('newest', { entryDate: '2021-08-23' }),
+      hit('middle', { entryDate: '2019-07-24' }),
+    ]);
+    const results = await searchSupplements('centrum men', { fetchImpl });
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe('newest');
+    // Older labels stay reachable, newest first.
+    expect(results[0].older_versions.map(v => v.id)).toEqual(['middle', 'old']);
+  });
+
+  it('prefers a current label over a newer discontinued one', async () => {
+    const fetchImpl = hits([
+      hit('current', { entryDate: '2018-01-01', offMarket: 0 }),
+      hit('discontinued', { entryDate: '2022-01-01', offMarket: 1 }),
+    ]);
+    const results = await searchSupplements('centrum men', { fetchImpl });
+    expect(results[0].id).toBe('current');
+    expect(results[0].older_versions[0].id).toBe('discontinued');
+  });
+
+  it('keeps genuinely different products apart', async () => {
+    const fetchImpl = hits([
+      hit('1', { fullName: 'Centrum Men' }),
+      hit('2', { fullName: 'Centrum Silver Men 50+' }),
+      hit('3', { fullName: 'Centrum Men', brandName: 'GSK' }), // same name, other brand
+    ]);
+    const results = await searchSupplements('centrum', { fetchImpl });
+    expect(results).toHaveLength(3);
   });
 
   it('does not call out for a too-short query', async () => {
