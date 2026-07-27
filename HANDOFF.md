@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-07-26_
+_Last updated: 2026-07-27_
 
 Snapshot of where the app stands so any session (human or Claude) can pick up quickly.
 For conventions, architecture, and the phase vision, see `CLAUDE.md` — this file is the
@@ -96,6 +96,20 @@ nutrients on the label that the 12-key schema drops. When DSLD has nothing,
 at **medium** confidence in the service *and* the route, so a guess can never masquerade as label
 data. All three sources return the same shape, so they share one prefill path in the modal.
 
+**Dose vs label serving (2026-07-27).** Stored macros/micros describe ONE label serving, so a
+supplement now also records `label_serving_qty`/`label_serving_unit` and `dose_qty` (what you
+take), and everything scales by the ratio — day totals, History micros, the row display. Before
+this, taking 3 softgels of a 2-softgel serving silently counted 2. The modal states both amounts
+plainly; the dashboard checklist has −/+ steppers writing `supplement_log.dose_qty` for that day
+only (NULL = usual dose), so an unusual day never rewrites your default or past days. Existing
+rows were backfilled with dose = label serving, so every multiplier started at 1 and no total
+moved (asserted in `supplementDose.test.js`).
+
+**Manage dialog (2026-07-27).** Converted from the app's last hand-rolled bottom sheet to the
+native `<dialog>` used by Log a Meal, then reorganised: serif section headings, the name lookup
+and photo scan framed as alternatives in one block (available while editing, to refresh an entry
+from a label), an explicit "Editing X" bar, and the house text scale.
+
 **Label scanning (2026-07-26).** "📷 Scan Supplement Facts label" in Manage Supplements: photo →
 crop (reuses `LabelCropModal`) → `POST /api/supplements/scan-label` → AI **vision** transcribes
 the panel (per-serving, absolute amounts not %DV, IU→mcg) → prefills the form for review (never
@@ -114,7 +128,7 @@ by any future feature (e.g. barcode/label flows).
 
 ## 4. Git state
 
-`main` is **pushed and in sync with `origin/main`** (2026-07-26). Server **170** tests, client
+`main` is **pushed and in sync with `origin/main`** (2026-07-27). Server **211** tests, client
 **132**, all passing; client builds clean. Merged that day as `--no-ff` merge commits with their
 branches deleted:
 
@@ -123,6 +137,7 @@ branches deleted:
   rows carry dose form / bottle size / nutrient count, repeat label versions of one product
   collapse under the newest (with an "earlier labels" expander), and picking a product previews
   its micros before anything fills the form.
+- **Supplement dose vs label serving**, plus the manage dialog rework — both above
 - plus a fix making logged unit-ingredients display their own unit ("3 eggs", not "3 g"), with a
   boot-time repair of older entries
 

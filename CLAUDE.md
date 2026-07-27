@@ -157,6 +157,9 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 - `POST /api/workouts/logs` — log a single exercise (weight/reps/sets)
 - `GET /api/workouts/progress?exercise_name=` — historical logs for an exercise
 
+### Supplements (dose model)
+`supplements` stores macros/micros **per label serving** — that is what every capture path reports. `label_serving_qty` + `label_serving_unit` describe that serving; `dose_qty` is how much you actually take. `supplement_log.dose_qty` overrides it for one date (NULL = your usual dose). `server/supplementDose.js` owns the parsing and the multiplier (`dose_qty / label_serving_qty`, guarded against 0/NaN); the route returns values **already scaled**, with untouched label values under `per_label_serving`. Never sum a supplement's stored columns directly — that reads the label's serving, not the intake.
+
 ### Supplements (lookup)
 - `GET /api/supplements/search?q=` — search the NIH Dietary Supplement Label Database (DSLD) by product/brand name. Free, no API key. Off-market products rank last.
 - `GET /api/supplements/dsld/:id` — one matched label, shaped exactly like `scan-label` (`{name, dose_text, macros, micros, confidence, notes}`) so all prefill paths share client code. Label-exact → `high` confidence.
