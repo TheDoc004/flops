@@ -119,7 +119,10 @@ by any future feature (e.g. barcode/label flows).
 branches deleted:
 
 - **Barcode scanning** — section 7
-- **Supplement lookup by name** — NIH DSLD, above
+- **Supplement lookup by name** — NIH DSLD, above. A follow-up made the results tellable apart:
+  rows carry dose form / bottle size / nutrient count, repeat label versions of one product
+  collapse under the newest (with an "earlier labels" expander), and picking a product previews
+  its micros before anything fills the form.
 - plus a fix making logged unit-ingredients display their own unit ("3 eggs", not "3 g"), with a
   boot-time repair of older entries
 
