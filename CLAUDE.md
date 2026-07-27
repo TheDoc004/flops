@@ -35,6 +35,7 @@ Vite proxies `/api` → `localhost:3001` in dev. The SQLite DB lives at
 | Frontend | React 19, React Router 7, Vite 5 |
 | Charts | Recharts 3 (always wrap in `<ResponsiveContainer>`) |
 | OCR | Tesseract.js 7 (runs in-browser, no server involvement) |
+| Barcodes | Native `BarcodeDetector` where available, `@zxing/browser` lazy-loaded as fallback (iPhone Safari has no native API) |
 | PDF export | jsPDF 4 + jsPDF-autotable 5 |
 | Backend | Node.js + Express 4 |
 | Database | SQLite via `better-sqlite3` (synchronous, no async/await on DB calls) |
@@ -156,6 +157,9 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 - `POST /api/workouts/logs` — log a single exercise (weight/reps/sets)
 - `GET /api/workouts/progress?exercise_name=` — historical logs for an exercise
 
+### Barcode
+- `GET /api/barcode/:code` — proxies Open Food Facts (free, no API key) and normalizes the product into ingredient-form fields. Returns `basis` (`serving` | `serving_derived` | `100g` | `none`) so the UI can say where the numbers came from, plus `existing_ingredient` when that barcode is already saved. 404 = not on record, 502 = database unreachable.
+
 ### Label Ingredients
 - `GET /api/label-ingredients`
 - `GET /api/label-ingredients/:id`
@@ -180,7 +184,7 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 `body_weights` — `user_id, date, weight_kg`
 
 ### Ingredients
-`label_ingredients` — `id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri, source_type (manual|scanned_label|built_in), use_count, last_used_at`
+`label_ingredients` — `id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri, source_type (manual|scanned_label|built_in|barcode), use_count, last_used_at, barcode`
 
 ### Training / Workouts
 `exercise_library` — `id, name, primary_muscle, secondary_muscles (JSON array), movement_type (push|pull|legs|core|cardio), equipment (barbell|dumbbell|cable|bodyweight|machine)` — seeded with ~54 common exercises; not user-editable yet
