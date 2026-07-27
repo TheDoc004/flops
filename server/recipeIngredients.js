@@ -260,6 +260,19 @@ function resolveSlotsForLog(db, recipeRow, slot_selections, log_slot_customizati
 }
 
 /**
+ * The unit to SHOW for a logged line. Amounts on a unit-tracked ingredient are
+ * counts, not grams — 3 eggs, 1 spray, 2 slices — so labelling them "g" (as the
+ * internal g/oz amount unit does) is simply wrong on screen. Weight-tracked
+ * ingredients keep their real g/oz unit.
+ */
+function displayUnitForIngredient(ingRow, amountUnit) {
+  if (ingRow?.tracking_type === 'unit') {
+    return String(ingRow.unit_name || '').trim() || 'unit';
+  }
+  return amountUnit === 'oz' ? 'oz' : 'g';
+}
+
+/**
  * Macros for a label-ingredient at a given amount/unit (per the ingredient's
  * own tracking type). Pure; returns null if the amount/unit can't be resolved.
  */
@@ -376,7 +389,7 @@ function resolvedIngredientRows(db, recipeRow, resolvedBySlot) {
     rows.push({
       name: (ing && ing.name) || slot.label,
       amount,
-      unit: res.unit === 'oz' ? 'oz' : 'g',
+      unit: displayUnitForIngredient(ing, res.unit),
       calories: r2(m.calories),
       protein_g: r2(m.protein_g),
       carbs_g: r2(m.carbs_g),
@@ -451,4 +464,5 @@ module.exports = {
   listLoggingSlotsFromRecipeRow,
   mergeSlotSelections,
   gramsFromAmount,
+  displayUnitForIngredient,
 };

@@ -1,6 +1,7 @@
 import { formatMacroMass } from '@shared/utils/macroUnits';
 import { scaleIngredientRows } from '@shared/utils/macros';
 import { MACRO_COLORS } from '@shared/utils/colors';
+import { formatAmountWithUnit } from '@shared/utils/servingBasis';
 
 // column-gap is 0 so the macro values center inside the panel segments below
 // them; Ingredient/Amount get their breathing room from cell padding instead.
@@ -96,7 +97,7 @@ export default function IngredientBreakdown({ rows, servings = 1, macroUnits, op
               )}
             </span>
             <span style={{ color: '#6b7280', padding: '7px 14px 7px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {r.amount != null ? `${+Number(r.amount).toFixed(2)}${r.unit ? ` ${r.unit}` : ''}` : (r.unit || '—')}
+              {r.amount != null ? formatAmountWithUnit(r.amount, r.unit) : (r.unit || '—')}
             </span>
             {MACRO_COLS.map((col) => {
               const total = colTotals[col.key];

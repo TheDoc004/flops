@@ -82,6 +82,39 @@ export function emptyServing() {
   return { serving_amount: '', serving_unit: 'g', serving_unit_custom: '', gram_equivalent: '' };
 }
 
+// Abbreviations never take a plural "s" — "3 gs" / "2 tbsps" read as typos.
+// Anything else is a countable thing (egg, slice, spray, scoop, cup) that does.
+const ABBREVIATED_UNITS = new Set(['g', 'kg', 'mg', 'oz', 'lb', 'lbs', 'ml', 'l', 'fl oz', 'tbsp', 'tsp']);
+
+/**
+ * "egg" -> "eggs", "dash" -> "dashes", "patty" -> "patties".
+ * Units already stored plural ("sprays", "slices" — the AI logger writes those)
+ * are left alone rather than becoming "sprayses".
+ */
+export function pluralizeUnit(unit, amount) {
+  const u = String(unit ?? '').trim();
+  if (!u || Number(amount) === 1) return u;
+  if (ABBREVIATED_UNITS.has(u.toLowerCase())) return u;
+  if (/s$/i.test(u)) return u;
+  if (/(x|z|ch|sh)$/i.test(u)) return `${u}es`;
+  if (/[^aeiou]y$/i.test(u)) return `${u.slice(0, -1)}ies`;
+  return `${u}s`;
+}
+
+/**
+ * Amount + unit as one display string: "3 eggs", "170 g", "1 slice".
+ * Unit-tracked ingredients store a COUNT, so labelling those grams is wrong —
+ * see displayUnitForIngredient on the server, which picks the unit itself.
+ */
+export function formatAmountWithUnit(amount, unit) {
+  // Number(null) is 0, so screen those out before converting.
+  const n = amount === null || amount === undefined || amount === '' ? NaN : Number(amount);
+  if (!Number.isFinite(n)) return String(unit ?? '').trim() || '—';
+  const rounded = +n.toFixed(2);
+  const u = pluralizeUnit(unit, rounded);
+  return u ? `${rounded} ${u}` : String(rounded);
+}
+
 /** Label for the chosen unit (resolves "custom"). */
 export function unitLabel({ serving_unit, serving_unit_custom }) {
   return serving_unit === 'custom' ? (String(serving_unit_custom || '').trim() || 'unit') : serving_unit;

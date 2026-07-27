@@ -1,5 +1,63 @@
 const Database = require('better-sqlite3');
 
+/**
+ * Logged ingredient rows used to store a hardcoded "g" even for unit-tracked
+ * ingredients, so old breakdowns read "3 g" where they meant "3 eggs". Repairs
+ * the display unit in place; amounts and macros were always correct and are
+ * left untouched.
+ *
+ * A row is only relabelled when its stored calories match the count reading
+ * (amount / serving_quantity x calories). That check is what makes this safe:
+ * if an ingredient was weight-tracked when it was logged and switched to
+ * unit-tracked later, its calories won't match, so "170 g" is left alone
+ * instead of becoming "170 slices". Idempotent — rows already carrying a real
+ * unit name are skipped.
+ */
+function repairLoggedIngredientUnits(db) {
+  const unitTracked = db
+    .prepare(`SELECT id, unit_name, serving_quantity, calories FROM label_ingredients WHERE tracking_type = 'unit'`)
+    .all();
+  if (unitTracked.length === 0) return 0;
+
+  const byId = new Map(unitTracked.map(r => [Number(r.id), r]));
+  const entries = db
+    .prepare('SELECT id, ingredients_json FROM log_entries WHERE ingredients_json IS NOT NULL')
+    .all();
+  const updateEntry = db.prepare('UPDATE log_entries SET ingredients_json = ? WHERE id = ?');
+  let repaired = 0;
+
+  const run = db.transaction(rows => {
+    for (const entry of rows) {
+      let parsed;
+      try {
+        parsed = JSON.parse(entry.ingredients_json);
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(parsed)) continue;
+      let changed = false;
+      for (const row of parsed) {
+        if (!row || (row.unit !== 'g' && row.unit !== 'oz')) continue;
+        const ing = byId.get(Number(row.label_ingredient_id));
+        if (!ing) continue;
+        const per = Number(ing.serving_quantity) > 0 ? Number(ing.serving_quantity) : 1;
+        const expected = (Number(row.amount) / per) * Number(ing.calories);
+        const stored = Number(row.calories);
+        if (!Number.isFinite(expected) || !Number.isFinite(stored)) continue;
+        if (Math.abs(expected - stored) > Math.max(1, Math.abs(expected) * 0.01)) continue;
+        row.unit = String(ing.unit_name || '').trim() || 'unit';
+        changed = true;
+      }
+      if (changed) {
+        updateEntry.run(JSON.stringify(parsed), entry.id);
+        repaired += 1;
+      }
+    }
+  });
+  run(entries);
+  return repaired;
+}
+
 function createDb(dbPath) {
   const db = new Database(dbPath);
   db.exec(`
@@ -396,6 +454,8 @@ function createDb(dbPath) {
     db.exec(`ALTER TABLE label_ingredients ADD COLUMN barcode TEXT`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_label_ingredients_barcode ON label_ingredients (user_id, barcode)`);
   }
+  repairLoggedIngredientUnits(db);
+
   const profileCols = db.prepare('PRAGMA table_info(user_profile)').all().map(c => c.name);
   if (profileCols.length && !profileCols.includes('macro_units')) {
     db.exec(`ALTER TABLE user_profile ADD COLUMN macro_units TEXT DEFAULT 'metric'`);
@@ -534,4 +594,4 @@ function createDb(dbPath) {
   return db;
 }
 
-module.exports = { createDb };
+module.exports = { createDb, repairLoggedIngredientUnits };
