@@ -10,6 +10,7 @@
  */
 
 const { callProviderJson, extractJson, AiResponseError } = require('./aiClient');
+const { parseServingText } = require('./supplementDose');
 const { MICRO_KEYS, MICRO_UNITS, buildMicrosBlob } = require('./microNutrients');
 
 const MICRO_UNIT_HINT = MICRO_KEYS.map(k => `${k} (${MICRO_UNITS[k]})`).join(', ');
@@ -63,6 +64,12 @@ async function estimateSupplementMicros(name) {
     recognized: raw?.recognized !== false && !!blob,
     name: typeof raw?.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 120) : query.slice(0, 120),
     dose_text: typeof raw?.dose_text === 'string' ? raw.dose_text.trim().slice(0, 120) : '',
+    // Same structured serving the other capture paths return, parsed from the
+    // label's own wording so the client can offer "you take N of these".
+    ...(() => {
+      const parsed = parseServingText(typeof raw?.dose_text === 'string' ? raw.dose_text : '');
+      return { serving_qty: parsed?.qty ?? 1, serving_unit: parsed?.unit ?? 'serving' };
+    })(),
     micros: blob?.micros || {},
     confidence,
     notes: typeof raw?.notes === 'string' ? raw.notes.slice(0, 300) : '',

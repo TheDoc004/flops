@@ -1,4 +1,5 @@
 const Database = require('better-sqlite3');
+const { parseServingText } = require('./supplementDose');
 
 /**
  * Logged ingredient rows used to store a hardcoded "g" even for unit-tracked
@@ -461,6 +462,36 @@ function createDb(dbPath) {
     db.exec(`ALTER TABLE label_ingredients ADD COLUMN micros_json TEXT`);
   }
   repairLoggedIngredientUnits(db);
+
+  // Supplements: separate the label's serving from the amount actually taken.
+  // Stored macros/micros are per LABEL serving (that's what every capture path
+  // reports), so dose_qty / label_serving_qty is the factor applied downstream.
+  const supplementDoseCols = db.prepare('PRAGMA table_info(supplements)').all().map(c => c.name);
+  if (supplementDoseCols.length && !supplementDoseCols.includes('label_serving_qty')) {
+    db.exec(`ALTER TABLE supplements ADD COLUMN label_serving_qty REAL`);
+    db.exec(`ALTER TABLE supplements ADD COLUMN label_serving_unit TEXT`);
+    db.exec(`ALTER TABLE supplements ADD COLUMN dose_qty REAL`);
+    // Backfill from the free-text dose ("2 Capsules" -> 2 capsule). Dose starts
+    // equal to the label serving, so every existing supplement keeps counting
+    // exactly what it counted before — this migration changes no totals.
+    const rows = db.prepare('SELECT id, dose_text FROM supplements').all();
+    const upd = db.prepare(
+      'UPDATE supplements SET label_serving_qty = ?, label_serving_unit = ?, dose_qty = ? WHERE id = ?'
+    );
+    const backfill = db.transaction(list => {
+      for (const row of list) {
+        const parsed = parseServingText(row.dose_text) || { qty: 1, unit: 'serving' };
+        upd.run(parsed.qty, parsed.unit, parsed.qty, row.id);
+      }
+    });
+    backfill(rows);
+  }
+  // Per-day amount. NULL means "my usual dose", so the checklist stays one tap
+  // and only days you deliberately change carry their own number.
+  const supplementLogCols = db.prepare('PRAGMA table_info(supplement_log)').all().map(c => c.name);
+  if (supplementLogCols.length && !supplementLogCols.includes('dose_qty')) {
+    db.exec(`ALTER TABLE supplement_log ADD COLUMN dose_qty REAL`);
+  }
 
   const profileCols = db.prepare('PRAGMA table_info(user_profile)').all().map(c => c.name);
   if (profileCols.length && !profileCols.includes('macro_units')) {

@@ -63,11 +63,21 @@ export async function deleteSupplement(id) {
   }
 }
 
-export async function setSupplementTaken({ date, supplement_id, taken }) {
+/**
+ * Tick a supplement off for a date, optionally recording a different amount
+ * for that day. Omitting `dose_qty` leaves the day's amount alone (your usual
+ * dose, or whatever you already set for that day).
+ */
+export async function setSupplementTaken({ date, supplement_id, taken, dose_qty }) {
   const res = await fetch(apiUrl('/api/supplements/log'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ date, supplement_id, taken: taken ? 1 : 0 }),
+    body: JSON.stringify({
+      date,
+      supplement_id,
+      taken: taken ? 1 : 0,
+      ...(dose_qty != null ? { dose_qty } : {}),
+    }),
   });
   return jsonOrThrow(res, 'Failed to update supplement');
 }

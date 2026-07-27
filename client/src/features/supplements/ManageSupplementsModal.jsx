@@ -11,6 +11,7 @@ import {
 } from '@shared/api/supplements';
 import { MICRO_GROUPS } from '@shared/config/microNutrients';
 import { LabelCropModal } from '@features/label-ocr';
+import { formatDoseUnit } from './doseFormat';
 
 // Section headings match the ingredient form's serif treatment so the two
 // "add a thing" surfaces read as one family.
@@ -26,9 +27,16 @@ const SECTION_HEADING = {
 // big enough to actually read.
 const FIELD_LABEL = { fontSize: 13, color: '#6b7280' };
 
+
 const EMPTY_FORM = {
   name: '',
   dose_text: '',
+  // The label's own serving, and how much of it you actually take. Stored
+  // macros/micros describe ONE label serving, so these two turn them into
+  // real intake — see supplementDose.js on the server.
+  label_serving_qty: '1',
+  label_serving_unit: 'serving',
+  dose_qty: '1',
   counts_toward_macros: false,
   calories: '',
   protein_g: '',
@@ -57,6 +65,9 @@ function toForm(s) {
   return {
     name: s.name || '',
     dose_text: s.dose_text || '',
+    label_serving_qty: s.label_serving_qty != null ? String(s.label_serving_qty) : '1',
+    label_serving_unit: s.label_serving_unit || 'serving',
+    dose_qty: s.dose_qty != null ? String(s.dose_qty) : '1',
     counts_toward_macros: !!s.counts_toward_macros,
     calories: s.calories ? String(s.calories) : '',
     protein_g: s.protein_g ? String(s.protein_g) : '',
@@ -96,6 +107,15 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
   // tell near-identical database entries apart.
   const [preview, setPreview] = useState(null);
   const [expandedVersions, setExpandedVersions] = useState(null); // group id
+
+  // How far your dose is from the label's serving — drives the plain-language
+  // warning, and matches the factor the server applies when counting.
+  const labelQty = Number(form.label_serving_qty);
+  const takeQty = Number(form.dose_qty);
+  const doseMultiplier =
+    Number.isFinite(labelQty) && labelQty > 0 && Number.isFinite(takeQty) && takeQty > 0
+      ? takeQty / labelQty
+      : 1;
 
   // Shown on the collapsed micros header, so a filled-in section isn't hidden
   // behind a closed expander that looks identical to an empty one.
@@ -256,6 +276,11 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
       ...f,
       name: f.name.trim() ? f.name : (r.name || ''),
       dose_text: f.dose_text.trim() ? f.dose_text : (r.dose_text || ''),
+      // A freshly captured label resets the serving it describes; your dose
+      // starts equal to it, then you say if you take more.
+      label_serving_qty: r.serving_qty != null ? String(r.serving_qty) : f.label_serving_qty,
+      label_serving_unit: r.serving_unit || f.label_serving_unit,
+      dose_qty: r.serving_qty != null ? String(r.serving_qty) : f.dose_qty,
       counts_toward_macros: r.macros ? true : f.counts_toward_macros,
       calories: r.macros ? String(r.macros.calories) : f.calories,
       protein_g: r.macros ? String(r.macros.protein_g) : f.protein_g,
@@ -306,6 +331,9 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
     const payload = {
       name: form.name.trim(),
       dose_text: form.dose_text.trim() || null,
+      label_serving_qty: Number(form.label_serving_qty) > 0 ? Number(form.label_serving_qty) : 1,
+      label_serving_unit: form.label_serving_unit.trim() || 'serving',
+      dose_qty: Number(form.dose_qty) > 0 ? Number(form.dose_qty) : Number(form.label_serving_qty) || 1,
       counts_toward_macros: counts ? 1 : 0,
       calories: counts && form.calories !== '' ? Number(form.calories) : 0,
       protein_g: counts && form.protein_g !== '' ? Number(form.protein_g) : 0,
@@ -626,9 +654,57 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                 <label style={FIELD_LABEL}>Name</label>
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Whey Protein" required />
               </div>
+              {/* The whole point: the label's serving and YOUR dose are
+                  different things. Everything captured describes one label
+                  serving, so saying you take more must scale it. */}
+              <div style={{ padding: '10px 12px', background: '#f9fafb', border: '1px solid #f0ede8', borderRadius: 8 }}>
+                <strong style={{ display: 'block', fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
+                  How much you take
+                </strong>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={FIELD_LABEL}>The label calls one serving</label>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input
+                        type="number" min="0" step="any" style={{ width: 70 }}
+                        value={form.label_serving_qty}
+                        onChange={e => setForm(f => ({ ...f, label_serving_qty: e.target.value }))}
+                        aria-label="Label serving amount"
+                      />
+                      <input
+                        value={form.label_serving_unit}
+                        onChange={e => setForm(f => ({ ...f, label_serving_unit: e.target.value }))}
+                        placeholder="softgel"
+                        aria-label="Serving unit"
+                        style={{ minWidth: 0 }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={FIELD_LABEL}>You actually take</label>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        type="number" min="0" step="any" style={{ width: 70 }}
+                        value={form.dose_qty}
+                        onChange={e => setForm(f => ({ ...f, dose_qty: e.target.value }))}
+                        aria-label="Amount you take"
+                      />
+                      <span style={{ fontSize: 14, color: 'var(--color-text-body)' }}>
+                        {formatDoseUnit(form.label_serving_unit, Number(form.dose_qty))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <p style={{ margin: '8px 0 0', fontSize: 13, color: doseMultiplier === 1 ? 'var(--color-text-muted)' : '#92400e', lineHeight: 1.5 }}>
+                  {doseMultiplier === 1
+                    ? 'You take exactly one label serving, so the values below are counted as printed.'
+                    : `You take ${+doseMultiplier.toFixed(2)}× the label serving, so everything below is multiplied by ${+doseMultiplier.toFixed(2)} when counted.`}
+                </p>
+              </div>
+
               <div>
-                <label style={FIELD_LABEL}>Dose (optional)</label>
-                <input value={form.dose_text} onChange={e => setForm(f => ({ ...f, dose_text: e.target.value }))} placeholder="e.g. 1 scoop, 2000 IU" />
+                <label style={FIELD_LABEL}>Dose note (optional)</label>
+                <input value={form.dose_text} onChange={e => setForm(f => ({ ...f, dose_text: e.target.value }))} placeholder="e.g. with breakfast" />
               </div>
             </div>
           </div>

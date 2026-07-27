@@ -2,6 +2,14 @@ import { useEffect, useState } from 'react';
 import { fetchSupplementsToday, setSupplementTaken } from '@shared/api/supplements';
 import Reveal from '@shared/ui/Reveal';
 import ManageSupplementsModal from './ManageSupplementsModal';
+import { formatDose } from './doseFormat';
+
+// Compact +/- controls sized for a 44px touch target without dominating the row.
+const STEPPER = {
+  width: 30, height: 30, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff',
+  color: 'var(--color-text-body)', fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: 0,
+};
+
 
 function totalsFromRows(rows) {
   return rows.reduce(
@@ -73,6 +81,39 @@ export default function SupplementsCard({ date, onMacrosChange }) {
     }
   }
 
+  /**
+   * Nudge how much of this supplement was taken today. Stored against the day,
+   * so your usual dose and every other day stay as they are — the checklist
+   * remains one tap on an ordinary day.
+   */
+  async function changeDose(row, delta) {
+    const current = Number(row.dose_qty) > 0 ? Number(row.dose_qty) : 1;
+    const next = Math.max(1, Math.round((current + delta) * 100) / 100);
+    if (next === current) return;
+    const multiplier = Number(row.dose_multiplier) > 0 ? Number(row.dose_multiplier) : 1;
+    const perUnitCalories = (Number(row.calories) || 0) / (current || 1);
+    const optimistic = rows.map(r =>
+      r.id === row.id
+        ? {
+            ...r,
+            dose_qty: next,
+            dose_display: formatDose(next, row.label_serving_unit, row.dose_display),
+            // Keep the visible calories honest until the reload lands.
+            calories: Math.round(perUnitCalories * next * 100) / 100,
+            dose_multiplier: multiplier,
+          }
+        : r
+    );
+    apply(optimistic);
+    try {
+      await setSupplementTaken({ date, supplement_id: row.id, taken: row.taken, dose_qty: next });
+      await load(); // pull the server's own scaling back in
+    } catch (e) {
+      setError(e.message);
+      apply(rows);
+    }
+  }
+
   const takenCount = rows.filter(r => r.taken).length;
 
   return (
@@ -105,41 +146,79 @@ export default function SupplementsCard({ date, onMacrosChange }) {
         </div>
       ) : (
         <div style={{ background: 'var(--color-surface)', borderRadius: 14, border: '1px solid #e8e4dc', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+          {/* The row is no longer one big button: the amount steppers sit
+              alongside the tick, so changing today's dose is two taps and
+              doesn't toggle the supplement. */}
           {rows.map((r, idx) => (
-            <button
+            <div
               key={r.id}
-              type="button"
-              onClick={() => void toggle(r)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
-                padding: '12px 16px', minHeight: 52, cursor: 'pointer', background: 'transparent', border: 'none',
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 12px 10px 16px', minHeight: 52,
                 borderBottom: idx < rows.length - 1 ? '1px solid #f0ede8' : 'none',
               }}
             >
-              <span
-                aria-hidden="true"
+              <button
+                type="button"
+                onClick={() => void toggle(r)}
+                aria-pressed={!!r.taken}
                 style={{
-                  flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: '2px solid',
-                  borderColor: r.taken ? '#059669' : '#cbd5e1', background: r.taken ? '#059669' : 'transparent',
-                  color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: 12, flex: '1 1 auto', minWidth: 0,
+                  textAlign: 'left', padding: 0, cursor: 'pointer', background: 'transparent', border: 'none',
                 }}
               >
-                {r.taken ? '✓' : ''}
-              </span>
-              <span style={{ flex: '1 1 auto', minWidth: 0 }}>
-                <span style={{ fontSize: 15, fontWeight: 600, color: r.taken ? 'var(--color-text-muted)' : 'var(--color-text-strong)' }}>
-                  {r.name}
+                <span
+                  aria-hidden="true"
+                  style={{
+                    flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: '2px solid',
+                    borderColor: r.taken ? '#059669' : '#cbd5e1', background: r.taken ? '#059669' : 'transparent',
+                    color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700,
+                  }}
+                >
+                  {r.taken ? '✓' : ''}
                 </span>
-                {r.dose_text && (
-                  <span style={{ fontSize: 12.5, color: 'var(--color-text-faint)', marginLeft: 8 }}>{r.dose_text}</span>
-                )}
-              </span>
-              {r.counts_toward_macros > 0 && r.calories > 0 && (
-                <span style={{ flexShrink: 0, fontSize: 12.5, color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                  {Math.round(r.calories)} cal
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: r.taken ? 'var(--color-text-muted)' : 'var(--color-text-strong)' }}>
+                    {r.name}
+                  </span>
+                  {r.counts_toward_macros > 0 && r.calories > 0 && (
+                    <span style={{ display: 'block', fontSize: 12.5, color: 'var(--color-text-faint)', fontVariantNumeric: 'tabular-nums' }}>
+                      {Math.round(r.calories)} cal
+                    </span>
+                  )}
                 </span>
-              )}
-            </button>
+              </button>
+
+              {/* Today's amount. Nudging it records that this day differed —
+                  your usual dose and other days are untouched. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => void changeDose(r, -1)}
+                  disabled={(r.dose_qty ?? 1) <= 1}
+                  aria-label={`Take less ${r.name}`}
+                  style={STEPPER}
+                >
+                  −
+                </button>
+                <span
+                  style={{
+                    minWidth: 74, textAlign: 'center', fontSize: 13, fontVariantNumeric: 'tabular-nums',
+                    color: r.taken ? 'var(--color-text-body)' : 'var(--color-text-muted)',
+                  }}
+                >
+                  {r.dose_display || r.dose_text || '1'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void changeDose(r, 1)}
+                  aria-label={`Take more ${r.name}`}
+                  style={STEPPER}
+                >
+                  +
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       )}
