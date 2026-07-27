@@ -13,6 +13,7 @@
 
 const { MICRO_KEYS, MICRO_UNITS, buildMicrosBlob } = require('./microNutrients');
 const { shapeMacros } = require('./supplementLabelService');
+const { parseServingText, singularizeUnit } = require('./supplementDose');
 
 const DSLD_BASE = 'https://api.ods.od.nih.gov/dsld/v9';
 const USER_AGENT = 'FLOPS-NutritionTracker/1.0 (personal use)';
@@ -349,6 +350,10 @@ async function fetchSupplementLabel(id, { fetchImpl = globalThis.fetch } = {}) {
     name: String(label.fullName || '').trim().slice(0, 120),
     brand: String(label.brandName || '').trim().slice(0, 64),
     dose_text: servingText(label).slice(0, 120),
+    // Structured so the client never has to re-parse serving text: this is the
+    // LABEL's serving, which the dose you actually take is measured against.
+    serving_qty: Number(label?.servingSizes?.[0]?.minQuantity) > 0 ? Number(label.servingSizes[0].minQuantity) : 1,
+    serving_unit: singularizeUnit(String(label?.servingSizes?.[0]?.unit || '').replace(/\(s\)$/i, '')) || 'serving',
     macros: shapeMacros(macros),
     micros,
     // Real label transcription, same tier as a photo scan — but anything we had

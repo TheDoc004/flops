@@ -8,6 +8,7 @@ const {
   AiQuotaError,
 } = require('../supplementLabelService');
 const { searchSupplements, fetchSupplementLabel, DsldError } = require('../dsldService');
+const { doseMultiplier, scaleValues, describeDose, parseServingText } = require('../supplementDose');
 const { estimateSupplementMicros } = require('../supplementEstimateService');
 
 function normalizeNumberOrZero(v, { min = 0 } = {}) {
@@ -37,7 +38,8 @@ function isoDateOrNull(raw) {
 }
 
 const SELECT_COLS =
-  'id, user_id, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json, sort_order';
+  'id, user_id, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json, sort_order, ' +
+  'label_serving_qty, label_serving_unit, dose_qty';
 
 /**
  * Build the micros_json string to store for a supplement from a request body's
@@ -49,6 +51,24 @@ const SELECT_COLS =
  * (photo scan or an NIH database match). A name-only AI estimate is the one
  * exception and says so explicitly, so it can never be mistaken for label data.
  */
+/**
+ * Label serving + your dose. The stored macros/micros describe ONE label
+ * serving, so these two numbers are what turn them into real intake.
+ * Defaults keep old clients working: no serving info means "1 serving, take 1".
+ */
+function doseFieldsFromBody(body) {
+  const parsedText = parseServingText(body?.dose_text);
+  const rawLabelQty = Number(body?.label_serving_qty);
+  const label_serving_qty =
+    Number.isFinite(rawLabelQty) && rawLabelQty > 0 ? rawLabelQty : parsedText?.qty ?? 1;
+  const label_serving_unit =
+    normalizeOptionalString(body?.label_serving_unit, { maxLen: 40 }) || parsedText?.unit || 'serving';
+  const rawDose = Number(body?.dose_qty);
+  // Taking exactly one label serving is the sane default, never zero.
+  const dose_qty = Number.isFinite(rawDose) && rawDose > 0 ? rawDose : label_serving_qty;
+  return { label_serving_qty, label_serving_unit, dose_qty };
+}
+
 function microsJsonFromBody(body) {
   const claimed = body?.micros_confidence;
   const confidence = claimed === 'medium' || claimed === 'low' ? claimed : 'high';
@@ -80,10 +100,44 @@ function parseMicrosValues(micros_json) {
 }
 
 /** Replace a row's raw micros_json with a parsed `micros` object for the API. */
-function shapeRow(row) {
+/**
+ * Shape a supplement row for the client.
+ *
+ * Stored macros/micros are per LABEL serving. `micros`/`calories` etc. are
+ * returned already scaled to the dose actually taken, so every consumer gets
+ * real intake without repeating the arithmetic; the untouched label values stay
+ * available under `per_label_serving` for the UI to show both.
+ *
+ * @param {object} row
+ * @param {number} [dayDoseQty] a specific day's amount, overriding the usual dose
+ */
+function shapeRow(row, dayDoseQty) {
   if (!row) return row;
   const { micros_json, ...rest } = row;
-  return { ...rest, micros: parseMicrosValues(micros_json) };
+  const labelMicros = parseMicrosValues(micros_json);
+  const effectiveDose =
+    Number.isFinite(Number(dayDoseQty)) && Number(dayDoseQty) > 0 ? Number(dayDoseQty) : rest.dose_qty;
+  const multiplier = doseMultiplier({ label_serving_qty: rest.label_serving_qty, dose_qty: effectiveDose });
+
+  return {
+    ...rest,
+    dose_qty: effectiveDose ?? rest.dose_qty,
+    dose_multiplier: Math.round(multiplier * 1000) / 1000,
+    dose_display: describeDose(effectiveDose ?? rest.dose_qty, rest.label_serving_unit),
+    label_serving_display: describeDose(rest.label_serving_qty, rest.label_serving_unit),
+    calories: Math.round((Number(rest.calories) || 0) * multiplier * 100) / 100,
+    protein_g: Math.round((Number(rest.protein_g) || 0) * multiplier * 100) / 100,
+    carbs_g: Math.round((Number(rest.carbs_g) || 0) * multiplier * 100) / 100,
+    fat_g: Math.round((Number(rest.fat_g) || 0) * multiplier * 100) / 100,
+    micros: labelMicros ? scaleValues(labelMicros, multiplier) : null,
+    per_label_serving: {
+      calories: Number(rest.calories) || 0,
+      protein_g: Number(rest.protein_g) || 0,
+      carbs_g: Number(rest.carbs_g) || 0,
+      fat_g: Number(rest.fat_g) || 0,
+      micros: labelMicros,
+    },
+  };
 }
 
 function createSupplementsRouter(db) {
@@ -121,16 +175,19 @@ function createSupplementsRouter(db) {
     const fat_g = normalizeNumberOrZero(req.body?.fat_g);
     const counts_toward_macros = normalizeBoolInt(req.body?.counts_toward_macros, 0);
     const micros_json = microsJsonFromBody(req.body);
+    const dose = doseFieldsFromBody(req.body);
     const nextSort =
       db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM supplements WHERE user_id = ?').get(userId).n;
 
     const r = db
       .prepare(
         `INSERT INTO supplements
-           (user_id, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (user_id, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json, sort_order,
+            label_serving_qty, label_serving_unit, dose_qty)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(userId, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json, nextSort);
+      .run(userId, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json, nextSort,
+           dose.label_serving_qty, dose.label_serving_unit, dose.dose_qty);
 
     const row = db.prepare(`SELECT ${SELECT_COLS} FROM supplements WHERE id = ?`).get(r.lastInsertRowid);
     res.status(201).json(shapeRow(row));
@@ -152,6 +209,8 @@ function createSupplementsRouter(db) {
       .prepare(
         `SELECT s.id, s.name, s.dose_text, s.calories, s.protein_g, s.carbs_g, s.fat_g,
                 s.counts_toward_macros, s.micros_json, s.sort_order,
+                s.label_serving_qty, s.label_serving_unit, s.dose_qty,
+                sl.dose_qty AS day_dose_qty,
                 CASE WHEN sl.taken = 1 THEN 1 ELSE 0 END AS taken
            FROM supplements s
            LEFT JOIN supplement_log sl
@@ -160,7 +219,8 @@ function createSupplementsRouter(db) {
           ORDER BY s.sort_order, s.name`
       )
       .all(date, userId);
-    const rows = raw.map(shapeRow);
+    // Each row scales by that day's amount when one was recorded, else the usual dose.
+    const rows = raw.map(({ day_dose_qty, ...row }) => shapeRow(row, day_dose_qty));
 
     const totals = rows.reduce(
       (acc, r) => {
@@ -191,6 +251,11 @@ function createSupplementsRouter(db) {
       return res.status(400).json({ error: 'Invalid supplement_id' });
     }
     const taken = normalizeBoolInt(req.body?.taken, 0);
+    // Optional amount for THIS day only. Omitted (or null) keeps the usual
+    // dose, so the checklist stays a single tap on an ordinary day.
+    const hasDose = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'dose_qty');
+    const rawDose = Number(req.body?.dose_qty);
+    const dayDose = hasDose && Number.isFinite(rawDose) && rawDose > 0 ? rawDose : null;
 
     const exists = db
       .prepare('SELECT id FROM supplements WHERE id = ? AND user_id = ? AND COALESCE(is_deleted, 0) = 0')
@@ -198,12 +263,15 @@ function createSupplementsRouter(db) {
     if (!exists) return res.status(404).json({ error: 'Supplement not found' });
 
     db.prepare(
-      `INSERT INTO supplement_log (user_id, date, supplement_id, taken)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(user_id, date, supplement_id) DO UPDATE SET taken = excluded.taken`
-    ).run(userId, date, supplementId, taken);
+      `INSERT INTO supplement_log (user_id, date, supplement_id, taken, dose_qty)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, date, supplement_id) DO UPDATE SET
+         taken = excluded.taken,
+         -- Only a supplied amount overwrites; a plain tick keeps the day's own.
+         dose_qty = CASE WHEN ? THEN excluded.dose_qty ELSE supplement_log.dose_qty END`
+    ).run(userId, date, supplementId, taken, dayDose, hasDose ? 1 : 0);
 
-    res.json({ date, supplement_id: supplementId, taken });
+    res.json({ date, supplement_id: supplementId, taken, dose_qty: dayDose });
   });
 
   // Taken supplements that carry micronutrients, grouped by date, over a range.
@@ -221,7 +289,9 @@ function createSupplementsRouter(db) {
 
     const rows = db
       .prepare(
-        `SELECT sl.date AS date, s.id AS id, s.name AS name, s.micros_json AS micros_json
+        `SELECT sl.date AS date, s.id AS id, s.name AS name, s.micros_json AS micros_json,
+                s.label_serving_qty AS label_serving_qty, s.dose_qty AS dose_qty,
+                sl.dose_qty AS day_dose_qty
            FROM supplement_log sl
            JOIN supplements s ON s.id = sl.supplement_id AND s.user_id = sl.user_id
           WHERE sl.user_id = ? AND sl.taken = 1 AND sl.date >= ? AND sl.date <= ?
@@ -234,7 +304,12 @@ function createSupplementsRouter(db) {
     for (const r of rows) {
       const micros = parseMicrosValues(r.micros_json);
       if (!micros) continue;
-      (byDate[r.date] ||= []).push({ id: r.id, name: r.name, micros });
+      // History must reflect what was actually taken that day, not the label's
+      // serving — scale by that day's amount, falling back to the usual dose.
+      const effectiveDose =
+        Number.isFinite(Number(r.day_dose_qty)) && Number(r.day_dose_qty) > 0 ? Number(r.day_dose_qty) : r.dose_qty;
+      const multiplier = doseMultiplier({ label_serving_qty: r.label_serving_qty, dose_qty: effectiveDose });
+      (byDate[r.date] ||= []).push({ id: r.id, name: r.name, micros: scaleValues(micros, multiplier) });
     }
     res.json({ start: from, end: to, byDate });
   });
@@ -325,13 +400,16 @@ function createSupplementsRouter(db) {
     const fat_g = normalizeNumberOrZero(req.body?.fat_g);
     const counts_toward_macros = normalizeBoolInt(req.body?.counts_toward_macros, 0);
     const micros_json = microsJsonFromBody(req.body);
+    const dose = doseFieldsFromBody(req.body);
 
     db.prepare(
       `UPDATE supplements
           SET name = ?, dose_text = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?,
-              counts_toward_macros = ?, micros_json = ?
+              counts_toward_macros = ?, micros_json = ?,
+              label_serving_qty = ?, label_serving_unit = ?, dose_qty = ?
         WHERE id = ? AND user_id = ?`
-    ).run(name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json, id, userId);
+    ).run(name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json,
+          dose.label_serving_qty, dose.label_serving_unit, dose.dose_qty, id, userId);
 
     const row = db.prepare(`SELECT ${SELECT_COLS} FROM supplements WHERE id = ?`).get(id);
     res.json(shapeRow(row));
