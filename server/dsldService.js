@@ -145,32 +145,105 @@ function servingText(label) {
   return `${+qty.toFixed(2)} ${plural}`.trim();
 }
 
+/** DSLD's LanguaL descriptions are verbose; shorten the common dose forms. */
+const FORM_LABELS = {
+  'tablet or pill': 'Tablet',
+  capsule: 'Capsule',
+  'capsule (hard, two-piece)': 'Capsule',
+  'softgel or gelcap': 'Softgel',
+  'gummy or jelly': 'Gummy',
+  powder: 'Powder',
+  liquid: 'Liquid',
+  'liquid or syrup': 'Liquid',
+  'chewable tablet': 'Chewable',
+};
+
+function doseForm(src) {
+  const raw = String(src?.physicalState?.langualCodeDescription || '').trim();
+  if (!raw) return '';
+  return FORM_LABELS[raw.toLowerCase()] || raw;
+}
+
+/** "100 Tablet(s)" -> "100 Tablets"; "120 Gummy(ies)" -> "120 Gummies" */
+function netContentsText(src) {
+  const first = Array.isArray(src?.netContents) ? src.netContents[0] : null;
+  const display = String(first?.display || '').trim();
+  if (!display) return '';
+  return display.replace(/y\(ies\)/gi, 'ies').replace(/\(s\)/gi, 's');
+}
+
+function shapeHit(h) {
+  const src = h?._source || {};
+  return {
+    id: String(h?._id ?? ''),
+    name: String(src.fullName || '').trim(),
+    brand: String(src.brandName || '').trim(),
+    // Off-market products still matter (you may own an old bottle) but rank last.
+    off_market: src.offMarket === 1 || src.offMarket === true,
+    entry_date: String(src.entryDate || '').trim(),
+    product_type: String(src.productType?.langualCodeDescription || '').trim(),
+    // The three fields that actually tell near-identical products apart.
+    form: doseForm(src),
+    net_contents: netContentsText(src),
+    nutrient_count: Array.isArray(src.allIngredients) ? src.allIngredients.length : 0,
+  };
+}
+
 /**
  * Search by product or brand name.
- * @returns {Promise<Array<{id,name,brand,off_market,entry_date,product_type}>>}
+ *
+ * DSLD stores every version of a label separately, so "centrum men" comes back
+ * as a dozen rows where four are the same product re-entered over the years —
+ * impossible to choose between. Entries sharing a brand + product name are
+ * collapsed into one result carrying the most recent label, with the rest
+ * offered as `older_versions` for anyone holding an older bottle.
+ *
+ * @returns {Promise<Array<object>>} grouped results, most relevant first
  */
 async function searchSupplements(query, { limit = 12, fetchImpl = globalThis.fetch } = {}) {
   const q = String(query ?? '').trim();
   if (q.length < 2) return [];
-  const size = Math.min(Math.max(Number(limit) || 12, 1), 25);
-  const body = await dsldFetch(`/search-filter?q=${encodeURIComponent(q)}&size=${size}`, fetchImpl);
+  const maxGroups = Math.min(Math.max(Number(limit) || 12, 1), 25);
+  // Over-fetch: collapsing duplicates would otherwise leave a short list.
+  const body = await dsldFetch(`/search-filter?q=${encodeURIComponent(q)}&size=${maxGroups * 3}`, fetchImpl);
   const hits = Array.isArray(body?.hits) ? body.hits : [];
-  return hits
-    .map(h => {
-      const src = h?._source || {};
-      return {
-        id: String(h?._id ?? ''),
-        name: String(src.fullName || '').trim(),
-        brand: String(src.brandName || '').trim(),
-        // Off-market products are still useful (you may own an old bottle) but
-        // are ranked last and labelled in the UI.
-        off_market: src.offMarket === 1 || src.offMarket === true,
-        entry_date: String(src.entryDate || '').trim(),
-        product_type: String(src.productType?.langualCodeDescription || '').trim(),
-      };
-    })
-    .filter(r => r.id && r.name)
-    .sort((a, b) => Number(a.off_market) - Number(b.off_market));
+
+  const groups = new Map();
+  hits.forEach((h, index) => {
+    const row = shapeHit(h);
+    if (!row.id || !row.name) return;
+    const key = `${row.brand.toLowerCase()}|${row.name.toLowerCase().replace(/\s+/g, ' ')}`;
+    const existing = groups.get(key);
+    if (!existing) {
+      // rank preserves DSLD's relevance order for the group as a whole.
+      groups.set(key, { ...row, rank: index, older_versions: [] });
+      return;
+    }
+    // Prefer a current label over a discontinued one, then the newer entry.
+    const better =
+      Number(row.off_market) - Number(existing.off_market) < 0 ||
+      (row.off_market === existing.off_market && row.entry_date > existing.entry_date);
+    const [primary, secondary] = better ? [row, existing] : [existing, row];
+    const older = existing.older_versions;
+    older.push({
+      id: secondary.id,
+      entry_date: secondary.entry_date,
+      off_market: secondary.off_market,
+      nutrient_count: secondary.nutrient_count,
+      net_contents: secondary.net_contents,
+    });
+    groups.set(key, { ...primary, rank: existing.rank, older_versions: older });
+  });
+
+  return [...groups.values()]
+    .sort((a, b) => Number(a.off_market) - Number(b.off_market) || a.rank - b.rank)
+    .slice(0, maxGroups)
+    .map(({ rank, ...row }) => {
+      void rank;
+      // Newest first, so an expanded list reads like a history.
+      row.older_versions.sort((x, y) => String(y.entry_date).localeCompare(String(x.entry_date)));
+      return row;
+    });
 }
 
 /** One ingredient row -> { key, value } in our canonical unit, or null. */

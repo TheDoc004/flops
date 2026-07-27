@@ -77,6 +77,10 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
   const [lookupBusy, setLookupBusy] = useState(false);
   const [lookupSearched, setLookupSearched] = useState(false);
   const [estimateBusy, setEstimateBusy] = useState(false);
+  // A picked product is previewed before it touches the form — that's how you
+  // tell near-identical database entries apart.
+  const [preview, setPreview] = useState(null);
+  const [expandedVersions, setExpandedVersions] = useState(null); // group id
   // Where the current micro values came from — decides the confidence stored.
   const [microsSource, setMicrosSource] = useState(null); // 'label' | 'estimate'
 
@@ -109,6 +113,8 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
     setLookupResults([]);
     setLookupSearched(false);
     setMicrosSource(null);
+    setPreview(null);
+    setExpandedVersions(null);
   }
 
   // Chosen/taken photo → open the crop modal.
@@ -155,28 +161,37 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
     };
   }, [lookupQuery]);
 
-  // A search hit → pull its full label → prefill. Label-exact, like a scan.
-  async function pickFromDatabase(hit) {
+  // A search hit → pull its label → SHOW it. Nothing touches the form until
+  // you confirm, so a wrong pick costs a click instead of overwriting entries.
+  async function previewFromDatabase(id) {
     setError('');
     setScanNote('');
     setLookupBusy(true);
     try {
-      const label = await fetchSupplementFromDatabase(hit.id);
-      const filled = applyLabelToForm(label);
-      setMicrosSource('label');
-      setLookupResults([]);
-      setLookupQuery('');
-      const extra = label.notes ? ` ${label.notes}` : '';
-      setScanNote(
-        filled > 0
-          ? `Filled ${filled} micronutrient${filled === 1 ? '' : 's'} from the ${label.brand || 'product'} label.${extra} Review and save.`
-          : `That label lists no micronutrients this app tracks.${extra}`
-      );
+      setPreview(await fetchSupplementFromDatabase(id));
     } catch (e) {
       setError(e.message);
     } finally {
       setLookupBusy(false);
     }
+  }
+
+  /** Confirmed from the preview → fill the form. Label-exact, like a scan. */
+  function usePreviewedProduct() {
+    const label = preview;
+    if (!label) return;
+    const filled = applyLabelToForm(label);
+    setMicrosSource('label');
+    setPreview(null);
+    setLookupResults([]);
+    setLookupQuery('');
+    setExpandedVersions(null);
+    const extra = label.notes ? ` ${label.notes}` : '';
+    setScanNote(
+      filled > 0
+        ? `Filled ${filled} micronutrient${filled === 1 ? '' : 's'} from the ${label.brand || 'product'} label.${extra} Review and save.`
+        : `That label lists no micronutrients this app tracks.${extra}`
+    );
   }
 
   // Nothing in the database → ask the AI from the name. Always an estimate,
@@ -406,28 +421,122 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                 <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>Searching…</p>
               )}
 
-              {lookupResults.length > 0 && (
-                <ul style={{ listStyle: 'none', margin: '10px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
-                  {lookupResults.map(hit => (
-                    <li key={hit.id}>
-                      <button
-                        type="button"
-                        onClick={() => void pickFromDatabase(hit)}
-                        disabled={lookupBusy}
-                        style={{
-                          width: '100%', textAlign: 'left', background: '#fff', border: '1px solid #e5e7eb',
-                          borderRadius: 8, padding: '8px 10px', minHeight: 44, cursor: 'pointer', font: 'inherit',
-                        }}
-                      >
-                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>{hit.name}</span>
-                        <span style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>
-                          {hit.brand || 'Unknown brand'}
-                          {hit.entry_date ? ` · label from ${hit.entry_date.slice(0, 4)}` : ''}
-                          {hit.off_market ? ' · discontinued' : ''}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
+              {/* Preview: see the actual values before they touch the form. */}
+              {preview && (
+                <div style={{ marginTop: 10, padding: '10px 12px', background: '#fff', border: '1px solid #c7d2fe', borderRadius: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{preview.name}</div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+                    {[preview.brand, preview.dose_text && `per ${preview.dose_text}`].filter(Boolean).join(' · ')}
+                  </div>
+
+                  {Object.keys(preview.micros || {}).length > 0 ? (
+                    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '2px 12px' }}>
+                      {MICRO_GROUPS.flatMap(g => g.nutrients)
+                        .filter(n => preview.micros[n.key] != null)
+                        .map(n => (
+                          <li key={n.key} style={{ fontSize: 13, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                            <span style={{ color: '#4b5563' }}>{n.name}</span>
+                            <span style={{ fontWeight: 600 }}>{preview.micros[n.key]} {n.unit}</span>
+                          </li>
+                        ))}
+                    </ul>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>
+                      No micronutrients this app tracks.
+                    </p>
+                  )}
+
+                  {preview.macros && (
+                    <p style={{ margin: '8px 0 0', fontSize: 13, color: '#4b5563' }}>
+                      {Math.round(preview.macros.calories)} cal · P {preview.macros.protein_g} · C {preview.macros.carbs_g} · F {preview.macros.fat_g}
+                    </p>
+                  )}
+                  {preview.notes && (
+                    <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#92400e', lineHeight: 1.5 }}>{preview.notes}</p>
+                  )}
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    <button type="button" className="btn-primary" style={{ minHeight: 40 }} onClick={usePreviewedProduct}>
+                      Use this product
+                    </button>
+                    <button type="button" className="btn-secondary" style={{ minHeight: 40 }} onClick={() => setPreview(null)}>
+                      Back to results
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!preview && lookupResults.length > 0 && (
+                <ul style={{ listStyle: 'none', margin: '10px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+                  {lookupResults.map(hit => {
+                    // The details that actually separate near-identical entries.
+                    const facts = [
+                      hit.form,
+                      hit.net_contents,
+                      hit.nutrient_count ? `${hit.nutrient_count} nutrients` : '',
+                      hit.entry_date ? `label from ${hit.entry_date.slice(0, 4)}` : '',
+                    ].filter(Boolean);
+                    return (
+                      <li key={hit.id}>
+                        <button
+                          type="button"
+                          onClick={() => void previewFromDatabase(hit.id)}
+                          disabled={lookupBusy}
+                          style={{
+                            width: '100%', textAlign: 'left', background: '#fff', border: '1px solid #e5e7eb',
+                            borderRadius: 8, padding: '8px 10px', minHeight: 44, cursor: 'pointer', font: 'inherit',
+                          }}
+                        >
+                          <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>
+                            {hit.name}
+                            {hit.off_market && (
+                              <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 4, padding: '1px 5px' }}>
+                                discontinued
+                              </span>
+                            )}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>
+                            {hit.brand || 'Unknown brand'}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>{facts.join(' · ')}</span>
+                        </button>
+
+                        {/* Same product, earlier labels — kept out of the way. */}
+                        {hit.older_versions?.length > 0 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedVersions(expandedVersions === hit.id ? null : hit.id)}
+                              style={{ background: 'none', border: 'none', padding: '4px 10px', font: 'inherit', fontSize: 12, color: 'var(--color-text-muted)', cursor: 'pointer', textDecoration: 'underline' }}
+                            >
+                              {expandedVersions === hit.id ? 'Hide' : `${hit.older_versions.length} earlier label${hit.older_versions.length === 1 ? '' : 's'}`}
+                            </button>
+                            {expandedVersions === hit.id && (
+                              <ul style={{ listStyle: 'none', margin: '2px 0 0 12px', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                {hit.older_versions.map(v => (
+                                  <li key={v.id}>
+                                    <button
+                                      type="button"
+                                      onClick={() => void previewFromDatabase(v.id)}
+                                      disabled={lookupBusy}
+                                      style={{
+                                        width: '100%', textAlign: 'left', background: '#f9fafb', border: '1px solid #e5e7eb',
+                                        borderRadius: 6, padding: '6px 10px', minHeight: 36, cursor: 'pointer', font: 'inherit', fontSize: 12, color: '#4b5563',
+                                      }}
+                                    >
+                                      {[v.entry_date ? `label from ${v.entry_date.slice(0, 4)}` : '', v.net_contents, v.nutrient_count ? `${v.nutrient_count} nutrients` : '', v.off_market ? 'discontinued' : '']
+                                        .filter(Boolean)
+                                        .join(' · ')}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
 
