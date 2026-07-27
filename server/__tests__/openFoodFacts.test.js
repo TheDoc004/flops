@@ -176,3 +176,60 @@ describe('lookupBarcode', () => {
     await expect(lookupBarcode('3017620422003', { fetchImpl })).rejects.toBeInstanceOf(BarcodeLookupError);
   });
 });
+
+describe('shapeOffProduct — micronutrients', () => {
+  it('converts Open Food Facts gram values into our units', () => {
+    // Real Cheerios shape: OFF stores every one of these in grams.
+    const r = shapeOffProduct(
+      {
+        product_name: 'Cheerios',
+        serving_quantity: 37,
+        nutriments: {
+          'energy-kcal_serving': 140,
+          sodium_serving: 0.16,
+          calcium_serving: 0.1,
+          iron_serving: 0.0045,
+          'vitamin-a_serving': 0.00015,
+          'vitamin-c_serving': 0.00599,
+          fiber_serving: 1.99,
+        },
+      },
+      '016000275270'
+    );
+    expect(r.micros).toEqual({
+      sodium_mg: 160,
+      calcium_mg: 100,
+      iron_mg: 4.5,
+      vitamin_a_mcg: 150,
+      vitamin_c_mg: 5.99,
+      fiber_g: 1.99,
+    });
+  });
+
+  it('scales micros to the serving when macros were derived', () => {
+    const r = shapeOffProduct(
+      {
+        product_name: 'Oats',
+        serving_quantity: 50,
+        nutriments: { 'energy-kcal_100g': 380, sodium_100g: 0.01, iron_100g: 0.004 },
+      },
+      '1234567890'
+    );
+    // Micros must follow the macros' basis or they'd describe a different portion.
+    expect(r.basis).toBe('serving_derived');
+    expect(r.micros).toEqual({ sodium_mg: 5, iron_mg: 2 });
+  });
+
+  it('omits absent and zero nutrients rather than storing zeros', () => {
+    const r = shapeOffProduct(
+      { product_name: 'Water', nutriments: { 'energy-kcal_100g': 0, sodium_100g: 0, calcium_100g: 0.01 } },
+      '1234567890'
+    );
+    expect(r.micros).toEqual({ calcium_mg: 10 });
+  });
+
+  it('gives an empty micros object when there is no nutrition at all', () => {
+    const r = shapeOffProduct({ product_name: 'Mystery', nutriments: {} }, '1234567890');
+    expect(r.micros).toEqual({});
+  });
+});

@@ -454,6 +454,12 @@ function createDb(dbPath) {
     db.exec(`ALTER TABLE label_ingredients ADD COLUMN barcode TEXT`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_label_ingredients_barcode ON label_ingredients (user_id, barcode)`);
   }
+  // Per-serving micronutrients read off the product's own panel (currently via
+  // barcode import). Stored as the standard micros blob so log-time estimation
+  // can prefer these over an AI guess.
+  if (labelCols.length && !labelCols.includes('micros_json')) {
+    db.exec(`ALTER TABLE label_ingredients ADD COLUMN micros_json TEXT`);
+  }
   repairLoggedIngredientUnits(db);
 
   const profileCols = db.prepare('PRAGMA table_info(user_profile)').all().map(c => c.name);

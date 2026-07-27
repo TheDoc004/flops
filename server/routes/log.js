@@ -7,6 +7,7 @@ const {
 } = require('../recipeIngredients');
 const { buildMicrosBlob } = require('../microNutrients');
 const { estimateMicrosFromIngredients } = require('../microEstimateService');
+const { labelMicrosForRows, mergeMicros } = require('../labelMicros');
 
 const MICRO_TIMEOUT_MS = 9000;
 
@@ -25,6 +26,37 @@ async function microsJsonFromIngredients(ingredients) {
   } catch {
     return null; // micro estimation is optional — never block logging
   }
+}
+
+/**
+ * Micros for logged rows, preferring each ingredient's own product label over
+ * an AI estimate. Rows whose library entry carries label micros (captured on
+ * barcode import) contribute measured values; only the rest are estimated, and
+ * when every row is covered no AI call happens at all.
+ */
+async function microsJsonPreferringLabels(db, ingredients) {
+  const { micros: labelValues, covered, uncovered } = labelMicrosForRows(db, ingredients);
+  if (covered.length === 0) return microsJsonFromIngredients(ingredients);
+
+  let estimated = null;
+  if (uncovered.length > 0) {
+    const json = await microsJsonFromIngredients(uncovered);
+    try {
+      estimated = json ? JSON.parse(json)?.micros : null;
+    } catch {
+      estimated = null;
+    }
+  }
+
+  const merged = mergeMicros(labelValues, estimated);
+  // "high" only when every row was measured; any estimated row drags it down.
+  const confidence = uncovered.length === 0 ? 'high' : 'medium';
+  const notes =
+    uncovered.length === 0
+      ? 'From product labels'
+      : `${covered.length} of ${covered.length + uncovered.length} ingredients from product labels; the rest estimated`;
+  const blob = buildMicrosBlob(merged, { confidence, notes });
+  return blob ? JSON.stringify(blob) : null;
 }
 
 /** Client-sent micros object (back-compat) -> micros_json string, or null. */
@@ -123,10 +155,10 @@ function ingredientsJsonFromRows(rows) {
  */
 async function resolveMicrosJson(db, body, recipe, resolvedRows = null) {
   if (Array.isArray(body?.ingredients) && body.ingredients.length) {
-    return microsJsonFromIngredients(body.ingredients);
+    return microsJsonPreferringLabels(db, body.ingredients);
   }
   if (Array.isArray(resolvedRows) && resolvedRows.length) {
-    return microsJsonFromIngredients(resolvedRows);
+    return microsJsonPreferringLabels(db, resolvedRows);
   }
   if (recipe && !recipe.is_quick_food) {
     const ings = normalizedIngredientsFromRecipe(db, recipe);
