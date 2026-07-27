@@ -786,18 +786,16 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
         </form>
       </dialog>
 
-      {/* Crop the photo before sending it to the AI reader. Rendered outside the
-          dialog above, in a higher stacking context, so it sits on top and its
-          backdrop clicks don't close the manage dialog. */}
+      {/* Crop the photo before sending it to the AI reader. It's a <dialog>
+          too, so it joins the top layer above this one — no z-index needed,
+          and none would have worked. */}
       {scanImageSrc && (
-        <div style={{ position: 'relative', zIndex: 2000 }}>
-          <LabelCropModal
-            open
-            imageSrc={scanImageSrc}
-            onClose={() => setScanImageSrc(null)}
-            onApply={uri => void runScan(uri)}
-          />
-        </div>
+        <LabelCropModal
+          open
+          imageSrc={scanImageSrc}
+          onClose={() => setScanImageSrc(null)}
+          onApply={uri => void runScan(uri)}
+        />
       )}
     </>
   );

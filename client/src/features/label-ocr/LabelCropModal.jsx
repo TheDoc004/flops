@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * Simple drag-to-crop on the nutrition panel before OCR. Lightweight (no extra deps).
  */
 export default function LabelCropModal({ open, imageSrc, onClose, onApply }) {
+  const dialogRef = useRef(null);
   const wrapRef = useRef(null);
   const imgRef = useRef(null);
   const [drag, setDrag] = useState(null);
@@ -106,34 +107,27 @@ export default function LabelCropModal({ open, imageSrc, onClose, onApply }) {
       : null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
+    // A native <dialog>, not a fixed overlay: both callers are themselves
+    // showModal() dialogs, which render in the browser's TOP LAYER. Nothing
+    // outside that layer can cover them at any z-index, so a plain div here
+    // was drawing behind the modal that opened it. Dialogs stack in the order
+    // they open, so this one lands on top.
+    <dialog
+      ref={el => { dialogRef.current = el; if (el && !el.open) el.showModal(); }}
+      onClose={() => onClose?.()}
       aria-labelledby="label-crop-title"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 200,
-        background: 'rgba(0,0,0,0.45)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 16,
-      }}
+      style={{ width: 'min(600px, 94vw)', maxHeight: '90vh', overflowY: 'auto' }}
       onMouseDown={e => {
-        if (e.target === e.currentTarget) onClose?.();
+        // Backdrop clicks land on the dialog element itself.
+        if (e.target === dialogRef.current) dialogRef.current?.close();
       }}
     >
-      <div
-        className="card"
-        style={{ maxWidth: 560, width: '100%', margin: 0 }}
-        onMouseDown={e => e.stopPropagation()}
-      >
+      <div>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <h3 id="label-crop-title" style={{ margin: 0 }}>
             Crop to nutrition facts (optional)
           </h3>
-          <button type="button" className="modal-close-x" aria-label="Close" onClick={() => onClose?.()}>✕</button>
+          <button type="button" className="modal-close-x" aria-label="Close" onClick={() => dialogRef.current?.close()}>✕</button>
         </div>
         <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
           Drag to crop around the Nutrition Facts panel.
@@ -180,6 +174,6 @@ export default function LabelCropModal({ open, imageSrc, onClose, onApply }) {
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }
