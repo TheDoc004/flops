@@ -13,6 +13,7 @@ import {
   mergeNutritionParseIntoIngredientForm,
   scanFieldClass,
 } from '@features/label-ocr';
+import { BarcodeScannerModal, mergeBarcodeProductIntoIngredientForm } from '@features/barcode';
 import { SERVING_UNITS, isWeightUnit, servingToStored, servingFromRow, emptyServing, unitLabel } from '@shared/utils/servingBasis';
 import Reveal from '@shared/ui/Reveal';
 import GrowStack from '@shared/ui/GrowStack';
@@ -79,6 +80,11 @@ export default function Ingredients() {
   const [labelScanFeedback, setLabelScanFeedback] = useState(null);
   const [labelScanFieldStatus, setLabelScanFieldStatus] = useState(null);
   const [labelCropOpen, setLabelCropOpen] = useState(false);
+  const [barcodeOpen, setBarcodeOpen] = useState(false);
+  // The scanned code travels with the form so it is saved on the ingredient —
+  // that is what makes a later re-scan find this item instead of duplicating it.
+  const [scannedBarcode, setScannedBarcode] = useState(null);
+  const [notice, setNotice] = useState('');
 
   async function load() {
     setError('');
@@ -122,6 +128,7 @@ export default function Ingredients() {
     setEditing(null);
     setFormOpen(false);
     setForm(emptyForm());
+    setNotice('');
     clearLabelPhoto();
   }
 
@@ -130,6 +137,28 @@ export default function Ingredients() {
     setLabelPhotoDataUri(null);
     setLabelScanFeedback(null);
     setLabelScanFieldStatus(null);
+    setScannedBarcode(null);
+  }
+
+  /**
+   * A barcode lookup came back. Same contract as the OCR scan: fill the form,
+   * highlight what to check, save nothing. If this exact product is already in
+   * the library, open that row instead of creating a near-duplicate.
+   */
+  function onBarcodeProduct(product) {
+    const existing = product?.existing_ingredient;
+    if (existing) {
+      const row = items.find(i => i.id === existing.id);
+      setNotice(`"${existing.name}" is already in your library — opened it for editing.`);
+      if (row) startEdit(row);
+      return;
+    }
+    setNotice('');
+    const { next, scanFeedback, fieldStatus } = mergeBarcodeProductIntoIngredientForm(form, product);
+    setForm(next);
+    setScannedBarcode(product?.barcode || null);
+    setLabelScanFeedback(scanFeedback);
+    setLabelScanFieldStatus(fieldStatus);
   }
 
   function clearScanHints() {
@@ -219,6 +248,10 @@ export default function Ingredients() {
     setSaving(true);
     try {
       const stored = servingToStored(form);
+      // How this entry came to be, most specific first.
+      let source_type = form.source_type || 'manual';
+      if (!editing && scannedBarcode) source_type = 'barcode';
+      else if (!editing && labelPhotoDataUri) source_type = 'scanned_label';
       const body = {
         name: form.name.trim(),
         base_label: form.base_label.trim() || undefined,
@@ -230,8 +263,8 @@ export default function Ingredients() {
         carbs_g: Number(form.carbs_g),
         fat_g: Number(form.fat_g),
         fiber_g: form.fiber_g === '' ? undefined : Number(form.fiber_g),
-        source_type:
-          !editing && labelPhotoDataUri ? 'scanned_label' : form.source_type || 'manual',
+        source_type,
+        barcode: scannedBarcode || undefined,
         tracking_type: stored.tracking_type,
         unit_name: stored.unit_name,
         serving_quantity: stored.serving_quantity,
@@ -270,6 +303,22 @@ export default function Ingredients() {
       </Reveal>
 
       {error && <p className="error">{error}</p>}
+      {notice && (
+        <p
+          role="status"
+          style={{
+            margin: '0 0 16px',
+            padding: '10px 12px',
+            fontSize: 13,
+            color: '#1d7a5f',
+            background: '#ecfdf5',
+            border: '1px solid #6ee7b7',
+            borderRadius: 8,
+          }}
+        >
+          {notice}
+        </p>
+      )}
 
       {(formOpen || editing) && (
       <dialog
@@ -288,6 +337,30 @@ export default function Ingredients() {
             ✕
           </button>
         </div>
+
+        {/* ── Scan barcode (optional, new entries only) ── */}
+        {!editing && (
+          <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #f0ede8' }}>
+            <h4 style={{
+              margin: '0 0 4px', fontSize: 15, fontWeight: 400,
+              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
+            }}>
+              Scan barcode{' '}
+              <span style={{ fontSize: 12, color: 'var(--color-text-faint)', fontFamily: 'inherit' }}>(optional)</span>
+            </h4>
+            <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+              Fastest for packaged food — fills the form from the product database.
+            </p>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setBarcodeOpen(true)}
+              style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            >
+              📷 Scan barcode
+            </button>
+          </div>
+        )}
 
         {/* ── Scan label (optional, new entries only) ── */}
         {!editing && (
@@ -319,29 +392,31 @@ export default function Ingredients() {
                     Remove photo
                   </button>
                 </div>
-                {labelScanFeedback && labelScanFeedback.length > 0 && (
-                  <div
-                    role="status"
-                    style={{
-                      marginTop: 10,
-                      padding: '10px 12px',
-                      fontSize: 13,
-                      color: '#92400e',
-                      background: '#fffbeb',
-                      border: '1px solid #fcd34d',
-                      borderRadius: 8,
-                    }}
-                  >
-                    <strong style={{ display: 'block', marginBottom: 6 }}>Review scan</strong>
-                    <ul style={{ margin: 0, paddingLeft: 18 }}>
-                      {labelScanFeedback.map((msg, i) => (
-                        <li key={i} style={{ marginBottom: 4 }}>{msg}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Shared by both scans — barcode and label report findings the same way. */}
+        {!editing && labelScanFeedback && labelScanFeedback.length > 0 && (
+          <div
+            role="status"
+            style={{
+              marginBottom: 20,
+              padding: '10px 12px',
+              fontSize: 13,
+              color: '#92400e',
+              background: '#fffbeb',
+              border: '1px solid #fcd34d',
+              borderRadius: 8,
+            }}
+          >
+            <strong style={{ display: 'block', marginBottom: 6 }}>Review scan</strong>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {labelScanFeedback.map((msg, i) => (
+                <li key={i} style={{ marginBottom: 4 }}>{msg}</li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -688,6 +763,14 @@ export default function Ingredients() {
           setLabelScanFieldStatus(null);
         }}
       />
+
+      {/* Mounted only while open so the camera starts and stops with it. */}
+      {barcodeOpen && (
+        <BarcodeScannerModal
+          onClose={() => setBarcodeOpen(false)}
+          onProduct={onBarcodeProduct}
+        />
+      )}
     </div>
   );
 }
