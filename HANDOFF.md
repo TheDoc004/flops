@@ -114,13 +114,16 @@ by any future feature (e.g. barcode/label flows).
 
 ## 4. Git state
 
-**Current branch: `feature/supplement-name-lookup`** (1 commit, not yet merged) — supplement
-lookup by name, above. Server **170** tests, client **132**, all passing; client builds clean.
+`main` is **pushed and in sync with `origin/main`** (2026-07-26). Server **170** tests, client
+**132**, all passing; client builds clean. Merged that day as `--no-ff` merge commits with their
+branches deleted:
 
-`main` is **pushed and in sync with `origin/main`** (2026-07-26) and includes barcode scanning
-(section 7) plus a fix making logged unit-ingredients display their own unit ("3 eggs", not
-"3 g") with a boot-time repair of older entries. Earlier that day, three features merged as
-`--no-ff` merge commits, then their branches deleted:
+- **Barcode scanning** — section 7
+- **Supplement lookup by name** — NIH DSLD, above
+- plus a fix making logged unit-ingredients display their own unit ("3 eggs", not "3 g"), with a
+  boot-time repair of older entries
+
+Earlier the same day, three more features merged the same way:
 
 - **AI-logger editable recipes** — editable AI-saved recipe amounts + provided-macro dedup
 - **Supplement micronutrients** — supplements contribute exact micros to History
