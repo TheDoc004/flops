@@ -5,6 +5,7 @@ import { createCustomLog, createLogEntry } from '@shared/api/log';
 import { createRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients, createLabelIngredient } from '@shared/api/labelIngredients';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
+import { buildLibraryBackedIngredients } from './recipeFromEstimate';
 import { SERVING_UNITS, servingToStored } from '@shared/utils/servingBasis';
 import Reveal from '@shared/ui/Reveal';
 import { adjustPerServingMacrosForResolvedClient } from '@features/meal-logging/recipeLogMacros';
@@ -537,31 +538,6 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
       ids[idx] = await createLibraryIngredientFromRow(i);
     }
     return ids;
-  }
-
-  // Build a recipe's `ingredients` (display lines) and matching
-  // `meal_builder_meta.lines` (library links) from reviewed rows. A line backed
-  // by a library id + a real amount becomes an editable slot at log time; the
-  // rest are plain text lines. `divisor` splits amounts for meal-prep servings.
-  // The two arrays stay index-aligned so listLoggingSlotsFromRecipe pairs them.
-  function buildLibraryBackedIngredients(rows, ids, divisor = 1) {
-    const ingredients = [];
-    const lines = [];
-    rows.forEach((i, idx) => {
-      const name = String(i?.name || '').trim();
-      if (!name) return;
-      const qty = Number(i.quantity) > 0 ? Number(i.quantity) / divisor : 0;
-      const amountText = qty > 0 ? `${fmt(qty)} ${i.unit || ''}`.trim() : 'as estimated';
-      ingredients.push({ kind: 'line', name, amount: amountText });
-      const id = ids[idx];
-      if (id && qty > 0) {
-        const unit = /^(oz|ounce|ounces)$/i.test(i.unit || '') ? 'oz' : 'g';
-        lines.push({ label_ingredient_id: id, amount: String(qty), unit, slot_id: `ai_line_${ingredients.length - 1}` });
-      } else {
-        lines.push({}); // keep index alignment; plain non-editable line
-      }
-    });
-    return { ingredients, lines };
   }
 
   async function logOnce() {

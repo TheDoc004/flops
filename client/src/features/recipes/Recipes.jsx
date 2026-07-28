@@ -10,6 +10,7 @@ import useMediaQuery from '@shared/hooks/useMediaQuery';
 import usePaginationAnchor from '@shared/hooks/usePaginationAnchor';
 import Reveal from '@shared/ui/Reveal';
 import GrowStack from '@shared/ui/GrowStack';
+import { isIngredientBuilt } from '@features/ai-macro-logger';
 
 export default function Recipes() {
   const navigate = useNavigate();
@@ -145,7 +146,7 @@ export default function Recipes() {
                     key={recipe.id}
                     recipe={recipe}
                     onLog={setLogRecipe}
-                    onEditInBuilder={() => navigate(`/meal-builder?mode=${recipe.meal_builder_meta?.source === 'meal_builder' ? 'labels' : 'manual'}&recipe_id=${recipe.id}`)}
+                    onEditInBuilder={() => navigate(`/meal-builder?mode=${isIngredientBuilt(recipe) ? 'labels' : 'manual'}&recipe_id=${recipe.id}`)}
                     onDelete={handleDelete}
                     onReactivate={handleReactivate}
                   />

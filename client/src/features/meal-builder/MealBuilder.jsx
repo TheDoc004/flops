@@ -147,7 +147,10 @@ export default function MealBuilder() {
     if (mode !== 'labels') return;
     if (!loadedRecipe || !recipeId) return;
     const meta = loadedRecipe.meal_builder_meta;
-    if (!meta || typeof meta !== 'object' || meta.source !== 'meal_builder' || !Array.isArray(meta.lines)) return;
+    // Any recipe whose lines are backed by library ingredients can be edited
+    // here — not just ones this builder created. AI-saved recipes ('ai_recipe')
+    // qualify too, which is what lets you swap an ingredient in one later.
+    if (!meta || typeof meta !== 'object' || !Array.isArray(meta.lines)) return;
     const nextLines = meta.lines
       .filter(x => x && x.label_ingredient_id != null)
       .map(x => ({
