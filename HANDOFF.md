@@ -77,8 +77,8 @@ calories/macros toward the day's totals** (per-item flag). Server: `supplements`
 `supplement_log` tables, `routes/supplements.js`. Client: `features/supplements/`.
 Profile has a show/hide toggle.
 
-**Micronutrients (2026-07-26).** Supplements can carry **label-exact micronutrients** (the 12
-canonical keys) in a new `supplements.micros_json` column, stored at HIGH confidence (unlike
+**Micronutrients (2026-07-26).** Supplements can carry **label-exact micronutrients** (the
+canonical key set — 28 keys since the 2026-07-30 v2 expansion) in a new `supplements.micros_json` column, stored at HIGH confidence (unlike
 AI-estimated food micros). Auto-count rule: values present + supplement checked → they count.
 They fold into the **daily micronutrient totals in History** (micros stay a History-only
 feature) via `GET /api/supplements/range` (taken supplements' micros grouped by date) and the
@@ -91,7 +91,7 @@ Manage Supplements → results from the **NIH Dietary Supplement Label Database*
 free, no API key) → pick one → name/dose/macros/micros prefill for review. Because DSLD holds
 transcribed label data, a match stores at **high** confidence, same as a photo scan. IU values are
 converted (vitamin A assumes retinol, which is why every conversion is flagged) and the note lists
-nutrients on the label that the 12-key schema drops. When DSLD has nothing,
+nutrients on the label the schema drops (few, since the v2 expansion). When DSLD has nothing,
 `POST /api/supplements/estimate` (`supplementEstimateService.js`) estimates from the name — capped
 at **medium** confidence in the service *and* the route, so a guess can never masquerade as label
 data. All three sources return the same shape, so they share one prefill path in the modal.
@@ -217,8 +217,9 @@ so the review box always says to check the numbers against the packaging.
 micronutrients into `label_ingredients.micros_json` (per serving, high confidence). At log time
 `server/labelMicros.js` prefers those measured values over AI estimates, asking the AI only about
 ingredients with nothing stored and merging **per nutrient**. A meal built entirely from barcoded
-ingredients makes **no AI call at all**. Coverage varies: Honey Nut Cheerios gives 9 of 12
-nutrients, Oreo 7, Pringles 4, Nutella 1 — fortified foods do best.
+ingredients makes **no AI call at all**. Coverage varies by product and, since the v2 key
+expansion (28 keys incl. omega-3s, B-complex, E/K, trace minerals), fortified foods and
+supplements capture far more of their panel — Centrum went from 10 to 23 captured nutrients.
 
 > **Typing a barcode already works** (the scanner modal has a number box), which is what makes
 > this usable on desktop. But it only helps for *food*: supplement micros cannot be reached by
