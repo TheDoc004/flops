@@ -1722,3 +1722,23 @@ dialog[open]::backdrop {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Meal row Macros/Micros switcher ──
+   Switching panels slides the incoming content in from the side of the tab
+   you pressed — Macros (left tab) → Micros arrives from the right, and back
+   the other way. Reuses the grow-slide keyframes. First open from collapsed
+   gets no sideways motion; the collapse expansion is the animation there. */
+.meal-panel-right { animation: grow-slide-right var(--dur-open) var(--ease-out) both; }
+.meal-panel-left { animation: grow-slide-left var(--dur-open) var(--ease-out) both; }
+
+/* Per-meal micro bars grow from empty on mount; `from` omits `to`, resolving
+   to the inline width (same trick as dialog-enter). Stagger via --i. */
+.meal-micro-fill {
+  animation: meal-micro-fill var(--dur-open) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 36ms);
+}
+@keyframes meal-micro-fill { from { width: 0; opacity: 0.4; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .meal-panel-right, .meal-panel-left, .meal-micro-fill { animation: none; }
+}

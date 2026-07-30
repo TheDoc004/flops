@@ -80,6 +80,9 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
   const m = computeEntryMacros(entry);
   // Which panel is open: null (collapsed), 'macros', or 'micros'.
   const [view, setView] = useState(null);
+  // Direction of the last panel switch — drives the slide-in ('right' when
+  // moving Macros→Micros, 'left' coming back, null on a first open).
+  const [slide, setSlide] = useState(null);
   const expanded = view != null;
   // Latch: mount the (heavy) Recharts wheel on first open, then keep it mounted.
   // The lightweight breakdown table renders eagerly so its reveal can replay on
@@ -91,6 +94,11 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const openView = next => {
     if (next === 'macros' && view !== 'macros') { setEverOpened(true); setOpenCycle(c => c + 1); }
+    setSlide(
+      next === 'micros' && view === 'macros' ? 'right'
+      : next === 'macros' && view === 'micros' ? 'left'
+      : null
+    );
     setView(next);
   };
   const pie = buildPieData(entry);
@@ -146,10 +154,12 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
         <div className={`collapse${expanded ? ' is-open' : ''}`}>
           <div className="collapse__inner">
             <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f3f4f6' }}>
-              {view === 'micros' ? (
-                <MealMicrosPanel entry={entry} />
-              ) : (
-              <>
+              {/* Macros panel — display-toggled, not unmounted, so the
+                  breakdown's stagger keeps a closed state to animate from. */}
+              <div
+                style={{ display: view === 'micros' ? 'none' : undefined }}
+                className={view === 'macros' && slide === 'left' ? 'meal-panel-left' : ''}
+              >
               {hasBreakdown && (
                 <div style={{ marginBottom: 18 }}>
                   <IngredientBreakdown rows={ingredientRows} servings={entry.servings} macroUnits={macroUnits} open={view === 'macros'} />
@@ -190,7 +200,13 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
                   </PieChart>
                 </ResponsiveContainer>
               ) : null}
-              </>
+              </div>
+
+              {/* Micros panel — remounts on each visit so its bars refill. */}
+              {view === 'micros' && (
+                <div className={slide === 'right' ? 'meal-panel-right' : ''}>
+                  <MealMicrosPanel entry={entry} />
+                </div>
               )}
             </div>
           </div>
@@ -246,12 +262,20 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
         <div className={`collapse${expanded ? ' is-open' : ''}`}>
           <div className="collapse__inner">
             <div style={{ padding: '2px 0 12px' }}>
-              {view === 'micros' ? (
-                <MealMicrosPanel entry={entry} />
-              ) : hasBreakdown ? (
-                <IngredientBreakdown rows={ingredientRows} servings={entry.servings} macroUnits={macroUnits} open={view === 'macros'} />
-              ) : (
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>No ingredient breakdown for this meal.</p>
+              <div
+                style={{ display: view === 'micros' ? 'none' : undefined }}
+                className={view === 'macros' && slide === 'left' ? 'meal-panel-left' : ''}
+              >
+                {hasBreakdown ? (
+                  <IngredientBreakdown rows={ingredientRows} servings={entry.servings} macroUnits={macroUnits} open={view === 'macros'} />
+                ) : (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>No ingredient breakdown for this meal.</p>
+                )}
+              </div>
+              {view === 'micros' && (
+                <div className={slide === 'right' ? 'meal-panel-right' : ''}>
+                  <MealMicrosPanel entry={entry} />
+                </div>
               )}
             </div>
           </div>
