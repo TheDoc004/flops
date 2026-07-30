@@ -7,6 +7,7 @@ import { sumMacros } from '@shared/utils/macros';
 import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
+import WeightTrendChart from './WeightTrendChart';
 import Reveal from '@shared/ui/Reveal';
 import { AdherenceCalendarMonth, DashboardAdherencePicker } from '@features/adherence';
 import { sumDayTotalMicros } from '@shared/utils/microNutrients';
@@ -42,7 +43,7 @@ function isValidIsoDate(s) {
 }
 
 export default function History() {
-  const { macroUnits } = useMacroUnits();
+  const { macroUnits, bodyUnits } = useMacroUnits();
   const location = useLocation();
 
   // The dashboard's adherence card links to /history#goal-adherence. Content
@@ -69,6 +70,12 @@ export default function History() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState('');
   const reportRef = useRef(null);
+  // First..last of the current selection, which is what the weight chart plots.
+  const weightRange = useMemo(() => {
+    if (selDates.length === 0) return { start: null, end: null };
+    const sorted = [...selDates].sort();
+    return { start: sorted[0], end: sorted[sorted.length - 1] };
+  }, [selDates]);
   const editRef = useRef(null);
 
   // ── Logged Day editor state (edit/add/delete — preserved) ──
@@ -281,6 +288,13 @@ export default function History() {
         </div>
       </Reveal>
 
+
+      {/* ── Weight trend ──
+          Moved here from the Today tab: Today is for logging your weight, this
+          is for seeing where it's going. Follows the range selected above. */}
+      <Reveal>
+        <WeightTrendChart start={weightRange.start} end={weightRange.end} bodyUnits={bodyUnits} />
+      </Reveal>
 
       {/* ── Logged Day Explorer (edit/add/delete) ── */}
       <Reveal>

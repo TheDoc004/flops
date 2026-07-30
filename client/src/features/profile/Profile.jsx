@@ -42,8 +42,11 @@ export default function Profile() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [weightError, setWeightError] = useState('');
-  const [dashChartEnabled, setDashChartEnabled] = useState(true);
-  const [dashChartDays, setDashChartDays] = useState(30);
+  // RETAINED-UNUSED: the weight trend chart moved to History, where its range
+  // follows the selected days. These are still round-tripped so the stored
+  // values survive, but nothing reads them and there is no UI for them.
+  const [dashChartEnabled] = useState(true);
+  const [dashChartDays] = useState(30);
   const [dashAdherenceView, setDashAdherenceView] = useState('7d');
   const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
   const [dashPrefsSaved, setDashPrefsSaved] = useState(false);
@@ -68,9 +71,6 @@ export default function Profile() {
           maintenance_calories: p.maintenance_calories ?? '',
         });
         setWeights(w);
-        setDashChartEnabled(p.dash_weight_chart_enabled !== 0 && p.dash_weight_chart_enabled !== false);
-        const dd = Number(p.dash_weight_days);
-        setDashChartDays([14, 30, 90].includes(dd) ? dd : 30);
         setDashAdherenceView(['7d', '2w', '3w', 'calendar'].includes(p.dash_adherence_view) ? p.dash_adherence_view : '7d');
         setDashSupplementsEnabled(p.dash_supplements_enabled !== 0 && p.dash_supplements_enabled !== false);
       } catch (e) {
@@ -279,33 +279,6 @@ export default function Profile() {
       <Reveal delay={120} className="settings-grid">
         <div className="card">
           <H3>Dashboard</H3>
-          {/* Checkbox */}
-          <label style={{
-            display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
-            padding: '8px 10px', marginBottom: 10, borderRadius: 9,
-            border: `1px solid ${dashChartEnabled ? '#c4b5fd' : '#e8e4dc'}`,
-            background: dashChartEnabled ? '#f5f3ff' : 'transparent',
-            transition: 'border-color 0.12s, background 0.12s',
-          }}>
-            {/* width:auto overrides the global `input { width: 100% }` rule */}
-            <input
-              type="checkbox"
-              checked={dashChartEnabled}
-              onChange={e => {
-                dashInteracted.current = true;
-                setDashChartEnabled(e.target.checked);
-              }}
-              style={{ flexShrink: 0, marginTop: 3, width: 'auto' }}
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#374151', lineHeight: 1.3 }}>
-                Show weight trend chart
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>
-                Visible on Dashboard
-              </div>
-            </div>
-          </label>
           {/* Supplements checklist toggle */}
           <label style={{
             display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
@@ -328,25 +301,10 @@ export default function Profile() {
                 Show supplements checklist
               </div>
               <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>
-                Daily check-off card on Dashboard
+                Check-off strip under today's macros
               </div>
             </div>
           </label>
-          {/* Range select */}
-          <div>
-            <label style={{ marginBottom: 4 }}>Chart range</label>
-            <select
-              value={dashChartDays}
-              onChange={e => {
-                dashInteracted.current = true;
-                setDashChartDays(Number(e.target.value));
-              }}
-            >
-              <option value={14}>Last 14 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
-            </select>
-          </div>
           {/* Goal adherence: the dashboard shows exactly one view (no tabs) */}
           <div style={{ marginTop: 10 }}>
             <label style={{ marginBottom: 4 }}>Goal adherence view</label>

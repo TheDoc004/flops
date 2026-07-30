@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -14,21 +13,28 @@ import ChartReveal from '@shared/ui/ChartReveal';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
 import { listLocalDatesInclusive } from '@features/adherence';
 import { kgToLb } from '@shared/utils/bodyUnits';
-import { addDaysLocal } from '@shared/utils/dateLocal';
 
-export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enabled, refreshKey = 0, noCard = false }) {
+/**
+ * Weight over a date range. Lives in History (its home since Today became a
+ * do-things-only tab) and follows the range you've selected there, rather than
+ * a separate setting — the chart shows the period you're already looking at.
+ *
+ * @param start ISO date, inclusive
+ * @param end ISO date, inclusive
+ */
+export default function WeightTrendChart({ start, end, bodyUnits, noCard = false }) {
   const [weightRows, setWeightRows] = useState([]);
   const [loadError, setLoadError] = useState('');
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
   useEffect(() => {
-    if (!enabled) { setWeightRows([]); return; }
+    // No range means the component renders nothing anyway — no state to clear.
+    if (!start || !end) return undefined;
     let cancelled = false;
     (async () => {
       setLoadError('');
       try {
-        const start = addDaysLocal(today, -(rangeDays - 1));
-        const wData = await fetchBodyWeights(start, today);
+        const wData = await fetchBodyWeights(start, end);
         if (cancelled) return;
         setWeightRows(Array.isArray(wData) ? wData : []);
       } catch (e) {
@@ -39,11 +45,10 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
       }
     })();
     return () => { cancelled = true; };
-  }, [today, enabled, rangeDays, refreshKey]);
+  }, [start, end]);
 
   const chartData = useMemo(() => {
-    const start = addDaysLocal(today, -(rangeDays - 1));
-    const dates = listLocalDatesInclusive(start, today);
+    const dates = start && end ? listLocalDatesInclusive(start, end) : [];
     const weightByDate = {};
     for (const r of weightRows) weightByDate[r.date] = r.weight_kg;
     return dates.map(date => {
@@ -56,7 +61,7 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
         hasEntry: logged,
       };
     });
-  }, [weightRows, today, rangeDays, bodyUnits]);
+  }, [weightRows, start, end, bodyUnits]);
 
   // Padded Y-axis domain — keeps the line away from the chart edges.
   // Uses 15% of the weight range as breathing room, minimum 0.5 units.
@@ -73,9 +78,10 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
   }, [chartData]);
 
   const yWeightUnit = bodyUnits === 'us' ? 'lb' : 'kg';
+  const dayCount = chartData.length;
   const hasAnyWeight = weightRows.length > 0;
 
-  if (!enabled) return null;
+  if (!start || !end) return null;
 
   const inner = (
     <>
@@ -85,17 +91,9 @@ export default function DashboardWeightTrend({ today, bodyUnits, rangeDays, enab
             Weight trend
           </h3>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6b7280' }}>
-            Last {rangeDays} days · {yWeightUnit}
+            {dayCount} day{dayCount === 1 ? '' : 's'} · {yWeightUnit}
           </p>
         </div>
-        <Link
-          to="/plan/profile"
-          className="btn-secondary"
-          style={{ fontSize: 12, padding: '6px 12px', minHeight: 34, alignSelf: 'flex-start', flexShrink: 0 }}
-          title="Chart range and visibility live in Profile"
-        >
-          Chart settings →
-        </Link>
       </div>
 
       {loadError && <p className="error" style={{ marginTop: 0 }}>{loadError}</p>}
