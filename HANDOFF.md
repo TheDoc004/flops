@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-07-27_
+_Last updated: 2026-07-30_
 
 Snapshot of where the app stands so any session (human or Claude) can pick up quickly.
 For conventions, architecture, and the phase vision, see `CLAUDE.md` — this file is the
@@ -96,6 +96,22 @@ nutrients on the label the schema drops (few, since the v2 expansion). When DSLD
 at **medium** confidence in the service *and* the route, so a guess can never masquerade as label
 data. All three sources return the same shape, so they share one prefill path in the modal.
 
+**Micronutrients v2 (2026-07-30).** The key set went 12 → 28 (B-complex, E/K, selenium, copper,
+manganese, phosphorus, iodine, choline, and omega-3 ALA/EPA/DHA). One config drives it —
+`client/src/shared/config/microNutrients.js` + the server mirror — and AI prompt schemas are
+generated from `MICRO_KEYS`, but **DSLD `GROUP_TO_KEY` and OFF `MICRO_SOURCES` must be taught new
+nutrient names by hand**. DSLD parsing now walks `nestedRows`, without which fish-oil labels
+(EPA/DHA nested under Total Fat) imported nothing. Centrum Men Under 50 went from 10 to 23
+captured nutrients. Existing supplements gain the new nutrients only on a label refresh; old log
+entries keep their v1 blobs.
+
+**Per-meal micros (2026-07-30).** Meal rows have a **Macros | Micros** toggle instead of a
+chevron, with a directional page-flip between panels (`--dur-swipe`). The Micros panel
+(`features/meal-logging/MealMicrosPanel.jsx`) bars each nutrient as a share of the DAY's target
+— "this breakfast is 50% of your vitamin A" — using a neutral accent rather than the day panel's
+status palette, and hides contributions under 10% behind a "show smaller" toggle. The Review
+panel is sectioned: an attention chip strip, then collapsible categories with "n of m on track".
+
 **Dose vs label serving (2026-07-27).** Stored macros/micros describe ONE label serving, so a
 supplement now also records `label_serving_qty`/`label_serving_unit` and `dose_qty` (what you
 take), and everything scales by the ratio — day totals, History micros, the row display. Before
@@ -128,8 +144,13 @@ by any future feature (e.g. barcode/label flows).
 
 ## 4. Git state
 
-`main` is **pushed and in sync with `origin/main`** (2026-07-27). Server **211** tests, client
-**132**, all passing; client builds clean. Merged that day as `--no-ff` merge commits with their
+`main` is **pushed and in sync with `origin/main`** (2026-07-30). Server **223** tests, client
+**154**, all passing; client builds clean.
+
+Merged 2026-07-30: the **Today tab slimmed down** (adherence moved off it, weight raised under
+the supplement strip, supplements became a compact strip rather than a section), the **weight
+trend chart moved to History** (where its range follows the days selected there), and
+**micronutrients v2** — see below. Merged that day as `--no-ff` merge commits with their
 branches deleted:
 
 - **Barcode scanning** — section 7
