@@ -19,22 +19,56 @@ const DSLD_BASE = 'https://api.ods.od.nih.gov/dsld/v9';
 const USER_AGENT = 'FLOPS-NutritionTracker/1.0 (personal use)';
 const TIMEOUT_MS = 10000;
 
-/** DSLD groups its ingredients under normalized names; map those to our keys. */
+/**
+ * DSLD groups its ingredients under normalized names; map those to our keys.
+ * Keys here are lowercased with parentheticals stripped (see groupCandidates),
+ * so "EPA (Eicosapentaenoic Acid)" arrives as plain "epa".
+ */
 const GROUP_TO_KEY = {
+  // Vitamins
   'vitamin a': 'vitamin_a_mcg',
-  'vitamin c': 'vitamin_c_mg',
-  'vitamin d': 'vitamin_d_mcg',
-  calcium: 'calcium_mg',
-  iron: 'iron_mg',
-  magnesium: 'magnesium_mg',
-  zinc: 'zinc_mg',
+  thiamin: 'thiamin_mg',
+  thiamine: 'thiamin_mg',
+  'vitamin b1': 'thiamin_mg',
+  riboflavin: 'riboflavin_mg',
+  'vitamin b2': 'riboflavin_mg',
+  niacin: 'niacin_mg',
+  'vitamin b3': 'niacin_mg',
+  'pantothenic acid': 'pantothenic_acid_mg',
+  'vitamin b5': 'pantothenic_acid_mg',
+  'vitamin b6': 'vitamin_b6_mg',
+  biotin: 'biotin_mcg',
   folate: 'folate_mcg',
   'folic acid': 'folate_mcg',
   'vitamin b12': 'vitamin_b12_mcg',
-  sodium: 'sodium_mg',
+  'vitamin c': 'vitamin_c_mg',
+  'vitamin d': 'vitamin_d_mcg',
+  'vitamin e': 'vitamin_e_mg',
+  'vitamin k': 'vitamin_k_mcg',
+  // Minerals
+  calcium: 'calcium_mg',
+  copper: 'copper_mg',
+  iodine: 'iodine_mcg',
+  iron: 'iron_mg',
+  magnesium: 'magnesium_mg',
+  manganese: 'manganese_mg',
+  phosphorus: 'phosphorus_mg',
   potassium: 'potassium_mg',
+  selenium: 'selenium_mcg',
+  sodium: 'sodium_mg',
+  zinc: 'zinc_mg',
+  // Omega-3s — fish oil labels list EPA/DHA by name or abbreviation.
+  epa: 'omega3_epa_mg',
+  'eicosapentaenoic acid': 'omega3_epa_mg',
+  dha: 'omega3_dha_mg',
+  'docosahexaenoic acid': 'omega3_dha_mg',
+  ala: 'omega3_ala_g',
+  'alpha-linolenic acid': 'omega3_ala_g',
+  'alpha linolenic acid': 'omega3_ala_g',
+  // Other
   'dietary fiber': 'fiber_g',
   fiber: 'fiber_g',
+  choline: 'choline_mg',
 };
 
 /** Macro groups a supplement panel may also carry (protein powders etc.). */
@@ -103,6 +137,7 @@ function groupCandidates(row) {
 const IU_TO_MG = {
   vitamin_d_mcg: 0.000025, // 1 IU = 0.025 mcg
   vitamin_a_mcg: 0.0003, // 1 IU = 0.3 mcg retinol
+  vitamin_e_mg: 0.67, // 1 IU = 0.67 mg (natural d-alpha; synthetic is 0.45)
 };
 
 class DsldError extends Error {
@@ -309,11 +344,26 @@ async function fetchSupplementLabel(id, { fetchImpl = globalThis.fetch } = {}) {
   const label = await dsldFetch(`/label/${cleanId}`, fetchImpl);
   if (!label || !label.fullName) return null;
 
-  const rows = Array.isArray(label.ingredientRows) ? label.ingredientRows : [];
+  // Fish-oil (and similar) labels nest EPA/DHA/omega-3 under Total Fat or a
+  // "Fish Oil" parent row, so walk nestedRows too — top-level-only walking is
+  // why fish oil used to come back with no micros at all.
+  const flattenRows = list => {
+    const out = [];
+    for (const row of Array.isArray(list) ? list : []) {
+      if (!row) continue;
+      out.push(row);
+      if (Array.isArray(row.nestedRows) && row.nestedRows.length) {
+        out.push(...flattenRows(row.nestedRows));
+      }
+    }
+    return out;
+  };
+  const rows = flattenRows(label.ingredientRows);
   const micros = {};
   const macros = {};
   const convertedNotes = [];
   const untracked = new Set();
+  let genericOmega3 = null;
 
   for (const row of rows) {
     const macro = mapMacroRow(row);
@@ -332,9 +382,21 @@ async function fetchSupplementLabel(id, { fetchImpl = globalThis.fetch } = {}) {
     }
     const group = String(row?.ingredientGroup || '').trim();
     if (group) untracked.add(group);
+    // A bare "Omega-3 720 mg" with no EPA/DHA split can't be mapped without
+    // inventing a ratio — remember it so the note can say so plainly.
+    const cand = groupCandidates(row);
+    if (cand.some(c => c === 'omega-3' || c === 'omega 3' || c === 'total omega-3 fatty acids')) {
+      const q = Array.isArray(row?.quantity) ? row.quantity[0] : null;
+      if (Number(q?.quantity) > 0) genericOmega3 = { amount: Number(q.quantity), unit: String(q?.unit || 'mg') };
+    }
   }
 
   const notes = [];
+  if (genericOmega3 && !micros.omega3_epa_mg && !micros.omega3_dha_mg) {
+    notes.push(
+      `Lists ${genericOmega3.amount} ${genericOmega3.unit} total omega-3 without an EPA/DHA breakdown — enter those from the bottle if it shows them.`
+    );
+  }
   if (convertedNotes.length) {
     notes.push(`Converted to standard units: ${convertedNotes.join('; ')}. Check these against the bottle.`);
   }

@@ -85,8 +85,29 @@ describe('mapIngredientRow', () => {
   });
 
   it('skips nutrients this app does not track', () => {
-    expect(mapIngredientRow(row('Vitamin E', 'Vitamin E', 45, 'IU'))).toBeNull();
-    expect(mapIngredientRow(row('Selenium', 'Selenium', 55, 'mcg'))).toBeNull();
+    // Vitamin E and selenium map since the v2 expansion — these still don't.
+    expect(mapIngredientRow(row('Boron', 'Boron', 3, 'mg'))).toBeNull();
+    expect(mapIngredientRow(row('Lutein', 'Lutein', 10, 'mg'))).toBeNull();
+  });
+
+  it('covers the v2 additions: B-complex, E/K, trace minerals, omega-3s', () => {
+    expect(mapIngredientRow(row('Selenium', 'Selenium', 55, 'mcg'))).toMatchObject({ key: 'selenium_mcg', value: 55 });
+    expect(mapIngredientRow(row('Riboflavin', 'Riboflavin', 1.3, 'mg'))).toMatchObject({ key: 'riboflavin_mg', value: 1.3 });
+    // Vitamin E in IU converts (natural d-alpha factor) and is flagged.
+    expect(mapIngredientRow(row('Vitamin E', 'Vitamin E', 45, 'IU'))).toMatchObject({
+      key: 'vitamin_e_mg',
+      value: 30.15,
+      converted: true,
+    });
+    // Fish-oil labels: the parenthetical is stripped, leaving the abbreviation.
+    expect(mapIngredientRow(row('EPA (Eicosapentaenoic Acid)', 'EPA', 550, 'mg'))).toMatchObject({
+      key: 'omega3_epa_mg',
+      value: 550,
+    });
+    expect(mapIngredientRow(row('DHA (Docosahexaenoic Acid)', 'DHA', 450, 'mg'))).toMatchObject({
+      key: 'omega3_dha_mg',
+      value: 450,
+    });
   });
 
   it('skips an IU value it cannot convert', () => {
@@ -104,6 +125,7 @@ describe('fetchSupplementLabel', () => {
       vitamin_a_mcg: 1050, // 3500 IU retinol
       vitamin_c_mg: 90,
       vitamin_d_mcg: 15, // 600 IU
+      vitamin_e_mg: 30.15, // 45 IU — tracked since the v2 expansion
       calcium_mg: 210,
       iron_mg: 8,
       folate_mcg: 200,
@@ -111,8 +133,7 @@ describe('fetchSupplementLabel', () => {
     });
     expect(label.confidence).toBe('high');
     expect(label.notes).toMatch(/Converted to standard units/);
-    expect(label.notes).toMatch(/Vitamin E/); // told about what it dropped
-    expect(label.untracked_count).toBe(1);
+    expect(label.untracked_count).toBe(0); // every fixture nutrient now maps
   });
 
   it('reads macros off a protein powder despite qualified group names', async () => {
@@ -122,6 +143,41 @@ describe('fetchSupplementLabel', () => {
     expect(label.macros).toEqual({ calories: 130, protein_g: 24, carbs_g: 5, fat_g: 1 });
     expect(label.micros).toEqual({ sodium_mg: 60 });
     expect(label.dose_text).toBe('32 Grams');
+  });
+
+  it('walks nested rows — fish-oil labels bury EPA/DHA under Total Fat', async () => {
+    const label = await fetchSupplementLabel('1', {
+      fetchImpl: okFetch({
+        fullName: 'Fish Oil 1200 mg',
+        servingSizes: [{ minQuantity: 2, unit: 'Softgel(s)' }],
+        ingredientRows: [
+          {
+            ...row('Fat (unspecified)', 'Total Fat', 3, 'Gram(s)'),
+            nestedRows: [
+              row('Omega-3', 'Total Omega-3 Fatty Acids', 720, 'mg'),
+              row('EPA (Eicosapentaenoic Acid)', 'EPA', 360, 'mg'),
+              row('DHA (Docosahexaenoic Acid)', 'DHA', 240, 'mg'),
+            ],
+          },
+        ],
+      }),
+    });
+    expect(label.micros).toEqual({ omega3_epa_mg: 360, omega3_dha_mg: 240 });
+  });
+
+  it('flags a bare omega-3 total that has no EPA/DHA split', async () => {
+    const label = await fetchSupplementLabel('1', {
+      fetchImpl: okFetch({
+        fullName: 'Basic Fish Oil',
+        servingSizes: [{ minQuantity: 1, unit: 'Softgel(s)' }],
+        ingredientRows: [
+          { ...row('Fish Oil', 'Fish Oil', 1200, 'mg'), nestedRows: [row('Omega-3', 'Total Omega-3 Fatty Acids', 720, 'mg')] },
+        ],
+      }),
+    });
+    // No fabricated 50/50 split — just an honest note.
+    expect(label.micros.omega3_epa_mg).toBeUndefined();
+    expect(label.notes).toMatch(/720 mg total omega-3 without an EPA\/DHA breakdown/);
   });
 
   it('sums a nutrient listed more than once', async () => {
