@@ -14,8 +14,7 @@ import { getLocalDateISO, addDaysLocal, parseLocalDateISO } from '@shared/utils/
 import { buildWeeklyAdherenceRows, listLocalDatesInclusive, goalsToTargets, hasAnyTarget, resolveGoalRowForDate } from '@features/adherence';
 import DashboardAdherenceSection from './DashboardAdherenceSection';
 import DashboardWeightRow from './DashboardWeightRow';
-import DashboardWeightTrend from './DashboardWeightTrend';
-import { SupplementsCard } from '@features/supplements';
+import { SupplementStrip } from '@features/supplements';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 
 function getGreeting() {
@@ -46,9 +45,7 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [error, setError] = useState('');
-  const [dashWeightPrefs, setDashWeightPrefs] = useState({ enabled: true, days: 30 });
   const [dashAdherenceView, setDashAdherenceView] = useState('7d');
-  const [weightTrendRefresh, setWeightTrendRefresh] = useState(0);
   const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
   const [supplementMacros, setSupplementMacros] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 
@@ -97,13 +94,9 @@ export default function Dashboard() {
 
     if (profileResult.status === 'fulfilled') {
       const p = profileResult.value;
-      const en = p.dash_weight_chart_enabled;
-      const enabled = en !== 0 && en !== false && en !== '0';
-      const d = Number(p.dash_weight_days);
-      setDashWeightPrefs({
-        enabled,
-        days: [14, 30, 90].includes(d) ? d : 30,
-      });
+      // dash_weight_chart_enabled / dash_weight_days are no longer read here:
+      // the weight trend chart left this tab (see DashboardWeightTrend.jsx,
+      // still intact and awaiting a home in History).
       setDashAdherenceView(['7d', '2w', '3w', 'calendar'].includes(p.dash_adherence_view) ? p.dash_adherence_view : '7d');
       const se = p.dash_supplements_enabled;
       setDashSupplementsEnabled(se !== 0 && se !== false && se !== '0');
@@ -142,7 +135,6 @@ export default function Dashboard() {
       setGoalsLoaded(false);
     }
 
-    setWeightTrendRefresh(k => k + 1);
   }, [today]);
 
   useEffect(() => {
@@ -235,6 +227,12 @@ export default function Dashboard() {
         <MacroTotals totals={combinedTotals} targets={targets} />
       </Reveal>
 
+      {/* Supplements ride right under the macros they feed — a compact strip
+          you tick off in place, not a section to scroll to. */}
+      {dashSupplementsEnabled && (
+        <SupplementStrip date={today} onMacrosChange={setSupplementMacros} />
+      )}
+
       {/* ── Today's meals ── */}
       <Reveal delay={120} style={{ marginTop: 'clamp(28px, 3vw, 40px)', marginBottom: 24 }}>
         {/* Card header */}
@@ -298,63 +296,15 @@ export default function Dashboard() {
         }
       </Reveal>
 
-      {/* ── Supplements today ── */}
-      {dashSupplementsEnabled && (
-        <SupplementsCard date={today} onMacrosChange={setSupplementMacros} />
-      )}
-
-      {/* Quick hop to the micronutrient breakdown (supplements feed into it). */}
-      {dashSupplementsEnabled && (
-        <Reveal delay={40} style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
-          <Link
-            to="/history#micronutrients"
-            className="btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 40, padding: '0 16px', textDecoration: 'none' }}
-          >
-            View micronutrients →
-          </Link>
-        </Reveal>
-      )}
-
-      {/* ── Trends ── */}
-      {dashWeightPrefs.enabled ? (
-        <>
-          <Reveal style={{ marginTop: 16 }}>
-            <h2 style={{
-              margin: '0 0 14px', fontSize: 'clamp(28px, 2.6vw, 34px)', fontWeight: 400, color: 'var(--color-primary-ink)',
-              fontFamily: "'DM Serif Display', Georgia, serif",
-              letterSpacing: '-0.01em',
-            }}>Trends</h2>
-          </Reveal>
-
-          {/* Combined weight card: trend chart + update form */}
-          <Reveal delay={60} className="card" style={{ marginBottom: 16, padding: '20px' }}>
-            <DashboardWeightTrend
-              noCard
-              today={today}
-              bodyUnits={bodyUnits}
-              rangeDays={dashWeightPrefs.days}
-              enabled={dashWeightPrefs.enabled}
-              refreshKey={weightTrendRefresh}
-            />
-            <div style={{ borderTop: '1px solid #f0ede8', margin: '20px 0 16px' }} />
-            <DashboardWeightRow
-              noCard
-              today={today}
-              bodyUnits={bodyUnits}
-              onWeightSaved={() => setWeightTrendRefresh(k => k + 1)}
-            />
-          </Reveal>
-        </>
-      ) : (
-        <Reveal>
-          <DashboardWeightRow
-            today={today}
-            bodyUnits={bodyUnits}
-            onWeightSaved={() => setWeightTrendRefresh(k => k + 1)}
-          />
-        </Reveal>
-      )}
+      {/* ── Today's weight ──
+          Today is deliberately only the things you DO each day: log meals, tick
+          supplements, record your weight. The Trends weight chart was removed
+          from here; DashboardWeightTrend.jsx is kept intact but currently
+          unrendered — History has no weight chart yet, so that's where it
+          should land if it comes back. */}
+      <Reveal style={{ marginTop: 16 }}>
+        <DashboardWeightRow today={today} bodyUnits={bodyUnits} />
+      </Reveal>
 
       {/* ── Goal adherence (flexible range) ── */}
       <Reveal style={{ marginTop: 4 }}>
