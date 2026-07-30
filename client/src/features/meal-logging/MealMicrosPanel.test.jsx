@@ -45,3 +45,39 @@ describe('MealMicrosPanel', () => {
     expect(screen.getByText(/no micronutrient estimate/i)).toBeInTheDocument();
   });
 });
+
+describe('MealMicrosPanel — contribution threshold', () => {
+  it('hides trace contributions and offers them behind a toggle', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    render(
+      <MealMicrosPanel
+        entry={entry({
+          vitamin_a_mcg: 450, // 50% — shows
+          iron_mg: 0.5, // ~6% of 8 mg — hidden, the user's own example
+        })}
+      />
+    );
+    expect(screen.getByText('Vitamin A')).toBeInTheDocument();
+    expect(screen.queryByText('Iron')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /show 1 smaller contribution/i }));
+    expect(screen.getByText('Iron')).toBeInTheDocument();
+  });
+
+  it('keeps a 20% contribution visible', () => {
+    render(<MealMicrosPanel entry={entry({ iron_mg: 1.6 })} />); // 20% of 8 mg
+    expect(screen.getByText('Iron')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /smaller/i })).not.toBeInTheDocument();
+  });
+
+  it('explains itself when everything is a trace amount', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    render(<MealMicrosPanel entry={entry({ iron_mg: 0.5, zinc_mg: 0.4 })} />);
+    expect(screen.getByText(/nothing above 10% of a daily target/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /show 2 smaller/i }));
+    expect(screen.getByText('Iron')).toBeInTheDocument();
+    expect(screen.getByText('Zinc')).toBeInTheDocument();
+  });
+});
