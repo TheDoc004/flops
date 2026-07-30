@@ -13,7 +13,52 @@ import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import { MACRO_COLORS } from '@shared/utils/colors';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
 import IngredientBreakdown from './IngredientBreakdown';
+import MealMicrosPanel from './MealMicrosPanel';
 import { mealEmoji } from './mealEmoji';
+import { parseMicros } from '@shared/utils/microNutrients';
+
+/** Small paired toggle: Macros | Micros. Active one is filled; clicking it again collapses. */
+function ViewToggle({ view, setView, hasMicros, compact = false }) {
+  const base = {
+    fontSize: compact ? 12 : 'clamp(12px, 1vw, 13.5px)',
+    padding: compact ? '4px 10px' : '6px clamp(10px, 1vw, 14px)',
+    minHeight: compact ? 30 : 'clamp(32px, 2.6vw, 40px)',
+    lineHeight: 1,
+    border: '1px solid #e5e7eb',
+    background: '#fff',
+    color: 'var(--color-text-body)',
+    cursor: 'pointer',
+    fontWeight: 600,
+  };
+  const active = { background: 'var(--color-primary-ink, #312e81)', borderColor: 'var(--color-primary-ink, #312e81)', color: '#fff' };
+  const btn = key => ({
+    ...base,
+    ...(view === key ? active : {}),
+  });
+  return (
+    <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+      <button
+        type="button"
+        style={{ ...btn('macros'), borderRadius: '8px 0 0 8px', borderRight: 'none' }}
+        onClick={() => setView(view === 'macros' ? null : 'macros')}
+        aria-expanded={view === 'macros'}
+        title="Macro breakdown per ingredient"
+      >
+        Macros
+      </button>
+      <button
+        type="button"
+        style={{ ...btn('micros'), borderRadius: '0 8px 8px 0', opacity: hasMicros ? 1 : 0.45, cursor: hasMicros ? 'pointer' : 'default' }}
+        onClick={() => hasMicros && setView(view === 'micros' ? null : 'micros')}
+        aria-expanded={view === 'micros'}
+        disabled={!hasMicros}
+        title={hasMicros ? 'Micronutrients in this meal' : 'No micronutrient estimate for this meal'}
+      >
+        Micros
+      </button>
+    </span>
+  );
+}
 
 const PIE_COLORS = { protein: MACRO_COLORS.protein, carbs: MACRO_COLORS.carbs, fat: MACRO_COLORS.fat };
 
@@ -33,7 +78,9 @@ function buildPieData(entry) {
 
 export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline' }) {
   const m = computeEntryMacros(entry);
-  const [expanded, setExpanded] = useState(false);
+  // Which panel is open: null (collapsed), 'macros', or 'micros'.
+  const [view, setView] = useState(null);
+  const expanded = view != null;
   // Latch: mount the (heavy) Recharts wheel on first open, then keep it mounted.
   // The lightweight breakdown table renders eagerly so its reveal can replay on
   // every open (an element must exist in the closed state to transition from it).
@@ -42,16 +89,16 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
   // replays its entry animation on every open — not just the first mount.
   const [openCycle, setOpenCycle] = useState(0);
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
-  const toggle = () => {
-    const next = !expanded;
-    if (next) { setEverOpened(true); setOpenCycle(c => c + 1); }
-    setExpanded(next);
+  const openView = next => {
+    if (next === 'macros' && view !== 'macros') { setEverOpened(true); setOpenCycle(c => c + 1); }
+    setView(next);
   };
   const pie = buildPieData(entry);
   const { macroUnits } = useMacroUnits();
   const ingredientRows = parseLoggedIngredients(entry);
   const hasBreakdown = !!ingredientRows;
   const emoji = mealEmoji(entry.recipe_name, ingredientRows ? ingredientRows.map(r => r.name) : []);
+  const hasMicros = !!parseMicros(entry);
 
   if (variant === 'dashboard') {
     return (
@@ -65,16 +112,7 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
 
           {/* Actions — always top-right */}
           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-            <button
-              type="button"
-              className="btn-secondary"
-              style={{ fontSize: 'clamp(12px, 1vw, 14px)', padding: '6px clamp(10px, 1vw, 13px)', minHeight: 'clamp(32px, 2.6vw, 40px)', lineHeight: 1 }}
-              onClick={toggle}
-              aria-expanded={expanded}
-              title="Toggle macro breakdown"
-            >
-              <span className={`chevron${expanded ? ' is-open' : ''}`} aria-hidden="true">▾</span>
-            </button>
+            <ViewToggle view={view} setView={openView} hasMicros={hasMicros} />
             {onDelete && (
               <button
                 className="btn-danger"
@@ -108,9 +146,13 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
         <div className={`collapse${expanded ? ' is-open' : ''}`}>
           <div className="collapse__inner">
             <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f3f4f6' }}>
+              {view === 'micros' ? (
+                <MealMicrosPanel entry={entry} />
+              ) : (
+              <>
               {hasBreakdown && (
                 <div style={{ marginBottom: 18 }}>
-                  <IngredientBreakdown rows={ingredientRows} servings={entry.servings} macroUnits={macroUnits} open={expanded} />
+                  <IngredientBreakdown rows={ingredientRows} servings={entry.servings} macroUnits={macroUnits} open={view === 'macros'} />
                 </div>
               )}
               <p style={{ margin: '0 0 8px', fontSize: 13, color: '#6b7280' }}>
@@ -148,6 +190,8 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
                   </PieChart>
                 </ResponsiveContainer>
               ) : null}
+              </>
+              )}
             </div>
           </div>
         </div>
@@ -175,17 +219,8 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
           <span>C: {formatMacroMass(m.carbs_g, macroUnits)}</span>
           <span>F: {formatMacroMass(m.fat_g, macroUnits)}</span>
         </div>
-        {hasBreakdown && (
-          <button
-            type="button"
-            className="btn-secondary"
-            style={{ padding: '4px 10px', fontSize: 12 }}
-            onClick={toggle}
-            aria-expanded={expanded}
-            title="Toggle ingredient breakdown"
-          >
-            <span className={`chevron${expanded ? ' is-open' : ''}`} aria-hidden="true">▾</span>
-          </button>
+        {(hasBreakdown || hasMicros) && (
+          <ViewToggle view={view} setView={openView} hasMicros={hasMicros} compact />
         )}
         {onEdit && (
           <button
@@ -207,11 +242,17 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
           </button>
         )}
       </div>
-      {hasBreakdown && (
+      {(hasBreakdown || hasMicros) && (
         <div className={`collapse${expanded ? ' is-open' : ''}`}>
           <div className="collapse__inner">
             <div style={{ padding: '2px 0 12px' }}>
-              <IngredientBreakdown rows={ingredientRows} servings={entry.servings} macroUnits={macroUnits} open={expanded} />
+              {view === 'micros' ? (
+                <MealMicrosPanel entry={entry} />
+              ) : hasBreakdown ? (
+                <IngredientBreakdown rows={ingredientRows} servings={entry.servings} macroUnits={macroUnits} open={view === 'macros'} />
+              ) : (
+                <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>No ingredient breakdown for this meal.</p>
+              )}
             </div>
           </div>
         </div>
