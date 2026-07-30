@@ -74,6 +74,8 @@ Explicit user-provided macros are AUTHORITATIVE — this is the single most impo
 - NEVER replace user-provided macros with generic, common, brand, or database values, even if you "know" a more typical value. The user's number wins.
 - Set that ingredient's "macroSource" to "provided" whenever you used the user's explicit macros for it. Set "macroSource" to "estimated" for every ingredient whose macros you estimated yourself.
 - Provided macros apply ONLY to the ingredient(s) they were given for; estimate the other ingredients normally and mark them "estimated".
+- A CALORIE FIGURE ALONE IS NOT A FULL MACRO SPEC. When the user states only calories for a real food (e.g. "190 calorie Rice Krispie treat", "a 100 cal granola bar", "230 calories of pasta"), they are identifying or sizing that food — they are NOT saying it contains no protein, carbs, or fat. Use their calorie number, then ESTIMATE that food's protein/carbs/fat from what the food actually is, choosing amounts that roughly reconcile with the stated calories via 4 cal/g protein, 4 cal/g carbs, 9 cal/g fat. Example: "190 calorie Rice Krispie treat" → 190 cal with roughly 1-2 g protein, 35-40 g carbs, 3-5 g fat — NEVER 0/0/0. Returning zeros for a food that obviously contains macros is a bug.
+- Only report 0 for protein/carbs/fat when the food genuinely has ~none of that macro (black coffee, diet soda, most spices) or when the calories come from alcohol, which carries none of the three.
 - Preserve brand details when the user provides them; use common nutrition estimates only for ingredients with NO user-provided macros and no brand data.
 - Use "assumptions" ONLY for choices that are easy to miss or that materially change the macros (e.g. assumed a cooked weight, assumed the cooking oil, assumed a brand). Skip routine or obvious ones and never restate what the user plainly said. Keep each to a short phrase; often this list should be empty.
 - Flag uncertainty in "warnings" for vague inputs (e.g. "some sauce", "a splash", "a handful", "furikake", "oil spray").
@@ -100,7 +102,7 @@ Saved-recipe awareness:
 - The user may reference one of their SAVED recipes (e.g. "log my Egg Toast Wombo Combo", "log my bagel recipe but skip the banana"). Their saved recipes — each with its ingredient list — are provided below (may be empty).
 - If the description refers to a saved recipe, set "recipeLog.recipeName" to the EXACT matching name from the provided list, set "matchConfidence", and capture any requested changes in "recipeLog.modifications". Do NOT invent or recalculate that recipe's ingredients/macros — the app loads the real saved recipe and applies the changes itself.
 - For each modification, set "target" to the EXACT ingredient name from THAT recipe's ingredient list (map the user's words to the real ingredient — e.g. "toast" → the recipe's bread ingredient, "yogurt" → the recipe's Greek yogurt). Use type "remove" for skip/without/no, "set_amount" for "use 245g X"/"make it N", "substitute" (with newName) for "use X instead of Y", "scale" (with a numeric "scale", e.g. 0.5 for half) for whole-recipe portions, and "add" ONLY for an ingredient that is NOT already in the recipe.
-- For "add" and "substitute" modifications, ALSO estimate that single ingredient's calories/protein/carbs/fat for the stated quantity/unit (e.g. add 70g blueberries → ~40 cal, ~0.5 protein, ~10 carbs, ~0 fat). If the user gives only a calorie amount (e.g. "20 calories of BBQ sauce"), set calories to that and your best macro guess (often ~0). These per-ingredient macros are used only for added/substituted items, never to recalc the saved recipe.
+- For "add" and "substitute" modifications, ALSO estimate that single ingredient's calories/protein/carbs/fat for the stated quantity/unit (e.g. add 70g blueberries → ~40 cal, ~0.5 protein, ~10 carbs, ~0 fat). If the user gives only a calorie amount (e.g. "20 calories of BBQ sauce"), use that calorie number and still estimate that food's protein/carbs/fat so they roughly reconcile with it (BBQ sauce at 20 cal → ~5 g carbs, ~0 protein, ~0 fat) — do not default the macros to zero. These per-ingredient macros are used only for added/substituted items, never to recalc the saved recipe.
 - Entries tagged [MEAL PREP — …] are batches the user cooked earlier and is eating across days; the tag shows how many servings remain and how long ago it was made. When the user says they ate / want to log (a serving of) a meal prep — "log my chicken prep", "had one of my meal prep lunches", "eating my leftovers from the chicken and rice I made" — match it via recipeLog exactly like a saved recipe. For N servings of a meal prep, use a single "scale" modification with scale = N (the app converts that to a serving count and tracks the remaining servings itself). Do not re-estimate its macros.
 - Only use a name that appears in the provided list. If you are unsure which saved recipe is meant, set "matchConfidence" to "low". If the description is a normal freeform meal (not a saved recipe), set "recipeLog" to null.
 - Either way, still fill "ingredients"/"totals" with a best-effort estimate (used only as a fallback when no saved recipe matches).
@@ -212,6 +214,28 @@ function validateMealPrep(raw) {
 }
 
 /** Coerce arbitrary AI output into the strict shape the frontend expects. */
+/**
+ * Calories a row's macros actually account for (Atwater 4/4/9).
+ * Alcohol carries 7 cal/g and none of the three, so a drink legitimately
+ * lands far below its stated calories — hence a warning, never an auto-fix.
+ */
+function macroCalories({ protein, carbs, fat }) {
+  return (Number(protein) || 0) * 4 + (Number(carbs) || 0) * 4 + (Number(fat) || 0) * 9;
+}
+
+/**
+ * Rows whose macros can't explain their calories. The common cause is the
+ * model reading "190 calorie Rice Krispie treat" as a full macro spec and
+ * returning 190/0/0/0. Deterministic backstop for the prompt rule, since a
+ * prompt alone can drift.
+ */
+function unreconciledRows(ingredients) {
+  return ingredients.filter(i => {
+    if (i.calories < 25) return false; // black coffee, spices, seasonings
+    return macroCalories(i) < i.calories * 0.5;
+  });
+}
+
 function validateEstimate(raw) {
   if (!raw || typeof raw !== 'object') {
     throw new AiResponseError('AI response was not an object.');
@@ -250,6 +274,15 @@ function validateEstimate(raw) {
   const toStringArray = v =>
     (Array.isArray(v) ? v : []).map(x => str(x).trim()).filter(Boolean);
 
+  const warnings = toStringArray(raw.warnings);
+  const unreconciled = unreconciledRows(ingredients);
+  if (unreconciled.length > 0) {
+    const names = unreconciled.map(i => i.name).slice(0, 3).join(', ');
+    warnings.push(
+      `Check the macros on ${names}${unreconciled.length > 3 ? ' and others' : ''} — the protein/carbs/fat don't add up to the calories shown${unreconciled.some(i => /beer|wine|vodka|whiskey|rum|gin|tequila|cocktail|alcohol|liquor/i.test(i.name)) ? ' (expected for alcohol)' : ''}.`
+    );
+  }
+
   return {
     mealName: str(raw.mealName, 'Meal').trim() || 'Meal',
     summary: str(raw.summary).trim(),
@@ -258,7 +291,7 @@ function validateEstimate(raw) {
     ingredients,
     totals,
     assumptions: toStringArray(raw.assumptions),
-    warnings: toStringArray(raw.warnings),
+    warnings,
     recipeLog: validateRecipeLog(raw.recipeLog),
     mealPrep: validateMealPrep(raw.mealPrep),
   };
@@ -282,4 +315,4 @@ async function estimateMacros({ description, corrections, currentEstimate, recip
   return { ...validateEstimate(extractJson(text)), provider: resolveProvider() };
 }
 
-module.exports = { estimateMacros, AiConfigError, AiProviderError, AiResponseError, AiQuotaError };
+module.exports = { estimateMacros, unreconciledRows, macroCalories, AiConfigError, AiProviderError, AiResponseError, AiQuotaError };
