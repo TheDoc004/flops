@@ -8,11 +8,10 @@ import Reveal from '@shared/ui/Reveal';
 import { fetchLogRange, createLogEntry, deleteLogEntry } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
-import { sumMacros, groupByDate } from '@shared/utils/macros';
+import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
-import { getLocalDateISO, addDaysLocal, parseLocalDateISO } from '@shared/utils/dateLocal';
-import { buildWeeklyAdherenceRows, listLocalDatesInclusive, goalsToTargets, hasAnyTarget, resolveGoalRowForDate } from '@features/adherence';
-import DashboardAdherenceSection from './DashboardAdherenceSection';
+import { getLocalDateISO, parseLocalDateISO } from '@shared/utils/dateLocal';
+import { goalsToTargets, hasAnyTarget, resolveGoalRowForDate } from '@features/adherence';
 import DashboardWeightRow from './DashboardWeightRow';
 import { SupplementStrip } from '@features/supplements';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
@@ -26,7 +25,7 @@ function getGreeting() {
 }
 
 export default function Dashboard() {
-  const { bodyUnits, macroUnits } = useMacroUnits();
+  const { bodyUnits } = useMacroUnits();
   const location = useLocation();
 
   useEffect(() => {
@@ -36,8 +35,6 @@ export default function Dashboard() {
   }, [location.state?.scrollToTop]);
   const [today, setToday] = useState(() => getLocalDateISO());
   const [entries, setEntries] = useState([]);
-  const [weekLogEntries, setWeekLogEntries] = useState([]);
-  const [goalsPayload, setGoalsPayload] = useState(null);
   const [targets, setTargets] = useState({ calories: null, protein_g: null, carbs_g: null, fat_g: null });
   const [goalsLabel, setGoalsLabel] = useState('');
   const [goalsLoaded, setGoalsLoaded] = useState(false);
@@ -45,24 +42,10 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [error, setError] = useState('');
-  const [dashAdherenceView, setDashAdherenceView] = useState('7d');
   const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
   const [supplementMacros, setSupplementMacros] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 
   const greeting = useMemo(() => getGreeting(), []);
-
-  const adherenceRows = useMemo(() => {
-    const start = addDaysLocal(today, -6);
-    const grouped = groupByDate(weekLogEntries);
-    const dates = listLocalDatesInclusive(start, today);
-    const dayList = dates.map(d => {
-      const g = grouped.find(x => x.date === d);
-      return g
-        ? { ...g, hasData: true }
-        : { date: d, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, hasData: false };
-    });
-    return buildWeeklyAdherenceRows(goalsPayload, dayList, { todayIso: today });
-  }, [today, weekLogEntries, goalsPayload]);
 
   useEffect(() => {
     function syncToday() {
@@ -85,51 +68,46 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     setGoalsError('');
     setError('');
-    const weekStart = addDaysLocal(today, -6);
+    // Only today's entries — the week-long fetch existed for the adherence
+    // section, which now lives in Review.
     const [logResult, goalsResult, profileResult] = await Promise.allSettled([
-      fetchLogRange(weekStart, today),
+      fetchLogRange(today, today),
         fetchGoals({ date: today }),
       fetchProfile(),
     ]);
 
     if (profileResult.status === 'fulfilled') {
       const p = profileResult.value;
-      // dash_weight_chart_enabled / dash_weight_days are no longer read here:
-      // the weight trend chart left this tab (see DashboardWeightTrend.jsx,
-      // still intact and awaiting a home in History).
-      setDashAdherenceView(['7d', '2w', '3w', 'calendar'].includes(p.dash_adherence_view) ? p.dash_adherence_view : '7d');
+      // dash_weight_chart_enabled / dash_weight_days are retained-unused: the
+      // weight trend chart moved to History, where its range follows the days
+      // selected there.
       const se = p.dash_supplements_enabled;
       setDashSupplementsEnabled(se !== 0 && se !== false && se !== '0');
     }
 
     if (logResult.status === 'fulfilled') {
       const all = logResult.value;
-      setWeekLogEntries(all);
       setEntries(all.filter(e => e.date === today));
     } else {
       setError(logResult.reason?.message || "Failed to load today's log");
-      setWeekLogEntries([]);
       setEntries([]);
     }
 
     if (goalsResult.status === 'fulfilled') {
       const goalsData = goalsResult.value;
       if (goalsData?.goals?.length) {
-        setGoalsPayload(goalsData);
         const wd = getIsoWeekday(parseLocalDateISO(today));
         const row = resolveGoalRowForDate(goalsData, today);
         setTargets(goalsToTargets(row));
         setGoalsLabel(ISO_WEEKDAY_LABELS[wd] || '');
         setGoalsLoaded(true);
       } else {
-        setGoalsPayload(null);
         setTargets({ calories: null, protein_g: null, carbs_g: null, fat_g: null });
         setGoalsLabel('');
         setGoalsLoaded(false);
       }
     } else {
       setGoalsError(goalsResult.reason?.message || 'Failed to load goals');
-      setGoalsPayload(null);
       setTargets({ calories: null, protein_g: null, carbs_g: null, fat_g: null });
       setGoalsLabel('');
       setGoalsLoaded(false);
@@ -233,6 +211,15 @@ export default function Dashboard() {
         <SupplementStrip date={today} onMacrosChange={setSupplementMacros} />
       )}
 
+      {/* ── Today's weight ──
+          High on the page on purpose: weighing in is a daily action, so it sits
+          with the other daily actions rather than below the meal list. The
+          trend chart lives in History (WeightTrendChart) — Today is for doing,
+          Review is for looking. */}
+      <Reveal style={{ marginTop: 16 }}>
+        <DashboardWeightRow today={today} bodyUnits={bodyUnits} />
+      </Reveal>
+
       {/* ── Today's meals ── */}
       <Reveal delay={120} style={{ marginTop: 'clamp(28px, 3vw, 40px)', marginBottom: 24 }}>
         {/* Card header */}
@@ -294,27 +281,6 @@ export default function Dashboard() {
             </div>
           )
         }
-      </Reveal>
-
-      {/* ── Today's weight ──
-          Today is deliberately only the things you DO each day: log meals, tick
-          supplements, record your weight. The Trends weight chart was removed
-          from here; DashboardWeightTrend.jsx is kept intact but currently
-          unrendered — History has no weight chart yet, so that's where it
-          should land if it comes back. */}
-      <Reveal style={{ marginTop: 16 }}>
-        <DashboardWeightRow today={today} bodyUnits={bodyUnits} />
-      </Reveal>
-
-      {/* ── Goal adherence (flexible range) ── */}
-      <Reveal style={{ marginTop: 4 }}>
-        <DashboardAdherenceSection
-          today={today}
-          goalsPayload={goalsPayload}
-          macroUnits={macroUnits}
-          rows7d={adherenceRows}
-          view={dashAdherenceView}
-        />
       </Reveal>
 
       {showModal && (

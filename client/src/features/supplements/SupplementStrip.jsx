@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { fetchSupplementsToday, setSupplementTaken } from '@shared/api/supplements';
 import Reveal from '@shared/ui/Reveal';
 import ManageSupplementsModal from './ManageSupplementsModal';
@@ -116,31 +115,28 @@ export default function SupplementStrip({ date, onMacrosChange }) {
     <Reveal delay={90} style={{ marginTop: 14 }}>
       <div
         style={{
-          background: 'var(--color-surface)', border: '1px solid #e8e4dc', borderRadius: 12,
-          padding: '10px 12px',
+          background: 'var(--color-surface)', border: '1px solid #e8e4dc', borderRadius: 14,
+          padding: '14px 16px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: rows.length ? 8 : 0 }}>
-          <strong style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Supplements{rows.length > 0 ? ` · ${takenCount}/${rows.length}` : ''}
-          </strong>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            {rows.some(r => r.micros && Object.keys(r.micros).length > 0) && (
-              <Link
-                to="/history#micronutrients"
-                style={{ fontSize: 12.5, color: 'var(--color-link)', textDecoration: 'none', padding: '4px 6px' }}
-              >
-                Micros →
-              </Link>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: rows.length ? 10 : 0 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--color-text-strong)', letterSpacing: '-0.01em' }}>
+            Supplements
+            {rows.length > 0 && (
+              <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 500, color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                {takenCount}/{rows.length}
+              </span>
             )}
-            <button
-              type="button"
-              onClick={() => setShowManage(true)}
-              style={{ background: 'none', border: 'none', padding: '4px 6px', cursor: 'pointer', fontSize: 12.5, color: 'var(--color-link)' }}
-            >
-              Manage
-            </button>
-          </div>
+          </h3>
+          {/* Micronutrients deliberately aren't linked from here — that's a
+              Review concern. Today only answers "did I take these?" */}
+          <button
+            type="button"
+            onClick={() => setShowManage(true)}
+            style={{ background: 'none', border: 'none', padding: '2px 4px', cursor: 'pointer', fontSize: 13, color: 'var(--color-link)', flexShrink: 0 }}
+          >
+            Manage
+          </button>
         </div>
 
         {error && <p className="error" style={{ margin: '0 0 8px', fontSize: 13 }}>{error}</p>}
@@ -163,10 +159,11 @@ export default function SupplementStrip({ date, onMacrosChange }) {
               <div
                 key={r.id}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 4px 8px',
-                  borderRadius: 999, border: '1px solid', minHeight: 36,
-                  borderColor: r.taken ? '#a7f3d0' : '#e5e7eb',
-                  background: r.taken ? '#ecfdf5' : '#fff',
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 12px',
+                  borderRadius: 12, border: '1px solid', minHeight: 44,
+                  borderColor: r.taken ? '#a7f3d0' : '#e8e4dc',
+                  background: r.taken ? '#f0fdf9' : '#fff',
+                  transition: 'background 0.15s, border-color 0.15s',
                 }}
               >
                 <button
@@ -174,29 +171,34 @@ export default function SupplementStrip({ date, onMacrosChange }) {
                   onClick={() => void toggle(r)}
                   aria-pressed={!!r.taken}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 7, background: 'none', border: 'none',
-                    padding: 0, cursor: 'pointer', font: 'inherit',
+                    display: 'flex', alignItems: 'center', gap: 9, background: 'none', border: 'none',
+                    padding: 0, cursor: 'pointer', font: 'inherit', textAlign: 'left',
                   }}
                 >
                   <span
                     aria-hidden="true"
                     style={{
-                      flexShrink: 0, width: 18, height: 18, borderRadius: 5, border: '2px solid',
+                      flexShrink: 0, width: 20, height: 20, borderRadius: 6, border: '2px solid',
                       borderColor: r.taken ? '#059669' : '#cbd5e1', background: r.taken ? '#059669' : 'transparent',
                       color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 12, fontWeight: 700,
+                      fontSize: 13, fontWeight: 700, transition: 'background 0.15s, border-color 0.15s',
                     }}
                   >
                     {r.taken ? '✓' : ''}
                   </span>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: r.taken ? 'var(--color-text-muted)' : 'var(--color-text-strong)' }}>
-                    {r.name}
-                  </span>
-                  <span style={{ fontSize: 12.5, color: 'var(--color-text-faint)', fontVariantNumeric: 'tabular-nums' }}>
-                    {r.dose_display || ''}
+                  {/* Name over dose: the dose is a detail, not a peer of the name. */}
+                  <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: r.taken ? 'var(--color-text-muted)' : 'var(--color-text-strong)' }}>
+                      {r.name}
+                    </span>
+                    {r.dose_display && (
+                      <span style={{ fontSize: 12, color: 'var(--color-text-faint)', fontVariantNumeric: 'tabular-nums' }}>
+                        {r.dose_display}
+                      </span>
+                    )}
                   </span>
                 </button>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                   <button
                     type="button"
                     onClick={() => void changeDose(r, -1)}
