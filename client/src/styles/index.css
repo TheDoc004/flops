@@ -90,6 +90,7 @@
   --dur-dropdown: 200ms;    /* navbar menu open/close */
   --dur-collapse: 220ms;    /* meal expand/collapse (dynamic height) */
   --dur-open: 300ms;        /* expand: longer, decelerating */
+  --dur-swipe: 560ms;       /* meal Macros/Micros page-flip: deliberate, readable */
   --dur-close: 200ms;       /* collapse: accelerated reverse */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);  /* decelerate, no overshoot */
   --ease-in: cubic-bezier(0.4, 0, 1, 1);        /* accelerate, for exits */
@@ -1721,4 +1722,30 @@ dialog[open]::backdrop {
   .settings-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Meal row Macros/Micros switcher ──
+   Switching panels slides the incoming content in from the side of the tab
+   you pressed — Macros (left tab) → Micros arrives from the right, and back
+   the other way. Its own keyframes rather than grow-slide's: a page flip wants
+   a longer, further travel than a list row sliding in, otherwise it reads as a
+   flicker. First open from collapsed gets no sideways motion; the collapse
+   expansion is the animation there. */
+.meal-panel-right { animation: meal-panel-in-right var(--dur-swipe) var(--ease-out) both; }
+.meal-panel-left { animation: meal-panel-in-left var(--dur-swipe) var(--ease-out) both; }
+@keyframes meal-panel-in-right { from { opacity: 0; transform: translateX(44px); } }
+@keyframes meal-panel-in-left { from { opacity: 0; transform: translateX(-44px); } }
+
+/* Per-meal micro bars grow from empty on mount; `from` omits `to`, resolving
+   to the inline width (same trick as dialog-enter). Stagger via --i, and the
+   fill is paced to the swipe so bars land as the panel settles rather than
+   finishing while it's still arriving. */
+.meal-micro-fill {
+  animation: meal-micro-fill var(--dur-swipe) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 44ms);
+}
+@keyframes meal-micro-fill { from { width: 0; opacity: 0.4; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .meal-panel-right, .meal-panel-left, .meal-micro-fill { animation: none; }
 }

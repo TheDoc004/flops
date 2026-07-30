@@ -74,18 +74,39 @@ function kcalFor(nutriments, suffix) {
  * lists vitamin-a as 0.00015, i.e. 150 mcg), so everything scales up.
  */
 const MICRO_SOURCES = {
+  // Minerals
   sodium: ['sodium_mg', 1000],
   potassium: ['potassium_mg', 1000],
   calcium: ['calcium_mg', 1000],
   iron: ['iron_mg', 1000],
   magnesium: ['magnesium_mg', 1000],
   zinc: ['zinc_mg', 1000],
+  copper: ['copper_mg', 1000],
+  manganese: ['manganese_mg', 1000],
+  phosphorus: ['phosphorus_mg', 1000],
+  selenium: ['selenium_mcg', 1e6],
+  iodine: ['iodine_mcg', 1e6],
+  // Vitamins ('vitamin-pp' is OFF's name for niacin; B1/B2 are thiamin/riboflavin)
   'vitamin-a': ['vitamin_a_mcg', 1e6],
-  'vitamin-c': ['vitamin_c_mg', 1000],
-  'vitamin-d': ['vitamin_d_mcg', 1e6],
+  'vitamin-b1': ['thiamin_mg', 1000],
+  'vitamin-b2': ['riboflavin_mg', 1000],
+  'vitamin-pp': ['niacin_mg', 1000],
+  'pantothenic-acid': ['pantothenic_acid_mg', 1000],
+  'vitamin-b6': ['vitamin_b6_mg', 1000],
+  biotin: ['biotin_mcg', 1e6],
   folates: ['folate_mcg', 1e6],
   'vitamin-b12': ['vitamin_b12_mcg', 1e6],
+  'vitamin-c': ['vitamin_c_mg', 1000],
+  'vitamin-d': ['vitamin_d_mcg', 1e6],
+  'vitamin-e': ['vitamin_e_mg', 1000],
+  'vitamin-k': ['vitamin_k_mcg', 1e6],
+  // Omega-3s
+  'alpha-linolenic-acid': ['omega3_ala_g', 1],
+  'eicosapentaenoic-acid': ['omega3_epa_mg', 1000],
+  'docosahexaenoic-acid': ['omega3_dha_mg', 1000],
+  // Other
   fiber: ['fiber_g', 1],
+  choline: ['choline_mg', 1000],
 };
 
 /**

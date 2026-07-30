@@ -233,3 +233,28 @@ describe('shapeOffProduct — micronutrients', () => {
     expect(r.micros).toEqual({});
   });
 });
+
+describe('shapeOffProduct — v2 nutrient coverage', () => {
+  it('captures omega-3s and the wider vitamin set where OFF has them', () => {
+    const r = shapeOffProduct(
+      {
+        product_name: 'Fish oil softgels',
+        serving_quantity: 2,
+        nutriments: {
+          'energy-kcal_serving': 20,
+          'eicosapentaenoic-acid_serving': 0.55, // grams → 550 mg EPA
+          'docosahexaenoic-acid_serving': 0.45,
+          'vitamin-e_serving': 0.01, // 10 mg
+          'vitamin-pp_serving': 0.016, // OFF's name for niacin → 16 mg
+        },
+      },
+      '1234567890'
+    );
+    expect(r.micros).toEqual({
+      omega3_epa_mg: 550,
+      omega3_dha_mg: 450,
+      vitamin_e_mg: 10,
+      niacin_mg: 16,
+    });
+  });
+});

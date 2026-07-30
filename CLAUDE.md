@@ -157,6 +157,9 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 - `POST /api/workouts/logs` — log a single exercise (weight/reps/sets)
 - `GET /api/workouts/progress?exercise_name=` — historical logs for an exercise
 
+### Micronutrient key set (v2, 2026-07-30)
+28 canonical keys — vitamins incl. the B-complex and E/K, minerals incl. selenium/copper/manganese/phosphorus/iodine, omega-3s (ALA/EPA/DHA), fiber, choline. Single source of truth: `client/src/shared/config/microNutrients.js`, mirrored in `server/microNutrients.js` (keys encode units: `_g`/`_mg`/`_mcg`). AI prompt schemas are GENERATED from `MICRO_KEYS`, so adding a key automatically reaches estimation, label scan, and name-estimate prompts — but DSLD `GROUP_TO_KEY` and OFF `MICRO_SOURCES` must be taught new names by hand. DSLD label parsing walks `nestedRows` (fish-oil labels bury EPA/DHA under Total Fat). v1 blobs simply carry fewer keys; expansion is additive.
+
 ### Supplements (dose model)
 `supplements` stores macros/micros **per label serving** — that is what every capture path reports. `label_serving_qty` + `label_serving_unit` describe that serving; `dose_qty` is how much you actually take. `supplement_log.dose_qty` overrides it for one date (NULL = your usual dose). `server/supplementDose.js` owns the parsing and the multiplier (`dose_qty / label_serving_qty`, guarded against 0/NaN); the route returns values **already scaled**, with untouched label values under `per_label_serving`. Never sum a supplement's stored columns directly — that reads the label's serving, not the intake.
 
