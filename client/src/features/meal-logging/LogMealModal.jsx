@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchRecipe, fetchRecipes } from '@shared/api/recipes';
+import { fetchRecipe, fetchRecipes, updateRecipe } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
 import { adjustPerServingMacrosForResolvedClient } from './recipeLogMacros';
 import { listLoggingSlotsFromRecipe, listNonEditableTemplateLines } from './recipeLoggingSlots';
+import { amountsDifferFromRecipe, buildRecipeAmountUpdate } from './recipeAmountUpdate';
 
 function lastSubsKey(recipeId) { return `nlog_lastSubs_${recipeId}`; }
+function lastAmountsKey(recipeId) { return `nlog_lastAmounts_${recipeId}`; }
 
 function loadLastSubs(recipeId) {
   try {
@@ -17,6 +19,36 @@ function loadLastSubs(recipeId) {
 
 function saveLastSubs(recipeId, subs) {
   try { localStorage.setItem(lastSubsKey(recipeId), JSON.stringify(subs)); } catch { /* storage may be unavailable */ }
+}
+
+/**
+ * Amounts work like substitutions: the portion you last logged for a slot is
+ * what comes back next time, so bumping blueberries to 100g sticks without
+ * touching the saved recipe. Stored per recipe, and only ever a starting
+ * value — the field stays editable.
+ */
+function loadLastAmounts(recipeId) {
+  try {
+    const raw = localStorage.getItem(lastAmountsKey(recipeId));
+    const p = raw ? JSON.parse(raw) : null;
+    return p && typeof p === 'object' ? p : {};
+  } catch { return {}; }
+}
+
+function saveLastAmounts(recipeId, amounts) {
+  try { localStorage.setItem(lastAmountsKey(recipeId), JSON.stringify(amounts)); } catch { /* storage may be unavailable */ }
+}
+
+function clearLastAmounts(recipeId) {
+  try { localStorage.removeItem(lastAmountsKey(recipeId)); } catch { /* storage may be unavailable */ }
+}
+
+/** A remembered amount is only usable if it still parses as a real portion. */
+function validRememberedAmount(saved) {
+  if (!saved || typeof saved !== 'object') return null;
+  const n = Number(saved.amount);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return { amount: String(n), unit: saved.unit === 'oz' ? 'oz' : 'g' };
 }
 
 function parseHHMMToTimeMin(hhmm) {
@@ -52,6 +84,9 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const [slotSelections, setSlotSelections] = useState({});
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [slotLogAmounts, setSlotLogAmounts] = useState({});
+  const [savingRecipeAmounts, setSavingRecipeAmounts] = useState(false);
+  const [recipeAmountsMsg, setRecipeAmountsMsg] = useState('');
+  const [recipeAmountsError, setRecipeAmountsError] = useState('');
   const prevRecipeIdRef = useRef(null);
   const recipeComboboxRef = useRef(null);
 
@@ -99,7 +134,9 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     requestAnimationFrame(() => recipeComboboxRef.current?.focus());
   }, []);
 
-  // Initialize per-slot amounts from recipe defaults (preserves existing state on re-render)
+  // Initialize per-slot amounts: last-used first, then the recipe's own amount
+  // (preserves existing state on re-render). Editing an existing log ignores
+  // the memory — that entry's own amounts load below and must win.
   useEffect(() => {
     if (!selectedRecipe) {
       setSlotLogAmounts({});
@@ -110,18 +147,22 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       setSlotLogAmounts({});
       return;
     }
+    const remembered = (initialEntry || !selectedRecipe.id) ? {} : loadLastAmounts(selectedRecipe.id);
     setSlotLogAmounts(prev => {
       const next = {};
       for (const s of slots) {
         const keep = prev[s.slot_id];
+        const last = validRememberedAmount(remembered[s.slot_id]);
         next[s.slot_id] = {
-          amount: keep?.amount != null ? String(keep.amount) : String(s.amount),
-          unit: keep?.unit === 'oz' || keep?.unit === 'g' ? keep.unit : s.unit === 'oz' ? 'oz' : 'g',
+          amount: keep?.amount != null ? String(keep.amount) : String(last?.amount ?? s.amount),
+          unit: keep?.unit === 'oz' || keep?.unit === 'g'
+            ? keep.unit
+            : (last?.unit ?? (s.unit === 'oz' ? 'oz' : 'g')),
         };
       }
       return next;
     });
-  }, [recipeId, selectedRecipe?.id]);
+  }, [recipeId, selectedRecipe?.id, initialEntry?.id]);
 
   // Load saved customizations from an existing log entry (edit mode)
   useEffect(() => {
@@ -241,6 +282,56 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     return adjustPerServingMacrosForResolvedClient(selectedRecipe, labelById, built);
   }, [selectedRecipe, variableSlots, slotSelections, slotLogAmounts, labelById]);
 
+  // Does this log use portions the recipe itself doesn't? Gates the offer to
+  // make them permanent.
+  const amountsChanged = useMemo(
+    () => amountsDifferFromRecipe(variableSlots, slotLogAmounts, labelById),
+    [variableSlots, slotLogAmounts, labelById]
+  );
+
+  /** Single entry point for amount edits, so the save note never goes stale. */
+  function setSlotAmount(slot, patch) {
+    setRecipeAmountsMsg('');
+    setRecipeAmountsError('');
+    setSlotLogAmounts(prev => {
+      const cur = prev[slot.slot_id];
+      return {
+        ...prev,
+        [slot.slot_id]: {
+          amount: patch.amount != null ? patch.amount : (cur?.amount ?? String(slot.amount)),
+          unit: patch.unit != null ? patch.unit : (cur?.unit ?? (slot.unit === 'oz' ? 'oz' : 'g')),
+        },
+      };
+    });
+  }
+
+  function resetSlotAmount(slot) {
+    setSlotAmount(slot, { amount: String(slot.amount), unit: slot.unit === 'oz' ? 'oz' : 'g' });
+  }
+
+  /** Make the current amounts the recipe's own (ingredient swaps stay one-off). */
+  async function saveAmountsToRecipe() {
+    if (!selectedRecipe?.id || savingRecipeAmounts) return;
+    setRecipeAmountsError('');
+    const body = buildRecipeAmountUpdate(selectedRecipe, variableSlots, slotLogAmounts, labelById);
+    if (!body) {
+      setRecipeAmountsError("Couldn't rescale this recipe — check that every amount is above 0.");
+      return;
+    }
+    setSavingRecipeAmounts(true);
+    try {
+      const updated = await updateRecipe(selectedRecipe.id, body);
+      setRecipes(prev => prev.map(r => (String(r.id) === String(updated.id) ? updated : r)));
+      // These amounts are the recipe now, so the remembered override is noise.
+      clearLastAmounts(selectedRecipe.id);
+      setRecipeAmountsMsg('Saved to the recipe.');
+    } catch (e) {
+      setRecipeAmountsError(e.message || 'Failed to update the recipe');
+    } finally {
+      setSavingRecipeAmounts(false);
+    }
+  }
+
   function buildLogSlotCustomizationsPayload() {
     if (variableSlots.length === 0) return null;
     const out = {};
@@ -287,6 +378,18 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           if (chosenId != null) toSave[s.slot_id] = Number(chosenId);
         }
         if (Object.keys(toSave).length > 0) saveLastSubs(Number(recipeId), toSave);
+      }
+      // Remember the portions used, so the next log of this recipe starts here.
+      if (variableSlots.length > 0 && recipeId) {
+        const amounts = {};
+        for (const s of variableSlots) {
+          const amt = slotLogAmounts[s.slot_id];
+          const n = Number(amt?.amount);
+          if (Number.isFinite(n) && n > 0) {
+            amounts[s.slot_id] = { amount: String(n), unit: amt?.unit === 'oz' ? 'oz' : 'g' };
+          }
+        }
+        if (Object.keys(amounts).length > 0) saveLastAmounts(Number(recipeId), amounts);
       }
       ref.current?.close();
       onClose();
@@ -361,7 +464,12 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                 label="Recipe"
                 recipes={recipes}
                 value={recipeId}
-                onChange={(next) => setRecipeId(next)}
+                onChange={(next) => {
+                  // A different recipe means the previous save note no longer applies.
+                  setRecipeAmountsMsg('');
+                  setRecipeAmountsError('');
+                  setRecipeId(next);
+                }}
                 placeholder="Search recipe or meal…"
               />
               {selectedRecipe && (
@@ -416,6 +524,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                     const amt = slotLogAmounts[slot.slot_id];
                     const slotIsUnit = resolvedIng?.tracking_type === 'unit';
                     const slotUnitLabel = resolvedIng?.unit_name || 'unit';
+                    const slotAmountChanged = amountsDifferFromRecipe([slot], slotLogAmounts, labelById);
                     return (
                       <div
                         key={slot.slot_id}
@@ -464,15 +573,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                               min="0"
                               step="0.01"
                               value={amt?.amount ?? String(slot.amount)}
-                              onChange={e =>
-                                setSlotLogAmounts(prev => ({
-                                  ...prev,
-                                  [slot.slot_id]: {
-                                    amount: e.target.value,
-                                    unit: prev[slot.slot_id]?.unit ?? (slot.unit === 'oz' ? 'oz' : 'g'),
-                                  },
-                                }))
-                              }
+                              onChange={e => setSlotAmount(slot, { amount: e.target.value })}
                             />
                           </div>
                           <div>
@@ -484,15 +585,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                             ) : (
                               <select
                                 value={amt?.unit ?? (slot.unit === 'oz' ? 'oz' : 'g')}
-                                onChange={e =>
-                                  setSlotLogAmounts(prev => ({
-                                    ...prev,
-                                    [slot.slot_id]: {
-                                      amount: prev[slot.slot_id]?.amount ?? String(slot.amount),
-                                      unit: e.target.value === 'oz' ? 'oz' : 'g',
-                                    },
-                                  }))
-                                }
+                                onChange={e => setSlotAmount(slot, { unit: e.target.value === 'oz' ? 'oz' : 'g' })}
                               >
                                 <option value="g">g</option>
                                 <option value="oz">oz</option>
@@ -500,6 +593,24 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                             )}
                           </div>
                         </div>
+
+                        {/* Say when the amount isn't the recipe's own — the
+                            remembered portion is a default, not a lock-in. */}
+                        {slotAmountChanged && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+                            <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                              Recipe uses {slot.amount}{slotIsUnit ? ` ${slotUnitLabel}` : (slot.unit === 'oz' ? ' oz' : ' g')}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() => resetSlotAmount(slot)}
+                              style={{ minHeight: 0, padding: '5px 12px', fontSize: 13 }}
+                            >
+                              Use recipe amount
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -528,6 +639,39 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                         {Math.round(slotResolved.calories * (Number(servings) || 1))} cal
                       </strong>
                     </span>
+                  </div>
+                )}
+
+                {/* Amounts carry over to the next log on their own. This is the
+                    other option: make them the recipe's real amounts. */}
+                {(amountsChanged || recipeAmountsMsg || recipeAmountsError) && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #e5e7eb' }}>
+                    {amountsChanged && (
+                      <>
+                        <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                          These amounts are remembered for next time. Make them permanent?
+                        </p>
+                        <button
+                          type="button"
+                          className={savingRecipeAmounts ? 'btn-secondary btn-loading' : 'btn-secondary'}
+                          onClick={saveAmountsToRecipe}
+                          disabled={savingRecipeAmounts}
+                        >
+                          {savingRecipeAmounts
+                            ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>)
+                            : 'Save these amounts to the recipe'}
+                        </button>
+                        <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-faint)' }}>
+                          Updates the recipe's amounts and macros. Ingredient swaps stay on this log only.
+                        </p>
+                      </>
+                    )}
+                    {recipeAmountsMsg && (
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#047857' }}>{recipeAmountsMsg}</p>
+                    )}
+                    {recipeAmountsError && (
+                      <p className="error" style={{ margin: '8px 0 0', fontSize: 13 }}>{recipeAmountsError}</p>
+                    )}
                   </div>
                 )}
               </div>
