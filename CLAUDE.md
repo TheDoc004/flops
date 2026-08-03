@@ -44,7 +44,12 @@ Vite proxies `/api` → `localhost:3001` in dev. The SQLite DB lives at
 
 ## Critical Conventions
 
-- **Single user only.** `user_id = 0` is hardcoded everywhere. No auth exists. Do not add auth.
+- **Single user only.** `user_id = 0` is hardcoded everywhere.
+- **Auth:** none today, and none is needed while the app is localhost-only — do not add auth
+  for its own sake. **This changes when the app is deployed:** a shared-secret layer plus
+  rate limiting on `/api/ai/*` is step 1 of `docs/future/deployment-and-mcp.md`, because the
+  AI routes spend real money on the server's own API key. Add auth as part of that plan, not
+  before it.
 - **SQLite is synchronous.** `better-sqlite3` uses sync calls — no `.then()` on DB queries.
 - **Soft deletes.** Recipes use `is_deleted = 1`. Workout presets use `is_deleted = 1`. Never hard-delete things that log entries reference.
 - **Schema migrations** are inline in `server/db.js` using `PRAGMA table_info()` + conditional `ALTER TABLE`. Follow this pattern when adding columns to existing tables.

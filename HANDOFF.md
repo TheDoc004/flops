@@ -1,6 +1,12 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-07-30_
+_Last updated: 2026-08-02_
+
+> **▶ Next up: deploy + MCP connector.** Plan is written and decisions are made —
+> see **`docs/future/deployment-and-mcp.md`**. Three steps: (1) auth + rate limiting,
+> (2) Render/Vercel deploy with backups, (3) MCP server so meals can be logged from the
+> Claude app on the phone. Start at step 1. That plan also carries a 2026-08-02 codebase
+> audit (what's safe, what breaks once public) so it need not be re-derived.
 
 Snapshot of where the app stands so any session (human or Claude) can pick up quickly.
 For conventions, architecture, and the phase vision, see `CLAUDE.md` — this file is the
@@ -41,7 +47,8 @@ cd client && npm run dev
 ```
 
 SQLite DB: `server/nutrition.db` (a stale copy at repo root — ignore it). Single user,
-`user_id = 0` hardcoded, no auth (intentional). Schema + migrations are inline in
+`user_id = 0` hardcoded, no auth (intentional while localhost-only — changes at deploy,
+see `docs/future/deployment-and-mcp.md`). Schema + migrations are inline in
 `server/db.js` (`PRAGMA table_info` + conditional `ALTER TABLE`).
 
 > If a running API server predates a schema/route change, **restart it** — a plain
@@ -193,6 +200,15 @@ consolidation. That tree passed server 112 / client 105.
 - Two React pitfalls worth remembering: `{0 && <x>}` renders a stray `0` (use `n > 0 &&`);
   ESLint here enforces `react-hooks/set-state-in-effect` (don't call setState synchronously in
   an effect body).
+- **No backups and no data export.** 609 log entries + 284 recipes live in one SQLite file.
+  On the Mac, Time Machine/iCloud is the only safety net; there is nothing in the app itself.
+  This becomes urgent at deploy — see `docs/future/deployment-and-mcp.md` step 2.
+- **No rate limiting anywhere**, and `/api/ai/*` calls OpenAI/Anthropic on the server's own
+  key (`/transcribe` takes 25 MB uploads). Harmless on localhost; a billing risk the moment
+  the API is public.
+- **No `engines` pin** in either `package.json`, though `server/index.js` needs Node ≥ 20.12
+  for `process.loadEnvFile`. Fine locally; a coin-flip on a host that picks its own default.
+- Low-severity `body-parser` advisory — `npm audit fix` clears it.
 
 ---
 
