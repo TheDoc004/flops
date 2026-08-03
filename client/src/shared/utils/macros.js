@@ -39,6 +39,43 @@ export function sumMacros(entries) {
 }
 
 /**
+ * Macros contributed by supplements taken on a day. Rows come from the
+ * supplement API (`/today` or `/range`) already scaled to the dose actually
+ * taken, so this only filters on the flag and adds — never rescales.
+ *
+ * Rows from `/range` are already "taken"; rows from `/today` carry a `taken`
+ * flag, so untaken ones are skipped here.
+ */
+export function sumSupplementMacros(supplements) {
+  return (supplements || []).reduce(
+    (acc, s) => {
+      if (!s || !s.counts_toward_macros) return acc;
+      if ('taken' in s && !s.taken) return acc;
+      acc.calories += Number(s.calories) || 0;
+      acc.protein_g += Number(s.protein_g) || 0;
+      acc.carbs_g += Number(s.carbs_g) || 0;
+      acc.fat_g += Number(s.fat_g) || 0;
+      return acc;
+    },
+    { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+  );
+}
+
+/** Add macro totals together (e.g. meals + macro-counting supplements). */
+export function addMacroTotals(...totals) {
+  return totals.reduce(
+    (acc, t) => {
+      acc.calories += Number(t?.calories) || 0;
+      acc.protein_g += Number(t?.protein_g) || 0;
+      acc.carbs_g += Number(t?.carbs_g) || 0;
+      acc.fat_g += Number(t?.fat_g) || 0;
+      return acc;
+    },
+    { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+  );
+}
+
+/**
  * Parse a log entry's stored per-ingredient breakdown (Phase 1). Returns an
  * array of rows or null when absent/invalid. Old entries (no ingredients_json)
  * return null so callers fall back to showing totals only. Never throws.

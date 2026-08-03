@@ -79,10 +79,49 @@ describe('/api/supplements — micronutrients', () => {
     const res = await request(app).get('/api/supplements/range?user_id=0&start=2026-07-20&end=2026-07-26');
     expect(res.status).toBe(200);
     expect(res.body.byDate['2026-07-24']).toEqual([
-      { id: vit.id, name: 'Vitamin D', micros: { vitamin_d_mcg: 25 } },
+      {
+        id: vit.id, name: 'Vitamin D', micros: { vitamin_d_mcg: 25 },
+        counts_toward_macros: 0, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0,
+      },
     ]);
-    // A taken supplement with no micros contributes nothing to the range.
+    // A taken supplement with neither micros nor counted macros contributes nothing.
     expect(res.body.byDate['2026-07-25']).toBeUndefined();
+  });
+
+  it('GET /range includes macro-counting supplements, dose-scaled', async () => {
+    const { app } = buildApp();
+    // Label serving = 1 scoop at 120 cal / 25g protein; the user takes 2 scoops.
+    const { body: shake } = await request(app).post('/api/supplements').send({
+      user_id: 0, name: 'Whey', counts_toward_macros: 1,
+      calories: 120, protein_g: 25, carbs_g: 3, fat_g: 1.5,
+      label_serving_qty: 1, label_serving_unit: 'scoop', dose_qty: 2,
+    });
+    await request(app).put('/api/supplements/log').send({ user_id: 0, date: '2026-07-24', supplement_id: shake.id, taken: 1 });
+
+    const res = await request(app).get('/api/supplements/range?user_id=0&start=2026-07-20&end=2026-07-26');
+    expect(res.status).toBe(200);
+    expect(res.body.byDate['2026-07-24']).toEqual([
+      {
+        id: shake.id, name: 'Whey', micros: null, counts_toward_macros: 1,
+        calories: 240, protein_g: 50, carbs_g: 6, fat_g: 3,
+      },
+    ]);
+  });
+
+  it('GET /range scales macros by that day\'s amount, not the usual dose', async () => {
+    const { app } = buildApp();
+    const { body: shake } = await request(app).post('/api/supplements').send({
+      user_id: 0, name: 'Whey', counts_toward_macros: 1, calories: 100, protein_g: 20,
+      label_serving_qty: 1, label_serving_unit: 'scoop', dose_qty: 1,
+    });
+    await request(app).put('/api/supplements/log').send({
+      user_id: 0, date: '2026-07-24', supplement_id: shake.id, taken: 1, dose_qty: 3,
+    });
+
+    const res = await request(app).get('/api/supplements/range?user_id=0&start=2026-07-20&end=2026-07-26');
+    const row = res.body.byDate['2026-07-24'][0];
+    expect(row.calories).toBe(300);
+    expect(row.protein_g).toBe(60);
   });
 
   it('GET /range excludes days where the supplement was untaken', async () => {

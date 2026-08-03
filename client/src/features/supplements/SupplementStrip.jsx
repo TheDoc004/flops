@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchSupplementsToday, setSupplementTaken } from '@shared/api/supplements';
+import { sumSupplementMacros } from '@shared/utils/macros';
 import Reveal from '@shared/ui/Reveal';
 import ManageSupplementsModal from './ManageSupplementsModal';
 import { formatDose } from './doseFormat';
@@ -11,20 +12,8 @@ const STEPPER = {
   flexShrink: 0,
 };
 
-function totalsFromRows(rows) {
-  return rows.reduce(
-    (acc, r) => {
-      if (r.taken && r.counts_toward_macros) {
-        acc.calories += r.calories;
-        acc.protein_g += r.protein_g;
-        acc.carbs_g += r.carbs_g;
-        acc.fat_g += r.fat_g;
-      }
-      return acc;
-    },
-    { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
-  );
-}
+// Same rule History applies to past days, so Today and Review agree.
+const totalsFromRows = rows => sumSupplementMacros(rows);
 
 /**
  * Today's supplements as a compact strip that sits directly under the macro

@@ -274,9 +274,10 @@ function createSupplementsRouter(db) {
     res.json({ date, supplement_id: supplementId, taken, dose_qty: dayDose });
   });
 
-  // Taken supplements that carry micronutrients, grouped by date, over a range.
-  // History uses this to add exact supplement micros to each day's micro totals.
-  // Only taken items with real micros are returned, keeping the payload small.
+  // Taken supplements that contribute anything, grouped by date, over a range.
+  // History uses this to add exact supplement micros to each day's micro totals
+  // AND the macros of items flagged to count, so a past day totals the same way
+  // Today does. Items that carry neither are skipped, keeping the payload small.
   router.get('/range', (req, res) => {
     const userId = Number(req.query.user_id ?? 0);
     if (!Number.isInteger(userId) || userId < 0) {
@@ -290,12 +291,14 @@ function createSupplementsRouter(db) {
     const rows = db
       .prepare(
         `SELECT sl.date AS date, s.id AS id, s.name AS name, s.micros_json AS micros_json,
+                s.calories AS calories, s.protein_g AS protein_g, s.carbs_g AS carbs_g,
+                s.fat_g AS fat_g, s.counts_toward_macros AS counts_toward_macros,
                 s.label_serving_qty AS label_serving_qty, s.dose_qty AS dose_qty,
                 sl.dose_qty AS day_dose_qty
            FROM supplement_log sl
            JOIN supplements s ON s.id = sl.supplement_id AND s.user_id = sl.user_id
           WHERE sl.user_id = ? AND sl.taken = 1 AND sl.date >= ? AND sl.date <= ?
-            AND s.micros_json IS NOT NULL
+            AND (s.micros_json IS NOT NULL OR s.counts_toward_macros = 1)
           ORDER BY sl.date, s.sort_order, s.name`
       )
       .all(userId, from, to);
@@ -303,13 +306,26 @@ function createSupplementsRouter(db) {
     const byDate = {};
     for (const r of rows) {
       const micros = parseMicrosValues(r.micros_json);
-      if (!micros) continue;
+      const countsMacros = Number(r.counts_toward_macros) === 1;
+      if (!micros && !countsMacros) continue;
       // History must reflect what was actually taken that day, not the label's
       // serving — scale by that day's amount, falling back to the usual dose.
       const effectiveDose =
         Number.isFinite(Number(r.day_dose_qty)) && Number(r.day_dose_qty) > 0 ? Number(r.day_dose_qty) : r.dose_qty;
       const multiplier = doseMultiplier({ label_serving_qty: r.label_serving_qty, dose_qty: effectiveDose });
-      (byDate[r.date] ||= []).push({ id: r.id, name: r.name, micros: scaleValues(micros, multiplier) });
+      const scaleMacro = v => Math.round((Number(v) || 0) * multiplier * 100) / 100;
+      (byDate[r.date] ||= []).push({
+        id: r.id,
+        name: r.name,
+        micros: micros ? scaleValues(micros, multiplier) : null,
+        // Macros ride along already dose-scaled, exactly like /today's rows, so
+        // the client only has to respect the flag — never rescale.
+        counts_toward_macros: countsMacros ? 1 : 0,
+        calories: scaleMacro(r.calories),
+        protein_g: scaleMacro(r.protein_g),
+        carbs_g: scaleMacro(r.carbs_g),
+        fat_g: scaleMacro(r.fat_g),
+      });
     }
     res.json({ start: from, end: to, byDate });
   });

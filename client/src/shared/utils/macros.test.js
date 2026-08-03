@@ -1,4 +1,5 @@
-import { computeEntryMacros, sumMacros, groupByDate, macroCaloriesFromGrams, mealMacroCalorieBreakdown } from './macros';
+import { describe, it, expect } from 'vitest';
+import { computeEntryMacros, sumMacros, sumSupplementMacros, addMacroTotals, groupByDate, macroCaloriesFromGrams, mealMacroCalorieBreakdown } from './macros';
 
 const makeEntry = (overrides = {}) => ({
   recipe_calories: 200,
@@ -55,6 +56,46 @@ describe('sumMacros', () => {
 
   it('returns zero totals for empty array', () => {
     expect(sumMacros([])).toEqual({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
+  });
+});
+
+describe('sumSupplementMacros', () => {
+  const supp = (over = {}) => ({
+    id: 1, name: 'Whey', counts_toward_macros: 1,
+    calories: 240, protein_g: 50, carbs_g: 6, fat_g: 3, ...over,
+  });
+
+  it('sums only supplements flagged to count toward macros', () => {
+    const result = sumSupplementMacros([
+      supp(),
+      supp({ id: 2, name: 'Creatine', counts_toward_macros: 0, calories: 5, protein_g: 0, carbs_g: 0, fat_g: 0 }),
+    ]);
+    expect(result).toEqual({ calories: 240, protein_g: 50, carbs_g: 6, fat_g: 3 });
+  });
+
+  it('skips untaken rows when the row carries a taken flag (/today shape)', () => {
+    expect(sumSupplementMacros([supp({ taken: 0 })])).toEqual({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
+    expect(sumSupplementMacros([supp({ taken: 1 })]).calories).toBe(240);
+  });
+
+  it('counts range rows, which carry no taken flag', () => {
+    expect(sumSupplementMacros([supp()]).calories).toBe(240);
+  });
+
+  it('returns zero totals for empty/missing input', () => {
+    expect(sumSupplementMacros([])).toEqual({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
+    expect(sumSupplementMacros(null)).toEqual({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
+  });
+});
+
+describe('addMacroTotals', () => {
+  it('adds totals and tolerates missing ones', () => {
+    const result = addMacroTotals(
+      { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 60 },
+      undefined,
+      { calories: 240, protein_g: 50, carbs_g: 6, fat_g: 3 }
+    );
+    expect(result).toEqual({ calories: 2240, protein_g: 200, carbs_g: 206, fat_g: 63 });
   });
 });
 
