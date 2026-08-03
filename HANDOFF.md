@@ -233,6 +233,14 @@ consolidation. That tree passed server 112 / client 105.
 
 ## 6. Parked / deliberately deferred
 
+- **Goals & Profile needs a restructure (raised 2026-08-02).** The section is three
+  sub-tabs (Goals / Report / Profile) that don't obviously belong together, and Profile
+  is now thinner after the weight trend chart and "Log body weight" card were removed
+  (both duplicated Review and Today). What's left is three settings tiles + a personal
+  stats form. Worth rethinking as a whole — what belongs in "Plan", whether Report is a
+  sub-tab or lives elsewhere, and whether unit toggles and dashboard prefs want to be
+  Settings rather than Profile. Not urgent; no behaviour is broken.
+
 - **AI Logger — per-unit "1 g" bug**: count foods (egg/slice) occasionally undercount to ~1
   cal when the AI emits `1 g` and the per-unit library match is skipped. Intermittent; needs a
   live repro to decide AI-prompt vs matcher fix.
