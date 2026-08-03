@@ -8,6 +8,7 @@ import MicroNutrientPanel from './MicroNutrientPanel';
 import DayReport from './DayReport';
 import ChartReveal from '@shared/ui/ChartReveal';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
+import usePaginationAnchor from '@shared/hooks/usePaginationAnchor';
 
 /** Sort selector styled like the navbar dropdowns (unroll + lavender hover). */
 function SortMenu({ value, options, onChange }) {
@@ -139,6 +140,23 @@ export default function RangeReport({ days, onAddMeal, onEditMeal, onDeleteMeal 
 
   const sortedDays = useMemo(() => sortDays(days, sortKey), [days, sortKey]);
 
+  // Paged rather than scrolled: a 30-day selection in a fixed-height scroll box
+  // meant hunting through a nested scrollbar. Same Prev/Next pattern as the
+  // Recipe and Ingredient libraries, including the anchor hook that keeps the
+  // controls from jumping as page height changes.
+  const isWide = useMediaQuery('(min-width: 700px)');
+  const pageSize = isWide ? 10 : 6;
+  const { page, setPage, paginationRef, handlePageChange } = usePaginationAnchor();
+  const totalPages = Math.max(1, Math.ceil(sortedDays.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedDays = useMemo(
+    () => sortedDays.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [sortedDays, currentPage, pageSize]
+  );
+
+  // A new selection or a re-sort reshuffles the list — start from the top.
+  useEffect(() => { setPage(1); }, [days, sortKey, setPage]);
+
   function toggle(date) {
     setOpen(prev => {
       const next = new Set(prev);
@@ -147,7 +165,6 @@ export default function RangeReport({ days, onAddMeal, onEditMeal, onDeleteMeal 
     });
   }
 
-  const anyOpen = open.size > 0;
 
   return (
     <div>
@@ -229,31 +246,12 @@ export default function RangeReport({ days, onAddMeal, onEditMeal, onDeleteMeal 
           <SortMenu value={sortKey} options={DAY_SORTS} onChange={setSortKey} />
         </div>
 
-        {/* Capped height so a 30-day selection scrolls inside the list instead
-            of stretching the page — but only while every day is collapsed. An
-            open day is a full DayReport (meals that expand into per-ingredient
-            charts, plus the micronutrient panel); trapping that in a 440px
-            scroll box buries it. When one is open the list grows and the page
-            scrolls instead. */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            paddingRight: 2,
-            ...(anyOpen ? null : { maxHeight: 440, overflowY: 'auto' }),
-          }}
-        >
-          {sortedDays.map(d => {
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {pagedDays.map(d => {
             const isOpen = open.has(d.date);
             const cov = d.micros?.hasMicros ? Math.round(microCoverageScore(d.micros.values) * 100) : null;
             return (
-              /* flexShrink: 0 is load-bearing. This is a flex column with a
-                 maxHeight, and flex items shrink by default — 30 collapsed days
-                 were being squeezed from 42px to 7px each to fit the cap, so the
-                 list rendered as unreadable, unclickable slivers and overflowY
-                 never engaged because nothing overflowed. */
-              <div key={d.date} style={{ flexShrink: 0, border: '1px solid #e8e4dc', borderRadius: 10, overflow: 'hidden' }}>
+              <div key={d.date} style={{ border: '1px solid #e8e4dc', borderRadius: 10, overflow: 'hidden' }}>
                 <button
                   type="button"
                   onClick={() => toggle(d.date)}
@@ -289,6 +287,36 @@ export default function RangeReport({ days, onAddMeal, onEditMeal, onDeleteMeal 
             );
           })}
         </div>
+
+        {totalPages > 1 && (
+          <div
+            ref={paginationRef}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+              marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--color-divider)',
+            }}
+          >
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={currentPage <= 1}
+              onClick={() => handlePageChange(currentPage - 1)}
+            >
+              Previous
+            </button>
+            <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={currentPage >= totalPages}
+              onClick={() => handlePageChange(currentPage + 1)}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
