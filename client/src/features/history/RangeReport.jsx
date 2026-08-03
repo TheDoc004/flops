@@ -248,7 +248,12 @@ export default function RangeReport({ days, onAddMeal, onEditMeal, onDeleteMeal 
             const isOpen = open.has(d.date);
             const cov = d.micros?.hasMicros ? Math.round(microCoverageScore(d.micros.values) * 100) : null;
             return (
-              <div key={d.date} style={{ border: '1px solid #e8e4dc', borderRadius: 10, overflow: 'hidden' }}>
+              /* flexShrink: 0 is load-bearing. This is a flex column with a
+                 maxHeight, and flex items shrink by default — 30 collapsed days
+                 were being squeezed from 42px to 7px each to fit the cap, so the
+                 list rendered as unreadable, unclickable slivers and overflowY
+                 never engaged because nothing overflowed. */
+              <div key={d.date} style={{ flexShrink: 0, border: '1px solid #e8e4dc', borderRadius: 10, overflow: 'hidden' }}>
                 <button
                   type="button"
                   onClick={() => toggle(d.date)}
