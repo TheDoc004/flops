@@ -9,7 +9,6 @@ import { newLine, macroSummaryText, getSuggestedSubstitutes } from './builderUti
  */
 export default function StepBuild({
   savedLabels,
-  sortedLabels,
   ingById,
   lines,
   setLines,
@@ -62,53 +61,6 @@ export default function StepBuild({
             </button>
           </div>
         )}
-        {savedLabels.length > 0 && (() => {
-          const withHistory = [...savedLabels]
-            .filter(s => s.last_used_at)
-            .sort((a, b) => new Date(b.last_used_at) - new Date(a.last_used_at))
-            .slice(0, 5);
-          const chips = withHistory.length > 0 ? withHistory : sortedLabels.slice(0, 5);
-          return (
-            <div className="mb-recently-used" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-body)' }}>Quick add:</span>
-              {chips.map(s => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => {
-                    const ingId = String(s.id);
-                    setLines(prev => {
-                      const firstEmpty = prev.findIndex(l => !l.labelIngredientId);
-                      let next;
-                      if (firstEmpty !== -1) {
-                        next = prev.map((l, i) => i === firstEmpty ? { ...l, labelIngredientId: ingId } : l);
-                      } else {
-                        next = [...prev, { ...newLine(), labelIngredientId: ingId }];
-                      }
-                      if (next[next.length - 1].labelIngredientId) {
-                        next = [...next, newLine()];
-                      }
-                      return next;
-                    });
-                  }}
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 20,
-                    padding: '6px 12px',
-                    fontSize: 13,
-                    color: 'var(--color-text-body)',
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    lineHeight: 1.4,
-                  }}
-                >
-                  + {s.name}
-                </button>
-              ))}
-            </div>
-          );
-        })()}
         {lines.map((line, idx) => {
           const m = lineMacros[idx];
           return (

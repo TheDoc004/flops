@@ -1240,8 +1240,18 @@ dialog[open]::backdrop {
 /* ── Meal Builder Step 2: ingredient rows ──
    Desktop keeps the original 5-column grid with role + substitutes always
    visible. Mobile (≤699px) becomes a stacked card: search → amount+unit →
-   remove, with role label + substitutes collapsed behind "More options".
-   Recently Used is hidden on mobile so the builder sits higher on screen. */
+   remove, with role label + substitutes collapsed behind "More options". */
+
+/* Each ingredient is a card at every width. Desktop used to leave .mb-line
+   completely unstyled, so five ingredients read as one continuous wall of
+   fields with nothing marking where one ended and the next began — the border
+   and the numbered header are what make them separable at a glance. */
+.mb-line {
+  border: 1px solid var(--color-surface-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: #fff;
+}
 .mb-line-row {
   display: grid;
   grid-template-columns: 1.4fr 2fr 100px 80px auto;
@@ -1251,31 +1261,37 @@ dialog[open]::backdrop {
 .mb-amount-unit { display: contents; }  /* amount + unit are direct grid cells on desktop */
 .mb-more-toggle { display: none; }       /* mobile-only control */
 .mb-role-mobile { display: none; }       /* desktop uses the in-grid role field */
-.mb-line-header { display: none; }       /* mobile-only card header (title + trash) */
+/* Header carries the ingredient number at every width. The trash icon inside it
+   is mobile-only — desktop keeps the inline Remove button in the grid row. */
+.mb-line-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.mb-line-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.mb-trash { display: none; }
 
 @media (max-width: 699px) {
-  .mb-recently-used { display: none; }
-
   .mb-line {
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--color-surface-border);
-    border-radius: var(--radius-md);
     padding: 12px;
-    background: #fff;
   }
-  .mb-line-header {
-    order: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 10px;
-  }
+  .mb-line-header { order: 0; }
   .mb-line-title {
     font-size: 14px;
     font-weight: 600;
     color: var(--color-text-strong);
+    text-transform: none;
+    letter-spacing: normal;
   }
   .mb-trash {
     display: inline-flex;

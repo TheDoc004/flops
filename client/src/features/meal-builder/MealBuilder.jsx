@@ -137,11 +137,6 @@ export default function MealBuilder() {
 
   const ingById = useMemo(() => Object.fromEntries(savedLabels.map(x => [String(x.id), x])), [savedLabels]);
 
-  const sortedLabels = useMemo(
-    () => [...savedLabels].sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' })),
-    [savedLabels]
-  );
-
   // If editing a label-built recipe, prefill from its meal_builder_meta lines.
   useEffect(() => {
     if (mode !== 'labels') return;
@@ -658,7 +653,6 @@ export default function MealBuilder() {
             {step === 'build' && (
               <StepBuild
                 savedLabels={savedLabels}
-                sortedLabels={sortedLabels}
                 ingById={ingById}
                 lines={lines}
                 setLines={setLines}
