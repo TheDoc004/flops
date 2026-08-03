@@ -96,12 +96,17 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
   const fetchStart = addDaysLocal(end, -(range.days - 1));
   const unit = bodyUnits === 'us' ? 'lb' : 'kg';
 
+  // Fetch the whole log once and slice it locally. Weigh-ins are a handful of
+  // rows even over years, and holding them all means range switching is instant
+  // — and, more importantly, it's the only way to tell "before you ever logged"
+  // apart from "you didn't log during this stretch". Refetching per range can
+  // only ever see inside the current window.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoadError('');
       try {
-        const wData = await fetchBodyWeights(fetchStart, end);
+        const wData = await fetchBodyWeights(addDaysLocal(end, -(ALL_LOOKBACK_DAYS - 1)), end);
         if (cancelled) return;
         setWeightRows(Array.isArray(wData) ? wData : []);
       } catch (e) {
@@ -112,27 +117,45 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
       }
     })();
     return () => { cancelled = true; };
-  }, [fetchStart, end]);
+  }, [end]);
 
   // Convert once, here — every number downstream is already in display units so
   // the tiles and the plot can't drift apart.
-  const points = useMemo(
+  const allPoints = useMemo(
     () => weightRows
       .filter(r => r?.date && r.weight_kg != null)
-      .map(r => ({ date: r.date, value: bodyUnits === 'us' ? kgToLb(r.weight_kg) : r.weight_kg })),
+      .map(r => ({ date: r.date, value: bodyUnits === 'us' ? kgToLb(r.weight_kg) : r.weight_kg }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
     [weightRows, bodyUnits]
+  );
+
+  /** The earliest weigh-in on record — the real edge of the data. */
+  const firstEverDate = allPoints.length ? allPoints[0].date : null;
+
+  const points = useMemo(
+    () => allPoints.filter(p => p.date >= fetchStart),
+    [allPoints, fetchStart]
   );
 
   const stats = useMemo(() => summarizeWeights(points), [points]);
   const projection = useMemo(() => projectWeight(points, 7), [points]);
 
-  // "All" looks back five years; start the axis at the first real weigh-in so
-  // four months of data isn't a speck against five years of empty plot.
-  const chartStart = useMemo(() => {
-    if (rangeKey !== 'all') return fetchStart;
-    const dates = points.map(p => p.date).sort();
-    return dates.length ? dates[0] : fetchStart;
-  }, [rangeKey, fetchStart, points]);
+  // Never plot dead space before the first weigh-in. Asking for 6 months when
+  // you have 4 spends ~40% of the width on nothing and squeezes the actual
+  // trend into what's left — so the axis starts where the data does, and the
+  // caption below owns the explanation.
+  //
+  // This subsumes the old "All" special case: All looks back five years, which
+  // was the extreme version of the same problem.
+  // Clamp ONLY against the first weigh-in ever. A window that starts inside the
+  // logging history keeps its empty stretches: "I didn't weigh in for three
+  // weeks of July" is information, and hiding it would misrepresent the log.
+  const { chartStart, clampedFrom } = useMemo(() => {
+    if (firstEverDate && firstEverDate > fetchStart) {
+      return { chartStart: firstEverDate, clampedFrom: fetchStart };
+    }
+    return { chartStart: fetchStart, clampedFrom: null };
+  }, [fetchStart, firstEverDate]);
 
   // One row per WEIGH-IN, not per calendar day, plotted against a real time
   // axis. The per-day version emitted ~180 rows for 14 points on the 6M range,
@@ -350,6 +373,15 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
           </ResponsiveContainer>
           </div>
           </ChartReveal>
+
+          {/* Only shown when the requested window reached back further than the
+              log does — otherwise the trimmed axis would look like a bug. */}
+          {clampedFrom && stats.spanDays > 0 && (
+            <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--color-text-faint)' }}>
+              {range.label === 'All' ? 'Showing your' : `${range.label} selected — showing your`}{' '}
+              full log, from your first weigh-in on {shortDate(firstEverDate)}.
+            </p>
+          )}
 
           {/* ── What the trend implies ── */}
           {(stats.perWeek != null || projection) && (
