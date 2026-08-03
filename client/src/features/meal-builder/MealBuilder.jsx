@@ -95,6 +95,18 @@ export default function MealBuilder() {
     if (!recipeId) {
       setLoadedRecipe(null);
       setRecipeLoadError('');
+      // Leaving edit mode has to clear the form too, not just the loaded
+      // recipe. "Exit edit" dropped recipe_id from the URL but left the
+      // recipe's name and ingredient rows sitting in state, so it looked like
+      // the button did nothing — and worse, the builder was now in create mode
+      // holding a prefilled copy, so saving would have spawned a duplicate.
+      // Done here rather than in the button so every exit path is covered:
+      // browser back, and hand-editing the URL.
+      setLines([newLine()]);
+      setMealName('');
+      setMealSaveError('');
+      setMealSaved(false);
+      setExpandedLines(new Set());
       return undefined;
     }
     setLoadingRecipe(true);
