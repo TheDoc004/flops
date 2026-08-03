@@ -129,9 +129,6 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
     [weightRows, bodyUnits]
   );
 
-  /** The earliest weigh-in on record — the real edge of the data. */
-  const firstEverDate = allPoints.length ? allPoints[0].date : null;
-
   const points = useMemo(
     () => allPoints.filter(p => p.date >= fetchStart),
     [allPoints, fetchStart]
@@ -147,15 +144,33 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
   //
   // This subsumes the old "All" special case: All looks back five years, which
   // was the extreme version of the same problem.
-  // Clamp ONLY against the first weigh-in ever. A window that starts inside the
-  // logging history keeps its empty stretches: "I didn't weigh in for three
-  // weeks of July" is information, and hiding it would misrepresent the log.
-  const { chartStart, clampedFrom } = useMemo(() => {
-    if (firstEverDate && firstEverDate > fetchStart) {
-      return { chartStart: firstEverDate, clampedFrom: fetchStart };
+  // Fit the axis to the weigh-ins in range, trimming empty canvas off BOTH ends.
+  //
+  // The distinction that matters is leading/trailing vs interior. Space before
+  // the first weigh-in or after the last isn't data — nothing sits between two
+  // measurements there, so it's just unused canvas, and keeping it crushed a
+  // month view with three recent weigh-ins into the last tenth of the plot. A
+  // gap BETWEEN two weigh-ins is different: the line's slope across it is real,
+  // so interior gaps stay exactly as wide as the time they represent.
+  //
+  // "You only logged 3 times this month" is still said — in the caption below
+  // and the weigh-in count on the Average tile, where it reads as a fact rather
+  // than as whitespace the reader has to interpret.
+  const { chartStart, chartEnd, trimmed } = useMemo(() => {
+    if (points.length === 0) return { chartStart: fetchStart, chartEnd: end, trimmed: false };
+    const first = points[0].date;
+    const last = points[points.length - 1].date;
+    // A lone weigh-in has no span; give it a day either side so the domain
+    // isn't zero-width.
+    if (first === last) {
+      return { chartStart: addDaysLocal(first, -1), chartEnd: addDaysLocal(last, 1), trimmed: true };
     }
-    return { chartStart: fetchStart, clampedFrom: null };
-  }, [fetchStart, firstEverDate]);
+    return {
+      chartStart: first,
+      chartEnd: last,
+      trimmed: first > fetchStart || last < end,
+    };
+  }, [points, fetchStart, end]);
 
   // One row per WEIGH-IN, not per calendar day, plotted against a real time
   // axis. The per-day version emitted ~180 rows for 14 points on the 6M range,
@@ -177,11 +192,15 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
   // carries no labels and the reader can't see that time passed there at all.
   const { xDomain, xTicks } = useMemo(() => {
     const lo = parseLocalDateISO(chartStart).getTime();
-    const hi = parseLocalDateISO(end).getTime();
-    const count = 6;
+    const hi = parseLocalDateISO(chartEnd).getTime();
+    const DAY = 24 * 60 * 60 * 1000;
+    // Never ask for more ticks than there are distinct days, or a short span
+    // renders the same date several times over ("07/30, 07/30, 07/31, …").
+    const days = Math.max(1, Math.round((hi - lo) / DAY) + 1);
+    const count = Math.max(2, Math.min(6, days));
     const ticks = Array.from({ length: count }, (_, i) => Math.round(lo + ((hi - lo) * i) / (count - 1)));
     return { xDomain: [lo, hi], xTicks: ticks };
-  }, [chartStart, end]);
+  }, [chartStart, chartEnd]);
 
   // Pad the domain so the line never touches the frame, then snap the ends to a
   // round step so the axis reads 150.0 / 150.5 / 151.0 rather than 150.3 / 151.8.
@@ -376,10 +395,10 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
 
           {/* Only shown when the requested window reached back further than the
               log does — otherwise the trimmed axis would look like a bug. */}
-          {clampedFrom && stats.spanDays > 0 && (
+          {trimmed && (
             <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--color-text-faint)' }}>
-              {range.label === 'All' ? 'Showing your' : `${range.label} selected — showing your`}{' '}
-              full log, from your first weigh-in on {shortDate(firstEverDate)}.
+              {stats.count} weigh-in{stats.count === 1 ? '' : 's'} in this range — charting{' '}
+              {shortDate(points[0].date)} to {shortDate(points[points.length - 1].date)}.
             </p>
           )}
 
