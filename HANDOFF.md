@@ -209,6 +209,17 @@ consolidation. That tree passed server 112 / client 105.
 - **No `engines` pin** in either `package.json`, though `server/index.js` needs Node ≥ 20.12
   for `process.loadEnvFile`. Fine locally; a coin-flip on a host that picks its own default.
 - Low-severity `body-parser` advisory — `npm audit fix` clears it.
+- **Conditional inline styles can mix a shorthand with a longhand — sweep for it.**
+  React removes style properties that disappear between renders, and removing a
+  *longhand* does not restore what a *shorthand* originally set; it falls through to
+  `currentColor` / the initial value. Hit in `LogEntryRow`'s Macros/Micros toggle:
+  `base` set `border`, the active state set only `borderColor`, so collapsing left the
+  button outlined in text colour instead of grey (fixed 2026-08-02). Rule: **if two
+  style objects are merged conditionally, both must set the same property.** Same trap
+  applies to `background`/`backgroundColor`, `padding`/`padding*`, `font`/`fontSize`.
+  Not yet swept — this codebase styles almost everything with conditional inline
+  objects, so expect more instances. Grep for `borderColor`/`backgroundColor` inside
+  objects that are spread conditionally.
 
 ---
 
