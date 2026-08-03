@@ -30,7 +30,16 @@ function ViewToggle({ view, setView, hasMicros, compact = false }) {
     cursor: 'pointer',
     fontWeight: 600,
   };
-  const active = { background: 'var(--color-primary-ink, #312e81)', borderColor: 'var(--color-primary-ink, #312e81)', color: '#fff' };
+  /* Both states must set the SAME border property. `active` used to set the
+     `borderColor` longhand while `base` set the `border` shorthand: collapsing
+     made React drop the longhand, and since the shorthand's colour had already
+     been consumed, border-color fell back to currentColor — leaving the button
+     outlined in near-black text colour instead of returning to the grey. */
+  const active = {
+    background: 'var(--color-primary-ink, #312e81)',
+    border: '1px solid var(--color-primary-ink, #312e81)',
+    color: '#fff',
+  };
   const btn = key => ({
     ...base,
     ...(view === key ? active : {}),
