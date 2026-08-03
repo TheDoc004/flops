@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
-import { fetchLogRange, fetchLogForDate, createLogEntry, deleteLogEntry, updateLogEntry } from '@shared/api/log';
-import { sumMacros } from '@shared/utils/macros';
+import { fetchLogRange, createLogEntry, deleteLogEntry, updateLogEntry } from '@shared/api/log';
+import { sumMacros, sumSupplementMacros, addMacroTotals } from '@shared/utils/macros';
 import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
-import { getWeekdayLongNameFromIsoDate } from '@shared/utils/weekday';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import WeightTrendChart from './WeightTrendChart';
 import Reveal from '@shared/ui/Reveal';
@@ -31,15 +29,6 @@ function enumerateDates(start, end) {
 function presetDates(n) {
   const today = getLocalDateISO();
   return enumerateDates(addDaysLocal(today, -(n - 1)), today);
-}
-
-/** True only for a real calendar date in strict YYYY-MM-DD form. */
-function isValidIsoDate(s) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  const [y, m, d] = s.split('-').map(Number);
-  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
-  const dt = new Date(y, m - 1, d);
-  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
 }
 
 export default function History() {
@@ -70,24 +59,13 @@ export default function History() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState('');
   const reportRef = useRef(null);
-  // First..last of the current selection, which is what the weight chart plots.
-  const weightRange = useMemo(() => {
-    if (selDates.length === 0) return { start: null, end: null };
-    const sorted = [...selDates].sort();
-    return { start: sorted[0], end: sorted[sorted.length - 1] };
-  }, [selDates]);
-  const editRef = useRef(null);
 
-  // ── Logged Day editor state (edit/add/delete — preserved) ──
-  const [selectedDate, setSelectedDate] = useState('');
-  const [dayEntries, setDayEntries] = useState([]);
+  // ── Meal editing, driven from the report itself ──
+  // A day is fixed where it's being read, so there's no separate selected-day
+  // state: the date comes from whichever report row the action came from.
   const [error, setError] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForDate, setAddForDate] = useState(null);
   const [editEntry, setEditEntry] = useState(null);
-  const [dateInput, setDateInput] = useState('');     // raw manual "jump to date" text
-  const [dateInputError, setDateInputError] = useState('');
-
-  const selectedTotals = useMemo(() => sumMacros(dayEntries), [dayEntries]);
 
   // ── Build the report for a set of dates ──
   const buildReport = useCallback(async (dates) => {
@@ -102,8 +80,9 @@ export default function History() {
     try {
       const start = list[0];
       const end = list[list.length - 1];
-      // Meal entries drive macros + micros; taken supplements add exact micros.
-      // The supplement fetch is best-effort so micros still render if it fails.
+      // Meal entries drive macros + micros; taken supplements add exact micros
+      // plus the macros of any flagged to count — the same math Today does.
+      // The supplement fetch is best-effort so meals still render if it fails.
       const [entries, suppRange] = await Promise.all([
         fetchLogRange(start, end),
         fetchSupplementRange(start, end).catch(() => ({ byDate: {} })),
@@ -113,11 +92,14 @@ export default function History() {
       for (const e of entries) (byDate[e.date] ||= []).push(e);
       const days = list.map(date => {
         const es = byDate[date] || [];
+        const supps = suppByDate[date] || [];
+        const suppTotals = sumSupplementMacros(supps);
         return {
           date,
           entries: es,
-          totals: sumMacros(es),
-          micros: sumDayTotalMicros({ entries: es, supplements: suppByDate[date] || [] }),
+          totals: addMacroTotals(sumMacros(es), suppTotals),
+          supplementTotals: suppTotals,
+          micros: sumDayTotalMicros({ entries: es, supplements: supps }),
         };
       });
       setReportDays(days);
@@ -148,58 +130,42 @@ export default function History() {
     setSelDates([getLocalDateISO()]);
   }
 
-  // ── Day editor handlers (preserved) ──
-  async function selectDate(date) {
-    setSelectedDate(date);
-    setDateInput(date || '');
-    setDateInputError('');
-    if (!date) {
-      setDayEntries([]);
-      return;
-    }
-    try { setDayEntries(await fetchLogForDate(date)); }
-    catch (e) { setError(e.message); }
-  }
-
-  // Manual "jump to a specific date" — accepts YYYY-MM-DD, validates friendly.
-  function handleDateJump() {
-    const v = dateInput.trim();
-    if (!isValidIsoDate(v)) {
-      setDateInputError('Enter a date as YYYY-MM-DD (e.g. 2026-06-23).');
-      return;
-    }
-    void selectDate(v);
-  }
-
-  async function reloadSelectedDay() {
-    if (!selectedDate) return;
-    try { setDayEntries(await fetchLogForDate(selectedDate)); }
-    catch (e) { setError(e.message); }
-  }
-
-  // Refresh the report too if the edited day is part of it.
+  // ── Meal edit handlers ──
+  // Rebuilding the report is the whole refresh: it re-fetches the range and
+  // recomputes totals, meals and micros for every day on screen.
   async function refreshAfterEdit() {
-    await reloadSelectedDay();
     if (reportDates.length) await buildReport(reportDates);
   }
 
   async function handleAddMeal(data) {
-    if (!selectedDate) return;
-    await createLogEntry({ ...data, date: selectedDate });
-    setShowAddModal(false);
-    await refreshAfterEdit();
+    if (!addForDate) return;
+    try {
+      await createLogEntry({ ...data, date: addForDate });
+      setAddForDate(null);
+      await refreshAfterEdit();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function handleEditMeal(data) {
     if (!editEntry) return;
-    await updateLogEntry(editEntry.id, data);
-    setEditEntry(null);
-    await refreshAfterEdit();
+    try {
+      await updateLogEntry(editEntry.id, data);
+      setEditEntry(null);
+      await refreshAfterEdit();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function handleDeleteMeal(entry) {
-    await deleteLogEntry(entry.id);
-    await refreshAfterEdit();
+    try {
+      await deleteLogEntry(entry.id);
+      await refreshAfterEdit();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   // Report auto-updates from the current selection (no "View Breakdown" step).
@@ -246,13 +212,13 @@ export default function History() {
           ))}
         </div>
 
-        {/* Calendar with selection + inline day detail; the card header above
-            owns the title/hint, so the calendar's own header is hidden. */}
+        {/* Calendar: click selects days for the report below, hover (or long
+            press) shows that day's numbers. The card header above owns the
+            title/hint, so the calendar's own header is hidden. */}
         <AdherenceCalendarMonth
           macroUnits={macroUnits}
           bare
           hideHeader
-          inlineDetail
           selectedDates={selDates}
           onDayClick={onCalendarDayClick}
         />
@@ -262,17 +228,9 @@ export default function History() {
           <p style={{ margin: 0, fontSize: 13, color: '#6b7280', fontWeight: 500 }}>
             {selectionLabel}{reportLoading ? ' · updating…' : ''}
           </p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              title="Jump to the day editor below"
-            >
-              Edit a day ↓
-            </button>
-            <button type="button" className="btn-secondary" onClick={clearSelection}>Clear</button>
-          </div>
+          {/* No "Edit a day" jump any more — meals are edited in the report
+              itself, directly below. */}
+          <button type="button" className="btn-secondary" onClick={clearSelection}>Clear</button>
         </div>
 
         {/* ── Dashboard pin — which adherence view the dashboard card shows ── */}
@@ -284,99 +242,30 @@ export default function History() {
       {/* ── Report (micronutrient panel lives inside — anchor for #micronutrients) ── */}
       <Reveal>
         <div ref={reportRef} id="micronutrients" style={{ scrollMarginTop: 90 }}>
-          <NutritionReport days={reportDays} loading={reportLoading} error={reportError} />
+          <NutritionReport
+            days={reportDays}
+            loading={reportLoading}
+            error={reportError}
+            onAddMeal={setAddForDate}
+            onEditMeal={setEditEntry}
+            onDeleteMeal={handleDeleteMeal}
+          />
         </div>
       </Reveal>
 
 
       {/* ── Weight trend ──
           Moved here from the Today tab: Today is for logging your weight, this
-          is for seeing where it's going. Follows the range selected above. */}
-      <Reveal>
-        <WeightTrendChart start={weightRange.start} end={weightRange.end} bodyUnits={bodyUnits} />
+          is for seeing where it's going. Carries its own range (30D/90D/All) —
+          weight moves on a different timescale to meals, so tying it to the day
+          selection above made the default a single dot.
+          Today's weigh-in card links straight here (/history#weight-trend). */}
+      <Reveal id="weight-trend" style={{ scrollMarginTop: 90 }}>
+        <WeightTrendChart bodyUnits={bodyUnits} />
       </Reveal>
 
-      {/* ── Logged Day Explorer (edit/add/delete) ── */}
-      <Reveal>
-      <div ref={editRef} className="card" style={{ scrollMarginTop: 120 }}>
-        <h2 className="section-title" style={{ marginBottom: 16 }}>Edit a logged day</h2>
-
-        {/* Single-day calendar picker for editing (independent of the report
-            selection). The card heading above explains it, so no inner header. */}
-        <AdherenceCalendarMonth
-          macroUnits={macroUnits}
-          bare
-          hideHeader
-          dayMinHeight={76}
-          selectedDates={selectedDate ? [selectedDate] : []}
-          onDayClick={(d) => void selectDate(d)}
-        />
-
-        {/* Manual date entry — plain text field, no browser calendar picker. */}
-        <div style={{ marginTop: 20 }}>
-          <label htmlFor="edit-date-jump" style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 600, color: '#374151' }}>
-            Jump to a specific date
-          </label>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input
-              id="edit-date-jump"
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="YYYY-MM-DD"
-              value={dateInput}
-              onChange={(e) => { setDateInput(e.target.value); if (dateInputError) setDateInputError(''); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleDateJump(); } }}
-              style={{ flex: '1 1 240px', maxWidth: 340, fontSize: 16, padding: '12px 14px' }}
-            />
-            <button type="button" className="btn-primary" onClick={handleDateJump}>Go</button>
-          </div>
-          {dateInputError && (
-            <p style={{ margin: '8px 0 0', fontSize: 13, color: '#b91c1c' }}>{dateInputError}</p>
-          )}
-        </div>
-
-        {!selectedDate && (
-          <div style={{ padding: '24px 0 8px', textAlign: 'center' }}>
-            <p style={{ margin: 0, fontSize: 14, color: '#6b7280', fontWeight: 500 }}>No day selected.</p>
-          </div>
-        )}
-
-        {selectedDate && (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-              <div style={{ flex: '1 1 220px', padding: '12px 14px', border: '1px solid #e8e4dc', borderRadius: 10, background: '#faf9f7' }}>
-                <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
-                  <strong style={{ color: '#1e1b4b' }}>{getWeekdayLongNameFromIsoDate(selectedDate)}</strong>{' · '}{selectedDate}
-                </p>
-                <p style={{ margin: '5px 0 0', fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
-                  <strong>{Math.round(selectedTotals.calories).toLocaleString('en-US')}</strong> cal
-                  {' · '}P {selectedTotals.protein_g.toFixed(1)}g
-                  {' · '}C {selectedTotals.carbs_g.toFixed(1)}g
-                  {' · '}F {selectedTotals.fat_g.toFixed(1)}g
-                </p>
-              </div>
-              <button type="button" className="btn-primary" onClick={() => setShowAddModal(true)}>
-                + Add meal
-              </button>
-            </div>
-
-            <div>
-              {dayEntries.length === 0
-                ? <p className="empty-state">No meals logged on {selectedDate}.</p>
-                : dayEntries.map((entry, idx) => (
-                  <Reveal key={entry.id} delay={Math.min(idx, 6) * 60}>
-                    <LogEntryRow entry={entry} onEdit={() => setEditEntry(entry)} onDelete={handleDeleteMeal} />
-                  </Reveal>
-                ))}
-            </div>
-          </div>
-        )}
-      </div>
-      </Reveal>
-
-      {showAddModal && (
-        <LogMealModal title={`Add meal — ${selectedDate}`} submitLabel="Add Meal" onLog={handleAddMeal} onClose={() => setShowAddModal(false)} />
+      {addForDate && (
+        <LogMealModal title={`Add meal — ${addForDate}`} submitLabel="Add Meal" onLog={handleAddMeal} onClose={() => setAddForDate(null)} />
       )}
       {editEntry && (
         <LogMealModal title={`Edit meal — ${editEntry.date}`} submitLabel="Save Changes" initialEntry={editEntry} onLog={handleEditMeal} onClose={() => setEditEntry(null)} />

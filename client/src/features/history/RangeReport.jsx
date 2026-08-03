@@ -74,7 +74,7 @@ function StatChip({ label, value, unit, color }) {
   );
 }
 
-export default function RangeReport({ days }) {
+export default function RangeReport({ days, onAddMeal, onEditMeal, onDeleteMeal }) {
   const [sortKey, setSortKey] = useState('date_desc');
   const [open, setOpen] = useState(() => new Set());
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
@@ -146,6 +146,8 @@ export default function RangeReport({ days }) {
       return next;
     });
   }
+
+  const anyOpen = open.size > 0;
 
   return (
     <div>
@@ -227,9 +229,21 @@ export default function RangeReport({ days }) {
           <SortMenu value={sortKey} options={DAY_SORTS} onChange={setSortKey} />
         </div>
 
-        {/* Capped height: long selections (e.g. 30 days) scroll inside the
-            list instead of stretching the page. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 440, overflowY: 'auto', paddingRight: 2 }}>
+        {/* Capped height so a 30-day selection scrolls inside the list instead
+            of stretching the page — but only while every day is collapsed. An
+            open day is a full DayReport (meals that expand into per-ingredient
+            charts, plus the micronutrient panel); trapping that in a 440px
+            scroll box buries it. When one is open the list grows and the page
+            scrolls instead. */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            paddingRight: 2,
+            ...(anyOpen ? null : { maxHeight: 440, overflowY: 'auto' }),
+          }}
+        >
           {sortedDays.map(d => {
             const isOpen = open.has(d.date);
             const cov = d.micros?.hasMicros ? Math.round(microCoverageScore(d.micros.values) * 100) : null;
@@ -258,7 +272,12 @@ export default function RangeReport({ days }) {
                 </button>
                 {isOpen && (
                   <div style={{ padding: '14px', borderTop: '1px solid #f0ede8' }}>
-                    <DayReport day={d} />
+                    <DayReport
+                      day={d}
+                      onAddMeal={onAddMeal}
+                      onEditMeal={onEditMeal}
+                      onDeleteMeal={onDeleteMeal}
+                    />
                   </div>
                 )}
               </div>

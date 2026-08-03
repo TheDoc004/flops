@@ -6,7 +6,7 @@ import RangeReport from './RangeReport';
  * Report panel beneath the calendar. One selected day → full DayReport; multiple
  * days / a range → RangeReport (averages + gaps + per-day drilldowns).
  */
-export default function NutritionReport({ days, loading, error }) {
+export default function NutritionReport({ days, loading, error, onAddMeal, onEditMeal, onDeleteMeal }) {
   if (loading) {
     return (
       <div className="card" style={{ marginBottom: 20 }}>
@@ -31,10 +31,20 @@ export default function NutritionReport({ days, loading, error }) {
           <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--color-text-faint)' }}>
             <strong style={{ color: '#1e1b4b' }}>{getWeekdayLongNameFromIsoDate(days[0].date)}</strong> · {days[0].date}
           </p>
-          <DayReport day={days[0]} />
+          <DayReport
+            day={days[0]}
+            onAddMeal={onAddMeal}
+            onEditMeal={onEditMeal}
+            onDeleteMeal={onDeleteMeal}
+          />
         </>
       ) : (
-        <RangeReport days={days} />
+        <RangeReport
+          days={days}
+          onAddMeal={onAddMeal}
+          onEditMeal={onEditMeal}
+          onDeleteMeal={onDeleteMeal}
+        />
       )}
     </div>
   );
