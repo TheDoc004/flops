@@ -107,18 +107,36 @@ export function projectWeight(points, daysAhead = 7) {
     change,
     // One RMSE either side — roughly "typical" scatter, not a formal CI.
     margin: trend.rmse,
-    direction: describeDirection(trend.slopePerDay),
+    direction: describeDirection(trend.slopePerDay, last.value),
   };
 }
 
 /**
- * Slope → a word. The dead band keeps ordinary day-to-day noise from being
- * announced as a trend; 0.05 units/day is ~0.35 lb (or kg) a week.
+ * Weekly drift below this share of body weight is treated as noise rather than
+ * a trend. ~0.22 lb/week at 150 lb, or ~0.1 kg/week at 68 kg — the same
+ * real-world line either way.
  */
-export function describeDirection(slopePerDay) {
+const FLAT_BAND_PER_WEEK = 0.0015; // 0.15% of body weight
+
+/**
+ * Slope → a word.
+ *
+ * The band is a FRACTION of body weight, not an absolute number, because these
+ * values arrive in whichever unit is being displayed. A fixed 0.05/day band was
+ * ~0.35 lb a week in US units but ~0.77 lb a week in metric — the same log
+ * would be called "holding" in one unit and "down" in the other. It also sat
+ * wide enough to label a real 0.3 lb/week cut as holding.
+ *
+ * @param reference body weight to scale the band against; falls back to a
+ *                  fixed band when absent
+ */
+export function describeDirection(slopePerDay, reference) {
   if (!Number.isFinite(slopePerDay)) return 'flat';
-  if (slopePerDay > 0.05) return 'up';
-  if (slopePerDay < -0.05) return 'down';
+  const band = Number.isFinite(reference) && reference > 0
+    ? (reference * FLAT_BAND_PER_WEEK) / 7
+    : 0.05;
+  if (slopePerDay > band) return 'up';
+  if (slopePerDay < -band) return 'down';
   return 'flat';
 }
 
@@ -149,7 +167,7 @@ export function summarizeWeights(points) {
     changeOverRange: pts.length > 1 ? latest.value - first.value : null,
     spanDays: daysBetween(first.date, latest.date),
     perWeek: trend ? trend.slopePerDay * 7 : null,
-    direction: trend ? describeDirection(trend.slopePerDay) : 'flat',
+    direction: trend ? describeDirection(trend.slopePerDay, latest.value) : 'flat',
     trend,
   };
 }

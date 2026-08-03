@@ -64,9 +64,29 @@ describe('trendValueOn', () => {
 
 describe('describeDirection', () => {
   it('calls real movement, and ignores noise inside the dead band', () => {
+    expect(describeDirection(-0.2, 150)).toBe('down');
+    expect(describeDirection(0.2, 150)).toBe('up');
+    expect(describeDirection(0.001, 150)).toBe('flat');
+    expect(describeDirection(-0.001, 150)).toBe('flat');
+  });
+
+  it('scales the band to body weight, so lb and kg agree in real terms', () => {
+    // ~0.3 lb/week at 150 lb, and the same drift expressed in kg at 68 kg.
+    const lbPerDay = -0.3 / 7;
+    const kgPerDay = (-0.3 / 2.20462) / 7;
+    expect(describeDirection(lbPerDay, 150)).toBe('down');
+    expect(describeDirection(kgPerDay, 68)).toBe('down');
+  });
+
+  it('still calls a genuinely tiny drift flat in either unit', () => {
+    const lbPerDay = -0.1 / 7;   // 0.1 lb a week
+    const kgPerDay = (-0.1 / 2.20462) / 7;
+    expect(describeDirection(lbPerDay, 150)).toBe('flat');
+    expect(describeDirection(kgPerDay, 68)).toBe('flat');
+  });
+
+  it('falls back to a fixed band without a reference weight', () => {
     expect(describeDirection(-0.2)).toBe('down');
-    expect(describeDirection(0.2)).toBe('up');
-    expect(describeDirection(0.01)).toBe('flat');
     expect(describeDirection(-0.01)).toBe('flat');
   });
 });
