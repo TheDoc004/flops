@@ -1,12 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchLogRange } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
-import { groupByDate } from '@shared/utils/macros';
+import { fetchSupplementRange } from '@shared/api/supplements';
+import { groupByDate, sumSupplementMacros, addMacroTotals } from '@shared/utils/macros';
 import { addDaysLocal, getLocalDateISO, parseLocalDateISO } from '@shared/utils/dateLocal';
-import { buildWeeklyAdherenceRows, buildDayAdherenceDetail, hasAnyTarget } from './goalAdherence';
+import { buildWeeklyAdherenceRows, hasAnyTarget } from './goalAdherence';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS, SUNDAY_FIRST_WEEKDAYS, sundayFirstIndex } from '@shared/utils/weekday';
 import GoalAdherenceDayDetailDialog from './GoalAdherenceDayDetailDialog';
+import DayAdherencePopover from './DayAdherencePopover';
 import { STATUS_META } from './statusMeta';
+
+/**
+ * How long a pointer must rest on a day before its detail appears. Long enough
+ * that scanning across the grid doesn't flash popovers, short enough not to
+ * feel broken. Tune here — it's the only place the delay is defined.
+ */
+const HOVER_DELAY_MS = 500;
 
 // Compact metric labels so missed-macro text fits inside small calendar tiles.
 const SHORT_METRIC = { Calories: 'Cal', Protein: 'Pro', Carbs: 'Carb', Fat: 'Fat', Fiber: 'Fib' };
@@ -54,15 +63,25 @@ function datesInMonth(yyyyMm) {
  * @param {function} [props.onDayClick]    - Opt-in: when set, clicking a day calls onDayClick(date) instead of opening the detail dialog
  * @param {number}   [props.dayMinHeight=52] - Minimum height of each day tile (raise for a larger, roomier calendar)
  * @param {boolean}  [props.hideHeader=false] - Hides the "Adherence calendar" title/hint (keeps month nav) when the host section provides its own heading
- * @param {boolean}  [props.inlineDetail=false] - With onDayClick: clicking a day ALSO drops an inline detail panel below the grid (instead of the modal dialog)
+ *
+ * Day detail is shown by hovering (or long-pressing) a tile — see
+ * DayAdherencePopover. Clicking is reserved for selection when `onDayClick` is
+ * set, so the two jobs never fight over the same gesture.
  */
-export default function AdherenceCalendarMonth({ macroUnits, bare = false, showNav = true, onViewDay = null, selectedDates = null, onDayClick = null, dayMinHeight = 52, hideHeader = false, inlineDetail = false }) {
+export default function AdherenceCalendarMonth({ macroUnits, bare = false, showNav = true, onViewDay = null, selectedDates = null, onDayClick = null, dayMinHeight = 52, hideHeader = false }) {
   const [month, setMonth] = useState(() => getLocalDateISO().slice(0, 7)); // YYYY-MM
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [goalRows, setGoalRows] = useState(null);
   const [monthTotals, setMonthTotals] = useState([]);
+  // Macros from macro-counting supplements, per date — folded into each day's
+  // totals so a day is judged on everything that counted toward its goals.
+  const [suppTotalsByDate, setSuppTotalsByDate] = useState({});
   const [detailRow, setDetailRow] = useState(null);
+  // Hover/long-press detail. Stores the DATE, not the row — the row is looked
+  // up from dayRows at render so it can never go stale behind a data reload.
+  const [hovered, setHovered] = useState(null); // { date, rect }
+  const hoverTimer = useRef(null);
 
   const monthDates = useMemo(() => datesInMonth(month), [month]);
   const selectedSet = useMemo(() => new Set(selectedDates || []), [selectedDates]);
@@ -75,9 +94,20 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
       try {
         const start = monthStartIso(month);
         const end = monthEndIso(month);
-        const [entries, goalsRes] = await Promise.all([fetchLogRange(start, end), fetchGoals({ date: end })]);
+        // Supplements are best-effort: a failure there must not blank the month.
+        const [entries, goalsRes, suppRange] = await Promise.all([
+          fetchLogRange(start, end),
+          fetchGoals({ date: end }),
+          fetchSupplementRange(start, end).catch(() => ({ byDate: {} })),
+        ]);
         if (cancelled) return;
+        const byDate = suppRange?.byDate || {};
+        const suppTotals = {};
+        for (const [date, list] of Object.entries(byDate)) {
+          suppTotals[date] = sumSupplementMacros(list);
+        }
         setMonthTotals(groupByDate(entries));
+        setSuppTotalsByDate(suppTotals);
         setGoalRows(goalsRes || null);
       } catch (e) {
         if (!cancelled) setError(e.message || 'Failed to load adherence calendar');
@@ -94,12 +124,16 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
     const totalsByDate = new Map(monthTotals.map(r => [r.date, r]));
     const dayList = monthDates.map(d => {
       const g = totalsByDate.get(d);
-      return g
-        ? { ...g, hasData: true }
-        : { date: d, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, hasData: false };
+      const supp = suppTotalsByDate[d];
+      // A day counts as logged if it has meals or supplement macros that count.
+      const hasSuppMacros = !!supp && (supp.calories > 0 || supp.protein_g > 0 || supp.carbs_g > 0 || supp.fat_g > 0);
+      if (!g && !hasSuppMacros) {
+        return { date: d, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, hasData: false };
+      }
+      return { date: d, ...addMacroTotals(g, supp), hasData: true };
     });
     return buildWeeklyAdherenceRows(goalRows, dayList, { todayIso: getLocalDateISO() });
-  }, [goalRows, monthTotals, monthDates]);
+  }, [goalRows, monthTotals, monthDates, suppTotalsByDate]);
 
   const firstWeekday = useMemo(() => {
     const d0 = monthStartIso(month);
@@ -107,6 +141,23 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
   }, [month]);
 
   const blanks = sundayFirstIndex(firstWeekday); // leading tiles before a Sunday-first grid
+
+  function closeDetail() {
+    clearTimeout(hoverTimer.current);
+    setHovered(null);
+  }
+
+  /** Arm the hover detail. Keyboard focus opens immediately (delay 0). */
+  function openDetailAfterDelay(date, el, delay = HOVER_DELAY_MS) {
+    clearTimeout(hoverTimer.current);
+    const rect = el.getBoundingClientRect();
+    hoverTimer.current = setTimeout(() => setHovered({ date, rect }), delay);
+  }
+
+  // Don't leave a pending timer behind on unmount or month change.
+  useEffect(() => closeDetail, [month]);
+
+  const hoveredRow = hovered ? dayRows.find(r => r.date === hovered.date) : null;
 
   // Fill the leading/trailing grid cells with the real dates from the adjacent
   // months (recessed) so the calendar always reads as a full rectangle instead
@@ -192,24 +243,25 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
               tabIndex={0}
               className="cal-day"
               onClick={() => {
-                if (onDayClick) {
-                  onDayClick(row.date);
-                  if (inlineDetail) setDetailRow(row);
-                } else {
-                  setDetailRow(row);
-                }
+                if (onDayClick) onDayClick(row.date);
+                else setDetailRow(row);
               }}
               onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  if (onDayClick) {
-                    onDayClick(row.date);
-                    if (inlineDetail) setDetailRow(row);
-                  } else {
-                    setDetailRow(row);
-                  }
+                  if (onDayClick) onDayClick(row.date);
+                  else setDetailRow(row);
                 }
               }}
+              // Rest a pointer here to see the day's numbers; on touch the same
+              // gesture is a long press. Clicking still only ever selects.
+              onMouseEnter={e => openDetailAfterDelay(row.date, e.currentTarget)}
+              onMouseLeave={closeDetail}
+              onTouchStart={e => openDetailAfterDelay(row.date, e.currentTarget)}
+              onTouchEnd={closeDetail}
+              onTouchMove={closeDetail}
+              onFocus={e => openDetailAfterDelay(row.date, e.currentTarget, 0)}
+              onBlur={closeDetail}
               title={row.date}
               style={{
                 borderRadius: 10,
@@ -262,93 +314,15 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
         {trailingDates.map(renderOutsideDay)}
       </div>
 
-      {/* Inline day detail: drops down under the grid as days are clicked,
-          updating in place instead of interrupting with a modal. */}
-      {inlineDetail && detailRow && (() => {
-        const detail = buildDayAdherenceDetail(detailRow.totals, detailRow.targets, macroUnits, {
-          status: detailRow.status,
-          hasData: detailRow.hasData,
-        });
-        if (!detail) return null;
-        const statusM = STATUS_META[detailRow.status] || STATUS_META.no_target;
-        const wdName = ISO_WEEKDAY_LABELS[detailRow.weekday] || '';
-        return (
-          <div
-            key={detailRow.date}
-            className="panel-in"
-            style={{ marginTop: 12, padding: '12px 14px', borderRadius: 10, border: `1px solid ${statusM.border}`, background: statusM.bg }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-              <p style={{ margin: 0, fontSize: 13 }}>
-                <strong>{wdName}</strong>{' · '}{detailRow.date}{' · '}
-                <span style={{ fontWeight: 600, padding: '1px 9px', borderRadius: 999, background: 'rgba(255,255,255,0.65)', color: statusM.color }}>
-                  {statusM.label}
-                </span>
-                {detail.missed?.length > 0 && (
-                  <span style={{ marginLeft: 8, fontSize: 12, color: '#92400e' }}>
-                    Missed: {detail.missed.map(m => m.label).join(', ')}
-                  </span>
-                )}
-              </p>
-              <button
-                type="button"
-                onClick={() => setDetailRow(null)}
-                aria-label="Dismiss day detail"
-                style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14, color: statusM.color, padding: '2px 6px' }}
-              >
-                ✕
-              </button>
-            </div>
+      {/* Day detail on hover / long press. Reads the live row out of
+          dayRows, so a data reload can never leave it showing stale numbers. */}
+      {hoveredRow && (
+        <DayAdherencePopover row={hoveredRow} rect={hovered.rect} macroUnits={macroUnits} />
+      )}
 
-            {detailRow.status === 'no_data' && (
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>No meals logged.</p>
-            )}
-            {detailRow.status === 'upcoming' && (
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>Upcoming day — nothing logged yet.</p>
-            )}
-
-            {detailRow.status !== 'no_data' && detailRow.status !== 'upcoming' && (
-              <>
-                <div className="adh-detail-table" style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                    <thead>
-                      <tr style={{ textAlign: 'left', borderBottom: `1px solid ${statusM.border}` }}>
-                        <th style={{ padding: '6px 8px 6px 0' }}>Category</th>
-                        <th style={{ padding: 6 }}>Goal</th>
-                        <th style={{ padding: 6 }}>Actual</th>
-                        <th style={{ padding: 6 }}>vs goal</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detail.categories.map(cat => (
-                        <tr key={cat.key} style={{ fontWeight: cat.missedTolerance ? 600 : 400 }}>
-                          <td style={{ padding: '5px 8px 5px 0' }}>{cat.label}</td>
-                          <td style={{ padding: 5 }}>{cat.goalDisplay}</td>
-                          <td style={{ padding: 5 }}>{cat.actualDisplay}</td>
-                          <td style={{ padding: 5 }}>{cat.deltaLabel}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {/* Mobile: stacked per-category cards (no horizontal scroll) */}
-                <div className="adh-detail-cards">
-                  {detail.categories.map(cat => (
-                    <div key={cat.key} className="adh-detail-cat">
-                      <div className="adh-detail-cat-name">{cat.label}</div>
-                      <div className="adh-detail-cat-row"><span>Goal</span><span>{cat.goalDisplay}</span></div>
-                      <div className="adh-detail-cat-row"><span>Actual</span><span>{cat.actualDisplay}</span></div>
-                      <div className="adh-detail-cat-row"><span>vs goal</span><span>{cat.deltaLabel}</span></div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        );
-      })()}
-
-      {!inlineDetail && detailRow && (
+      {/* Modal detail, only on the standalone calendar — when `onDayClick` is
+          set the click belongs to selection and detailRow is never filled. */}
+      {detailRow && (
         <GoalAdherenceDayDetailDialog
           key={detailRow.date}
           row={detailRow}

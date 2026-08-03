@@ -20,12 +20,10 @@ const GROUPS = [
       { to: '/ingredients', label: 'Ingredients' },
     ],
   },
-  {
-    label: 'Review',
-    items: [
-      { to: '/history', label: 'History' },
-    ],
-  },
+  // Review is a direct link, not a dropdown — History is the only thing under
+  // it, so a menu was one extra click to reach a single destination. (The
+  // mobile bottom nav already linked straight through.)
+  { label: 'Review', to: '/history' },
   { label: 'Training', to: '/training' },
   { label: 'Goals & Profile', to: '/plan' },
 ];
