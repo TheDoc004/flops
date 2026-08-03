@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import RecipeRow from './RecipeRow';
 import { LogMealModal } from '@features/meal-logging';
 import { fetchRecipes, deleteRecipe, reactivateLimitedRecipe } from '@shared/api/recipes';
@@ -14,6 +14,7 @@ import { isIngredientBuilt } from '@features/ai-macro-logger';
 
 export default function Recipes() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const [recipes, setRecipes] = useState([]);
   const [search, setSearch] = useState('');
@@ -146,7 +147,13 @@ export default function Recipes() {
                     key={recipe.id}
                     recipe={recipe}
                     onLog={setLogRecipe}
-                    onEditInBuilder={() => navigate(`/meal-builder?mode=${isIngredientBuilt(recipe) ? 'labels' : 'manual'}&recipe_id=${recipe.id}`)}
+                    onEditInBuilder={() => navigate(
+                      `/meal-builder?mode=${isIngredientBuilt(recipe) ? 'labels' : 'manual'}&recipe_id=${recipe.id}`,
+                      // Tell the builder where to send you on "Exit edit" —
+                      // including the current filters/page, so you land back
+                      // on the list as you left it.
+                      { state: { from: `${location.pathname}${location.search}` } }
+                    )}
                     onDelete={handleDelete}
                     onReactivate={handleReactivate}
                   />

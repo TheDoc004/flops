@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import RecipeForm from './RecipeForm';
 import WizardStepper from './WizardStepper';
 import StepIngredients from './StepIngredients';
@@ -25,6 +25,15 @@ const WIZARD_STEPS = ['ingredients', 'build', 'save'];
 
 export default function MealBuilder() {
   const navigate = useNavigate();
+  const location = useLocation();
+  /**
+   * Where "Exit edit" returns to. Captured ONCE on mount: switching mode or
+   * step calls setSearchParams, which pushes a fresh history entry carrying no
+   * state, so reading location.state later would come back empty. Falls back to
+   * the Recipe Library when the builder was opened directly (deep link or
+   * refresh) and there's no origin to return to.
+   */
+  const [returnTo] = useState(() => location.state?.from || '/recipes');
   const [searchParams, setSearchParams] = useSearchParams();
   const mode = searchParams.get('mode') === 'manual' ? 'manual' : 'labels';
   const recipeIdParam = searchParams.get('recipe_id');
@@ -572,8 +581,8 @@ export default function MealBuilder() {
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => navigate('/meal-builder')}
-            title="Stop editing"
+            onClick={() => navigate(returnTo)}
+            title="Stop editing and go back"
           >
             Exit edit
           </button>
