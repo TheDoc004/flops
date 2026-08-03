@@ -813,6 +813,30 @@ dialog[open]::backdrop {
   from { opacity: 0; transform: translateY(6px); }
 }
 
+/* ── Chart wipe ──
+   Reveals a whole plot left to right as one motion — line, area, dots, trend
+   and grid together — instead of letting each series run its own timer and
+   arrive at a slightly different moment. Remount the node (key it on whatever
+   the range control changes) to replay it.
+
+   Deliberately a single clip on one wrapper rather than per-series animation:
+   one element means the parts are synchronised by construction, and they can't
+   drift the way independent library animations do. */
+.chart-wipe {
+  /* Slow on purpose — the sweep is the point, so it's paced to be watched
+     rather than to get out of the way. Easing is gentler than --ease-out:
+     that curve dumps most of its speed up front, which over two seconds
+     leaves the last third crawling. */
+  animation: chart-wipe 2100ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes chart-wipe {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chart-wipe { animation: none; }
+}
+
 /* Combobox option lists: quick unroll from the input edge, like the navbar
    menus. Set transform-origin inline (top/bottom center) to match whether the
    list opens below or above the input. */

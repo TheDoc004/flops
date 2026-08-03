@@ -11,7 +11,6 @@ import {
 } from 'recharts';
 import { fetchBodyWeights } from '@shared/api/profile';
 import ChartReveal from '@shared/ui/ChartReveal';
-import useMediaQuery from '@shared/hooks/useMediaQuery';
 import { addDaysLocal, getLocalDateISO, parseLocalDateISO } from '@shared/utils/dateLocal';
 import { kgToLb } from '@shared/utils/bodyUnits';
 import { summarizeWeights, projectWeight, trendValueOn } from './weightStats';
@@ -91,7 +90,6 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
   const [rangeKey, setRangeKey] = useState(defaultRange);
   const [weightRows, setWeightRows] = useState([]);
   const [loadError, setLoadError] = useState('');
-  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
   const range = RANGES.find(r => r.key === rangeKey) || RANGES[1];
   const end = getLocalDateISO();
@@ -248,10 +246,14 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
           </div>
 
           <ChartReveal height={210}>
+          {/* One wipe over the whole plot; every mark is revealed by the same
+              clip, so nothing can arrive out of step. Keyed on the range so
+              switching ranges replays it. */}
+          <div key={rangeKey} className="chart-wipe" style={{ width: '100%', height: 210 }}>
           <ResponsiveContainer width="100%" height={210}>
             {/* top/right margin gives dots (r=4 + 2px ring) room so they aren't clipped;
                 left margin keeps the y-axis labels off the card edge */}
-            <ComposedChart key={rangeKey} data={chartData} margin={{ top: 16, right: 16, left: 8, bottom: 4 }}>
+            <ComposedChart data={chartData} margin={{ top: 16, right: 16, left: 8, bottom: 4 }}>
               <defs>
                 {/* A wash under the line, not a saturated block. */}
                 <linearGradient id="weightFill" x1="0" y1="0" x2="0" y2="1">
@@ -340,14 +342,13 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
                    with a real entry. Missing days still occupy the x-axis. */
                 connectNulls
                 name="Weight"
-                /* The one animated mark: Recharts draws a Line by sweeping its
-                   stroke-dashoffset, i.e. left to right. */
-                isAnimationActive={!reduceMotion}
-                animationDuration={650}
-                animationEasing="ease-out"
+                /* Motion lives in the .chart-wipe clip so every mark reveals
+                   together; a second animation here would fight it. */
+                isAnimationActive={false}
               />
             </ComposedChart>
           </ResponsiveContainer>
+          </div>
           </ChartReveal>
 
           {/* ── What the trend implies ── */}
