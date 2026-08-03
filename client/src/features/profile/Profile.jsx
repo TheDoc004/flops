@@ -1,25 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from 'recharts';
-import { fetchProfile, saveProfile, fetchBodyWeights, saveBodyWeight } from '@shared/api/profile';
+import { fetchProfile, saveProfile } from '@shared/api/profile';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import {
   cmToFeetInches,
   feetInchesToCm,
   kgToWeightInputValue,
   parseWeightInputToKg,
-  kgToLb,
 } from '@shared/utils/bodyUnits';
-import { getLocalDateISO } from '@shared/utils/dateLocal';
-import ChartReveal from '@shared/ui/ChartReveal';
-import useMediaQuery from '@shared/hooks/useMediaQuery';
 import Reveal from '@shared/ui/Reveal';
 
 const ACTIVITY_OPTIONS = [
@@ -33,15 +20,10 @@ const ACTIVITY_OPTIONS = [
 
 export default function Profile() {
   const { macroUnits, setMacroUnits, bodyUnits, setBodyUnits } = useMacroUnits();
-  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const [form, setForm] = useState({});
-  const [weights, setWeights] = useState([]);
-  const [weightDate, setWeightDate] = useState(() => getLocalDateISO());
-  const [weightInput, setWeightInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
-  const [weightError, setWeightError] = useState('');
   // RETAINED-UNUSED: the weight trend chart moved to History, where its range
   // follows the selected days. These are still round-tripped so the stored
   // values survive, but nothing reads them and there is no UI for them.
@@ -59,7 +41,7 @@ export default function Profile() {
     let cancelled = false;
     (async () => {
       try {
-        const [p, w] = await Promise.all([fetchProfile(), fetchBodyWeights()]);
+        const p = await fetchProfile();
         if (cancelled) return;
         setForm({
           height_cm: p.height_cm ?? '',
@@ -70,7 +52,6 @@ export default function Profile() {
           activity_level: p.activity_level ?? '',
           maintenance_calories: p.maintenance_calories ?? '',
         });
-        setWeights(w);
         setDashAdherenceView(['7d', '2w', '3w', 'calendar'].includes(p.dash_adherence_view) ? p.dash_adherence_view : '7d');
         setDashSupplementsEnabled(p.dash_supplements_enabled !== 0 && p.dash_supplements_enabled !== false);
       } catch (e) {
@@ -151,25 +132,6 @@ export default function Profile() {
     }
   }
 
-  async function handleSaveWeight(e) {
-    e.preventDefault();
-    setWeightError('');
-    const kg = parseWeightInputToKg(weightInput, bodyUnits);
-    const unitHint = bodyUnits === 'us' ? 'pounds' : 'kilograms';
-    if (kg == null) {
-      setWeightError(`Enter a valid weight in ${unitHint}.`);
-      return;
-    }
-    try {
-      await saveBodyWeight(weightDate, kg);
-      const list = await fetchBodyWeights();
-      setWeights(list);
-      setWeightInput('');
-    } catch (err) {
-      setWeightError(err.message);
-    }
-  }
-
   // Auto-save dashboard prefs whenever the user changes them.
   // dashInteracted guard prevents a spurious save during initial load.
   useEffect(() => {
@@ -201,14 +163,6 @@ export default function Profile() {
     form.height_cm === '' || form.height_cm == null ? null : Number(form.height_cm)
   );
 
-  const chartData = weights.map(r => ({
-    date: r.date,
-    weight_kg: r.weight_kg,
-    weightY: bodyUnits === 'us' ? kgToLb(r.weight_kg) : r.weight_kg,
-  }));
-
-  const yUnit = bodyUnits === 'us' ? ' lb' : ' kg';
-  const weightLabel = bodyUnits === 'us' ? 'Weight (lb)' : 'Weight (kg)';
   const heightLabel = bodyUnits === 'us' ? 'Height' : 'Height (cm)';
 
   const H3 = ({ children }) => (
@@ -241,12 +195,12 @@ export default function Profile() {
   return (
     <div>
       <Reveal>
-        <h1 className="page-title" style={{ margin: 0 }}>Profile &amp; body weight</h1>
+        <h1 className="page-title" style={{ margin: 0 }}>Profile</h1>
       </Reveal>
 
       {error && <p className="error">{error}</p>}
 
-      {/* ── Row 1: unit toggles ── */}
+      {/* ── Settings tiles: units + dashboard prefs ── */}
       <Reveal delay={60} className="settings-grid">
         <div className="card">
           <H3>Nutrition units</H3>
@@ -273,10 +227,6 @@ export default function Profile() {
               label="US-style" sub="ft / in / lb" />
           </div>
         </div>
-      </Reveal>
-
-      {/* ── Row 2: dashboard prefs + log weight ── */}
-      <Reveal delay={120} className="settings-grid">
         <div className="card">
           <H3>Dashboard</H3>
           {/* Supplements checklist toggle */}
@@ -327,33 +277,9 @@ export default function Profile() {
           )}
         </div>
 
-        <div className="card">
-          <H3>Log body weight</H3>
-          <form onSubmit={handleSaveWeight}>
-            <div className="form-grid-2" style={{ marginBottom: 10 }}>
-              <div>
-                <label>Date</label>
-                <input type="date" value={weightDate} max={getLocalDateISO()} onChange={e => setWeightDate(e.target.value)} />
-              </div>
-              <div>
-                <label>{weightLabel}</label>
-                <input
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  value={weightInput}
-                  onChange={e => setWeightInput(e.target.value)}
-                  placeholder={bodyUnits === 'us' ? 'e.g. 160' : 'e.g. 72.5'}
-                />
-              </div>
-            </div>
-            <button type="submit" className="btn-primary">Save weight</button>
-          </form>
-          {weightError && <p className="error" style={{ marginTop: 8 }}>{weightError}</p>}
-        </div>
       </Reveal>
 
-      {/* ── Row 3: personal stats (full width) ── */}
+      {/* ── Personal stats (full width) ── */}
       <Reveal>
       <form onSubmit={handleSaveProfile} className="card" style={{ marginBottom: 16 }}>
         <H3>Personal stats</H3>
@@ -434,33 +360,6 @@ export default function Profile() {
       </form>
       </Reveal>
 
-      {/* ── Row 4: weight trend chart (full width) ── */}
-      <Reveal className="card">
-        <H3>Weight trend</H3>
-        {chartData.length === 0 ? (
-          <p className="empty-state" style={{ padding: 24 }}>No weight entries yet.</p>
-        ) : (
-          <ChartReveal height={260}>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} unit={yUnit} />
-                <Tooltip
-                  formatter={(v) => [`${Number(v).toFixed(1)}${yUnit.trim()}`, 'Weight']}
-                />
-                <Line
-                  type="monotone" dataKey="weightY"
-                  stroke="#312e81" strokeWidth={2} dot
-                  name={bodyUnits === 'us' ? 'Weight (lb)' : 'Weight (kg)'}
-                  isAnimationActive={!reduceMotion}
-                  animationDuration={900}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartReveal>
-        )}
-      </Reveal>
     </div>
   );
 }

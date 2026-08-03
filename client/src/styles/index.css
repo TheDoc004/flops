@@ -1751,17 +1751,15 @@ dialog[open]::backdrop {
 }
 
 /* ── Settings grid: 2-col on desktop, 1-col on mobile ── */
+/* Auto-fitting rather than a fixed 1fr 1fr: the settings tiles went from four
+   to three when weight logging moved to Today, and a hard two-column grid left
+   the odd card stranded at half width with dead space beside it. */
 .settings-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: var(--space-16);
   align-items: start;
   margin-bottom: var(--space-16);
-}
-@media (max-width: 640px) {
-  .settings-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ── Meal row Macros/Micros switcher ──
