@@ -36,6 +36,18 @@ const RANGES = [
 
 const ARROW = { up: '↑', down: '↓', flat: '→' };
 
+/** Your last-picked range, so leaving Review and coming back doesn't reset it. */
+const LS_RANGE = 'nutriWeightRange';
+
+function readStoredRange(fallback) {
+  try {
+    const saved = localStorage.getItem(LS_RANGE);
+    return RANGES.some(r => r.key === saved) ? saved : fallback;
+  } catch {
+    return fallback; // storage may be unavailable
+  }
+}
+
 /** Signed, to one decimal: "+0.4 lb" / "−1.2 lb". */
 function signed(value, unit) {
   if (value == null || !Number.isFinite(value)) return '—';
@@ -87,7 +99,14 @@ function StatTile({ label, value, hint }) {
  * entirely on whether you're cutting or bulking, and the app doesn't know.
  */
 export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRange = '90' }) {
-  const [rangeKey, setRangeKey] = useState(defaultRange);
+  // Seeded from storage so the choice survives navigating away and back — the
+  // component unmounts with the page, so plain state would reset every visit.
+  const [rangeKey, setRangeKey] = useState(() => readStoredRange(defaultRange));
+
+  function chooseRange(key) {
+    setRangeKey(key);
+    try { localStorage.setItem(LS_RANGE, key); } catch { /* storage may be unavailable */ }
+  }
   const [weightRows, setWeightRows] = useState([]);
   const [loadError, setLoadError] = useState('');
 
@@ -233,7 +252,7 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
               key={r.key}
               type="button"
               className={r.key === rangeKey ? 'btn-primary' : 'btn-secondary'}
-              onClick={() => setRangeKey(r.key)}
+              onClick={() => chooseRange(r.key)}
               aria-pressed={r.key === rangeKey}
               style={{ minHeight: 0, padding: '6px 12px', fontSize: 13 }}
             >
