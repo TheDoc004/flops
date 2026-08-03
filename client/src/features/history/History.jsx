@@ -135,9 +135,8 @@ export default function History() {
     const dates = presetDates(n);
     setSelDates(dates);
     setFocusMonth(dates[0].slice(0, 7));
-    // Only scroll on the way in — jumping to the report while collapsing back
-    // to a single day is disorienting.
-    setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    // Deliberately no auto-scroll: yanking the page down to the report on every
+    // preset press fought whatever you were doing in the calendar.
   }
 
   // Clear → back to today, so the page never feels blank.
