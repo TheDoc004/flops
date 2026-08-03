@@ -68,8 +68,24 @@ function datesInMonth(yyyyMm) {
  * DayAdherencePopover. Clicking is reserved for selection when `onDayClick` is
  * set, so the two jobs never fight over the same gesture.
  */
-export default function AdherenceCalendarMonth({ macroUnits, bare = false, showNav = true, onViewDay = null, selectedDates = null, onDayClick = null, dayMinHeight = 52, hideHeader = false }) {
-  const [month, setMonth] = useState(() => getLocalDateISO().slice(0, 7)); // YYYY-MM
+export default function AdherenceCalendarMonth({ macroUnits, bare = false, showNav = true, onViewDay = null, selectedDates = null, onDayClick = null, dayMinHeight = 52, hideHeader = false, focusMonth = null }) {
+  const [month, setMonth] = useState(() => focusMonth || getLocalDateISO().slice(0, 7)); // YYYY-MM
+
+  // Follow the host's focus month. A preset like "last 30 days" starts in the
+  // PREVIOUS month, so without this the grid stayed on the current month and
+  // showed 2 of the 30 selected days — the rest sat on a page you couldn't see,
+  // which made the preset look like it had done nothing.
+  //
+  // Adjusted during render rather than in an effect (React's documented pattern
+  // for syncing state to a prop): an effect would render the stale month first
+  // and then immediately re-render, and it trips the repo's set-state-in-effect
+  // rule. The guard means the arrows still page freely — this only fires when
+  // the host actually changes its focus.
+  const [lastFocusMonth, setLastFocusMonth] = useState(focusMonth);
+  if (focusMonth && focusMonth !== lastFocusMonth) {
+    setLastFocusMonth(focusMonth);
+    setMonth(focusMonth);
+  }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [goalRows, setGoalRows] = useState(null);
@@ -158,6 +174,19 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
   useEffect(() => closeDetail, [month]);
 
   const hoveredRow = hovered ? dayRows.find(r => r.date === hovered.date) : null;
+
+  // Selection can span months; say so rather than silently showing part of it.
+  const offscreenSelected = useMemo(() => {
+    if (!selectedDates?.length) return { before: 0, after: 0 };
+    let before = 0;
+    let after = 0;
+    for (const d of selectedDates) {
+      const m = d.slice(0, 7);
+      if (m < month) before += 1;
+      else if (m > month) after += 1;
+    }
+    return { before, after };
+  }, [selectedDates, month]);
 
   // Fill the leading/trailing grid cells with the real dates from the adjacent
   // months (recessed) so the calendar always reads as a full rectangle instead
@@ -313,6 +342,18 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
         })}
         {trailingDates.map(renderOutsideDay)}
       </div>
+
+      {(offscreenSelected.before > 0 || offscreenSelected.after > 0) && (
+        <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--color-text-faint)' }}>
+          {offscreenSelected.before > 0 && (
+            <>← {offscreenSelected.before} selected day{offscreenSelected.before === 1 ? '' : 's'} in the previous month</>
+          )}
+          {offscreenSelected.before > 0 && offscreenSelected.after > 0 && ' · '}
+          {offscreenSelected.after > 0 && (
+            <>{offscreenSelected.after} selected day{offscreenSelected.after === 1 ? '' : 's'} in the next month →</>
+          )}
+        </p>
+      )}
 
       {/* Day detail on hover / long press. Reads the live row out of
           dayRows, so a data reload can never leave it showing stale numbers. */}

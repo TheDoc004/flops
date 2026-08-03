@@ -54,6 +54,12 @@ export default function History() {
   // presetN (7|14|30|null) only drives the summary label ("Last N days").
   const [selDates, setSelDates] = useState(() => [getLocalDateISO()]);
   const [presetN, setPresetN] = useState(null);
+  /**
+   * Month the calendar should show (YYYY-MM). Presets point it at where the
+   * range STARTS — "last 30 days" begins in the previous month, so leaving the
+   * grid on the current month showed only the tail of the selection.
+   */
+  const [focusMonth, setFocusMonth] = useState(null);
   const [reportDays, setReportDays] = useState([]);
   const [reportDates, setReportDates] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
@@ -126,7 +132,9 @@ export default function History() {
       return;
     }
     setPresetN(n);
-    setSelDates(presetDates(n));
+    const dates = presetDates(n);
+    setSelDates(dates);
+    setFocusMonth(dates[0].slice(0, 7));
     // Only scroll on the way in — jumping to the report while collapsing back
     // to a single day is disorienting.
     setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
@@ -136,6 +144,7 @@ export default function History() {
   function clearSelection() {
     setPresetN(null);
     setSelDates([getLocalDateISO()]);
+    setFocusMonth(getLocalDateISO().slice(0, 7));
   }
 
   // ── Meal edit handlers ──
@@ -234,6 +243,7 @@ export default function History() {
           hideHeader
           selectedDates={selDates}
           onDayClick={onCalendarDayClick}
+          focusMonth={focusMonth}
         />
 
         {/* Selection summary + actions */}
