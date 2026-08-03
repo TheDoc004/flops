@@ -209,6 +209,14 @@ consolidation. That tree passed server 112 / client 105.
 - **No `engines` pin** in either `package.json`, though `server/index.js` needs Node ≥ 20.12
   for `process.loadEnvFile`. Fine locally; a coin-flip on a host that picks its own default.
 - Low-severity `body-parser` advisory — `npm audit fix` clears it.
+- **Meal Builder pushes a history entry per mode/step change.** `setSearchParams` is
+  called without `{ replace: true }` in `MealBuilder.jsx` (the `goToStep` callback and
+  the two mode buttons), so toggling "Build from ingredients" / "Known macros" a few
+  times stuffs browser history with builder states and hardware/gesture back gets
+  tedious. It also rules out `navigate(-1)` for "Exit edit" — that's why the exit target
+  is carried in router state instead (2026-08-02). Switching those three calls to
+  `replace` is the fix; it changes back-button behaviour, so it wants its own commit and
+  a check that nothing depends on stepping back through steps.
 - **Conditional inline styles can mix a shorthand with a longhand — sweep for it.**
   React removes style properties that disappear between renders, and removing a
   *longhand* does not restore what a *shorthand* originally set; it falls through to
