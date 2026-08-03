@@ -118,9 +118,17 @@ export default function History() {
   }
 
   // Preset range: replace the selection with the last N days and label it as such.
+  // Presets toggle: pressing the active one again drops back to today, so a
+  // range can be flicked on and off without hand-picking days to undo it.
   function applyPreset(n) {
+    if (presetN === n) {
+      clearSelection();
+      return;
+    }
     setPresetN(n);
     setSelDates(presetDates(n));
+    // Only scroll on the way in — jumping to the report while collapsing back
+    // to a single day is disorienting.
     setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   }
 
@@ -197,19 +205,24 @@ export default function History() {
           Days are colored by adherence.
         </p>
 
-        {/* Preset ranges */}
+        {/* Preset ranges — each toggles, so pressing the lit one clears it. */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-          {[7, 14, 30].map(n => (
-            <button
-              key={n}
-              type="button"
-              className={presetN === n ? 'btn-primary' : 'btn-secondary'}
-              style={{ minHeight: 0, padding: '7px 14px', fontSize: 13 }}
-              onClick={() => applyPreset(n)}
-            >
-              {n}D
-            </button>
-          ))}
+          {[7, 14, 30].map(n => {
+            const active = presetN === n;
+            return (
+              <button
+                key={n}
+                type="button"
+                className={active ? 'btn-primary' : 'btn-secondary'}
+                style={{ minHeight: 0, padding: '7px 14px', fontSize: 13 }}
+                onClick={() => applyPreset(n)}
+                aria-pressed={active}
+                title={active ? `Showing the last ${n} days — press again to clear` : `Show the last ${n} days`}
+              >
+                {n}D
+              </button>
+            );
+          })}
         </div>
 
         {/* Calendar: click selects days for the report below, hover (or long
