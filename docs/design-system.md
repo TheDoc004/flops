@@ -171,6 +171,16 @@ Cards should not feel like containers — they should feel like documents.
 
 Each row in a grouped card: `padding: 16px 20px`. No card shadow per row. The outer card holds the shadow. Last row has no border-bottom.
 
+**Dense edit list pattern:** When the list is something you *edit* mid-task rather than read — the ingredient amounts in Log a Meal, say — compress it further. Reference implementation: `.slot-list` / `.slot-row` in `index.css`.
+
+- **One line per item.** Name left, fields right, in a grid (`minmax(0,1fr) 74px 64px`). A stack of labelled cards turns six ingredients into a thousand pixels of scrolling; rows turn it into three hundred.
+- **Field captions go in one header row**, not above every field. Per-row `<label>`s become `aria-label`s so screen readers keep them.
+- **One name per row.** Two names (our label for it + the library's name for it) reads as clutter. Pick the one the user named it, put the fuller name in `title`, and `text-overflow: ellipsis` rather than wrap — a wrapped name makes its row taller than its neighbours and the column stops scanning.
+- **List-wide actions live in the section header**, not inside rows. A "reset" that appears under whichever row you touched interrupts the thing you're reading and reflows the list as you type.
+- Controls may shrink to `38px` on desktop, but come back to the `44px` touch target under `480px`. Hide number spinners: they eat a narrow column, and amounts are typed.
+
+The trade to keep in mind: this pattern buys speed by removing explanation, so it only suits fields whose meaning is already obvious from the column header.
+
 ### Section Labels
 Use `.section-label` (defined in `index.css`) before any dashboard section group. This is the primary tool for creating visual progression between sections — it acts as a signpost so the user mentally completes one section before moving to the next.
 

@@ -27,6 +27,11 @@
   --color-border: #e5e7eb;
   --color-divider: #f3f4f6;
   --color-divider-warm: #f0ede8;
+  /* Row separators in dense lists. --color-divider is near-invisible against
+     --color-surface (#f3f4f6 on #faf9f7); this is the same warm line already
+     used for the breakdown panel's borders — readable as a separator without
+     drawing a grid over the page. */
+  --color-divider-strong: #e6e1d7;
 
   /* ── Color · text ── */
   --color-text: #1a1a1a;             /* body */
@@ -1129,6 +1134,95 @@ dialog[open]::backdrop {
   .prep-split:active {
     transform: none;
   }
+}
+
+/* ── Slot list: the editable ingredients inside "Customize this log" ──
+   One line per ingredient — name left, amount + unit right — so a whole recipe
+   fits on screen and you can check portions and reach the Log button without
+   scrolling through a stack of cards. The per-field labels live once in the
+   header row instead of repeating on every ingredient. Hover/focus-within tint
+   the row so the one you're about to change is unmistakable. */
+.slot-list {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  overflow: hidden;
+}
+.slot-list__head,
+.slot-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px 64px;
+  gap: var(--space-8);
+  align-items: center;
+  padding: var(--space-6) var(--space-10);
+}
+.slot-list__head {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: #f9fafb;
+  border-bottom: 1px solid var(--color-border);
+  padding-block: var(--space-4);
+}
+/* Nudge the field captions over their controls (border + padding of the input). */
+.slot-list__head > span + span { padding-left: var(--space-8); }
+.slot-row + .slot-row { border-top: 1px solid var(--color-divider-strong); }
+.slot-row {
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.slot-row:hover,
+.slot-row:focus-within { background: #f3f4f6; }
+/* One name, one line: a wrapped ingredient name makes its row taller than its
+   neighbours and the list stops scanning as a column of portions. */
+.slot-row__name {
+  min-width: 0;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--color-text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.slot-row:hover .slot-row__name,
+.slot-row:focus-within .slot-row__name { color: var(--color-primary-ink); }
+/* Compact controls: the row is the unit of scanning, so the fields shrink to
+   what a 3-4 digit gram amount needs. Touch sizes come back on phones below. */
+.slot-row input,
+.slot-row select {
+  min-height: 38px;
+  padding: var(--space-6) var(--space-8);
+  font-size: var(--text-secondary);
+}
+/* Gram amounts are typed, never nudged — the spinners only eat a narrow column. */
+.slot-row input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.slot-row input[type="number"]::-webkit-outer-spin-button,
+.slot-row input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.slot-row__unit-static {
+  font-size: var(--text-secondary);
+  color: var(--color-text-body);
+  padding-left: var(--space-2);
+}
+/* Touch devices get no hover state — :hover there sticks after a tap. */
+@media (hover: none) {
+  .slot-row:hover { background: #fff; }
+  .slot-row:hover .slot-row__name { color: var(--color-text-strong); }
+}
+@media (max-width: 480px) {
+  .slot-list__head,
+  .slot-row {
+    grid-template-columns: minmax(0, 1fr) 68px 60px;
+    gap: var(--space-6);
+    padding-inline: var(--space-8);
+  }
+  .slot-row input,
+  .slot-row select { min-height: var(--touch-target); }
 }
 
 /* ── Logging style selector (Ingredients + Meal Builder) ── */

@@ -8,6 +8,11 @@ commit: 0e95a4c
 
 **Commit:** `0e95a4c` — *feat: clear 'Log once' vs 'Save as recipe' distinction* (branch `refactor/folder-structure`)
 
+> **Still true, but the entry point moved.** The mechanism below (one-off logs ride a hidden
+> `is_quick_food` backing recipe) is current. The **"Log once (custom)" mode is no longer in
+> `LogMealModal.jsx`** — one-off meals are the AI Macro Logger's job now, and the Log a Meal
+> modal only logs saved recipes (see HANDOFF § Nutrition, 2026-08-06).
+
 ## What changed
 Logging a meal no longer forces it into the Recipe Library. Logging and saving are now separate, explicit actions with plain-language labels.
 

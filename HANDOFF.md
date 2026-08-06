@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-08-02_
+_Last updated: 2026-08-06_
 
 > **▶ Next up: deploy + MCP connector.** Plan is written and decisions are made —
 > see **`docs/future/deployment-and-mcp.md`**. Three steps: (1) auth + rate limiting,
@@ -62,6 +62,30 @@ see `docs/future/deployment-and-mcp.md`). Schema + migrations are inline in
 Dashboard, Recipe Library, Ingredient Library (OCR label scan + **barcode scan**), Meal Builder
 (wizard + slots), History, Goals (versioned weekly min/max), Report (PDF), Profile, Adherence,
 and the AI Macro Logger all work. Rough edges are **code-size/debt**, not missing features.
+
+**Log a Meal — compacted, and scoped to logging (2026-08-06).** The "Customize this log"
+ingredient list is now **one line per ingredient** — name | amount | unit — inside a single
+divided list (`.slot-list` / `.slot-row` in `index.css`), with the field captions in one header
+row instead of repeating per ingredient. Six ingredients went from ~1,000px of scrolling to
+~330px, so you can check portions and reach the Log button without hunting. Time + Notes share a
+row for the same reason. Each row shows **one** name: the slot's own label wins, the library
+ingredient name + brand only fill in when the slot has no label (full name lives in the row's
+`title`), and names ellipsize rather than wrap so rows stay a uniform height.
+
+Two features came out in the process:
+
+- Per-ingredient "Use recipe amount" buttons → **one "Use recipe amounts" reset** beside the
+  "Customize this log" heading, shown only when something differs; it resets every slot at once.
+  List-wide actions belong in the section header, not interleaved with the rows you're reading.
+- **"Save amounts to the recipe" is gone.** Reshaping a recipe belongs to the recipe editor /
+  Meal Builder — offering it mid-log was overengineering, and it needed two lines of explanation
+  to justify itself. `buildRecipeAmountUpdate` (and its tests) went with it; the surviving
+  `recipeAmountUpdate.js` just answers "do these amounts differ from the recipe's?", which gates
+  the reset button. Amounts still carry over to your next log of that recipe via localStorage.
+
+**Design rule this established:** the Log a Meal modal is for *logging*. Before adding to it, ask
+whether the thing serves **this log**; if it shapes the recipe, it goes to the editor. See the
+"Dense edit list" pattern in `docs/design-system.md`.
 
 **AI Macro Logger — recipe saving fixed (2026-07-26).** "Save as recipe" (and meal-prep
 save) now back each ingredient with an Ingredient Library entry and record the link in
@@ -151,8 +175,19 @@ by any future feature (e.g. barcode/label flows).
 
 ## 4. Git state
 
-`main` is **pushed and in sync with `origin/main`** (2026-07-30). Server **223** tests, client
-**154**, all passing; client builds clean.
+> **⚠️ Uncommitted work in the tree (as of 2026-08-06).** Nothing has been committed since
+> `edb06ca`, but `git status` shows ~25 modified files and ~12 untracked ones spanning the AI
+> logger (`ConversationThread.jsx`, `FollowUpComposer.jsx`, `RecipeFixUpList.jsx`,
+> `recipePersist.js`, `recipeCommand.js`), meal logging (`ViewToggle.jsx`, `LogMealModal.jsx`,
+> micros panel), the library sub-nav, and the server (`mealMicros.js`, `routes/log.js`,
+> `routes/recipes.js`, `db.js`). **Review and commit in coherent chunks before starting anything
+> new** — several sessions' work is stacked here. The Log-a-Meal compaction above is the one piece
+> already committed, on branch **`feature/log-modal-compact`** (its `index.css` hunk was staged
+> on its own, so the rest of that file's edits are still uncommitted alongside everything else).
+
+`main` was **pushed and in sync with `origin/main`** as of 2026-07-30 (before the work above).
+Server **223** tests, client **154** at that point; the meal-logging suite and the client build
+are green as of 2026-08-06 (client meal-logging: 26 tests after the amount-update tests came out).
 
 Merged 2026-07-30: the **Today tab slimmed down** (adherence moved off it, weight raised under
 the supplement strip, supplements became a compact strip rather than a section), the **weight
@@ -187,7 +222,7 @@ consolidation. That tree passed server 112 / client 105.
 
 - **Oversized components** (refactor when next touched): `AiMacroLogger.jsx` (~1,360),
   `TrainingWorkouts.jsx` (~900), `Ingredients.jsx` (~777, grew with the barcode entry point),
-  `MealBuilder.jsx` (~720), `LogMealModal.jsx` (~567). `ManageSupplementsModal.jsx` (~393) is
+  `MealBuilder.jsx` (~720), `LogMealModal.jsx` (~645). `ManageSupplementsModal.jsx` (~393) is
   borderline after the micro + label-scan additions. `client/src/hooks/` is empty; extract
   custom hooks here.
 - **Pre-existing lint errors** in `Profile.jsx` (`H3`/`UnitOption` components declared inside

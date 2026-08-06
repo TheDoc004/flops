@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchRecipe, fetchRecipes, updateRecipe } from '@shared/api/recipes';
+import { fetchRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
 import { adjustPerServingMacrosForResolvedClient } from './recipeLogMacros';
 import { listLoggingSlotsFromRecipe, listNonEditableTemplateLines } from './recipeLoggingSlots';
-import { amountsDifferFromRecipe, buildRecipeAmountUpdate } from './recipeAmountUpdate';
+import { amountsDifferFromRecipe } from './recipeAmountUpdate';
 
 function lastSubsKey(recipeId) { return `nlog_lastSubs_${recipeId}`; }
 function lastAmountsKey(recipeId) { return `nlog_lastAmounts_${recipeId}`; }
@@ -39,16 +39,30 @@ function saveLastAmounts(recipeId, amounts) {
   try { localStorage.setItem(lastAmountsKey(recipeId), JSON.stringify(amounts)); } catch { /* storage may be unavailable */ }
 }
 
-function clearLastAmounts(recipeId) {
-  try { localStorage.removeItem(lastAmountsKey(recipeId)); } catch { /* storage may be unavailable */ }
-}
-
 /** A remembered amount is only usable if it still parses as a real portion. */
 function validRememberedAmount(saved) {
   if (!saved || typeof saved !== 'object') return null;
   const n = Number(saved.amount);
   if (!Number.isFinite(n) || n <= 0) return null;
   return { amount: String(n), unit: saved.unit === 'oz' ? 'oz' : 'g' };
+}
+
+/**
+ * One name per ingredient row. The slot's own label is what the recipe calls
+ * this line ("Eggs", "Oil spray"), so it wins; the library ingredient name and
+ * brand only fill in when the slot has no label of its own. The full library
+ * name still rides along as the row's title text.
+ */
+function ingredientRowName(slotLabel, ing, fallbackId) {
+  const label = String(slotLabel || '').trim();
+  if (label) return label;
+  if (ing?.name) return ing.name;
+  return `Ingredient #${fallbackId}`;
+}
+
+function ingredientFullName(ing, fallbackId) {
+  if (!ing?.name) return `Ingredient #${fallbackId}`;
+  return `${ing.name}${ing.brand_name ? ` (${ing.brand_name})` : ''}`;
 }
 
 function parseHHMMToTimeMin(hhmm) {
@@ -84,9 +98,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const [slotSelections, setSlotSelections] = useState({});
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [slotLogAmounts, setSlotLogAmounts] = useState({});
-  const [savingRecipeAmounts, setSavingRecipeAmounts] = useState(false);
-  const [recipeAmountsMsg, setRecipeAmountsMsg] = useState('');
-  const [recipeAmountsError, setRecipeAmountsError] = useState('');
   const prevRecipeIdRef = useRef(null);
   const recipeComboboxRef = useRef(null);
 
@@ -282,17 +293,14 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     return adjustPerServingMacrosForResolvedClient(selectedRecipe, labelById, built);
   }, [selectedRecipe, variableSlots, slotSelections, slotLogAmounts, labelById]);
 
-  // Does this log use portions the recipe itself doesn't? Gates the offer to
-  // make them permanent.
+  // Does this log use portions the recipe itself doesn't? Gates the one
+  // "Use recipe amounts" reset at the top of the list.
   const amountsChanged = useMemo(
     () => amountsDifferFromRecipe(variableSlots, slotLogAmounts, labelById),
     [variableSlots, slotLogAmounts, labelById]
   );
 
-  /** Single entry point for amount edits, so the save note never goes stale. */
   function setSlotAmount(slot, patch) {
-    setRecipeAmountsMsg('');
-    setRecipeAmountsError('');
     setSlotLogAmounts(prev => {
       const cur = prev[slot.slot_id];
       return {
@@ -305,31 +313,15 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     });
   }
 
-  function resetSlotAmount(slot) {
-    setSlotAmount(slot, { amount: String(slot.amount), unit: slot.unit === 'oz' ? 'oz' : 'g' });
-  }
-
-  /** Make the current amounts the recipe's own (ingredient swaps stay one-off). */
-  async function saveAmountsToRecipe() {
-    if (!selectedRecipe?.id || savingRecipeAmounts) return;
-    setRecipeAmountsError('');
-    const body = buildRecipeAmountUpdate(selectedRecipe, variableSlots, slotLogAmounts, labelById);
-    if (!body) {
-      setRecipeAmountsError("Couldn't rescale this recipe — check that every amount is above 0.");
-      return;
-    }
-    setSavingRecipeAmounts(true);
-    try {
-      const updated = await updateRecipe(selectedRecipe.id, body);
-      setRecipes(prev => prev.map(r => (String(r.id) === String(updated.id) ? updated : r)));
-      // These amounts are the recipe now, so the remembered override is noise.
-      clearLastAmounts(selectedRecipe.id);
-      setRecipeAmountsMsg('Saved to the recipe.');
-    } catch (e) {
-      setRecipeAmountsError(e.message || 'Failed to update the recipe');
-    } finally {
-      setSavingRecipeAmounts(false);
-    }
+  /** Put every slot back to the recipe's own portion in one go. */
+  function resetAllSlotAmounts() {
+    setSlotLogAmounts(() => {
+      const next = {};
+      for (const s of variableSlots) {
+        next[s.slot_id] = { amount: String(s.amount), unit: s.unit === 'oz' ? 'oz' : 'g' };
+      }
+      return next;
+    });
   }
 
   function buildLogSlotCustomizationsPayload() {
@@ -464,12 +456,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                 label="Recipe"
                 recipes={recipes}
                 value={recipeId}
-                onChange={(next) => {
-                  // A different recipe means the previous save note no longer applies.
-                  setRecipeAmountsMsg('');
-                  setRecipeAmountsError('');
-                  setRecipeId(next);
-                }}
+                onChange={setRecipeId}
                 placeholder="Search recipe or meal…"
               />
               {selectedRecipe && (
@@ -500,22 +487,37 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
             {/* Inline customize section — unified for all recipes with variable slots */}
             {customizeOpen && selectedRecipe && variableSlots.length > 0 && (
-              <div className="panel-in" style={{ padding: 14, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
-                <p style={{ margin: '0 0 14px', fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>Customize this log</p>
+              <div className="panel-in" style={{ padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
+                {/* One reset for the whole list, up here where it doesn't
+                    interrupt the rows you're reading. */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 28, marginBottom: 8 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>Customize this log</p>
+                  {amountsChanged && (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={resetAllSlotAmounts}
+                      style={{ minHeight: 0, padding: '5px 12px', fontSize: 12, whiteSpace: 'nowrap' }}
+                    >
+                      Use recipe amounts
+                    </button>
+                  )}
+                </div>
 
-                {/* Fixed (manual text) rows that can't be edited */}
+                {/* Fixed (manual text) rows that can't be edited — one line, not a list */}
                 {templateLinesOnlyManual.length > 0 && (
-                  <div style={{ marginBottom: 14, padding: 10, background: '#f0fdf4', borderRadius: 8, fontSize: 12, color: '#4b5563' }}>
-                    <strong>Fixed items:</strong>
-                    <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-                      {templateLinesOnlyManual.map((ln, i) => (
-                        <li key={`${ln.name}-${i}`}>{ln.name} — {ln.amount}</li>
-                      ))}
-                    </ul>
-                  </div>
+                  <p style={{ margin: '0 0 8px', fontSize: 12, color: '#4b5563' }}>
+                    <strong>Fixed:</strong>{' '}
+                    {templateLinesOnlyManual.map(ln => `${ln.name} — ${ln.amount}`).join(' · ')}
+                  </p>
                 )}
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="slot-list">
+                  <div className="slot-list__head" aria-hidden="true">
+                    <span>Ingredient</span>
+                    <span>Amount</span>
+                    <span>Unit</span>
+                  </div>
                   {variableSlots.map(slot => {
                     const hasChoices = (slot.option_label_ingredient_ids?.length || 0) > 1;
                     const defId = slot.option_label_ingredient_ids[0];
@@ -524,20 +526,13 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                     const amt = slotLogAmounts[slot.slot_id];
                     const slotIsUnit = resolvedIng?.tracking_type === 'unit';
                     const slotUnitLabel = resolvedIng?.unit_name || 'unit';
-                    const slotAmountChanged = amountsDifferFromRecipe([slot], slotLogAmounts, labelById);
+                    const slotName = ingredientRowName(slot.label, resolvedIng, defId);
                     return (
-                      <div
-                        key={slot.slot_id}
-                        style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, background: 'white' }}
-                      >
-                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--color-text-strong)' }}>
-                          {slot.label || 'Ingredient slot'}
-                        </div>
-
+                      <div key={slot.slot_id} className="slot-row">
                         {hasChoices ? (
-                          <div style={{ marginBottom: 10 }}>
-                            <label style={{ fontSize: 12 }}>Ingredient</label>
+                          <div className="slot-row__name">
                             <select
+                              aria-label={`Ingredient for ${slotName}`}
                               value={String(slotSelections[slot.slot_id] ?? defId ?? '')}
                               onChange={e =>
                                 setSlotSelections(prev => ({ ...prev, [slot.slot_id]: Number(e.target.value) }))
@@ -556,60 +551,31 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                             </select>
                           </div>
                         ) : (
-                          <div style={{ marginBottom: 10 }}>
-                            <span style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 4 }}>Ingredient</span>
-                            <div style={{ fontSize: 13, color: 'var(--color-text-body)' }}>
-                              {resolvedIng?.name || `#${defId}`}
-                              {resolvedIng?.brand_name ? ` (${resolvedIng.brand_name})` : ''}
-                            </div>
+                          <div className="slot-row__name" title={ingredientFullName(resolvedIng, defId)}>
+                            {slotName}
                           </div>
                         )}
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px', gap: 8 }}>
-                          <div>
-                            <label style={{ fontSize: 12 }}>Amount</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={amt?.amount ?? String(slot.amount)}
-                              onChange={e => setSlotAmount(slot, { amount: e.target.value })}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 12 }}>Unit</label>
-                            {slotIsUnit ? (
-                              <div style={{ height: 38, display: 'flex', alignItems: 'center', fontSize: 14, color: 'var(--color-text-body)' }}>
-                                {slotUnitLabel}
-                              </div>
-                            ) : (
-                              <select
-                                value={amt?.unit ?? (slot.unit === 'oz' ? 'oz' : 'g')}
-                                onChange={e => setSlotAmount(slot, { unit: e.target.value === 'oz' ? 'oz' : 'g' })}
-                              >
-                                <option value="g">g</option>
-                                <option value="oz">oz</option>
-                              </select>
-                            )}
-                          </div>
-                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          aria-label={`Amount for ${slotName}`}
+                          value={amt?.amount ?? String(slot.amount)}
+                          onChange={e => setSlotAmount(slot, { amount: e.target.value })}
+                        />
 
-                        {/* Say when the amount isn't the recipe's own — the
-                            remembered portion is a default, not a lock-in. */}
-                        {slotAmountChanged && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
-                            <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-                              Recipe uses {slot.amount}{slotIsUnit ? ` ${slotUnitLabel}` : (slot.unit === 'oz' ? ' oz' : ' g')}
-                            </span>
-                            <button
-                              type="button"
-                              className="btn-secondary"
-                              onClick={() => resetSlotAmount(slot)}
-                              style={{ minHeight: 0, padding: '5px 12px', fontSize: 13 }}
-                            >
-                              Use recipe amount
-                            </button>
-                          </div>
+                        {slotIsUnit ? (
+                          <div className="slot-row__unit-static">{slotUnitLabel}</div>
+                        ) : (
+                          <select
+                            aria-label={`Unit for ${slotName}`}
+                            value={amt?.unit ?? (slot.unit === 'oz' ? 'oz' : 'g')}
+                            onChange={e => setSlotAmount(slot, { unit: e.target.value === 'oz' ? 'oz' : 'g' })}
+                          >
+                            <option value="g">g</option>
+                            <option value="oz">oz</option>
+                          </select>
                         )}
                       </div>
                     );
@@ -620,8 +586,8 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                 {slotResolved && (
                   <div
                     style={{
-                      marginTop: 14,
-                      padding: 10,
+                      marginTop: 8,
+                      padding: '7px 10px',
                       borderRadius: 8,
                       background: '#eff6ff',
                       border: '1px solid #bfdbfe',
@@ -629,69 +595,38 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                       color: '#1e3a8a',
                     }}
                   >
-                    <strong>Adjusted recipe (per serving):</strong>{' '}
+                    <strong>Per serving:</strong>{' '}
                     {Math.round(slotResolved.calories)} cal · P {slotResolved.protein_g.toFixed(1)}g · C{' '}
                     {slotResolved.carbs_g.toFixed(1)}g · F {slotResolved.fat_g.toFixed(1)}g
                     {slotResolved.fiber_g > 0 && ` · Fiber ${slotResolved.fiber_g.toFixed(1)}g`}
-                    <span style={{ color: '#64748b', display: 'block', marginTop: 6 }}>
-                      This log ({Number(servings) || 1} serving{Number(servings) === 1 ? '' : 's'}):{' '}
+                    {' — '}
+                    <span style={{ color: '#64748b' }}>
+                      this log ({Number(servings) || 1} serving{Number(servings) === 1 ? '' : 's'}):{' '}
                       <strong style={{ color: '#0f172a' }}>
                         {Math.round(slotResolved.calories * (Number(servings) || 1))} cal
                       </strong>
                     </span>
                   </div>
                 )}
-
-                {/* Amounts carry over to the next log on their own. This is the
-                    other option: make them the recipe's real amounts. */}
-                {(amountsChanged || recipeAmountsMsg || recipeAmountsError) && (
-                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #e5e7eb' }}>
-                    {amountsChanged && (
-                      <>
-                        <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-                          These amounts are remembered for next time. Make them permanent?
-                        </p>
-                        <button
-                          type="button"
-                          className={savingRecipeAmounts ? 'btn-secondary btn-loading' : 'btn-secondary'}
-                          onClick={saveAmountsToRecipe}
-                          disabled={savingRecipeAmounts}
-                        >
-                          {savingRecipeAmounts
-                            ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>)
-                            : 'Save these amounts to the recipe'}
-                        </button>
-                        <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-faint)' }}>
-                          Updates the recipe's amounts and macros. Ingredient swaps stay on this log only.
-                        </p>
-                      </>
-                    )}
-                    {recipeAmountsMsg && (
-                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#047857' }}>{recipeAmountsMsg}</p>
-                    )}
-                    {recipeAmountsError && (
-                      <p className="error" style={{ margin: '8px 0 0', fontSize: 13 }}>{recipeAmountsError}</p>
-                    )}
-                  </div>
-                )}
               </div>
             )}
           </div>
 
-        {/* Time */}
-        <div>
-          <label>Time (optional)</label>
-          <input
-            type="time"
-            value={timeHHMM}
-            onChange={e => setTimeHHMM(e.target.value)}
-          />
-        </div>
-
-        {/* Notes */}
-        <div>
-          <label>Notes (optional)</label>
-          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. post-workout" />
+        {/* Time + notes share a row: both are optional, and stacking them just
+            pushes the Log button further down the modal. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+          <div>
+            <label>Time (optional)</label>
+            <input
+              type="time"
+              value={timeHHMM}
+              onChange={e => setTimeHHMM(e.target.value)}
+            />
+          </div>
+          <div>
+            <label>Notes (optional)</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. post-workout" />
+          </div>
         </div>
 
         {error && <p className="error">{error}</p>}
