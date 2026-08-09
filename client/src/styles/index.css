@@ -1668,15 +1668,64 @@ dialog[open]::backdrop {
    Mobile-first vertical stack → horizontal at ≥700px. The min-width:0 +
    wrapping rules are what stop the card from forcing the page wider than the
    viewport (flex items otherwise refuse to shrink below their content width). */
+/* Full-bleed list: the bleed lives HERE, on the container, not on the row.
+   Each row is wrapped by .grow-reveal__inner, which sets overflow:hidden for
+   its expand animation — a negative margin on the row itself gets clipped by
+   that wrapper and the shade stops short of the card edge. Widening the
+   container instead means nothing has to escape a clipping box. */
+.recipe-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0 calc(var(--space-20) * -1);
+}
+/* Ghost "add" slots keep the old inset — only real rows go edge to edge. */
+.recipe-list .ghost-slots {
+  padding: 0 var(--space-20);
+}
+@media (max-width: 480px) {
+  .recipe-list { margin: 0 calc(var(--space-14) * -1); }
+  .recipe-list .ghost-slots { padding: 0 var(--space-14); }
+}
+
 .recipe-card {
+  /* Padding restores the card's own inset for the CONTENT, while the row's
+     background now spans the full width. */
+  padding: 14px var(--space-20);
+  border-bottom: 1px solid var(--color-divider-strong);
+  min-width: 0;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.recipe-card:last-child { border-bottom: none; }
+.recipe-card:hover,
+.recipe-card.is-open {
+  background: var(--color-divider-warm);
+}
+.recipe-card:hover {
+  box-shadow: inset 0 0 0 1px var(--color-surface-border);
+}
+/* Touch devices keep :hover after a tap — only the open state should persist. */
+@media (hover: none) {
+  .recipe-card:hover { background: transparent; box-shadow: none; }
+  .recipe-card.is-open { background: var(--color-divider-warm); }
+}
+@media (max-width: 480px) {
+  .recipe-card { padding: 14px var(--space-14); }
+}
+
+/* The header row: name + toggle | macros | actions. */
+.recipe-card-top {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--color-divider);
   min-width: 0;
 }
 .recipe-card-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   min-width: 0;
 }
 .recipe-card-head {
@@ -1690,12 +1739,26 @@ dialog[open]::backdrop {
   font-size: 15px;
   overflow-wrap: anywhere;
 }
-.recipe-card-ingredients {
-  margin: 6px 0 0;
-  padding-left: 18px;
-  font-size: 13px;
-  color: var(--color-text-body);
-  overflow-wrap: anywhere;
+
+/* ── Uniform casing for user-named records ──
+   Names arrive from three different places (Meal Builder, the AI logger, quick
+   logs) and in whatever case you happened to type, so a scrolled list reads as
+   a ransom note: "almonds" above "Apple Oats" above "kroger fat free popcorn".
+   This normalizes the RENDERING only.
+
+   Deliberately CSS and not a data change: the name you typed is what stays
+   stored, searched, and shown in the edit field, so nothing is lost and it's
+   reversible by deleting this rule. It also keeps screen readers on the
+   original string — uppercasing the text itself makes some announce short
+   names letter-by-letter.
+
+   The letter-spacing isn't decoration: all-caps loses the word-shape cues
+   readers rely on, and tracking it out is what keeps a long name like
+   "EGG TOAST YOGURT WOMBO COMBO" scannable. */
+.name-uniform {
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+  font-weight: 600;
 }
 .recipe-card-macros {
   display: flex;
@@ -1710,7 +1773,7 @@ dialog[open]::backdrop {
   gap: 8px;
 }
 @media (min-width: 700px) {
-  .recipe-card {
+  .recipe-card-top {
     flex-direction: row;
     align-items: flex-start;
     gap: 12px;
@@ -1721,6 +1784,27 @@ dialog[open]::backdrop {
     flex-shrink: 0;
     justify-content: flex-end;
   }
+}
+
+/* Expanded panel — the same content a logged meal shows on Today. */
+.recipe-card-detail {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-border);
+  border-radius: var(--radius-md);
+}
+.recipe-card-detail__caveat {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.recipe-card-detail__total {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-divider-strong);
+  font-size: 13px;
+  color: var(--color-text-body);
 }
 
 /* ── Ingredient Library card (Ingredients page) ──

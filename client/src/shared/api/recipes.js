@@ -82,3 +82,19 @@ export async function reactivateLimitedRecipe(id, remainingUses) {
   if (!json) throw new Error('Invalid server response');
   return json;
 }
+
+/**
+ * Macros, micros and the ingredient breakdown for a recipe's DEFAULT
+ * ingredients — what the library expands to show, without logging anything.
+ * The server caches the micro estimate per recipe, so repeat expands are free.
+ */
+export async function fetchRecipeNutrition(id) {
+  const res = await fetch(apiUrl(`/api/recipes/${id}/nutrition`));
+  if (!res.ok) {
+    const e = await readJsonIfPresent(res);
+    throw new Error(e?.error || `Failed to load recipe nutrition (HTTP ${res.status})`);
+  }
+  const json = await readJsonIfPresent(res);
+  if (!json) throw new Error('Invalid server response');
+  return json;
+}
