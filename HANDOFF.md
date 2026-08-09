@@ -2,11 +2,19 @@
 
 _Last updated: 2026-08-06_
 
-> **▶ Next up: deploy + MCP connector.** Plan is written and decisions are made —
-> see **`docs/future/deployment-and-mcp.md`**. Three steps: (1) auth + rate limiting,
+> **▶ Next up: step 1 of the deploy — auth + rate limiting.** Plan is written and decisions are
+> made — see **`docs/future/deployment-and-mcp.md`**. Three steps: (1) auth + rate limiting,
 > (2) Render/Vercel deploy with backups, (3) MCP server so meals can be logged from the
-> Claude app on the phone. Start at step 1. That plan also carries a 2026-08-02 codebase
-> audit (what's safe, what breaks once public) so it need not be re-derived.
+> Claude app on the phone. That plan also carries a 2026-08-02 codebase audit (what's safe,
+> what breaks once public) so it need not be re-derived.
+>
+> **The endgame is now bigger than "my phone."** FLOPS is headed for the App Store as a
+> coach/gym-facing product — see **`docs/future/coach-layer-and-onboarding.md`** for the
+> economics and platform decisions (FLOPS pays for AI, HealthKit over per-vendor wearable APIs,
+> Capacitor wrap, TestFlight before any listing). Steps 1–3 above are unchanged and are
+> prerequisites for all of it. Two things that plan adds to **step 1**: an `ai_usage` table with
+> a per-user cap (cost control, same seam as rate limiting), and model routing kept in config
+> rather than hardcoded.
 
 Snapshot of where the app stands so any session (human or Claude) can pick up quickly.
 For conventions, architecture, and the phase vision, see `CLAUDE.md` — this file is the
@@ -175,19 +183,23 @@ by any future feature (e.g. barcode/label flows).
 
 ## 4. Git state
 
-> **⚠️ Uncommitted work in the tree (as of 2026-08-06).** Nothing has been committed since
-> `edb06ca`, but `git status` shows ~25 modified files and ~12 untracked ones spanning the AI
-> logger (`ConversationThread.jsx`, `FollowUpComposer.jsx`, `RecipeFixUpList.jsx`,
-> `recipePersist.js`, `recipeCommand.js`), meal logging (`ViewToggle.jsx`, `LogMealModal.jsx`,
-> micros panel), the library sub-nav, and the server (`mealMicros.js`, `routes/log.js`,
-> `routes/recipes.js`, `db.js`). **Review and commit in coherent chunks before starting anything
-> new** — several sessions' work is stacked here. The Log-a-Meal compaction above is the one piece
-> already committed, on branch **`feature/log-modal-compact`** (its `index.css` hunk was staged
-> on its own, so the rest of that file's edits are still uncommitted alongside everything else).
+> **✅ Tree cleared 2026-08-09.** The several sessions of stacked work that sat uncommitted are
+> now six topic commits on branch **`feature/log-modal-compact`** (the branch name predates most
+> of them), on top of `a642f74`:
+>
+> 1. `98f22b4` docs(strategy) — coach layer, platform and sponsorship decisions
+> 2. `ab45bfd` feat(recipes) — `GET /api/recipes/:id/nutrition`, micro cache, `mealMicros.js`
+>    extracted out of `routes/log.js`
+> 3. `98e2a49` refactor(meals) — `ViewToggle` extracted from `LogEntryRow` for reuse
+> 4. `60a43b9` feat(recipes) — recipe cards expand to macros/micros/ingredients
+> 5. `fe30501` feat(nav) — Meal Builder folded into a "Recipes & Ingredients" section,
+>    bottom-sheet groups removed, `LibrarySubNav` added
+> 6. `a370792` feat(ai-logger) — conversational corrections, off-list swaps, "Keep in recipe"
+>
+> Verified at HEAD: server **233** tests, client **248**, client build clean. **Not yet merged to
+> `main` and not pushed.**
 
-`main` was **pushed and in sync with `origin/main`** as of 2026-07-30 (before the work above).
-Server **223** tests, client **154** at that point; the meal-logging suite and the client build
-are green as of 2026-08-06 (client meal-logging: 26 tests after the amount-update tests came out).
+`origin/main` is still at `edb06ca` — everything from `a642f74` onward is local only.
 
 Merged 2026-07-30: the **Today tab slimmed down** (adherence moved off it, weight raised under
 the supplement strip, supplements became a compact strip rather than a section), the **weight
