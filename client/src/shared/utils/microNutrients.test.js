@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sumDayMicros, sumDayTotalMicros } from './microNutrients';
+import { sumDayMicros, sumDayTotalMicros, dominantNutrients } from './microNutrients';
 
 // A log entry carrying a micros_json blob (as stored on the server).
 const entry = (micros, { confidence = 'medium', servings = 1 } = {}) => ({
@@ -53,5 +53,68 @@ describe('sumDayTotalMicros — meals + supplements', () => {
     expect(r.hasMicros).toBe(false);
     expect(r.values).toEqual({});
     expect(r.supplementCount).toBe(0);
+  });
+});
+
+describe('dominantNutrients', () => {
+  /* Targets used below: vitamin A 900mcg, iron 8mg, zinc 11mg, selenium 55mcg,
+     vitamin C 90mg, calcium 1300mg, magnesium 420mg, sodium 2300mg (limit). */
+
+  it('lists only the nutrient a food is actually carried by', () => {
+    const { shown, hidden } = dominantNutrients({ vitamin_a_mcg: 450, iron_mg: 0.5 });
+    expect(shown.map(r => r.key)).toEqual(['vitamin_a_mcg']);
+    expect(hidden.map(r => r.key)).toEqual(['iron_mg']);
+  });
+
+  /* The point of a relative cut: three comparable leaders all belong. */
+  it('keeps every nutrient in a tight leading cluster', () => {
+    const { shown } = dominantNutrients({ iron_mg: 4, zinc_mg: 5.5, vitamin_c_mg: 45 });
+    expect(shown.map(r => r.key).sort()).toEqual(['iron_mg', 'vitamin_c_mg', 'zinc_mg']);
+  });
+
+  it('grows the list when the food spreads across more nutrients', () => {
+    const { shown, hidden } = dominantNutrients({
+      iron_mg: 4, zinc_mg: 5.5, vitamin_c_mg: 45, calcium_mg: 650, magnesium_mg: 210,
+    });
+    expect(shown).toHaveLength(5);
+    expect(hidden).toHaveLength(0);
+  });
+
+  /* A far-and-away leader should not drag its distant followers along. */
+  it('drops nutrients far below the leader even when they clear the trace floor', () => {
+    const { shown, hidden } = dominantNutrients({ vitamin_a_mcg: 900, iron_mg: 1.2 });
+    expect(shown.map(r => r.key)).toEqual(['vitamin_a_mcg']); // iron is 15% vs a 100% leader
+    expect(hidden.map(r => r.key)).toEqual(['iron_mg']);
+  });
+
+  it('hides everything when nothing clears the trace floor', () => {
+    const { shown, hidden } = dominantNutrients({ iron_mg: 0.5, zinc_mg: 0.4 });
+    expect(shown).toEqual([]);
+    expect(hidden).toHaveLength(2);
+  });
+
+  it('caps a flat profile and hands the rest back as hidden', () => {
+    const { shown, hidden } = dominantNutrients({
+      iron_mg: 4, zinc_mg: 5.5, vitamin_c_mg: 45, calcium_mg: 650, magnesium_mg: 210,
+      selenium_mcg: 27, vitamin_a_mcg: 450,
+    });
+    expect(shown).toHaveLength(6);
+    expect(hidden).toHaveLength(1);
+  });
+
+  it('ranks by share of target, not by raw amount', () => {
+    // 600 mg calcium is 46% of its target; 5 mg iron is 63% of a much smaller one.
+    const { shown } = dominantNutrients({ calcium_mg: 600, iron_mg: 5 });
+    expect(shown[0].key).toBe('iron_mg');
+  });
+
+  it('measures watch nutrients against their limit', () => {
+    const { shown } = dominantNutrients({ sodium_mg: 1150 });
+    expect(shown[0]).toMatchObject({ key: 'sodium_mg', share: 0.5 });
+  });
+
+  it('is safe on empty or missing input', () => {
+    expect(dominantNutrients(null)).toEqual({ shown: [], hidden: [] });
+    expect(dominantNutrients({})).toEqual({ shown: [], hidden: [] });
   });
 });

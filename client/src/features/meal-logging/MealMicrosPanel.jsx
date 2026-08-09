@@ -1,14 +1,6 @@
 import { useState } from 'react';
 import { MICRO_GROUPS } from '@shared/config/microNutrients';
-import { parseMicros } from '@shared/utils/microNutrients';
-
-/**
- * A nutrient only earns a bar when this meal covers at least this share of
- * its daily target (or limit) — a 6% trace is noise at meal level, 20% is a
- * real contribution. Everything under the line stays reachable via the
- * "smaller contributions" toggle rather than silently disappearing.
- */
-const MIN_SHARE = 0.1;
+import { parseMicros, dominantNutrients, TRACE_FLOOR } from '@shared/utils/microNutrients';
 
 const CONF_NOTE = {
   high: 'From product labels',
@@ -29,44 +21,50 @@ function fmtAmount(v, unit) {
 }
 
 /**
- * Micronutrients for ONE meal — the "Micros" half of the meal row toggle.
+ * Micronutrients for ONE meal or recipe — the "Micros" half of the row toggle.
  *
- * Each nutrient the meal contains gets a small progress bar answering one
- * question: how much of today's target does this meal alone cover? ("This
- * breakfast is 50% of your vitamin A.") Amounts are scaled by the logged
- * servings, matching how sumDayMicros folds them into day totals.
+ * Each nutrient shown gets a small progress bar answering one question: how
+ * much of today's target does this alone cover? ("This breakfast is 50% of your
+ * vitamin A.") Amounts are scaled by the logged servings, matching how
+ * sumDayMicros folds them into day totals.
+ *
+ * Only the nutrients the food is actually notable for are listed by default
+ * (see dominantNutrients) — the rest stay one click away rather than turning
+ * the panel into a 28-row wall.
+ *
+ * @param caption  overrides the default header line (recipes qualify that the
+ *                 numbers describe their default amounts)
+ * @param emptyNote  overrides the "no estimate" copy for non-log contexts
  */
-export default function MealMicrosPanel({ entry }) {
+export default function MealMicrosPanel({ entry, caption, emptyNote }) {
   const [showAll, setShowAll] = useState(false);
   const blob = parseMicros(entry);
   if (!blob) {
     return (
       <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>
-        No micronutrient estimate for this meal — it may have been logged before
-        micros existed.
+        {emptyNote || 'No micronutrient estimate for this meal — it may have been logged before micros existed.'}
       </p>
     );
   }
 
   const servings = Number(entry?.servings) > 0 ? Number(entry.servings) : 1;
-  // Two passes: compute every present nutrient's share first, then filter —
-  // so the "N smaller" count is derived, never mutated during render.
-  const allGroups = MICRO_GROUPS.map(g => ({
-    ...g,
-    rows: g.nutrients
-      .filter(n => Number(blob.micros[n.key]) > 0)
-      .map(n => {
-        const value = Number(blob.micros[n.key]) * servings;
-        const targetRef = n.watch ? n.upperLimit : n.target;
-        return { ...n, value, share: targetRef ? value / targetRef : 0 };
-      }),
-  }));
-  const minorCount = allGroups.reduce(
-    (count, g) => count + g.rows.filter(n => n.share < MIN_SHARE).length,
-    0
-  );
-  const groups = allGroups
-    .map(g => ({ ...g, rows: g.rows.filter(n => showAll || n.share >= MIN_SHARE) }))
+  const scaled = {};
+  for (const [key, v] of Object.entries(blob.micros)) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) scaled[key] = n * servings;
+  }
+  const { shown, hidden } = dominantNutrients(scaled);
+  const visible = new Map((showAll ? [...shown, ...hidden] : shown).map(r => [r.key, r]));
+  const minorCount = hidden.length;
+
+  // Group the survivors so the panel keeps its Vitamins / Minerals structure.
+  const groups = MICRO_GROUPS
+    .map(g => ({
+      ...g,
+      rows: g.nutrients
+        .filter(n => visible.has(n.key))
+        .map(n => ({ ...n, value: visible.get(n.key).value, share: visible.get(n.key).share })),
+    }))
     .filter(g => g.rows.length > 0);
 
   if (groups.length === 0) {
@@ -74,7 +72,7 @@ export default function MealMicrosPanel({ entry }) {
     if (minorCount > 0) {
       return (
         <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>
-          Nothing above {Math.round(MIN_SHARE * 100)}% of a daily target —{' '}
+          Nothing above {Math.round(TRACE_FLOOR * 100)}% of a daily target —{' '}
           <button
             type="button"
             onClick={() => setShowAll(true)}
@@ -99,7 +97,7 @@ export default function MealMicrosPanel({ entry }) {
   return (
     <div>
       <p style={{ margin: '0 0 10px', fontSize: 12.5, color: '#6b7280' }}>
-        How much of your daily targets this meal covers
+        {caption || 'How much of your daily targets this meal covers'}
       </p>
       {groups.map(group => (
         <div key={group.key} style={{ marginBottom: 14 }}>
@@ -145,7 +143,7 @@ export default function MealMicrosPanel({ entry }) {
             fontSize: 12.5, color: 'var(--color-link)', cursor: 'pointer', textDecoration: 'underline',
           }}
         >
-          Show {minorCount} smaller contribution{minorCount === 1 ? '' : 's'} (under {Math.round(MIN_SHARE * 100)}%)
+          Show {minorCount} more nutrient{minorCount === 1 ? '' : 's'}
         </button>
       )}
       <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>

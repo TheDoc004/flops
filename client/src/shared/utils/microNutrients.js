@@ -140,6 +140,44 @@ export function statusFor(key, value) {
   return { key, def, value: v, pct, fillPct: Math.min(pct, 1), isWatch: false, over: !!(def.upperLimit && v > def.upperLimit), color: c.bar, track: c.track, textColor: c.text, label };
 }
 
+/* How a micro list decides what's worth showing.
+   TRACE_FLOOR is absolute: under a tenth of a daily target is noise at meal
+   level no matter what else is present. DOMINANCE_FLOOR is relative to the
+   biggest contributor, which is what keeps the list SHORT — a dish carried by
+   three nutrients lists three; one spread evenly across six lists six. The two
+   together mean the count adapts to the food instead of being a fixed top-N. */
+export const TRACE_FLOOR = 0.1;
+const DOMINANCE_FLOOR = 0.25;
+const DOMINANCE_MAX = 6;
+
+/**
+ * Split a micro map into the nutrients this food is notable for and the rest.
+ *
+ * Ranking is by share of the daily target (or, for watch nutrients, the limit)
+ * because raw amounts in mcg / mg / g aren't comparable. Nothing is discarded —
+ * `hidden` is everything that didn't make the cut, so callers can offer it
+ * behind a toggle and totals elsewhere stay complete.
+ *
+ * @returns {{shown: Array, hidden: Array}} each entry { key, def, value, share }
+ */
+export function dominantNutrients(values, { max = DOMINANCE_MAX, traceFloor = TRACE_FLOOR, dominanceFloor = DOMINANCE_FLOOR } = {}) {
+  const ranked = [];
+  for (const def of MICRO_NUTRIENTS) {
+    const value = Number(values?.[def.key]) || 0;
+    if (value <= 0) continue;
+    const ref = def.watch ? def.upperLimit : def.target;
+    ranked.push({ key: def.key, def, value, share: ref ? value / ref : 0 });
+  }
+  ranked.sort((a, b) => b.share - a.share);
+  if (ranked.length === 0) return { shown: [], hidden: [] };
+
+  const leader = ranked[0].share;
+  const cut = Math.max(traceFloor, leader * dominanceFloor);
+  const shown = ranked.filter(r => r.share >= cut).slice(0, max);
+  const shownKeys = new Set(shown.map(r => r.key));
+  return { shown, hidden: ranked.filter(r => !shownKeys.has(r.key)) };
+}
+
 /** Nutrients below `threshold` of target (excludes watch nutrients), lowest first. */
 export function nutrientsNeedingAttention(values, { limit = 4, threshold = 0.66 } = {}) {
   const out = [];

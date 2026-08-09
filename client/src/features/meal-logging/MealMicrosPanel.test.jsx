@@ -61,8 +61,41 @@ describe('MealMicrosPanel — contribution threshold', () => {
     expect(screen.getByText('Vitamin A')).toBeInTheDocument();
     expect(screen.queryByText('Iron')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /show 1 smaller contribution/i }));
+    await user.click(screen.getByRole('button', { name: /show 1 more nutrient/i }));
     expect(screen.getByText('Iron')).toBeInTheDocument();
+  });
+
+  /* Beyond the absolute trace floor, the list is cut relative to the biggest
+     contributor — so one dominant nutrient doesn't drag a long tail with it. */
+  it('lists only what the meal is notable for, keeping the rest one click away', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    render(
+      <MealMicrosPanel
+        entry={entry({
+          vitamin_a_mcg: 900, // 100% — the leader
+          iron_mg: 1.2, // 15%: clears the trace floor, far below the leader
+        })}
+      />
+    );
+    expect(screen.getByText('Vitamin A')).toBeInTheDocument();
+    expect(screen.queryByText('Iron')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /show 1 more nutrient/i }));
+    expect(screen.getByText('Iron')).toBeInTheDocument();
+  });
+
+  it('keeps a tight cluster of comparable nutrients together', () => {
+    render(<MealMicrosPanel entry={entry({ iron_mg: 4, zinc_mg: 5.5, vitamin_c_mg: 45 })} />);
+    expect(screen.getByText('Iron')).toBeInTheDocument();
+    expect(screen.getByText('Zinc')).toBeInTheDocument();
+    expect(screen.getByText('Vitamin C')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /more nutrient/i })).not.toBeInTheDocument();
+  });
+
+  it('takes a caption override for non-meal contexts', () => {
+    render(<MealMicrosPanel entry={entry({ iron_mg: 4 })} caption="For default amounts" />);
+    expect(screen.getByText('For default amounts')).toBeInTheDocument();
   });
 
   it('keeps a 20% contribution visible', () => {
