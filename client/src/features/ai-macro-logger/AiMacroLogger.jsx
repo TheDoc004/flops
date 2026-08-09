@@ -2,14 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { estimateMacros } from '@shared/api/ai';
 import { createCustomLog, createLogEntry } from '@shared/api/log';
-import { createRecipe, fetchRecipes } from '@shared/api/recipes';
+import { createRecipe, fetchRecipes, updateRecipe } from '@shared/api/recipes';
+import { addSubstituteOption, addIngredientToRecipe } from './recipePersist';
 import { fetchLabelIngredients, createLabelIngredient } from '@shared/api/labelIngredients';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
 import { buildLibraryBackedIngredients } from './recipeFromEstimate';
 import { SERVING_UNITS, servingToStored } from '@shared/utils/servingBasis';
 import Reveal from '@shared/ui/Reveal';
 import { adjustPerServingMacrosForResolvedClient } from '@features/meal-logging/recipeLogMacros';
-import { matchRecipe, applyModifications, resolvedReviewRows, recipeIngredientNames } from './recipeCommand';
+import { matchRecipe, applyModifications, resolvedReviewRows, recipeIngredientNames, resolveModification } from './recipeCommand';
+import RecipeFixUpList from './RecipeFixUpList';
+import ConversationThread from './ConversationThread';
+import FollowUpComposer from './FollowUpComposer';
 import VoiceInput from './VoiceInput';
 import { reconcileMealPrep } from './mealPrep';
 import { ingredientEmoji } from './ingredientEmoji';
@@ -118,6 +122,9 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
   const [recipeReview, setRecipeReview] = useState(null); // { recipe, rows, modifications, matchConfidence, fallbackEstimate }
   const [picker, setPicker] = useState(null);             // { candidates, modifications, fallbackEstimate }
   const [recipeServings, setRecipeServings] = useState(1);
+  // Changes already written back into the saved recipe (by their label).
+  const [kept, setKept] = useState([]);
+  const [keepBusy, setKeepBusy] = useState('');
   // Meal-prep split for the current freeform estimate: layered detection
   // (deterministic parse of the description > model's mealPrep > manual
   // toggle in the review card). servings null = prep with unknown split.
@@ -183,8 +190,9 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
       setError('Describe a meal first.');
       return;
     }
-    // A revision refines the estimate on screen; anything else is a fresh start.
-    const isRevision = !!corr && !!estimate;
+    // A revision refines whatever is on screen — a freeform estimate OR a
+    // matched recipe; anything else is a fresh start.
+    const isRevision = !!corr && (!!estimate || !!recipeReview);
     const allCorrections = isRevision ? [...corrections, corr] : [];
     setLoading(true);
     setError('');
@@ -194,7 +202,9 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
         corrections: allCorrections.length ? allCorrections : undefined,
         // Snapshot of what the user is looking at (incl. their manual edits) —
         // the AI treats it as the baseline and changes only what corr asks.
-        currentEstimate: isRevision
+        // A recipe review has no freeform estimate to snapshot; there the
+        // correction history alone drives the (cumulative) modification list.
+        currentEstimate: isRevision && estimate
           ? {
               mealName: estimate.mealName,
               ingredients: estimate.ingredients.map(i => ({
@@ -226,6 +236,23 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
       // Prefer saved-library data for any ingredients we recognize by name.
       const freeform = enrichEstimate(normalized, libraryRef.current);
 
+      // Grow the conversation: the user's message + the AI's reply. A fresh
+      // estimate starts a new thread from the description. Recipe reviews keep
+      // the same thread, so a correction there refines instead of restarting.
+      const aiText =
+        (typeof raw?.reply === 'string' && raw.reply.trim()) ||
+        freeform.summary ||
+        "Here's my estimate — check the breakdown below.";
+      const growThread = () => {
+        setThread(t => [
+          ...(isRevision ? t : [{ role: 'user', text: desc }]),
+          ...(isRevision ? [{ role: 'user', text: corr }] : []),
+          { role: 'ai', text: aiText },
+        ]);
+        setCorrections(allCorrections);
+        setFollowUp('');
+      };
+
       // Recipe command? Match the AI's suggested name against the real saved
       // recipes (we resolve — the AI never silently picks).
       const rl = raw?.recipeLog && typeof raw.recipeLog === 'object' ? raw.recipeLog : null;
@@ -234,32 +261,20 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
         if (match.status === 'one') {
           buildRecipeReview(match.recipe, rl.modifications || [], freeform, rl.matchConfidence);
           setEstimate(null);
-          setThread([]); setCorrections([]); setFollowUp('');
+          growThread();
           return;
         }
         if (match.status === 'many') {
           setPicker({ candidates: match.candidates, modifications: rl.modifications || [], fallbackEstimate: freeform });
           setEstimate(null); setRecipeReview(null);
-          setThread([]); setCorrections([]); setFollowUp('');
+          growThread();
           return;
         }
         // status 'none' → fall through to the freeform estimate.
       }
       setEstimate(freeform); setRecipeReview(null); setPicker(null);
       setPrep(reconcileMealPrep(desc, raw?.mealPrep));
-      // Grow the conversation: the user's message + the AI's reply. A fresh
-      // estimate starts a new thread from the description.
-      const aiText =
-        (typeof raw?.reply === 'string' && raw.reply.trim()) ||
-        freeform.summary ||
-        "Here's my estimate — check the breakdown below.";
-      setThread(t => [
-        ...(isRevision ? t : [{ role: 'user', text: desc }]),
-        ...(isRevision ? [{ role: 'user', text: corr }] : []),
-        { role: 'ai', text: aiText },
-      ]);
-      setCorrections(allCorrections);
-      setFollowUp('');
+      growThread();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -271,7 +286,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
   // final preview rows, adjusted per-serving totals, and slot customizations).
   function buildRecipeReview(recipe, modifications, fallbackEstimate, matchConfidence) {
     const r = applyModifications(recipe, modifications, labelByIdRef.current, libIndexRef.current);
-    const baseRows = resolvedReviewRows(recipe, labelByIdRef.current, r.resolvedBySlot);
+    const baseRows = resolvedReviewRows(recipe, labelByIdRef.current, r.resolvedBySlot, r.droppedLines);
     const sumRows = rows => rows.reduce(
       (a, x) => ({
         calories: a.calories + (Number(x.calories) || 0),
@@ -296,9 +311,9 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
       }));
       const finalRows = [...scaled, ...r.addedRows];
       setRecipeReview({
-        recipe, requiresCustomPath: true, rows: finalRows, total: sumRows(finalRows), perServing: null,
-        customizations: null, applied: r.applied, unapplied: r.unapplied,
-        hasAi: r.addedRows.length > 0, matchConfidence, fallbackEstimate,
+        recipe, modifications, requiresCustomPath: true, rows: finalRows, total: sumRows(finalRows), perServing: null,
+        customizations: null, applied: r.applied, unapplied: r.unapplied, keepable: r.keepable,
+        hasAi: r.addedRows.some(x => x.source === 'ai'), matchConfidence, fallbackEstimate,
       });
       setRecipeServings(1);
     } else {
@@ -306,13 +321,55 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
       // {id: ingredient} object (not a Map); sum-of-rows fallback.
       const adjusted = adjustPerServingMacrosForResolvedClient(recipe, Object.fromEntries(labelByIdRef.current), r.resolvedBySlot);
       setRecipeReview({
-        recipe, requiresCustomPath: false, rows: baseRows, perServing: adjusted || sumRows(baseRows), total: null,
-        customizations: r.customizations, applied: r.applied, unapplied: r.unapplied,
+        recipe, modifications, requiresCustomPath: false, rows: baseRows, perServing: adjusted || sumRows(baseRows), total: null,
+        customizations: r.customizations, applied: r.applied, unapplied: r.unapplied, keepable: r.keepable,
         hasAi: false, matchConfidence, fallbackEstimate,
       });
       setRecipeServings(r.servingsScale != null ? r.servingsScale : 1);
     }
     setPicker(null);
+  }
+
+  // Keep a one-off change in the saved recipe: a swap becomes another option on
+  // that slot, an added ingredient becomes part of the recipe. The log itself is
+  // unaffected either way — this only edits the recipe for next time.
+  async function keepChange(item) {
+    if (!recipeReview?.recipe || keepBusy) return;
+    setKeepBusy(item.label);
+    setError('');
+    try {
+      const body = item.kind === 'option'
+        ? addSubstituteOption(recipeReview.recipe, item.slotId, item.ingredientId)
+        : addIngredientToRecipe(recipeReview.recipe, item.row);
+      // null = this recipe has no editable slot to attach it to (an older
+      // Meal Builder recipe stored as plain lines). Say so instead of
+      // reporting a save that didn't happen.
+      if (!body) {
+        setError('That change can’t be saved into this recipe automatically — open it in Meal Builder to add it.');
+        return;
+      }
+      await updateRecipe(recipeReview.recipe.id, body);
+      const rs = await fetchRecipes();
+      setRecipes(Array.isArray(rs) ? rs : []);
+      setKept(k => [...k, item.label]);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setKeepBusy('');
+    }
+  }
+
+  // A change the AI couldn't resolve, pointed at a saved ingredient by hand:
+  // patch that modification and rebuild the review so it goes through the same
+  // library path an AI-matched swap would.
+  function resolveUnapplied(item, ingredient, amount, unit) {
+    if (!recipeReview?.recipe || !ingredient) return;
+    buildRecipeReview(
+      recipeReview.recipe,
+      resolveModification(recipeReview.modifications, item.modIndex, ingredient, amount, unit),
+      recipeReview.fallbackEstimate,
+      recipeReview.matchConfidence
+    );
   }
 
   // Picker → pick one of the candidate recipes (ambiguous match).
@@ -476,6 +533,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
     setThread([]);
     setCorrections([]);
     setFollowUp('');
+    setKept([]);
     setError('');
   }
 
@@ -762,6 +820,8 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
         <div className="card" style={{ marginBottom: 18 }}>
           <h3 className="section-title" style={{ marginTop: 0 }}>Log saved recipe</h3>
 
+          <ConversationThread thread={thread} loading={loading} pendingLabel="Updating the recipe…" />
+
           <div style={{ padding: 12, background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: 10, marginBottom: 14 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#312e81' }}>{recipeReview.recipe.name}</div>
             <div style={{ marginTop: 4, fontSize: 12, color: '#6b21a8' }}>
@@ -800,14 +860,36 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
               </ul>
             </div>
           )}
-          {recipeReview.unapplied.length > 0 && (
-            <div style={{ padding: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, marginBottom: 12, fontSize: 13, color: '#92400e' }}>
-              <strong>Couldn’t apply (logging without these):</strong>
-              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-                {recipeReview.unapplied.map((u, i) => <li key={i}>{u.text} — <span style={{ color: '#a16207' }}>{u.reason}</span></li>)}
-              </ul>
+          {recipeReview.keepable?.length > 0 && (
+            <div style={{ padding: 12, background: 'var(--color-surface-muted, #f9fafb)', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 12 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-body)' }}>Keep this in the recipe?</div>
+              <p style={{ margin: '2px 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                One-off by default. Keeping a swap adds it to that ingredient’s options, so next time it’s one tap in Meal Builder.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {recipeReview.keepable.map(item => (
+                  <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ flex: '1 1 200px', minWidth: 0, fontSize: 13, color: 'var(--color-text-body)' }}>{item.label}</span>
+                    {kept.includes(item.label) ? (
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#065f46', flexShrink: 0 }}>✓ Saved to recipe</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className={keepBusy === item.label ? 'btn-secondary btn-loading' : 'btn-secondary'}
+                        onClick={() => keepChange(item)}
+                        disabled={!!keepBusy}
+                        style={{ minHeight: 36, padding: '0 14px', fontSize: 13, flexShrink: 0 }}
+                      >
+                        {keepBusy === item.label ? 'Saving…' : 'Keep in recipe'}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
+
+          <RecipeFixUpList items={recipeReview.unapplied} library={library} onResolve={resolveUnapplied} />
 
           {!recipeReview.requiresCustomPath && (
             <div style={{ marginBottom: 12, maxWidth: 160 }}>
@@ -884,8 +966,18 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
               Backfills {logDate} — you'll find it on that day in History.
             </p>
           )}
+          {/* Follow-up — refine the swap without starting the description over */}
+          <FollowUpComposer
+            id="ai-recipe-follow-up"
+            value={followUp}
+            onChange={setFollowUp}
+            onSend={runEstimate}
+            loading={loading}
+            placeholder="e.g. make it 200g sweet potato instead of the toast"
+          />
+
           <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" className={busy === 'log' ? 'btn-primary btn-loading' : 'btn-primary'} onClick={logRecipe} disabled={busy !== ''} style={{ minHeight: 48, fontWeight: 700 }}>
+            <button type="button" className={busy === 'log' ? 'btn-primary btn-loading' : 'btn-primary'} onClick={logRecipe} disabled={busy !== '' || loading} style={{ minHeight: 48, fontWeight: 700 }}>
               {busy === 'log'
                 ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>)
                 : logDate && logDate !== getLocalDateISO() ? `Log recipe — ${logDate}` : 'Log recipe'}
@@ -899,33 +991,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
       {estimate && (
         <div className="card" style={{ marginBottom: 18 }}>
           {/* Conversation so far — the description, the AI's replies, and every correction */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-            {thread.map((m, i) => (
-              <div
-                key={i}
-                style={{
-                  alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                  maxWidth: '85%',
-                  padding: '10px 14px',
-                  borderRadius: 16,
-                  fontSize: 14,
-                  lineHeight: 1.45,
-                  whiteSpace: 'pre-wrap',
-                  overflowWrap: 'break-word',
-                  ...(m.role === 'user'
-                    ? { background: '#2563eb', color: '#fff', borderBottomRightRadius: 4 }
-                    : { background: '#f3f4f6', color: '#1f2937', borderBottomLeftRadius: 4 }),
-                }}
-              >
-                {m.text}
-              </div>
-            ))}
-            {loading && (
-              <div style={{ alignSelf: 'flex-start', maxWidth: '85%', padding: '10px 14px', borderRadius: 16, borderBottomLeftRadius: 4, background: '#f3f4f6', color: '#6b7280', fontSize: 14, fontStyle: 'italic' }}>
-                Updating the estimate…
-              </div>
-            )}
-          </div>
+          <ConversationThread thread={thread} loading={loading} />
 
           <h3 className="section-title" style={{ marginTop: 0 }}>Review estimate</h3>
 
@@ -1228,32 +1294,14 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
           )}
 
           {/* Follow-up — keep the conversation going */}
-          <div style={{ marginTop: 16, padding: 12, border: '1px solid #e5e7eb', borderRadius: 12, background: '#f9fafb' }}>
-            <label htmlFor="ai-follow-up" style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-body)' }}>
-              Anything to adjust?
-            </label>
-            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-              <input
-                id="ai-follow-up"
-                value={followUp}
-                onChange={e => setFollowUp(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && followUp.trim() && !loading) runEstimate(followUp.trim());
-                }}
-                placeholder="e.g. the rice was dry weight, and I forgot a tbsp of olive oil"
-                style={{ flex: 1, minWidth: 0, minHeight: 44 }}
-              />
-              <button
-                type="button"
-                className={loading ? 'btn-primary btn-loading' : 'btn-primary'}
-                onClick={() => runEstimate(followUp.trim())}
-                disabled={loading || !followUp.trim()}
-                style={{ minHeight: 44, fontWeight: 700, flexShrink: 0 }}
-              >
-                {loading ? (<><span className="btn-spinner" aria-hidden="true" />Updating…</>) : 'Send'}
-              </button>
-            </div>
-          </div>
+          <FollowUpComposer
+            id="ai-follow-up"
+            value={followUp}
+            onChange={setFollowUp}
+            onSend={runEstimate}
+            loading={loading}
+            placeholder="e.g. the rice was dry weight, and I forgot a tbsp of olive oil"
+          />
 
           {/* Actions */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
