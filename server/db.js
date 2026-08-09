@@ -343,6 +343,16 @@ function createDb(dbPath) {
   if (recipeCols.length && !recipeCols.includes('created_at')) {
     db.exec(`ALTER TABLE recipes ADD COLUMN created_at TEXT`);
   }
+  // Cached micronutrients for the recipe's DEFAULT ingredients, so browsing the
+  // library doesn't pay for an AI estimate on every expand. The fingerprint is a
+  // hash of the ingredients the estimate was computed from — when the recipe is
+  // edited it stops matching and the cache is recomputed on next request.
+  if (recipeCols.length && !recipeCols.includes('micros_json')) {
+    db.exec(`ALTER TABLE recipes ADD COLUMN micros_json TEXT`);
+  }
+  if (recipeCols.length && !recipeCols.includes('micros_fingerprint')) {
+    db.exec(`ALTER TABLE recipes ADD COLUMN micros_fingerprint TEXT`);
+  }
   const logCols = db.prepare('PRAGMA table_info(log_entries)').all().map(c => c.name);
   if (logCols.length && !logCols.includes('time_min')) {
     db.exec(`ALTER TABLE log_entries ADD COLUMN time_min INTEGER`);

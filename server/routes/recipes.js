@@ -1,8 +1,15 @@
 const express = require('express');
+const crypto = require('crypto');
 const {
   parseIngredientsJson,
   normalizeIngredientsBody: normalizeIngredientsBodyShared,
+  resolvedIngredientRows,
 } = require('../recipeIngredients');
+const {
+  microsJsonFromIngredients,
+  microsJsonPreferringLabels,
+  normalizedIngredientsFromRecipe,
+} = require('../mealMicros');
 
 function parseIngredientsColumn(raw) {
   return parseIngredientsJson(raw);
@@ -52,8 +59,12 @@ function normalizeLimitedUses(recipe_kind, rawRemaining, rawMax) {
 }
 
 function rowToRecipe(row) {
+  // The cached micro blob is fetched on demand via /:id/nutrition — shipping it
+  // with every list response would bloat the payload for data most rows in view
+  // never show.
+  const { micros_json, micros_fingerprint, ...rest } = row;
   return {
-    ...row,
+    ...rest,
     ingredients: parseIngredientsColumn(row.ingredients),
     meal_builder_meta: parseMealBuilderMetaColumn(row.meal_builder_meta),
     is_archived: row.is_archived ? 1 : 0,
@@ -226,6 +237,73 @@ function createRecipesRouter(db) {
       req.params.id
     );
     res.json(rowToRecipe(db.prepare('SELECT * FROM recipes WHERE id = ?').get(req.params.id)));
+  });
+
+  /**
+   * Nutrition for a recipe's DEFAULT ingredients — what the Recipe Library
+   * expands to show, so you can read a recipe's macros and micros without
+   * logging it first.
+   *
+   * Deliberately the same pipeline logging uses (microsJsonPreferringLabels):
+   * measured label values where an ingredient has them, an AI estimate only for
+   * the rest. What it is NOT is a promise about any particular log — it assumes
+   * every slot's default option at the recipe's own amounts, so a log with
+   * substitutions or edited weights will differ. The client says so out loud.
+   *
+   * The estimate is cached on the recipe and keyed by a fingerprint of the rows
+   * it came from, so editing the recipe invalidates it without any explicit
+   * cache-busting at the write sites.
+   */
+  router.get('/:id/nutrition', async (req, res) => {
+    const row = db.prepare('SELECT * FROM recipes WHERE id = ?').get(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Recipe not found' });
+
+    // Default resolution: first option of every slot, at the recipe's amounts.
+    const rows = resolvedIngredientRows(db, row, null);
+    const macros = rows.reduce(
+      (a, r) => ({
+        calories: a.calories + (Number(r.calories) || 0),
+        protein_g: a.protein_g + (Number(r.protein_g) || 0),
+        carbs_g: a.carbs_g + (Number(r.carbs_g) || 0),
+        fat_g: a.fat_g + (Number(r.fat_g) || 0),
+        fiber_g: a.fiber_g + (Number(r.fiber_g) || 0),
+      }),
+      { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 }
+    );
+
+    // Name-only recipes have no computable rows; their micros can still be
+    // estimated from the ingredient names alone.
+    const nameOnly = rows.length === 0 ? normalizedIngredientsFromRecipe(db, row) : null;
+    const basis = rows.length > 0 ? rows : (nameOnly || []);
+    if (basis.length === 0) {
+      return res.json({ rows: [], macros: null, micros: null, ingredientsKnown: false });
+    }
+
+    const fingerprint = crypto
+      .createHash('sha1')
+      .update(JSON.stringify(basis.map(r => [r.name, r.amount, r.unit, r.label_ingredient_id ?? null])))
+      .digest('hex');
+
+    let microsJson = row.micros_fingerprint === fingerprint ? row.micros_json : null;
+    if (!microsJson) {
+      microsJson = rows.length > 0
+        ? await microsJsonPreferringLabels(db, rows)
+        : await microsJsonFromIngredients(nameOnly);
+      // Store the fingerprint even on a null result: a recipe whose micros
+      // genuinely can't be estimated shouldn't retry the AI on every expand.
+      db.prepare('UPDATE recipes SET micros_json = ?, micros_fingerprint = ? WHERE id = ?')
+        .run(microsJson, fingerprint, req.params.id);
+    }
+
+    let micros = null;
+    try { micros = microsJson ? JSON.parse(microsJson) : null; } catch { micros = null; }
+
+    res.json({
+      rows,
+      macros: rows.length > 0 ? macros : null,
+      micros,
+      ingredientsKnown: true,
+    });
   });
 
   /** Reactivate an archived limited-use template (or bump uses). */
