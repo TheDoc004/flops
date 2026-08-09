@@ -48,6 +48,15 @@
   color: var(--color-primary);
 }
 
+/* "Recipes & Ingredients" is too wide for a fifth of the bar on one line.
+   Tightened type over two lines keeps the tab the same height as its
+   single-line neighbours instead of growing the whole bar. */
+.tabTwoLine {
+  font-size: 9.5px;
+  line-height: 1.12;
+  text-align: center;
+}
+
 /* ── "More" sheet ── */
 .sheetBackdrop {
   position: fixed;

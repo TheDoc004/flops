@@ -6,17 +6,16 @@ import styles from './Navbar.module.css';
    Direct items link straight to a page; grouped items open a small dropdown. */
 const GROUPS = [
   { label: 'Today', to: '/', end: true },
+  // No "Log" group: logging starts on Today, whose header carries both the AI
+  // estimate and log-a-meal buttons. Meal Builder is the recipe EDITOR (it
+  // calls create/updateRecipe), so it belongs with Recipes, not with logging.
+  // One home for everything you compose meals FROM: the saved recipes, the
+  // builder that authors them, and the raw ingredients they're built out of.
   {
-    label: 'Log',
+    label: 'Recipes & Ingredients',
     items: [
+      { to: '/recipes', label: 'All recipes' },
       { to: '/meal-builder', label: 'Meal Builder' },
-      { to: '/ai-logger', label: 'AI Macro Logger' },
-    ],
-  },
-  {
-    label: 'Library',
-    items: [
-      { to: '/recipes', label: 'Recipes' },
       { to: '/ingredients', label: 'Ingredients' },
     ],
   },

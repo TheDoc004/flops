@@ -142,12 +142,16 @@ export default function Dashboard() {
       }
     : totals;
 
-  // Larger, presence-boosted actions for the two primary dashboard buttons.
-  // Scoped to these instances (inline) so the global .btn-* sizing is untouched.
+  // The two primary dashboard buttons. With no "Log" tab in the nav, these ARE
+  // the way into logging, so they're sized to be the first thing you reach for
+  // rather than header trim. Scoped inline so the global .btn-* sizing is
+  // untouched.
   const dashActionStyle = {
-    fontSize: 'clamp(14px, 1vw, 16.5px)',
-    padding: 'clamp(11px, 1vw, 15px) clamp(16px, 1.7vw, 26px)',
-    minHeight: 'clamp(44px, 3.4vw, 52px)',
+    fontSize: 'clamp(15px, 1.15vw, 18px)',
+    fontWeight: 700,
+    padding: 'clamp(13px, 1.2vw, 18px) clamp(20px, 2.1vw, 32px)',
+    minHeight: 'clamp(52px, 4vw, 60px)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
   };
 
   return (
