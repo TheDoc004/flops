@@ -95,18 +95,10 @@ export default function Recipes() {
     <div>
       <LibrarySubNav />
 
-      <Reveal style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      {/* "Build a meal" lives in LibrarySubNav above, so it's in the same place
+          on both pages of the section rather than only in this title row. */}
+      <Reveal style={{ marginBottom: 16 }}>
         <h1 className="page-title">Recipe Library</h1>
-        {/* Meal Builder lives here now, so this button IS the way in — sized to
-            match, not tucked away as a header afterthought. */}
-        <button
-          className="btn-primary"
-          onClick={() => navigate('/meal-builder')}
-          title="Build a recipe in Meal Builder"
-          style={{ minHeight: 48, padding: '0 20px', fontSize: 15.5, fontWeight: 700, flexShrink: 0 }}
-        >
-          + Build a meal
-        </button>
       </Reveal>
 
       {error && <p className="error">{error}</p>}
