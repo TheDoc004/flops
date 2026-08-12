@@ -96,16 +96,24 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 
 | URL | Page | Notes |
 |---|---|---|
-| `/` | Dashboard | Today's log, macro totals, weight, adherence (pure nutrition) |
-| `/recipes` | Recipe Library | Browse, archive, delete |
-| `/ingredients` | Ingredient Library | Label ingredients for Meal Builder |
-| `/meal-builder` | Meal Builder | OCR label scan → recipe builder |
-| `/history` | History | Charts, past day drill-down, edit entries |
+| `/` | Dashboard | Today's log, macro totals, weight, supplements. Daily actions only — charts and adherence live in Review |
+| `/recipes` | Recipe Library | Browse, expand to macros/micros/ingredients, archive, delete |
+| `/ingredients` | Ingredient Library | Label ingredients (OCR + barcode); also logged directly as one-off foods |
+| `/meal-builder` | Meal Builder | The recipe EDITOR. Reached from the Recipes & Ingredients section, not from logging |
+| `/history` | History ("Review") | Charts, weight trend, micronutrients, adherence, past-day drill-down |
 | `/training` | TrainingWorkouts | Workout presets, logging, progress (being rebuilt) |
 | `/plan` | Plan shell | Sub-nav for Goals / Report / Profile |
 | `/plan/goals` | Goals | Weekly macro targets with min/max ranges |
 | `/plan/report` | Report | PDF export of intake for a date range |
 | `/plan/profile` | Profile | Physical stats, unit prefs, dashboard toggles |
+
+**Navigation shape.** Every top-level nav item is a **direct link** — there are no dropdowns
+(desktop `Navbar`) and no bottom sheets (mobile `BottomNav`); both were removed once their groups
+were down to one or two destinations. `/recipes`, `/ingredients` and `/meal-builder` are one
+section, "Recipes & Ingredients": the nav points at `/recipes` and stays lit across all three, and
+`LibrarySubNav` carries the crossing between the two library pages plus the `+ Build a meal`
+button. **Logging starts on Today**, whose header holds both entry points — there is no "Log" nav
+group.
 
 ## API Endpoints
 
@@ -188,10 +196,12 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 ## Database Schema (Key Tables)
 
 ### Recipes
-`recipes` — `id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients (JSON), recipe_kind (permanent|limited), remaining_uses, max_uses, is_archived, meal_builder_meta (JSON), is_quick_food, is_deleted`
+`recipes` — `id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients (JSON), recipe_kind (permanent|limited), remaining_uses, max_uses, is_archived, meal_builder_meta (JSON), is_quick_food, is_deleted, micros_json, micros_fingerprint`
+
+`micros_json` / `micros_fingerprint` cache the micro estimate for the recipe's DEFAULT ingredients so browsing the library doesn't pay for an AI call per expand; the fingerprint is hashed from the ingredients it was computed from, so an edit invalidates it.
 
 ### Log
-`log_entries` — `id, recipe_id, date, time_min, servings, notes, slot_selections_json, recipe_name, serving_size, recipe_calories, recipe_protein_g, recipe_carbs_g, recipe_fat_g, recipe_fiber_g, recipe_is_quick_food`
+`log_entries` — `id, recipe_id, date, time_min, servings, notes, slot_selections_json, recipe_name, serving_size, recipe_calories, recipe_protein_g, recipe_carbs_g, recipe_fat_g, recipe_fiber_g, recipe_is_quick_food, ingredients_json, micros_json`
 
 ### Goals
 `day_goal_versions` — `user_id, effective_start_date, weekday, calories_min, calories_max, protein_g_min, protein_g_max, carbs_g_min, carbs_g_max, fat_g_min, fat_g_max, created_at`
