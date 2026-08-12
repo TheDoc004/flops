@@ -5,7 +5,7 @@ import { LogMealModal } from '@features/meal-logging';
 import { AiLoggerModal } from '@features/ai-macro-logger';
 import MacroTotals from '@shared/ui/MacroTotals';
 import Reveal from '@shared/ui/Reveal';
-import { fetchLogRange, createLogEntry, deleteLogEntry } from '@shared/api/log';
+import { fetchLogRange, createLogEntry, createCustomLog, deleteLogEntry } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
 import { sumMacros } from '@shared/utils/macros';
@@ -121,7 +121,9 @@ export default function Dashboard() {
   }, [load]);
 
   async function handleLog(data) {
-    await createLogEntry({ ...data, date: today });
+    // A bare ingredient logs as a one-off food, not a recipe log.
+    if (data?.custom) await createCustomLog({ ...data.custom, date: today });
+    else await createLogEntry({ ...data, date: today });
     await load();
   }
 

@@ -11,18 +11,34 @@ function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
+/** Subtitle under an ingredient's name: how it's measured, plus its calories. */
+function ingredientMeta(i) {
+  const basis = i.tracking_type === 'unit' && i.unit_name
+    ? `per ${i.serving_quantity != null ? i.serving_quantity : 1} ${i.unit_name}`
+    : i.serving_size_text;
+  return [basis, i.calories != null ? `${i.calories} cal` : null].filter(Boolean).join(' · ');
+}
+
 /**
+ * Picker for a saved recipe or — when `ingredients` is passed — a single library
+ * ingredient, so snack foods like almonds or a banana are logged from the same
+ * search box instead of needing a recipe or the AI logger.
+ *
  * @param {object} p
  * @param {Array<{id: number|string, name: string, serving_size?: string}>} p.recipes
- * @param {string|number|null} p.value
- * @param {(nextId: string) => void} p.onChange
+ * @param {Array<{id: number|string, name: string}>} [p.ingredients] empty = recipes only
+ * @param {string|number|null} p.value id of the current selection
+ * @param {(nextId: string, kind: 'recipe'|'ingredient') => void} p.onChange
+ * @param {'recipe'|'ingredient'} [p.valueKind] which list `value` refers to
  * @param {string} [p.label]
  * @param {string} [p.placeholder]
  * @param {boolean} [p.disabled]
  */
 const RecipeCombobox = forwardRef(function RecipeCombobox({
   recipes,
+  ingredients = [],
   value,
+  valueKind = 'recipe',
   onChange,
   label = 'Recipe',
   placeholder = 'Search recipe or meal…',
@@ -40,12 +56,18 @@ const RecipeCombobox = forwardRef(function RecipeCombobox({
   const [activeIndex, setActiveIndex] = useState(0);
   const { openUp, maxHeight } = useDropdownPlacement(inputRef, open, 260);
 
-  const selected = useMemo(
-    () => (Array.isArray(recipes) ? recipes.find(r => String(r.id) === String(value)) : null),
-    [recipes, value]
-  );
+  const selected = useMemo(() => {
+    const pool = valueKind === 'ingredient' ? ingredients : recipes;
+    return Array.isArray(pool) ? pool.find(r => String(r.id) === String(value)) || null : null;
+  }, [recipes, ingredients, value, valueKind]);
 
-  const filtered = useMemo(() => filterRecipesByName(recipes || [], query), [recipes, query]);
+  /* One flat list so arrow keys run straight through both groups; each option
+     carries its kind, and a header is drawn wherever the kind changes. */
+  const list = useMemo(() => {
+    const asOptions = (items, kind) =>
+      filterRecipesByName(items || [], query).map(item => ({ kind, item }));
+    return [...asOptions(recipes, 'recipe'), ...asOptions(ingredients, 'ingredient')];
+  }, [recipes, ingredients, query]);
 
   useEffect(() => {
     function onDocPointerDown(e) {
@@ -68,13 +90,13 @@ const RecipeCombobox = forwardRef(function RecipeCombobox({
     el?.scrollIntoView?.({ block: 'nearest' });
   }, [open, activeIndex]);
 
-  const list = filtered;
-  const showEmpty = (recipes?.length || 0) > 0 && list.length === 0;
+  const poolCount = (recipes?.length || 0) + (ingredients?.length || 0);
+  const showEmpty = poolCount > 0 && list.length === 0;
 
   const inputValue = open ? query : (selected ? selected.name : query);
 
-  function selectRecipe(r) {
-    onChange(String(r.id));
+  function selectOption(opt) {
+    onChange(String(opt.item.id), opt.kind);
     setQuery('');
     setOpen(false);
     // keep focus for fast logging
@@ -103,7 +125,7 @@ const RecipeCombobox = forwardRef(function RecipeCombobox({
       if (!open) return;
       if (list.length === 0) return;
       e.preventDefault();
-      selectRecipe(list[activeIndex] || list[0]);
+      selectOption(list[activeIndex] || list[0]);
     }
   }
 
@@ -150,7 +172,7 @@ const RecipeCombobox = forwardRef(function RecipeCombobox({
               padding: 6,
             }}
           >
-            {recipes?.length === 0 ? (
+            {poolCount === 0 ? (
               <div className="empty-state" style={{ padding: 10 }}>
                 No recipes yet.
               </div>
@@ -159,45 +181,67 @@ const RecipeCombobox = forwardRef(function RecipeCombobox({
                 No matches for &quot;{query.trim()}&quot;.
               </div>
             ) : (
-              list.slice(0, 80).map((r, idx) => {
-                const isSelected = selected && String(selected.id) === String(r.id);
+              list.slice(0, 80).map((opt, idx) => {
+                const { kind, item } = opt;
+                const isSelected = selected && kind === valueKind && String(selected.id) === String(item.id);
                 const isActive = idx === activeIndex;
+                /* Headers only earn their space when both groups are on show. */
+                const showHeader = ingredients.length > 0 && (idx === 0 || list[idx - 1].kind !== kind);
+                const meta = kind === 'ingredient'
+                  ? ingredientMeta(item)
+                  : (item.serving_size ? `per ${item.serving_size}` : '');
                 return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected ? 'true' : 'false'}
-                    data-active={isActive ? '1' : '0'}
-                    onMouseEnter={() => setActiveIndex(idx)}
-                    onMouseDown={preventOptionMouseDown}
-                    onClick={() => selectRecipe(r)}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      border: 'none',
-                      background: isActive ? '#eff6ff' : 'transparent',
-                      borderRadius: 8,
-                      padding: '12px 10px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <strong>{r.name}</strong>
-                        {r.serving_size ? (
-                          <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>
-                            per {r.serving_size}
+                  <div key={`${kind}-${item.id}`}>
+                    {showHeader && (
+                      <div
+                        role="presentation"
+                        style={{
+                          padding: '8px 10px 4px',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          letterSpacing: '0.06em',
+                          textTransform: 'uppercase',
+                          color: 'var(--color-text-faint)',
+                        }}
+                      >
+                        {kind === 'recipe' ? 'Recipes' : 'Ingredients'}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected ? 'true' : 'false'}
+                      data-active={isActive ? '1' : '0'}
+                      onMouseEnter={() => setActiveIndex(idx)}
+                      onMouseDown={preventOptionMouseDown}
+                      onClick={() => selectOption(opt)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        border: 'none',
+                        background: isActive ? '#eff6ff' : 'transparent',
+                        borderRadius: 8,
+                        padding: '12px 10px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <strong>{item.name}</strong>
+                          {meta ? (
+                            <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                              {meta}
+                            </span>
+                          ) : null}
+                        </div>
+                        {isSelected ? (
+                          <span style={{ fontSize: 12, color: 'var(--color-link)', fontWeight: 600 }}>
+                            Selected
                           </span>
                         ) : null}
                       </div>
-                      {isSelected ? (
-                        <span style={{ fontSize: 12, color: 'var(--color-link)', fontWeight: 600 }}>
-                          Selected
-                        </span>
-                      ) : null}
-                    </div>
-                  </button>
+                    </button>
+                  </div>
                 );
               })
             )}

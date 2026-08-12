@@ -4,6 +4,7 @@ import { fetchRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
 import { adjustPerServingMacrosForResolvedClient } from './recipeLogMacros';
+import { macrosForLabelServingAmount } from '@features/label-ocr';
 import { listLoggingSlotsFromRecipe, listNonEditableTemplateLines } from './recipeLoggingSlots';
 import { amountsDifferFromRecipe } from './recipeAmountUpdate';
 
@@ -98,6 +99,15 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const [slotSelections, setSlotSelections] = useState({});
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [slotLogAmounts, setSlotLogAmounts] = useState({});
+  /* Logging a bare ingredient — almonds, a banana — without wrapping it in a
+     recipe or spending an AI call. Only offered when creating: editing an
+     existing entry into a different food is the editor's job, not this modal's.
+     `pickKind` says which of the two ids below the picker is pointing at. */
+  const allowIngredients = !initialEntry;
+  const [pickKind, setPickKind] = useState('recipe');
+  const [ingredientId, setIngredientId] = useState('');
+  const [ingAmount, setIngAmount] = useState('');
+  const [ingUnit, setIngUnit] = useState('g');
   const prevRecipeIdRef = useRef(null);
   const recipeComboboxRef = useRef(null);
 
@@ -125,6 +135,49 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     () => Object.fromEntries(labelIngredients.map(x => [String(x.id), x])),
     [labelIngredients]
   );
+
+  const selectedIngredient = useMemo(
+    () => (pickKind === 'ingredient' ? labelById[String(ingredientId)] || null : null),
+    [labelById, ingredientId, pickKind]
+  );
+
+  /* Unit-tracked ingredients are counted in their own unit ("3 eggs"), so an
+     oz/g switch would be meaningless for them. */
+  const ingredientIsUnitTracked = selectedIngredient?.tracking_type === 'unit';
+  const ingredientUnitName = ingredientIsUnitTracked
+    ? (selectedIngredient.unit_name || 'serving')
+    : ingUnit;
+
+  const ingredientPreview = useMemo(
+    () => (selectedIngredient
+      ? macrosForLabelServingAmount(selectedIngredient, ingAmount, ingredientUnitName)
+      : null),
+    [selectedIngredient, ingAmount, ingredientUnitName]
+  );
+
+  /* Picking from the combobox. Selecting an ingredient seeds the amount with one
+     of whatever its label calls a serving, so the common case ("one banana",
+     "one scoop") needs no typing. Done here rather than in an effect — the
+     selection is an event, and this repo's lint bans setState in effect bodies. */
+  function handlePick(nextId, kind) {
+    setPickKind(kind);
+    if (kind === 'recipe') {
+      setIngredientId('');
+      setRecipeId(nextId);
+      return;
+    }
+    setRecipeId('');
+    setIngredientId(nextId);
+    const ing = labelById[String(nextId)];
+    if (!ing) return;
+    if (ing.tracking_type === 'unit') {
+      setIngAmount(String(ing.serving_quantity ?? 1));
+      return;
+    }
+    setIngUnit('g');
+    const gps = Number(ing.grams_per_serving);
+    setIngAmount(Number.isFinite(gps) && gps > 0 ? String(gps) : '');
+  }
 
   // Reset per-slot state when recipe changes
   useEffect(() => {
@@ -346,6 +399,50 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     if (submitting) return; // guard against double-submit (rapid clicks / Enter)
     setError('');
     try {
+      /* An ingredient log is a one-off food, not a recipe log: it goes out as a
+         `custom` payload the caller sends to /api/log/custom. The single
+         ingredient row rides along so the entry keeps its breakdown AND so the
+         server can read this ingredient's stored label micros instead of paying
+         for an AI estimate. */
+      if (pickKind === 'ingredient') {
+        if (!selectedIngredient) return setError('Select an ingredient');
+        const amount = Number(ingAmount);
+        if (!Number.isFinite(amount) || amount <= 0) return setError('Enter an amount');
+        if (!ingredientPreview) {
+          return setError(
+            `${selectedIngredient.name} needs grams per serving before it can be logged by weight. Edit it in the Ingredient Library.`
+          );
+        }
+        const macros = {
+          calories: ingredientPreview.calories,
+          protein_g: ingredientPreview.protein_g,
+          carbs_g: ingredientPreview.carbs_g,
+          fat_g: ingredientPreview.fat_g,
+          fiber_g: ingredientPreview.fiber_g,
+        };
+        setSubmitting(true);
+        await onLog({
+          custom: {
+            name: selectedIngredient.name,
+            ...macros,
+            servings: 1,
+            notes: notes.trim() || undefined,
+            time_min: parseHHMMToTimeMin(timeHHMM),
+            ingredients: [{
+              label_ingredient_id: Number(selectedIngredient.id),
+              name: selectedIngredient.name,
+              amount,
+              unit: ingredientUnitName,
+              source: 'library',
+              ...macros,
+            }],
+          },
+        });
+        ref.current?.close();
+        onClose();
+        return;
+      }
+
       if (!recipeId) return setError('Select a recipe');
       const payload = {
         recipe_id: Number(recipeId),
@@ -453,11 +550,13 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
             <div>
               <RecipeCombobox
                 ref={recipeComboboxRef}
-                label="Recipe"
+                label={allowIngredients ? 'Recipe or ingredient' : 'Recipe'}
                 recipes={recipes}
-                value={recipeId}
-                onChange={setRecipeId}
-                placeholder="Search recipe or meal…"
+                ingredients={allowIngredients ? labelIngredients : []}
+                value={pickKind === 'ingredient' ? ingredientId : recipeId}
+                valueKind={pickKind}
+                onChange={handlePick}
+                placeholder={allowIngredients ? 'Search a meal or a single food…' : 'Search recipe or meal…'}
               />
               {selectedRecipe && (
                 <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
@@ -466,11 +565,59 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               )}
             </div>
 
-            {/* Servings */}
-            <div>
-              <label>Servings</label>
-              <input type="number" min="0.25" step="0.25" value={servings} onChange={e => setServings(e.target.value)} required />
-            </div>
+            {/* Amount — for a single ingredient this replaces Servings, because
+                what you know is "30 g of almonds", not "0.75 servings". */}
+            {selectedIngredient ? (
+              <div>
+                <label htmlFor="log-ing-amount">
+                  Amount{ingredientIsUnitTracked ? ` (${ingredientUnitName})` : ''}
+                </label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    id="log-ing-amount"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={ingAmount}
+                    onChange={e => setIngAmount(e.target.value)}
+                    style={{ flex: 1, minWidth: 0 }}
+                    required
+                  />
+                  {ingredientIsUnitTracked ? (
+                    <span style={{ fontSize: 14, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                      {ingredientUnitName}
+                    </span>
+                  ) : (
+                    <select
+                      value={ingUnit}
+                      onChange={e => setIngUnit(e.target.value)}
+                      aria-label="Unit"
+                      style={{ width: 'auto', flexShrink: 0 }}
+                    >
+                      <option value="g">g</option>
+                      <option value="oz">oz</option>
+                    </select>
+                  )}
+                </div>
+                <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                  {ingredientPreview ? (
+                    <>
+                      ≈ <strong style={{ color: 'var(--color-text-strong)' }}>{Math.round(ingredientPreview.calories)} cal</strong>
+                      {' · '}{Math.round(ingredientPreview.protein_g)}p
+                      {' · '}{Math.round(ingredientPreview.carbs_g)}c
+                      {' · '}{Math.round(ingredientPreview.fat_g)}f
+                    </>
+                  ) : (
+                    <>Needs grams per serving — edit {selectedIngredient.name} in the Ingredient Library.</>
+                  )}
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label>Servings</label>
+                <input type="number" min="0.25" step="0.25" value={servings} onChange={e => setServings(e.target.value)} required />
+              </div>
+            )}
 
             {/* Customize ingredients toggle */}
             {selectedRecipe && variableSlots.length > 0 && (

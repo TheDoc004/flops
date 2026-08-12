@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { LogMealModal } from '@features/meal-logging';
-import { fetchLogRange, createLogEntry, deleteLogEntry, updateLogEntry } from '@shared/api/log';
+import { fetchLogRange, createLogEntry, createCustomLog, deleteLogEntry, updateLogEntry } from '@shared/api/log';
 import { sumMacros, sumSupplementMacros, addMacroTotals } from '@shared/utils/macros';
 import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
@@ -156,7 +156,9 @@ export default function History() {
   async function handleAddMeal(data) {
     if (!addForDate) return;
     try {
-      await createLogEntry({ ...data, date: addForDate });
+      // A bare ingredient logs as a one-off food, not a recipe log.
+      if (data?.custom) await createCustomLog({ ...data.custom, date: addForDate });
+      else await createLogEntry({ ...data, date: addForDate });
       setAddForDate(null);
       await refreshAfterEdit();
     } catch (e) {
