@@ -898,7 +898,7 @@ dialog[open]::backdrop {
   color: var(--color-danger-hover);
 }
 
-/* Meal row ⋯ trigger — sized to sit beside ViewToggle on the dashboard. */
+/* Meal row ⋯ trigger — sized for the dashboard meal card header. */
 .meal-row-menu-btn {
   padding: 6px clamp(10px, 1vw, 12px);
   font-size: clamp(14px, 1vw, 16px);
@@ -1949,6 +1949,33 @@ dialog[open]::backdrop {
   }
   .day-off-banner {
     transform: none;
+  }
+}
+
+/* ── Off-today chrome: mute content below day nav + banner (color only) ── */
+.dashboard--past,
+.dashboard--future {
+  opacity: 0.94;
+}
+.dashboard--past {
+  filter: saturate(0.72) hue-rotate(-6deg);
+}
+.dashboard--future {
+  filter: saturate(0.78) hue-rotate(8deg);
+}
+
+/* Paste meal control — soft appear when clipboard is non-empty */
+.paste-meal-btn {
+  flex-shrink: 0;
+  animation: paste-meal-in 0.28s var(--ease-out, ease-out);
+}
+@keyframes paste-meal-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .paste-meal-btn {
+    animation: none;
   }
 }
 

@@ -10,12 +10,52 @@ import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
 import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
-import { getLocalDateISO, parseLocalDateISO, loadViewingDate, saveViewingDate, shouldOfferNewDay, dismissNewDayOffer, goToCalendarToday, addDaysLocal } from '@shared/utils/dateLocal';
+import { getLocalDateISO, parseLocalDateISO, loadViewingDate, saveViewingDate, shouldOfferNewDay, dismissNewDayOffer, goToCalendarToday, addDaysLocal, formatMealsSectionTitle } from '@shared/utils/dateLocal';
 import { goalsToTargets, hasAnyTarget, resolveGoalRowForDate } from '@features/adherence';
 import DashboardWeightRow from './DashboardWeightRow';
 import PrepStrip from './PrepStrip';
 import { SupplementStrip } from '@features/supplements';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
+
+const MEAL_CLIPBOARD_KEY = 'flops_meal_clipboard';
+
+/** Snapshot fields needed to recreate a log entry via createLogEntry / createCustomLog. */
+function mealClipboardSnapshot(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  return {
+    recipe_id: entry.recipe_id ?? null,
+    recipe_is_quick_food: entry.recipe_is_quick_food ?? null,
+    recipe_name: entry.recipe_name ?? null,
+    recipe_calories: entry.recipe_calories ?? null,
+    recipe_protein_g: entry.recipe_protein_g ?? null,
+    recipe_carbs_g: entry.recipe_carbs_g ?? null,
+    recipe_fat_g: entry.recipe_fat_g ?? null,
+    recipe_fiber_g: entry.recipe_fiber_g ?? null,
+    servings: entry.servings ?? null,
+    notes: entry.notes ?? null,
+    time_min: entry.time_min ?? null,
+    ingredients_json: entry.ingredients_json ?? null,
+    slot_selections_json: entry.slot_selections_json ?? null,
+  };
+}
+
+function loadMealClipboard() {
+  try {
+    const raw = sessionStorage.getItem(MEAL_CLIPBOARD_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return mealClipboardSnapshot(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function persistMealClipboard(snapshot) {
+  try {
+    if (snapshot) sessionStorage.setItem(MEAL_CLIPBOARD_KEY, JSON.stringify(snapshot));
+    else sessionStorage.removeItem(MEAL_CLIPBOARD_KEY);
+  } catch { /* storage unavailable */ }
+}
 
 /** Vault Prep/Plan on Today until ready — flip to true to remount PrepStrip. */
 const SHOW_PREP_PLAN = false;
@@ -103,6 +143,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
   const copyStatusTimerRef = useRef(null);
+  const [mealClipboard, setMealClipboard] = useState(() => loadMealClipboard());
   const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
   const [supplementMacros, setSupplementMacros] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 
@@ -268,35 +309,45 @@ export default function Dashboard() {
     if (copyStatusTimerRef.current != null) clearTimeout(copyStatusTimerRef.current);
   }, []);
 
-  /** Duplicate a logged meal onto calendar today (not the viewing date). */
-  async function handleCopyToToday(entry) {
-    const target = getLocalDateISO();
+  /** Stash a meal snapshot for paste onto any viewing day. */
+  function handleCopyMeal(entry) {
+    const snapshot = mealClipboardSnapshot(entry);
+    if (!snapshot) return;
+    setMealClipboard(snapshot);
+    persistMealClipboard(snapshot);
+    flashCopyStatus('Meal copied');
+  }
+
+  /** Paste the clipboard meal onto the viewing day (today state). */
+  async function handlePasteMeal() {
+    const entry = mealClipboard;
+    if (!entry) return;
     setError('');
     const ingredients = ingredientsPayloadFromEntry(entry);
     const slotSelections = slotSelectionsFromEntry(entry);
     const isQuick = !!Number(entry.recipe_is_quick_food);
 
     try {
-      let copied = false;
+      let pasted = false;
       if (entry.recipe_id && !isQuick) {
         try {
           await createLogEntry({
             recipe_id: entry.recipe_id,
-            date: target,
+            date: today,
             servings: entry.servings,
             ...(entry.notes != null && String(entry.notes).trim() ? { notes: String(entry.notes).trim() } : {}),
             ...(entry.time_min != null ? { time_min: entry.time_min } : {}),
             ...(ingredients?.length ? { ingredients } : {}),
             ...(!ingredients?.length && slotSelections ? { slot_selections: slotSelections } : {}),
           });
-          copied = true;
+          pasted = true;
         } catch {
           // Recipe gone / archived / receipt rejected — denormalized custom log.
         }
       }
-      if (!copied) {
+      if (!pasted) {
         await createCustomLog({
-          date: target,
+          date: today,
           name: (entry.recipe_name && String(entry.recipe_name).trim()) || 'Meal',
           calories: Number(entry.recipe_calories) || 0,
           protein_g: Number(entry.recipe_protein_g) || 0,
@@ -312,12 +363,12 @@ export default function Dashboard() {
           ...(ingredients?.length ? { ingredients } : {}),
         });
       }
-      flashCopyStatus('Copied to today');
-      // Stay on the viewing day so the user can copy multiple meals; reload
-      // only if they were already on today (list would otherwise be stale).
-      if (today === target) await load();
+      flashCopyStatus('Meal pasted');
+      await load();
+      setMealClipboard(null);
+      persistMealClipboard(null);
     } catch (e) {
-      setError(e.message || 'Failed to copy meal');
+      setError(e.message || 'Failed to paste meal');
     }
   }
 
@@ -471,6 +522,7 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <div className={isPastDay ? 'dashboard--past' : isFutureDay ? 'dashboard--future' : undefined}>
       <h1 style={{
         margin: '0 0 clamp(24px, 2.6vw, 34px)',
         fontSize: 'clamp(32px, 3.2vw, 52px)',
@@ -521,7 +573,7 @@ export default function Dashboard() {
         </Reveal>
       )}
 
-      {/* ── Today's meals ── */}
+      {/* ── Meals for the viewing day ── */}
       <Reveal delay={120} style={{ marginTop: 'clamp(28px, 3vw, 40px)', marginBottom: 24 }}>
         {/* Card header */}
         <div style={{
@@ -537,7 +589,7 @@ export default function Dashboard() {
               fontFamily: "'DM Serif Display', Georgia, serif",
               letterSpacing: '-0.01em',
             }}>
-              Today&apos;s Meals
+              {formatMealsSectionTitle(today, calendarToday)}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 'clamp(13px, 1vw, 14.5px)', color: 'var(--color-text-muted)' }}>
               {entries.length === 0
@@ -545,6 +597,16 @@ export default function Dashboard() {
                 : `${entries.length} meal${entries.length !== 1 ? 's' : ''} · ${totalLoggedCal.toLocaleString()} kcal`}
             </p>
           </div>
+          {mealClipboard && (
+            <button
+              type="button"
+              className="btn-secondary paste-meal-btn"
+              onClick={() => { void handlePasteMeal(); }}
+              title="Paste the copied meal onto this day"
+            >
+              Paste meal
+            </button>
+          )}
         </div>
 
         {entries.length === 0
@@ -579,8 +641,7 @@ export default function Dashboard() {
                   <LogEntryRow
                     entry={entry}
                     onDelete={handleDelete}
-                    onCopyToToday={handleCopyToToday}
-                    showCopyToToday={isOffToday}
+                    onCopyMeal={handleCopyMeal}
                     variant="dashboard"
                   />
                 </Reveal>
@@ -589,6 +650,7 @@ export default function Dashboard() {
           )
         }
       </Reveal>
+      </div>
 
       {showModal && (
         <LogMealModal
