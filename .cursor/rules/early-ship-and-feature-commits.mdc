@@ -1,0 +1,30 @@
+---
+description: Early-stage live deploy + feature-scoped commits for safe rollback
+alwaysApply: true
+---
+
+# Early ship + feature commits (FLOPS)
+
+## Live deploy (current stage)
+
+FLOPS is early and the only user is Diego. When Diego asks to implement a change **and** to push / ship / deploy:
+
+- Commit and push to `main` so Vercel + Render update the live web app.
+- Do **not** invent a staging/dev gate or refuse the push “because it’s production.”
+- Still never force-push, skip hooks, commit secrets (`.env`, `nutrition.db`), or update git config.
+
+When real multi-user traffic arrives, revisit this rule and require a preview/dev check before `main`.
+
+## Feature-scoped commits (rollback trail)
+
+Every shippable change must land as **one clear feature commit** (or a short stack of feature commits), not a mixed dump of unrelated WIP.
+
+- **One concern per commit** — e.g. `feat(dashboard): copy/paste meals across days`, not “misc UI + auth + css”.
+- Prefer Conventional Commits: `feat(scope): …`, `fix(scope): …`, `docs: …`.
+- Message focuses on **why / user-visible outcome** so `git log` reads as a feature timeline.
+- If several features shipped in one session, **separate commits** (and push once) so Diego can `git revert <hash>` or reset to a prior `main` commit without undoing unrelated work.
+- Include only files for that feature; leave unrelated dirty files unstaged or commit them separately first.
+
+## After push
+
+Remind Diego to hard-refresh the live URL if needed. If something breaks, identify the feature commit and revert that hash on `main` rather than rewriting history.
