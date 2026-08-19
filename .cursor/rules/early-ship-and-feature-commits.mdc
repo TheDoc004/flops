@@ -1,15 +1,17 @@
 ---
-description: Early-stage live deploy + feature-scoped commits for safe rollback
+description: Auto-commit/push to live + feature-scoped commits for safe rollback
 alwaysApply: true
 ---
 
-# Early ship + feature commits (FLOPS)
+# Auto-ship + feature commits (FLOPS)
 
-## Live deploy (current stage)
+## Default: commit and push to live
 
-FLOPS is early and the only user is Diego. When Diego asks to implement a change **and** to push / ship / deploy:
+FLOPS is early; Diego is the only user. After finishing an implementation (feature, fix, or rule he asked for):
 
-- Commit and push to `main` so Vercel + Render update the live web app.
+- **Automatically** create feature-scoped commit(s) and push to `main` so Vercel + Render update the live web app.
+- Do **not** ask “want me to push?” — assume yes.
+- Only skip commit/push if Diego **explicitly** says not to (e.g. “don’t push”, “local only”, “hold deploy”).
 - Do **not** invent a staging/dev gate or refuse the push “because it’s production.”
 - Still never force-push, skip hooks, commit secrets (`.env`, `nutrition.db`), or update git config.
 
@@ -17,14 +19,14 @@ When real multi-user traffic arrives, revisit this rule and require a preview/de
 
 ## Feature-scoped commits (rollback trail)
 
-Every shippable change must land as **one clear feature commit** (or a short stack of feature commits), not a mixed dump of unrelated WIP.
+Every shippable change must land as **one clear feature commit** (or a short stack), not a mixed dump of unrelated WIP.
 
-- **One concern per commit** — e.g. `feat(dashboard): copy/paste meals across days`, not “misc UI + auth + css”.
-- Prefer Conventional Commits: `feat(scope): …`, `fix(scope): …`, `docs: …`.
-- Message focuses on **why / user-visible outcome** so `git log` reads as a feature timeline.
-- If several features shipped in one session, **separate commits** (and push once) so Diego can `git revert <hash>` or reset to a prior `main` commit without undoing unrelated work.
-- Include only files for that feature; leave unrelated dirty files unstaged or commit them separately first.
+- **One concern per commit** — e.g. `feat(dashboard): collapse meal macros panel`, not “misc UI + auth + css”.
+- Prefer Conventional Commits: `feat(scope): …`, `fix(scope): …`, `chore: …`, `docs: …`.
+- Message focuses on **why / user-visible outcome** so `git log` is a feature timeline.
+- If several features land in one session, **separate commits** then push once so Diego can `git revert <hash>` without undoing unrelated work.
+- Stage only files for that feature; leave unrelated dirty files for their own commit.
 
 ## After push
 
-Remind Diego to hard-refresh the live URL if needed. If something breaks, identify the feature commit and revert that hash on `main` rather than rewriting history.
+Briefly note that live will update; hard-refresh if needed. If something breaks, revert that feature commit on `main` rather than rewriting history.
