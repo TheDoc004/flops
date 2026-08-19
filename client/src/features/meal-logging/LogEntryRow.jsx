@@ -21,7 +21,7 @@ import { parseMicros } from '@shared/utils/microNutrients';
 const PIE_COLORS = { protein: MACRO_COLORS.protein, carbs: MACRO_COLORS.carbs, fat: MACRO_COLORS.fat };
 
 /** Meal-row ⋯ menu — same pop + outside-click pattern as SortMenu in RangeReport. */
-function MealRowMenu({ onMacros, onDelete, onCopyToToday, showCopyToToday }) {
+function MealRowMenu({ onMacros, onMicros, onCopyMeal, onDelete }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
 
@@ -35,7 +35,7 @@ function MealRowMenu({ onMacros, onDelete, onCopyToToday, showCopyToToday }) {
     return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, [open]);
 
-  const hasActions = onMacros || onDelete || (showCopyToToday && onCopyToToday);
+  const hasActions = onMacros || onMicros || onCopyMeal || onDelete;
   if (!hasActions) return null;
 
   return (
@@ -67,14 +67,24 @@ function MealRowMenu({ onMacros, onDelete, onCopyToToday, showCopyToToday }) {
               Macros
             </button>
           )}
-          {showCopyToToday && onCopyToToday && (
+          {onMicros && (
             <button
               type="button"
               role="menuitem"
               className="menu-pop-item"
-              onClick={() => { onCopyToToday(); setOpen(false); }}
+              onClick={() => { onMicros(); setOpen(false); }}
             >
-              Copy to today
+              Micros
+            </button>
+          )}
+          {onCopyMeal && (
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-pop-item"
+              onClick={() => { onCopyMeal(); setOpen(false); }}
+            >
+              Copy Meal
             </button>
           )}
           {onDelete && (
@@ -111,8 +121,7 @@ export default function LogEntryRow({
   entry,
   onDelete,
   onEdit,
-  onCopyToToday,
-  showCopyToToday = false,
+  onCopyMeal,
   variant = 'inline',
 }) {
   const m = computeEntryMacros(entry);
@@ -156,14 +165,13 @@ export default function LogEntryRow({
             {entry.recipe_name}
           </div>
 
-          {/* Actions — always top-right */}
+          {/* Actions — always top-right (panels open via ⋯ menu) */}
           <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'flex-start' }}>
-            <ViewToggle view={view} setView={openView} hasMicros={hasMicros} />
             <MealRowMenu
               onMacros={() => openView('macros')}
+              onMicros={hasMicros ? () => openView('micros') : null}
+              onCopyMeal={onCopyMeal ? () => onCopyMeal(entry) : null}
               onDelete={onDelete ? () => onDelete(entry) : null}
-              onCopyToToday={onCopyToToday ? () => onCopyToToday(entry) : null}
-              showCopyToToday={showCopyToToday}
             />
           </div>
         </div>

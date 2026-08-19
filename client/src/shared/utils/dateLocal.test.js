@@ -5,6 +5,7 @@ import {
   goToCalendarToday,
   saveViewingDate,
   loadViewingDate,
+  formatMealsSectionTitle,
   VIEW_DATE_KEY,
   VIEW_DATE_STAY_KEY,
 } from './dateLocal';
@@ -42,5 +43,21 @@ describe('notebook day-hold', () => {
     expect(localStorage.getItem(VIEW_DATE_KEY)).toBe('2026-08-17');
     expect(localStorage.getItem(VIEW_DATE_STAY_KEY)).toBeNull();
     expect(shouldOfferNewDay(next, '2026-08-17')).toBe(false);
+  });
+});
+
+describe('formatMealsSectionTitle', () => {
+  it('labels today, yesterday, and tomorrow relative to calendar day', () => {
+    expect(formatMealsSectionTitle('2026-08-19', '2026-08-19')).toBe("Today's Meals");
+    expect(formatMealsSectionTitle('2026-08-18', '2026-08-19')).toBe("Yesterday's Meals");
+    expect(formatMealsSectionTitle('2026-08-20', '2026-08-19')).toBe("Tomorrow's Meals");
+  });
+
+  it('formats other same-year days as weekday + month + day', () => {
+    expect(formatMealsSectionTitle('2026-08-12', '2026-08-19')).toBe('Meals · Wed, Aug 12');
+  });
+
+  it('includes year when viewing day is not the calendar year', () => {
+    expect(formatMealsSectionTitle('2025-12-31', '2026-08-19')).toBe('Meals · Wed, Dec 31, 2025');
   });
 });

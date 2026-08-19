@@ -78,3 +78,19 @@ export function goToCalendarToday(calendarToday = getLocalDateISO()) {
   } catch { /* */ }
   return calendarToday;
 }
+
+/**
+ * Dashboard meals H2 for the viewing calendar day relative to wall-clock today.
+ * @param {string} viewingISO YYYY-MM-DD notebook day
+ * @param {string} calendarISO YYYY-MM-DD local today
+ */
+export function formatMealsSectionTitle(viewingISO, calendarISO) {
+  if (viewingISO === calendarISO) return "Today's Meals";
+  if (viewingISO === addDaysLocal(calendarISO, -1)) return "Yesterday's Meals";
+  if (viewingISO === addDaysLocal(calendarISO, 1)) return "Tomorrow's Meals";
+  const d = parseLocalDateISO(viewingISO);
+  const calYear = parseLocalDateISO(calendarISO).getFullYear();
+  const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== calYear) opts.year = 'numeric';
+  return `Meals · ${d.toLocaleDateString('en-US', opts)}`;
+}
