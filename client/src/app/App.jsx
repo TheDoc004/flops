@@ -13,6 +13,7 @@ import MealBuilder from '@features/meal-builder';
 import PlanLayout from './layouts/PlanLayout';
 import TrainingWorkouts from '@features/training-workouts';
 import Ingredients from '@features/ingredients';
+import LibraryLayout from './layouts/LibraryLayout';
 import AiMacroLogger from '@features/ai-macro-logger';
 import Login from '@features/auth/Login';
 import Onboarding from '@features/auth/Onboarding';
@@ -28,8 +29,10 @@ function AppShell() {
       <main className={`app-main${wide ? ' app-main--wide' : ''}`}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/recipes" element={<Recipes />} />
-          <Route path="/ingredients" element={<Ingredients />} />
+          <Route element={<LibraryLayout />}>
+            <Route path="/recipes" element={<Recipes />} />
+            <Route path="/ingredients" element={<Ingredients />} />
+          </Route>
           <Route path="/history" element={<History />} />
           <Route path="/meal-builder" element={<MealBuilder />} />
           <Route path="/ai-logger" element={<AiMacroLogger />} />

@@ -126,6 +126,47 @@
   /* Neutral, warm separators for the macro panel — never macro-colored. */
   --bd-panel-border: #e6e1d7;
   --bd-divider: #ece7dd;
+
+  /* Macro ring track (the unfilled arc). */
+  --color-ring-track: #ede9fe;
+}
+
+/* ── Off-today notebook page ──
+   Viewing a past or future day inverts the chrome: charcoal surfaces, light
+   type. Today keeps the warm beige tokens above. Dashboard sets
+   data-notebook-day on <html> and clears it on unmount / return to today. */
+html[data-notebook-day="past"],
+html[data-notebook-day="future"] {
+  --color-bg: #2a2c2e;
+  --color-surface: #3a3d40;
+  --color-surface-border: #4a4e52;
+  --color-input-border: #5b6168;
+  --color-border: #52525b;
+  --color-divider: #3f4246;
+  --color-divider-warm: #3f4246;
+  --color-divider-strong: #52525b;
+  --color-text: #f4f4f5;
+  --color-text-strong: #fafafa;
+  --color-text-body: #e4e4e7;
+  --color-text-muted: #c4c4c8;
+  --color-text-faint: #a1a1aa;
+  --color-primary-ink: #eef0ff;
+  --color-link: #93c5fd;
+  --color-secondary-bg: #3f3b5c;
+  --color-secondary-bg-hover: #4c4668;
+  --color-secondary-border: #6d68a0;
+  --color-ring-track: #4c4668;
+  --bd-panel-border: #52525b;
+  --bd-divider: #3f4246;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.28);
+  --shadow-pop: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+html[data-notebook-day="future"] {
+  --color-bg: #2c2a28;
+  --color-surface: #3d3a37;
+  --color-surface-border: #524e4a;
+  --color-divider: #42403c;
+  --color-divider-warm: #42403c;
 }
 
 /* ── Motion utilities ──
@@ -456,6 +497,9 @@ body {
   /* Never let stray content widen the page. `clip` (not `hidden`) avoids
      creating a scroll container, so the sticky navbar keeps working. */
   overflow-x: clip;
+  transition:
+    background-color var(--dur-open) var(--ease-out),
+    color var(--dur-open) var(--ease-out);
 }
 
 a { color: inherit; text-decoration: none; }
@@ -468,6 +512,30 @@ button {
   font-size: var(--text-body);
   font-weight: 500;
   min-height: var(--touch-target);
+  transition:
+    filter var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+/* Bare buttons (and role=button) that are not in the .btn-* system still need
+   a hover/press tell — otherwise they feel inert next to primary actions.
+   .btn-* already own a richer lift/sweep; their more-specific rules win. */
+@media (hover: hover) {
+  button:not(:disabled):hover,
+  [role="button"]:hover {
+    filter: brightness(0.97);
+  }
+}
+button:not(:disabled):active,
+[role="button"]:active {
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled):active,
+  [role="button"]:active {
+    transform: none;
+  }
 }
 
 /* ── Primary action: deep indigo ── */
@@ -612,6 +680,8 @@ input, select, textarea {
   font-size: var(--text-body);
   width: 100%;
   min-height: var(--touch-target);
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
 /* Checkboxes and radios opt out of the full-width control styling above
@@ -709,6 +779,9 @@ label {
   align-items: center;
   gap: var(--space-12);
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition:
+    background var(--dur-open) var(--ease-out),
+    border-color var(--dur-open) var(--ease-out);
 }
 /* Desktop: taller, roomier cards with more space between ring and text. The
    ring/value/label sizes scale in MacroTotals via clamp(); here we grow the
@@ -1847,9 +1920,21 @@ dialog[open]::backdrop {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px 0;
+  padding: 12px var(--space-12);
+  margin: 0 calc(var(--space-12) * -1);
   border-bottom: 1px solid var(--color-divider);
   min-width: 0;
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.ingredient-card:hover {
+  background: var(--color-divider-warm);
+  box-shadow: inset 0 0 0 1px var(--color-surface-border);
+}
+@media (hover: none) {
+  .ingredient-card:hover { background: transparent; box-shadow: none; }
 }
 .ingredient-card-main {
   min-width: 0;
@@ -1926,12 +2011,27 @@ dialog[open]::backdrop {
   pointer-events: none;
   transition:
     opacity var(--dur-open) var(--ease-out),
-    transform var(--dur-open) var(--ease-out);
+    transform var(--dur-open) var(--ease-out),
+    background var(--dur-open) var(--ease-out),
+    border-color var(--dur-open) var(--ease-out),
+    color var(--dur-open) var(--ease-out);
 }
 .day-off-banner--future {
   background: #faf5ff;
   border-color: #e9d5ff;
   color: #581c87;
+}
+/* Charcoal page: drop the leftover pastel chips. */
+html[data-notebook-day] .day-off-banner {
+  background: #3d4248;
+  border-color: #5b6168;
+  color: #f4f4f5;
+}
+html[data-notebook-day="future"] .day-off-banner,
+html[data-notebook-day] .day-off-banner--future {
+  background: #42403e;
+  border-color: #5c5752;
+  color: #f4f4f5;
 }
 .day-off-banner-slot.is-open .day-off-banner {
   opacity: 1;
@@ -1946,6 +2046,10 @@ dialog[open]::backdrop {
 }
 .day-off-banner--future .day-off-banner-copy span {
   color: #6b7280;
+}
+html[data-notebook-day] .day-off-banner-copy span,
+html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
+  color: #c4c4c8;
 }
 .day-off-banner-actions {
   display: flex;
@@ -1963,16 +2067,134 @@ dialog[open]::backdrop {
   }
 }
 
-/* ── Off-today chrome: mute content below day nav + banner (color only) ── */
-.dashboard--past,
-.dashboard--future {
-  opacity: 0.94;
+/* ── Off-today chrome used to live here as a light saturate/hue filter.
+   That left the beige page looking almost the same. The inverted tokens on
+   html[data-notebook-day] above are the real tell; these wrappers are just
+   hooks for the day-shift slide. */
+@keyframes day-slide-fwd {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: none; }
 }
-.dashboard--past {
-  filter: saturate(0.72) hue-rotate(-6deg);
+@keyframes day-slide-back {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: none; }
 }
-.dashboard--future {
-  filter: saturate(0.78) hue-rotate(8deg);
+.dashboard-day-body--fwd {
+  animation: day-slide-fwd var(--dur-open) var(--ease-out);
+}
+.dashboard-day-body--back {
+  animation: day-slide-back var(--dur-open) var(--ease-out);
+}
+
+/* Day ← / → — tokenized so they invert with the notebook page. */
+.day-nav-btn {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid var(--color-surface-border);
+  background: var(--color-surface);
+  font-size: 22px;
+  color: var(--color-primary-ink);
+  box-shadow: var(--shadow-card);
+}
+@media (hover: hover) {
+  .day-nav-btn:hover:not(:disabled) {
+    filter: none;
+    background: var(--color-secondary-bg);
+    border-color: var(--color-secondary-border);
+  }
+}
+.day-nav-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* Dose ± on the supplement strip. */
+.stepper-btn {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-body);
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+@media (hover: hover) {
+  .stepper-btn:hover:not(:disabled) {
+    filter: none;
+    background: var(--color-divider-warm);
+  }
+}
+.stepper-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Plan section pills (Goals / Report / Profile). */
+.plan-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.plan-tab {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-body);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .plan-tab:hover {
+    filter: none;
+    background: var(--color-secondary-bg);
+    border-color: var(--color-secondary-border);
+    color: var(--color-primary);
+  }
+}
+.plan-tab:active {
+  transform: scale(0.97);
+}
+.plan-tab.is-active {
+  background: var(--color-text-strong);
+  color: var(--color-surface);
+  border-color: var(--color-text-strong);
+}
+
+/* Library section: fade the page body when Recipes ↔ Ingredients swaps.
+   The subnav lives in LibraryLayout so it does not remount. */
+@keyframes library-outlet-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.library-outlet {
+  animation: library-outlet-in var(--dur-open) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-day-body--fwd,
+  .dashboard-day-body--back,
+  .library-outlet {
+    animation: none;
+  }
+  body {
+    transition: none;
+  }
 }
 
 /* Paste meal control — soft appear when clipboard is non-empty */

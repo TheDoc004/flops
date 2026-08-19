@@ -152,8 +152,12 @@ export default function Dashboard() {
   const isPastDay = today < calendarToday;
   const isOffToday = today !== calendarToday;
   const bannerDesired = isOffToday && !bannerDismissed;
+  const dayShiftDir = useRef('fwd');
+  const skipDayAnim = useRef(true);
 
   function shiftDay(delta) {
+    skipDayAnim.current = false;
+    dayShiftDir.current = delta < 0 ? 'back' : 'fwd';
     const next = addDaysLocal(today, delta);
     const cal = getLocalDateISO();
     setToday(next);
@@ -209,6 +213,8 @@ export default function Dashboard() {
   }, [today]);
 
   function handleGoToToday() {
+    skipDayAnim.current = false;
+    dayShiftDir.current = today < calendarToday ? 'fwd' : 'back';
     const n = goToCalendarToday(getLocalDateISO());
     setCalendarToday(n);
     setToday(n);
@@ -225,6 +231,16 @@ export default function Dashboard() {
   useEffect(() => {
     saveViewingDate(today);
   }, [today]);
+
+  // Invert the whole chrome while this page is looking at a non-today date.
+  // Cleared on unmount so Recipes/Review stay the living beige theme.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isPastDay) root.setAttribute('data-notebook-day', 'past');
+    else if (isFutureDay) root.setAttribute('data-notebook-day', 'future');
+    else root.removeAttribute('data-notebook-day');
+    return () => root.removeAttribute('data-notebook-day');
+  }, [isPastDay, isFutureDay]);
 
   const load = useCallback(async () => {
     setGoalsError('');
@@ -396,17 +412,9 @@ export default function Dashboard() {
     boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
   };
 
-  const dayNavBtnStyle = {
-    flexShrink: 0,
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    border: '1px solid #e8e4dc',
-    background: '#fff',
-    fontSize: 22,
-    cursor: 'pointer',
-    color: '#1e1b4b',
-  };
+  const dayBodyAnim = skipDayAnim.current
+    ? ''
+    : ` dashboard-day-body--${dayShiftDir.current}`;
 
   return (
     <div className="dashboard">
@@ -422,9 +430,9 @@ export default function Dashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: '1 1 220px' }}>
           <button
             type="button"
+            className="day-nav-btn"
             aria-label="Previous day"
             onClick={() => shiftDay(-1)}
-            style={dayNavBtnStyle}
           >
             ←
           </button>
@@ -447,9 +455,9 @@ export default function Dashboard() {
           </div>
           <button
             type="button"
+            className="day-nav-btn"
             aria-label="Next day"
             onClick={() => shiftDay(1)}
-            style={dayNavBtnStyle}
           >
             →
           </button>
@@ -522,7 +530,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className={isPastDay ? 'dashboard--past' : isFutureDay ? 'dashboard--future' : undefined}>
+      <div key={today} className={`dashboard-day-body${dayBodyAnim}`}>
       <h1 style={{
         margin: '0 0 clamp(24px, 2.6vw, 34px)',
         fontSize: 'clamp(32px, 3.2vw, 52px)',
@@ -614,7 +622,7 @@ export default function Dashboard() {
             <div style={{
               background: 'var(--color-surface)',
               borderRadius: 14,
-              border: '1px dashed #c4b5fd',
+              border: '1px dashed var(--color-secondary-border)',
               padding: 'clamp(24px, 2.4vw, 32px) 16px',
               textAlign: 'center',
             }}>
@@ -628,7 +636,7 @@ export default function Dashboard() {
             <div style={{
               background: 'var(--color-surface)',
               borderRadius: 14,
-              border: '1px solid #e8e4dc',
+              border: '1px solid var(--color-surface-border)',
               boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
               overflow: 'visible',
             }}>
@@ -636,7 +644,7 @@ export default function Dashboard() {
                 <Reveal
                   key={entry.id}
                   delay={Math.min(idx, 6) * 60}
-                  style={{ borderBottom: idx < entries.length - 1 ? '1px solid #f0ede8' : 'none' }}
+                  style={{ borderBottom: idx < entries.length - 1 ? '1px solid var(--color-divider-warm)' : 'none' }}
                 >
                   <LogEntryRow
                     entry={entry}

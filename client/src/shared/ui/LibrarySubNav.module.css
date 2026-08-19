@@ -9,14 +9,39 @@
 
 /* Segmented control across the two pages of the Recipes & Ingredients section. */
 .bar {
-  display: inline-flex;
-  gap: 2px;
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
   padding: 3px;
   background: var(--color-divider, #eef1f4);
   border-radius: 999px;
 }
 
+.thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 2);
+  border-radius: 999px;
+  background: var(--color-surface);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.10);
+  pointer-events: none;
+  transition: transform var(--dur-open) var(--ease-out);
+}
+
+.thumbStart {
+  transform: translateX(0);
+}
+
+.thumbEnd {
+  transform: translateX(100%);
+}
+
 .tab {
+  position: relative;
+  z-index: 1;
   padding: 8px 18px;
   border-radius: 999px;
   font-family: var(--font-sans);
@@ -25,19 +50,23 @@
   color: var(--color-text-muted);
   text-decoration: none;
   white-space: nowrap;
+  text-align: center;
   transition:
-    background var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .tab:hover {
   color: var(--color-text-strong);
 }
 
+.tab:active {
+  transform: scale(0.97);
+}
+
 .tabActive {
-  background: var(--color-surface);
   color: var(--color-primary);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.10);
+  /* Fill lives on .thumb so it can slide; keep type color here. */
 }
 
 /* Matches the Today header's primary actions — this is the section's main
@@ -74,11 +103,13 @@
     align-items: stretch;
     gap: 10px;
   }
-  .bar { display: flex; }
-  .tab { flex: 1; text-align: center; padding: 9px 12px; }
+  .bar { display: grid; }
+  .tab { padding: 9px 12px; }
   .build { min-height: 46px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .thumb { transition: none; }
+  .tab:active,
   .build:active { transform: none; }
 }

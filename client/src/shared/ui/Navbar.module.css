@@ -1,9 +1,10 @@
 .nav {
-  background: #faf9f7;
+  background: var(--color-surface);
   box-shadow: 0 1px 0 rgba(0,0,0,0.08);
   position: sticky;
   top: 0;
   z-index: 10;
+  transition: background var(--dur-open) var(--ease-out);
 }
 
 .inner {
@@ -55,7 +56,7 @@
   font-family: 'DM Serif Display', Georgia, serif;
   font-size: 28px;
   font-weight: 400;
-  color: #1e1b4b;
+  color: var(--color-primary-ink);
   letter-spacing: -0.02em;
   line-height: 1;
 }
@@ -64,7 +65,7 @@
 .divider {
   width: 1px;
   height: 32px;
-  background: #e0dbd2;
+  background: var(--color-surface-border);
   flex-shrink: 0;
 }
 
@@ -85,9 +86,9 @@
   gap: 6px;
   padding: 11px 16px;
   border-radius: 12px;
-  border: 1px solid #e8e4dc;
-  background: rgba(255, 255, 255, 0.9);
-  color: #4b5563;
+  border: 1px solid var(--color-surface-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
   font-family: 'DM Serif Display', Georgia, serif;
   font-weight: 400;
   font-size: 16px;
@@ -121,9 +122,9 @@
 }
 
 .links a:hover {
-  background: #f0eeff;
-  border-color: #c4b5fd;
-  color: #312e81;
+  background: var(--color-secondary-bg);
+  border-color: var(--color-secondary-border);
+  color: var(--color-primary);
 }
 
 .active {

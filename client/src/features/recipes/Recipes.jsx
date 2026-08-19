@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import RecipeRow from './RecipeRow';
-import LibrarySubNav from '@shared/ui/LibrarySubNav';
 import { LogMealModal } from '@features/meal-logging';
 import { fetchRecipes, deleteRecipe, reactivateLimitedRecipe } from '@shared/api/recipes';
 import { createLogEntry } from '@shared/api/log';
@@ -93,9 +92,7 @@ export default function Recipes() {
 
   return (
     <div>
-      <LibrarySubNav />
-
-      {/* "Build a meal" lives in LibrarySubNav above, so it's in the same place
+      {/* "Build a meal" lives in LibrarySubNav (LibraryLayout) above, so it's in the same place
           on both pages of the section rather than only in this title row. */}
       <Reveal style={{ marginBottom: 16 }}>
         <h1 className="page-title">Recipe Library</h1>

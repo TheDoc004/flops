@@ -222,7 +222,7 @@ export default function LogEntryRow({
 
         <div className={`collapse${expanded ? ' is-open' : ''}`}>
           <div className="collapse__inner">
-            <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f3f4f6' }}>
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--color-divider)' }}>
               {/* Macros panel — display-toggled, not unmounted, so the
                   breakdown's stagger keeps a closed state to animate from. */}
               <div
@@ -234,7 +234,7 @@ export default function LogEntryRow({
                   <IngredientBreakdown rows={ingredientRows} servings={entry.servings} macroUnits={macroUnits} open={view === 'macros'} />
                 </div>
               )}
-              <p style={{ margin: '0 0 8px', fontSize: 13, color: '#6b7280' }}>
+              <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
                 Calorie share by macro
               </p>
               {pie.total <= 0 ? (
@@ -286,12 +286,12 @@ export default function LogEntryRow({
 
   // Inline variant (History page, etc.)
   return (
-    <div style={{ borderBottom: '1px solid #f3f4f6' }}>
+    <div style={{ borderBottom: '1px solid var(--color-divider)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <span className="meal-emoji" aria-hidden="true">{emoji}</span>
           <strong>{entry.recipe_name}</strong>
-          <span style={{ color: '#6b7280', fontSize: 13, marginLeft: 8 }}>
+          <span style={{ color: 'var(--color-text-muted)', fontSize: 13, marginLeft: 8 }}>
             {entry.servings}x {entry.serving_size}
           </span>
           {entry.notes && (

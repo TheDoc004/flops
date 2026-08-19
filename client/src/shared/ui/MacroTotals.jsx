@@ -1,6 +1,7 @@
 import { formatMacroMass } from '@shared/utils/macroUnits';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import { MACRO_COLORS } from '@shared/utils/colors';
+import useAnimatedNumber from '@shared/hooks/useAnimatedNumber';
 
 const RING_COLORS = {
   Calories: MACRO_COLORS.calories,
@@ -12,14 +13,18 @@ const RING_COLORS = {
 function MacroRing({ label, value, target, macroUnits }) {
   const radius = 26;
   const circumference = 2 * Math.PI * radius;
+  const animated = useAnimatedNumber(value);
 
   const hasTarget = target?.max != null;
   const isCalories = label === 'Calories';
 
-  // Progress ring always fills toward the upper bound (max)
+  // Progress ring always fills toward the upper bound (max). The SVG arc
+  // still tweens via CSS from the live `value`; digits count via `animated`.
   const pct = hasTarget ? Math.min((value / target.max) * 100, 100) : 0;
   const offset = circumference - (pct / 100) * circumference;
-  const pctDisplay = Math.round(pct);
+  const pctDisplay = hasTarget
+    ? Math.round(Math.min((animated / target.max) * 100, 100))
+    : 0;
 
   // Range-aware status
   const belowMin = hasTarget && value < target.min;
@@ -30,8 +35,8 @@ function MacroRing({ label, value, target, macroUnits }) {
 
   // Current value display
   const displayVal = isCalories
-    ? Math.round(value).toLocaleString('en-US')
-    : formatMacroMass(value, macroUnits);
+    ? Math.round(animated).toLocaleString('en-US')
+    : formatMacroMass(animated, macroUnits);
 
   // Goal display — show range if min ≠ max, otherwise just max
   const hasRange = hasTarget && Math.abs(target.max - target.min) > 0.5;
@@ -73,7 +78,7 @@ function MacroRing({ label, value, target, macroUnits }) {
       <div style={{ position: 'relative', flexShrink: 0, width: 'clamp(64px, 5.4vw, 78px)', height: 'clamp(64px, 5.4vw, 78px)' }}>
         <svg viewBox="0 0 64 64" style={{ width: '100%', height: '100%', display: 'block', transform: 'rotate(-90deg)' }} aria-hidden="true">
           {/* Track */}
-          <circle cx="32" cy="32" r={radius} fill="none" strokeWidth="6" stroke="#ede9fe" />
+          <circle cx="32" cy="32" r={radius} fill="none" strokeWidth="6" stroke="var(--color-ring-track)" />
           {/* Fill — strokeDashoffset in style enables CSS transition */}
           <circle
             cx="32" cy="32" r={radius}

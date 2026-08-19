@@ -1,4 +1,4 @@
-import { NavLink, Link } from 'react-router-dom';
+import { NavLink, Link, useLocation } from 'react-router-dom';
 import styles from './LibrarySubNav.module.css';
 
 /**
@@ -11,10 +11,16 @@ import styles from './LibrarySubNav.module.css';
  * authoring action is in the same place whichever page you're on.
  */
 export default function LibrarySubNav() {
+  const { pathname } = useLocation();
+  const onIngredients = pathname.startsWith('/ingredients');
   const cls = ({ isActive }) => (isActive ? `${styles.tab} ${styles.tabActive}` : styles.tab);
   return (
     <div className={styles.row}>
       <nav className={styles.bar} aria-label="Recipes and ingredients">
+        <span
+          className={`${styles.thumb} ${onIngredients ? styles.thumbEnd : styles.thumbStart}`}
+          aria-hidden="true"
+        />
         <NavLink to="/recipes" className={cls}>Recipes</NavLink>
         <NavLink to="/ingredients" className={cls}>Ingredients</NavLink>
       </nav>

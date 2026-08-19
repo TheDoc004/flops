@@ -17,7 +17,6 @@ import { BarcodeScannerModal, mergeBarcodeProductIntoIngredientForm } from '@fea
 import { SERVING_UNITS, isWeightUnit, servingToStored, servingFromRow, emptyServing, unitLabel } from '@shared/utils/servingBasis';
 import Reveal from '@shared/ui/Reveal';
 import GrowStack from '@shared/ui/GrowStack';
-import LibrarySubNav from '@shared/ui/LibrarySubNav';
 
 function filterByName(items, q) {
   const query = String(q ?? '').trim().toLowerCase();
@@ -305,8 +304,6 @@ export default function Ingredients() {
 
   return (
     <div>
-      <LibrarySubNav />
-
       <Reveal style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="page-title">Ingredient Library</h1>
       </Reveal>

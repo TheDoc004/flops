@@ -36,6 +36,21 @@
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .tab:hover {
+    color: var(--color-text-strong);
+    background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  }
+}
+
+.tab:active {
+  transform: scale(0.97);
 }
 
 .tab svg {
@@ -110,6 +125,20 @@
   font-size: var(--text-body);
   font-weight: 500;
   border-radius: var(--radius-md);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .sheetRow:hover {
+    background: var(--color-divider-warm);
+  }
+}
+
+.sheetRow:active {
+  transform: scale(0.98);
 }
 
 .sheetRow svg {
@@ -120,7 +149,7 @@
 }
 
 .sheetRowActive {
-  background: #f5f3ff;
+  background: var(--color-secondary-bg);
   color: var(--color-primary);
 }
 
@@ -133,4 +162,11 @@
   color: var(--color-text-faint);
   font-size: 22px;
   line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab:active,
+  .sheetRow:active {
+    transform: none;
+  }
 }

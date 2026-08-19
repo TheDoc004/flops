@@ -5,13 +5,6 @@ import Reveal from '@shared/ui/Reveal';
 import ManageSupplementsModal from './ManageSupplementsModal';
 import { formatDose } from './doseFormat';
 
-// Small enough to sit inside a chip, still a comfortable tap.
-const STEPPER = {
-  width: 26, height: 26, borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff',
-  color: 'var(--color-text-body)', fontSize: 15, lineHeight: 1, cursor: 'pointer', padding: 0,
-  flexShrink: 0,
-};
-
 // Same rule History applies to past days, so Today and Review agree.
 const totalsFromRows = rows => sumSupplementMacros(rows);
 
@@ -104,7 +97,7 @@ export default function SupplementStrip({ date, onMacrosChange }) {
     <Reveal delay={90} style={{ marginTop: 14 }}>
       <div
         style={{
-          background: 'var(--color-surface)', border: '1px solid #e8e4dc', borderRadius: 14,
+          background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', borderRadius: 14,
           padding: '14px 16px',
         }}
       >
@@ -150,8 +143,8 @@ export default function SupplementStrip({ date, onMacrosChange }) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 12px',
                   borderRadius: 12, border: '1px solid', minHeight: 44,
-                  borderColor: r.taken ? '#a7f3d0' : '#e8e4dc',
-                  background: r.taken ? '#f0fdf9' : '#fff',
+                  borderColor: r.taken ? '#a7f3d0' : 'var(--color-surface-border)',
+                  background: r.taken ? '#f0fdf9' : 'var(--color-surface)',
                   transition: 'background 0.15s, border-color 0.15s',
                 }}
               >
@@ -190,18 +183,18 @@ export default function SupplementStrip({ date, onMacrosChange }) {
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                   <button
                     type="button"
+                    className="stepper-btn"
                     onClick={() => void changeDose(r, -1)}
                     disabled={(r.dose_qty ?? 1) <= 1}
                     aria-label={`Take less ${r.name}`}
-                    style={STEPPER}
                   >
                     −
                   </button>
                   <button
                     type="button"
+                    className="stepper-btn"
                     onClick={() => void changeDose(r, 1)}
                     aria-label={`Take more ${r.name}`}
-                    style={STEPPER}
                   >
                     +
                   </button>
