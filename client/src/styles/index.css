@@ -907,6 +907,17 @@ dialog[open]::backdrop {
   letter-spacing: 0.04em;
 }
 
+/* Collapse control next to ⋯ when macros/micros panel is open. */
+.meal-row-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0;
+}
+.meal-row-collapse-icon {
+  display: block;
+}
+
 @media (prefers-reduced-motion: reduce) {
   dialog[open],
   dialog[open]::backdrop,

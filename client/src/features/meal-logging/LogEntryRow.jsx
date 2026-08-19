@@ -167,6 +167,33 @@ export default function LogEntryRow({
 
           {/* Actions — always top-right (panels open via ⋯ menu) */}
           <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'flex-start' }}>
+            {expanded && (
+              <button
+                type="button"
+                className="btn-secondary meal-row-menu-btn meal-row-collapse-btn"
+                aria-label="Collapse meal details"
+                title="Collapse"
+                onClick={() => setView(null)}
+              >
+                <svg
+                  className="meal-row-collapse-icon"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    d="M2.2 7.8 L6 4 L9.8 7.8"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            )}
             <MealRowMenu
               onMacros={() => openView('macros')}
               onMicros={hasMicros ? () => openView('micros') : null}
