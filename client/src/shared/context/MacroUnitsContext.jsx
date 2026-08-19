@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { fetchProfile, saveProfile } from '@shared/api/profile';
+import { getAuthToken } from '@shared/api/base';
 
 const MacroUnitsContext = createContext(null);
 
@@ -25,6 +26,11 @@ export function MacroUnitsProvider({ children }) {
     let cancelled = false;
     (async () => {
       try {
+        // Avoid unauthenticated 401s during Login (apiFetch clears tokens on 401).
+        if (!getAuthToken()) {
+          if (!cancelled) setReady(true);
+          return;
+        }
         const p = await fetchProfile();
         if (cancelled) return;
         const lsN =

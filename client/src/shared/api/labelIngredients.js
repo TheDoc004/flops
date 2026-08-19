@@ -1,4 +1,4 @@
-import { apiUrl } from './base';
+import { apiFetch } from './base';
 
 async function readJsonIfPresent(res) {
   const contentType = res.headers.get('content-type') || '';
@@ -13,16 +13,15 @@ async function readJsonIfPresent(res) {
 }
 
 export async function fetchLabelIngredients() {
-  const res = await fetch(apiUrl('/api/label-ingredients?user_id=0'));
+  const res = await apiFetch('/api/label-ingredients');
   if (!res.ok) throw new Error('Failed to load label ingredients');
   return res.json();
 }
 
 export async function createLabelIngredient(body) {
-  const res = await fetch(apiUrl('/api/label-ingredients'), {
+  const res = await apiFetch('/api/label-ingredients', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 0, ...body }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
@@ -32,7 +31,7 @@ export async function createLabelIngredient(body) {
 }
 
 export async function deleteLabelIngredient(id) {
-  const res = await fetch(apiUrl(`/api/label-ingredients/${id}?user_id=0`), { method: 'DELETE' });
+  const res = await apiFetch(`/api/label-ingredients/${id}`, { method: 'DELETE' });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
     throw new Error(e?.error || 'Failed to delete');
@@ -40,10 +39,9 @@ export async function deleteLabelIngredient(id) {
 }
 
 export async function updateLabelIngredient(id, body) {
-  const res = await fetch(apiUrl(`/api/label-ingredients/${id}`), {
+  const res = await apiFetch(`/api/label-ingredients/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 0, ...body }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
@@ -53,10 +51,9 @@ export async function updateLabelIngredient(id, body) {
 }
 
 export async function markLabelIngredientsUsed(ids) {
-  const res = await fetch(apiUrl('/api/label-ingredients/used'), {
+  const res = await apiFetch('/api/label-ingredients/used', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 0, ids }),
+    body: JSON.stringify({ ids }),
   });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);

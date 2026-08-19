@@ -7,6 +7,7 @@ const {
   AiQuotaError,
 } = require('../aiMacroService');
 const { transcribeAudio } = require('../aiTranscribe');
+const { suggestSubstitutes } = require('../suggestSubstitutesService');
 
 const MAX_DESCRIPTION = 2000;
 const MAX_CORRECTION = 1000;
@@ -106,6 +107,39 @@ function createAiRouter() {
         return res.status(502).json({ error: "Couldn't read the AI estimate. Please try again or revise your description." });
       }
       return res.status(500).json({ error: 'Failed to estimate macros.' });
+    }
+  });
+
+  // POST /api/ai/suggest-substitutes — pick close matches from the user's library.
+  router.post('/suggest-substitutes', async (req, res) => {
+    const ingredient = req.body?.ingredient && typeof req.body.ingredient === 'object'
+      ? req.body.ingredient
+      : null;
+    if (!ingredient || !String(ingredient.name || '').trim()) {
+      return res.status(400).json({ error: 'ingredient.name is required.' });
+    }
+    const library = Array.isArray(req.body?.library) ? req.body.library : [];
+    if (library.length === 0) {
+      return res.json({ suggestions: [] });
+    }
+    const limit = req.body?.limit;
+    try {
+      const result = await suggestSubstitutes({ ingredient, library, limit });
+      return res.json(result);
+    } catch (e) {
+      if (e instanceof AiConfigError) {
+        return res.status(503).json({ error: e.message });
+      }
+      if (e instanceof AiQuotaError) {
+        return res.status(402).json({ error: e.message });
+      }
+      if (e instanceof AiProviderError) {
+        return res.status(502).json({ error: 'The AI service had a problem. Please try again.' });
+      }
+      if (e instanceof AiResponseError) {
+        return res.status(502).json({ error: "Couldn't read the AI substitute suggestions." });
+      }
+      return res.status(500).json({ error: 'Failed to suggest substitutes.' });
     }
   });
 

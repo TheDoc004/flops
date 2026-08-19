@@ -5,7 +5,7 @@ import WizardStepper from './WizardStepper';
 import StepIngredients from './StepIngredients';
 import StepBuild from './StepBuild';
 import StepReview from './StepReview';
-import { emptyLabelDraft, newLine, newSlotId } from './builderUtils';
+import { emptyLabelDraft, newLine } from './builderUtils';
 import { LabelCropModal } from '@features/label-ocr';
 import { createRecipe, fetchRecipe, updateRecipe } from '@shared/api/recipes';
 import { createCustomLog } from '@shared/api/log';
@@ -74,16 +74,6 @@ export default function MealBuilder() {
   const [mealSaved, setMealSaved] = useState(false);
   const [mealLoggedOnce, setMealLoggedOnce] = useState(false);
   const [loggingOnce, setLoggingOnce] = useState(false);
-  // Mobile only: which ingredient rows have the collapsed "More options" (role + substitutes) open.
-  const [expandedLines, setExpandedLines] = useState(() => new Set());
-  function toggleLineExpanded(id) {
-    setExpandedLines(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-  const roleLabelRefs = useRef({});
   const comboboxRefs = useRef({});
   const amountRefs = useRef({});
   const [pendingFocusLineId, setPendingFocusLineId] = useState(null);
@@ -158,36 +148,47 @@ export default function MealBuilder() {
 
   const ingById = useMemo(() => Object.fromEntries(savedLabels.map(x => [String(x.id), x])), [savedLabels]);
 
-  // If editing a label-built recipe, prefill from its meal_builder_meta lines.
+  // If editing a label-built recipe, prefill from ingredients first, then
+  // fall back to legacy meal_builder_meta.lines.
   useEffect(() => {
     if (mode !== 'labels') return;
     if (!loadedRecipe || !recipeId) return;
     const meta = loadedRecipe.meal_builder_meta;
-    // Any recipe whose lines are backed by library ingredients can be edited
-    // here — not just ones this builder created. AI-saved recipes ('ai_recipe')
-    // qualify too, which is what lets you swap an ingredient in one later.
-    if (!meta || typeof meta !== 'object' || !Array.isArray(meta.lines)) return;
-    const nextLines = meta.lines
-      .filter(x => x && x.label_ingredient_id != null)
-      .map(x => ({
-        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()),
-        roleLabel: x.role_label != null ? String(x.role_label) : '',
-        labelIngredientId: String(x.label_ingredient_id),
-        amount: x.amount != null ? String(x.amount) : '',
-        unit: x.unit || 'g',
-        substitute_label_ingredient_ids: Array.isArray(x.substitute_label_ingredient_ids)
-          ? x.substitute_label_ingredient_ids.map(Number).filter(n => Number.isInteger(n) && n > 0)
-          : [],
-        slotId: x.slot_id != null ? String(x.slot_id) : null,
-      }));
+    let nextLines = [];
+    if (Array.isArray(loadedRecipe.ingredients)) {
+      nextLines = loadedRecipe.ingredients
+        .filter(x => x && (x.kind === 'ingredient' || x.label_ingredient_id != null || x.kind === 'slot'))
+        .map(x => {
+          const lid = x.label_ingredient_id
+            ?? (Array.isArray(x.option_label_ingredient_ids) ? x.option_label_ingredient_ids[0] : null);
+          if (lid == null) return null;
+          return {
+            id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()),
+            labelIngredientId: String(lid),
+            amount: x.amount != null ? String(x.amount) : '',
+            unit: x.unit || 'g',
+          };
+        })
+        .filter(Boolean);
+    }
+    if (nextLines.length === 0 && meta && typeof meta === 'object' && Array.isArray(meta.lines)) {
+      nextLines = meta.lines
+        .filter(x => x && x.label_ingredient_id != null)
+        .map(x => ({
+          id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()),
+          labelIngredientId: String(x.label_ingredient_id),
+          amount: x.amount != null ? String(x.amount) : '',
+          unit: x.unit || 'g',
+        }));
+    }
     if (nextLines.length) setLines(nextLines);
     setMealName(loadedRecipe.name || '');
   }, [mode, loadedRecipe, recipeId]);
 
   useEffect(() => {
     if (!pendingFocusLineId) return;
-    const el = roleLabelRefs.current[pendingFocusLineId];
-    if (el) {
+    const el = comboboxRefs.current[pendingFocusLineId];
+    if (el?.focus) {
       el.focus();
       setPendingFocusLineId(null);
     }
@@ -316,46 +317,8 @@ export default function MealBuilder() {
 
   function updateLine(id, patch) {
     setLines(prev =>
-      prev.map(l => {
-        if (l.id !== id) return l;
-        const next = { ...l, ...patch };
-        if (Object.prototype.hasOwnProperty.call(patch, 'labelIngredientId')) {
-          const def = Number(patch.labelIngredientId);
-          next.substitute_label_ingredient_ids = (next.substitute_label_ingredient_ids || []).filter(x => x !== def);
-        }
-        return next;
-      })
+      prev.map(l => (l.id === id ? { ...l, ...patch } : l))
     );
-  }
-
-  function addSubstituteToLine(lineId, labelIngredientId) {
-    const id = Number(labelIngredientId);
-    if (!Number.isInteger(id) || id <= 0) return;
-    setLines(prev =>
-      prev.map(l => {
-        if (l.id !== lineId) return l;
-        const def = Number(l.labelIngredientId);
-        if (!def || id === def) return l;
-        if ((l.substitute_label_ingredient_ids || []).includes(id)) return l;
-        return { ...l, substitute_label_ingredient_ids: [...(l.substitute_label_ingredient_ids || []), id] };
-      })
-    );
-  }
-
-  function removeSubstituteFromLine(lineId, labelIngredientId) {
-    setLines(prev =>
-      prev.map(l =>
-        l.id === lineId
-          ? { ...l, substitute_label_ingredient_ids: (l.substitute_label_ingredient_ids || []).filter(x => x !== labelIngredientId) }
-          : l
-      )
-    );
-  }
-
-  function handleRoleKeyDown(e, lineId) {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    comboboxRefs.current[lineId]?.focus();
   }
 
   function handleIngredientSelect(lineId) {
@@ -368,7 +331,7 @@ export default function MealBuilder() {
     if (!lines[idx]?.labelIngredientId) return;
     const nextLine = lines[idx + 1];
     if (nextLine) {
-      roleLabelRefs.current[nextLine.id]?.focus();
+      comboboxRefs.current[nextLine.id]?.focus();
     } else {
       const newL = newLine();
       setLines(prev => [...prev, newL]);
@@ -398,17 +361,11 @@ export default function MealBuilder() {
         );
         return;
       }
-      const subs = (line.substitute_label_ingredient_ids || [])
-        .map(Number)
-        .filter(n => Number.isInteger(n) && n > 0 && n !== ing.id);
       ingRows.push({
         ing,
         m,
         amount: line.amount,
         unit: line.unit,
-        roleLabel: String(line.roleLabel || '').trim(),
-        subs,
-        slotId: line.slotId || null,
       });
     }
     if (ingRows.length === 0) {
@@ -416,32 +373,14 @@ export default function MealBuilder() {
       return;
     }
     const t = sumMacroObjects(ingRows.map(x => x.m));
-    const ingredients = [];
-    for (const x of ingRows) {
-      const slot_id = x.slotId || newSlotId();
-      x.resolvedSlotId = slot_id;
-      ingredients.push({
-        kind: 'slot',
-        slot_id,
-        label: x.roleLabel || x.ing.name,
-        amount: String(x.amount),
-        unit: x.ing.tracking_type === 'unit' ? (x.ing.unit_name || '') : (x.unit === 'oz' ? 'oz' : 'g'),
-        option_label_ingredient_ids: x.subs.length > 0 ? [x.ing.id, ...x.subs] : [x.ing.id],
-      });
-    }
-    const meal_builder_meta = {
-      source: 'meal_builder',
-      lines: ingRows.map(x => ({
-        label_ingredient_id: x.ing.id,
-        name: x.ing.name,
-        role_label: x.roleLabel || null,
-        brand_name: x.ing.brand_name || null,
-        amount: Number(x.amount),
-        unit: x.unit,
-        slot_id: x.resolvedSlotId,
-        ...(x.subs.length > 0 ? { substitute_label_ingredient_ids: x.subs } : {}),
-      })),
-    };
+    const ingredients = ingRows.map(x => ({
+      kind: 'ingredient',
+      name: x.ing.name,
+      amount: String(x.amount),
+      unit: x.ing.tracking_type === 'unit' ? (x.ing.unit_name || '') : (x.unit === 'oz' ? 'oz' : 'g'),
+      label_ingredient_id: x.ing.id,
+    }));
+    const meal_builder_meta = { source: 'meal_builder' };
     try {
       const body = {
         name,
@@ -459,8 +398,7 @@ export default function MealBuilder() {
       } else {
         await createRecipe(body);
       }
-      // Ingredient memory: mark used (recent + frequent)
-      const usedIds = [...new Set(ingRows.flatMap(x => [x.ing.id, ...x.subs]))];
+      const usedIds = [...new Set(ingRows.map(x => x.ing.id))];
       if (usedIds.length) {
         try { await markLabelIngredientsUsed(usedIds); } catch { /* non-blocking */ }
         await reloadLabels();
@@ -679,15 +617,9 @@ export default function MealBuilder() {
                 setLines={setLines}
                 lineMacros={lineMacros}
                 totals={totals}
-                expandedLines={expandedLines}
-                toggleLineExpanded={toggleLineExpanded}
                 updateLine={updateLine}
-                addSubstituteToLine={addSubstituteToLine}
-                removeSubstituteFromLine={removeSubstituteFromLine}
-                handleRoleKeyDown={handleRoleKeyDown}
                 handleIngredientSelect={handleIngredientSelect}
                 handleAmountKeyDown={handleAmountKeyDown}
-                roleLabelRefs={roleLabelRefs}
                 comboboxRefs={comboboxRefs}
                 amountRefs={amountRefs}
                 onRequestCreate={requestCreateIngredient}

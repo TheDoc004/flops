@@ -3,6 +3,9 @@
  * not UTC (Date.toISOString().slice(0, 10) is wrong for many local times).
  */
 
+export const VIEW_DATE_KEY = 'flops_view_date';
+export const VIEW_DATE_STAY_KEY = 'flops_view_date_stay'; // calendar date we dismissed the banner for
+
 export function getLocalDateISO(d = new Date()) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -22,4 +25,56 @@ export function addDaysLocal(isoDate, deltaDays) {
   const dt = new Date(y, m - 1, d);
   dt.setDate(dt.getDate() + deltaDays);
   return getLocalDateISO(dt);
+}
+
+function isIsoDate(s) {
+  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+/** Load persisted viewing date, or fall back to the calendar today. */
+export function loadViewingDate() {
+  try {
+    const raw = localStorage.getItem(VIEW_DATE_KEY);
+    if (isIsoDate(raw)) return raw;
+  } catch { /* storage unavailable */ }
+  return getLocalDateISO();
+}
+
+export function saveViewingDate(isoDate) {
+  if (!isIsoDate(isoDate)) return;
+  try {
+    localStorage.setItem(VIEW_DATE_KEY, isoDate);
+  } catch { /* storage unavailable */ }
+}
+
+/**
+ * Notebook day-hold: do not auto-advance the viewing date when the calendar
+ * rolls forward. Returns whether a "new day" banner should show.
+ *
+ * @param {string} viewingDate currently shown notebook day
+ * @param {string} [calendarToday] wall-clock local date (injectable for tests)
+ */
+export function shouldOfferNewDay(viewingDate, calendarToday = getLocalDateISO()) {
+  if (!isIsoDate(viewingDate) || !isIsoDate(calendarToday)) return false;
+  if (viewingDate >= calendarToday) return false;
+  try {
+    const stayed = localStorage.getItem(VIEW_DATE_STAY_KEY);
+    // Dismissed for this calendar day while still on viewingDate — don't nag again today.
+    if (stayed === `${viewingDate}|${calendarToday}`) return false;
+  } catch { /* */ }
+  return true;
+}
+
+export function dismissNewDayOffer(viewingDate, calendarToday = getLocalDateISO()) {
+  try {
+    localStorage.setItem(VIEW_DATE_STAY_KEY, `${viewingDate}|${calendarToday}`);
+  } catch { /* */ }
+}
+
+export function goToCalendarToday(calendarToday = getLocalDateISO()) {
+  saveViewingDate(calendarToday);
+  try {
+    localStorage.removeItem(VIEW_DATE_STAY_KEY);
+  } catch { /* */ }
+  return calendarToday;
 }

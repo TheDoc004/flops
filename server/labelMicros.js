@@ -53,11 +53,12 @@ function storedMicros(micros_json) {
  *
  * @param {object} db
  * @param {Array<{label_ingredient_id?: number, amount?: number, unit?: string}>} rows
+ * @param {number} userId authenticated owner of label_ingredients rows
  * @returns {{micros: object, covered: Array, uncovered: Array}}
  *   `micros` is the summed label contribution; `uncovered` is what still needs
  *   estimating.
  */
-function labelMicrosForRows(db, rows) {
+function labelMicrosForRows(db, rows, userId) {
   const list = Array.isArray(rows) ? rows : [];
   const micros = {};
   const covered = [];
@@ -65,7 +66,7 @@ function labelMicrosForRows(db, rows) {
   if (list.length === 0) return { micros, covered, uncovered };
 
   const get = db.prepare(
-    'SELECT id, micros_json, tracking_type, serving_quantity, grams_per_serving FROM label_ingredients WHERE id = ? AND user_id = 0'
+    'SELECT id, micros_json, tracking_type, serving_quantity, grams_per_serving FROM label_ingredients WHERE id = ? AND user_id = ?'
   );
   const cache = new Map();
 
@@ -75,7 +76,7 @@ function labelMicrosForRows(db, rows) {
       uncovered.push(row);
       continue;
     }
-    if (!cache.has(id)) cache.set(id, get.get(id) || null);
+    if (!cache.has(id)) cache.set(id, get.get(id, userId) || null);
     const ing = cache.get(id);
     const stored = storedMicros(ing?.micros_json);
     if (!stored) {

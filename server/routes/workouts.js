@@ -1,4 +1,5 @@
 const express = require('express');
+const { uid } = require('../userId');
 
 function isoDateOrNull(raw) {
   if (!raw || typeof raw !== 'string') return null;
@@ -66,8 +67,7 @@ function createWorkoutsRouter(db) {
 
   // Presets
   router.get('/presets', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
+    const userId = uid(req);
     const rows = db
       .prepare(
         `SELECT id, name, intensity_label, notes
@@ -80,8 +80,7 @@ function createWorkoutsRouter(db) {
   });
 
   router.post('/presets', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
+    const userId = uid(req);
     const name = normalizeName(req.body?.name, 64);
     if (!name) return res.status(400).json({ error: 'name is required' });
     const intensity_label = normalizeOptionalString(req.body?.intensity_label, 24);
@@ -101,9 +100,8 @@ function createWorkoutsRouter(db) {
   });
 
   router.put('/presets/:id', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
+    const userId = uid(req);
     const id = Number(req.params.id);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
 
     const existing = db.prepare('SELECT id FROM workout_presets WHERE id = ? AND user_id = ? AND COALESCE(is_deleted,0)=0').get(id, userId);
@@ -121,9 +119,8 @@ function createWorkoutsRouter(db) {
   });
 
   router.delete('/presets/:id', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
+    const userId = uid(req);
     const id = Number(req.params.id);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
     const existing = db.prepare('SELECT id FROM workout_presets WHERE id = ? AND user_id = ? AND COALESCE(is_deleted,0)=0').get(id, userId);
     if (!existing) return res.status(404).json({ error: 'Not found' });
@@ -133,9 +130,8 @@ function createWorkoutsRouter(db) {
 
   // Exercises within a preset
   router.get('/presets/:id/exercises', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
+    const userId = uid(req);
     const presetId = Number(req.params.id);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
     if (!Number.isInteger(presetId) || presetId <= 0) return res.status(400).json({ error: 'Invalid preset id' });
     const preset = db.prepare('SELECT id FROM workout_presets WHERE id = ? AND user_id = ? AND COALESCE(is_deleted,0)=0').get(presetId, userId);
     if (!preset) return res.status(404).json({ error: 'Preset not found' });
@@ -152,9 +148,8 @@ function createWorkoutsRouter(db) {
   });
 
   router.post('/presets/:id/exercises', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
+    const userId = uid(req);
     const presetId = Number(req.params.id);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
     if (!Number.isInteger(presetId) || presetId <= 0) return res.status(400).json({ error: 'Invalid preset id' });
     const preset = db.prepare('SELECT id FROM workout_presets WHERE id = ? AND user_id = ? AND COALESCE(is_deleted,0)=0').get(presetId, userId);
     if (!preset) return res.status(404).json({ error: 'Preset not found' });
@@ -174,9 +169,8 @@ function createWorkoutsRouter(db) {
   });
 
   router.delete('/exercises/:id', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
+    const userId = uid(req);
     const id = Number(req.params.id);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
     const r = db.prepare('DELETE FROM workout_preset_exercises WHERE id = ? AND user_id = ?').run(id, userId);
     if (r.changes === 0) return res.status(404).json({ error: 'Not found' });
@@ -185,9 +179,8 @@ function createWorkoutsRouter(db) {
 
   // Today selection (by date)
   router.get('/today', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
+    const userId = uid(req);
     const date = isoDateOrNull(req.query.date);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
     if (!date) return res.status(400).json({ error: 'Invalid date (YYYY-MM-DD)' });
     const row = db
       .prepare('SELECT date, preset_id, preset_name FROM workout_day_selections WHERE user_id = ? AND date = ?')
@@ -196,9 +189,8 @@ function createWorkoutsRouter(db) {
   });
 
   router.put('/today', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
+    const userId = uid(req);
     const date = isoDateOrNull(req.body?.date);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
     if (!date) return res.status(400).json({ error: 'Invalid date (YYYY-MM-DD)' });
 
     const preset_id = req.body?.preset_id == null || req.body?.preset_id === '' ? null : Number(req.body.preset_id);
@@ -224,9 +216,8 @@ function createWorkoutsRouter(db) {
 
   // Logging
   router.post('/logs', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
+    const userId = uid(req);
     const date = isoDateOrNull(req.body?.date);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
     if (!date) return res.status(400).json({ error: 'Invalid date (YYYY-MM-DD)' });
 
     const exercise_name = normalizeName(req.body?.exercise_name, 80);
@@ -264,8 +255,7 @@ function createWorkoutsRouter(db) {
   });
 
   router.get('/logs/previous', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
+    const userId = uid(req);
     const raw = req.query.names;
     if (!raw || typeof raw !== 'string') return res.json({});
     const names = raw.split(',').map(s => s.trim()).filter(Boolean).slice(0, 50);
@@ -289,8 +279,7 @@ function createWorkoutsRouter(db) {
   });
 
   router.get('/progress', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
+    const userId = uid(req);
     const exercise = normalizeName(req.query.exercise_name, 80);
     if (!exercise) return res.status(400).json({ error: 'exercise_name is required' });
 

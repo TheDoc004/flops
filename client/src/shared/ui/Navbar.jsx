@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
+import { useAuth } from '@shared/context/AuthContext';
 import styles from './Navbar.module.css';
 
 /* Flat top nav — every item is a direct link, no dropdowns.
@@ -8,24 +9,26 @@ import styles from './Navbar.module.css';
    top of the page; Meal Builder is the button beside it. A dropdown to reach
    three destinations was a click spent on what a link reaches directly, and it
    duplicated navigation the pages already carry. */
-const LINKS = [
-  { label: 'Today', to: '/', end: true },
-  {
-    label: 'Recipes & Ingredients',
-    to: '/recipes',
-    matchPaths: ['/recipes', '/meal-builder', '/ingredients'],
-  },
-  { label: 'Review', to: '/history' },
-  { label: 'Training', to: '/training' },
-  { label: 'Goals & Profile', to: '/plan' },
-];
-
 function pathMatches(pathname, to) {
   return pathname === to || pathname.startsWith(`${to}/`);
 }
 
 export default function Navbar() {
   const { pathname } = useLocation();
+  const { isCoach } = useAuth();
+
+  const links = [
+    { label: 'Today', to: '/', end: true },
+    {
+      label: 'Recipes & Ingredients',
+      to: '/recipes',
+      matchPaths: ['/recipes', '/meal-builder', '/ingredients'],
+    },
+    { label: 'Review', to: '/history' },
+    { label: 'Training', to: '/training' },
+    ...(isCoach ? [{ label: 'Coach', to: '/coach' }] : []),
+    { label: 'Goals & Profile', to: '/plan' },
+  ];
 
   return (
     <nav className={styles.nav}>
@@ -41,7 +44,7 @@ export default function Navbar() {
         <div className={styles.divider} aria-hidden="true" />
 
         <div className={styles.links}>
-          {LINKS.map(l => {
+          {links.map(l => {
             /* A section link owns several routes, so its lit state can't come
                from NavLink's own exact match. */
             const sectionActive = l.matchPaths?.some(p => pathMatches(pathname, p));

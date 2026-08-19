@@ -35,8 +35,8 @@ async function microsJsonFromIngredients(ingredients) {
  * barcode import) contribute measured values; only the rest are estimated, and
  * when every row is covered no AI call happens at all.
  */
-async function microsJsonPreferringLabels(db, ingredients) {
-  const { micros: labelValues, covered, uncovered } = labelMicrosForRows(db, ingredients);
+async function microsJsonPreferringLabels(db, ingredients, userId) {
+  const { micros: labelValues, covered, uncovered } = labelMicrosForRows(db, ingredients, userId);
   if (covered.length === 0) return microsJsonFromIngredients(ingredients);
 
   let estimated = null;
@@ -78,7 +78,12 @@ function normalizedIngredientsFromRecipe(db, recipe) {
   const labelName = db.prepare('SELECT name FROM label_ingredients WHERE id = ?');
   const out = [];
   for (const item of ing) {
-    if (item && item.kind === 'slot') {
+    if (item && item.kind === 'ingredient' && item.label_ingredient_id) {
+      let nm = item.name || '';
+      const r = labelName.get(item.label_ingredient_id);
+      if (r?.name) nm = r.name;
+      if (nm) out.push({ name: String(nm).trim(), amount: item.amount, unit: item.unit || '' });
+    } else if (item && item.kind === 'slot') {
       const ids = Array.isArray(item.option_label_ingredient_ids) ? item.option_label_ingredient_ids : [];
       let nm = item.label || '';
       if (ids[0]) { const r = labelName.get(ids[0]); if (r?.name) nm = r.name; }

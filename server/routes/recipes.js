@@ -1,4 +1,5 @@
 const express = require('express');
+const { uid } = require('../userId');
 const crypto = require('crypto');
 const {
   parseIngredientsJson,
@@ -75,43 +76,48 @@ function createRecipesRouter(db) {
   const router = express.Router();
 
   router.get('/', (req, res) => {
+    const userId = uid(req);
     const includeArchived = req.query.include_archived === '1' || req.query.include_archived === 'true';
     const includeQuick = req.query.include_quick === '1' || req.query.include_quick === 'true';
     const includeDeleted = req.query.include_deleted === '1' || req.query.include_deleted === 'true';
-    const clauses = [];
+    const clauses = ['user_id = ?'];
     if (!includeArchived) clauses.push('COALESCE(is_archived, 0) = 0');
     if (!includeQuick) clauses.push('COALESCE(is_quick_food, 0) = 0');
     if (!includeDeleted) clauses.push('COALESCE(is_deleted, 0) = 0');
-    const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
-    const recipes = db.prepare(`SELECT * FROM recipes${where} ORDER BY name`).all().map(rowToRecipe);
+    const where = ` WHERE ${clauses.join(' AND ')}`;
+    const recipes = db.prepare(`SELECT * FROM recipes${where} ORDER BY name`).all(userId).map(rowToRecipe);
     res.json(recipes);
   });
 
   router.get('/:id', (req, res) => {
+    const userId = uid(req);
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
-    const row = db.prepare('SELECT * FROM recipes WHERE id = ?').get(id);
+    const row = db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(id, userId);
     if (!row) return res.status(404).json({ error: 'Recipe not found' });
     res.json(rowToRecipe(row));
   });
 
   router.post('/', (req, res) => {
+    const userId = uid(req);
     const { name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g } = req.body;
     if (!name || !serving_size || calories == null || protein_g == null || carbs_g == null || fat_g == null) {
       return res.status(400).json({ error: 'Missing required fields: name, serving_size, calories, protein_g, carbs_g, fat_g' });
     }
     const ing = normalizeIngredientsBody(req.body);
-    if (!ing.ok) return res.status(400).json({ error: 'ingredients must be line items { name, amount } and/or variable slots' });
+    if (!ing.ok) {
+      return res.status(400).json({
+        error: 'ingredients must be library lines { kind:\"ingredient\", name, amount, unit, label_ingredient_id } and/or free-text { name, amount }',
+      });
+    }
     const meta = normalizeMealBuilderMetaBody(req.body);
     if (!meta.ok) return res.status(400).json({ error: 'meal_builder_meta must be a JSON object or null' });
 
-    const checkLi = db.prepare('SELECT id FROM label_ingredients WHERE id = ? AND user_id = 0');
+    const checkLi = db.prepare('SELECT id FROM label_ingredients WHERE id = ? AND user_id = ?');
     for (const item of ing.value) {
-      if (item.kind === 'slot') {
-        for (const lid of item.option_label_ingredient_ids) {
-          if (!checkLi.get(lid)) {
-            return res.status(400).json({ error: `Unknown label ingredient id: ${lid}` });
-          }
+      if (item.kind === 'ingredient') {
+        if (!checkLi.get(item.label_ingredient_id, userId)) {
+          return res.status(400).json({ error: `Unknown label ingredient id: ${item.label_ingredient_id}` });
         }
       }
     }
@@ -129,11 +135,12 @@ function createRecipesRouter(db) {
     const result = db
       .prepare(
         `INSERT INTO recipes (
-          name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients,
+          user_id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients,
           recipe_kind, remaining_uses, max_uses, is_archived, meal_builder_meta, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
+        userId,
         name,
         serving_size,
         Number(calories),
@@ -149,28 +156,31 @@ function createRecipesRouter(db) {
         metaJson,
         new Date().toISOString()
       );
-    res.status(201).json(rowToRecipe(db.prepare('SELECT * FROM recipes WHERE id = ?').get(result.lastInsertRowid)));
+    res.status(201).json(rowToRecipe(db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(result.lastInsertRowid, userId)));
   });
 
   router.put('/:id', (req, res) => {
+    const userId = uid(req);
     const { name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g } = req.body;
     if (!name || !serving_size || calories == null || protein_g == null || carbs_g == null || fat_g == null) {
       return res.status(400).json({ error: 'Missing required fields: name, serving_size, calories, protein_g, carbs_g, fat_g' });
     }
-    const existingRow = db.prepare('SELECT * FROM recipes WHERE id = ?').get(req.params.id);
+    const existingRow = db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(req.params.id, userId);
     if (!existingRow) return res.status(404).json({ error: 'Recipe not found' });
 
     let ingredientsJson;
     if (Object.prototype.hasOwnProperty.call(req.body, 'ingredients')) {
       const ing = normalizeIngredientsBody(req.body);
-      if (!ing.ok) return res.status(400).json({ error: 'ingredients must be line items { name, amount } and/or variable slots' });
-      const checkLi = db.prepare('SELECT id FROM label_ingredients WHERE id = ? AND user_id = 0');
+      if (!ing.ok) {
+        return res.status(400).json({
+          error: 'ingredients must be library lines { kind:\"ingredient\", name, amount, unit, label_ingredient_id } and/or free-text { name, amount }',
+        });
+      }
+      const checkLi = db.prepare('SELECT id FROM label_ingredients WHERE id = ? AND user_id = ?');
       for (const item of ing.value) {
-        if (item.kind === 'slot') {
-          for (const lid of item.option_label_ingredient_ids) {
-            if (!checkLi.get(lid)) {
-              return res.status(400).json({ error: `Unknown label ingredient id: ${lid}` });
-            }
+        if (item.kind === 'ingredient') {
+          if (!checkLi.get(item.label_ingredient_id, userId)) {
+            return res.status(400).json({ error: `Unknown label ingredient id: ${item.label_ingredient_id}` });
           }
         }
       }
@@ -219,7 +229,7 @@ function createRecipesRouter(db) {
     db.prepare(
       `UPDATE recipes SET name=?, serving_size=?, calories=?, protein_g=?, carbs_g=?, fat_g=?, fiber_g=?, ingredients=?,
         recipe_kind=?, remaining_uses=?, max_uses=?, is_archived=?, meal_builder_meta=?
-       WHERE id=?`
+       WHERE id=? AND user_id=?`
     ).run(
       name,
       serving_size,
@@ -234,9 +244,10 @@ function createRecipesRouter(db) {
       max_uses,
       is_archived,
       mealBuilderJson,
-      req.params.id
+      req.params.id,
+      userId
     );
-    res.json(rowToRecipe(db.prepare('SELECT * FROM recipes WHERE id = ?').get(req.params.id)));
+    res.json(rowToRecipe(db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(req.params.id, userId)));
   });
 
   /**
@@ -255,11 +266,12 @@ function createRecipesRouter(db) {
    * cache-busting at the write sites.
    */
   router.get('/:id/nutrition', async (req, res) => {
-    const row = db.prepare('SELECT * FROM recipes WHERE id = ?').get(req.params.id);
+    const userId = uid(req);
+    const row = db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(req.params.id, userId);
     if (!row) return res.status(404).json({ error: 'Recipe not found' });
 
     // Default resolution: first option of every slot, at the recipe's amounts.
-    const rows = resolvedIngredientRows(db, row, null);
+    const rows = resolvedIngredientRows(db, row, null, userId);
     const macros = rows.reduce(
       (a, r) => ({
         calories: a.calories + (Number(r.calories) || 0),
@@ -287,12 +299,12 @@ function createRecipesRouter(db) {
     let microsJson = row.micros_fingerprint === fingerprint ? row.micros_json : null;
     if (!microsJson) {
       microsJson = rows.length > 0
-        ? await microsJsonPreferringLabels(db, rows)
+        ? await microsJsonPreferringLabels(db, rows, userId)
         : await microsJsonFromIngredients(nameOnly);
       // Store the fingerprint even on a null result: a recipe whose micros
       // genuinely can't be estimated shouldn't retry the AI on every expand.
-      db.prepare('UPDATE recipes SET micros_json = ?, micros_fingerprint = ? WHERE id = ?')
-        .run(microsJson, fingerprint, req.params.id);
+      db.prepare('UPDATE recipes SET micros_json = ?, micros_fingerprint = ? WHERE id = ? AND user_id = ?')
+        .run(microsJson, fingerprint, req.params.id, userId);
     }
 
     let micros = null;
@@ -308,9 +320,10 @@ function createRecipesRouter(db) {
 
   /** Reactivate an archived limited-use template (or bump uses). */
   router.post('/:id/reactivate', (req, res) => {
+    const userId = uid(req);
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
-    const row = db.prepare('SELECT * FROM recipes WHERE id = ?').get(id);
+    const row = db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(id, userId);
     if (!row) return res.status(404).json({ error: 'Recipe not found' });
     const kind = row.recipe_kind || 'permanent';
     if (kind !== 'limited') {
@@ -321,16 +334,17 @@ function createRecipesRouter(db) {
       return res.status(400).json({ error: 'remaining_uses (or max_uses) must be integer 1–999' });
     }
     db.prepare(
-      `UPDATE recipes SET remaining_uses = ?, max_uses = ?, is_archived = 0 WHERE id = ?`
-    ).run(n, n, id);
-    res.json(rowToRecipe(db.prepare('SELECT * FROM recipes WHERE id = ?').get(id)));
+      `UPDATE recipes SET remaining_uses = ?, max_uses = ?, is_archived = 0 WHERE id = ? AND user_id = ?`
+    ).run(n, n, id, userId);
+    res.json(rowToRecipe(db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(id, userId)));
   });
 
   router.delete('/:id', (req, res) => {
-    const existing = db.prepare('SELECT id FROM recipes WHERE id = ?').get(req.params.id);
+    const userId = uid(req);
+    const existing = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(req.params.id, userId);
     if (!existing) return res.status(404).json({ error: 'Recipe not found' });
     // Library delete: preserve historical logs by keeping recipes as soft-deleted templates.
-    db.prepare('UPDATE recipes SET is_deleted = 1 WHERE id = ?').run(req.params.id);
+    db.prepare('UPDATE recipes SET is_deleted = 1 WHERE id = ? AND user_id = ?').run(req.params.id, userId);
     res.status(204).send();
   });
 

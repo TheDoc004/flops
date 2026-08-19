@@ -3,14 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { estimateMacros } from '@shared/api/ai';
 import { createCustomLog, createLogEntry } from '@shared/api/log';
 import { createRecipe, fetchRecipes, updateRecipe } from '@shared/api/recipes';
-import { addSubstituteOption, addIngredientToRecipe } from './recipePersist';
+import { addIngredientToRecipe } from './recipePersist';
 import { fetchLabelIngredients, createLabelIngredient } from '@shared/api/labelIngredients';
 import { getLocalDateISO } from '@shared/utils/dateLocal';
 import { buildLibraryBackedIngredients } from './recipeFromEstimate';
 import { SERVING_UNITS, servingToStored } from '@shared/utils/servingBasis';
 import Reveal from '@shared/ui/Reveal';
-import { adjustPerServingMacrosForResolvedClient } from '@features/meal-logging/recipeLogMacros';
-import { matchRecipe, applyModifications, resolvedReviewRows, recipeIngredientNames, resolveModification } from './recipeCommand';
+import { receiptToApiIngredients } from '@features/meal-logging/recipeReceipt';
+import { matchRecipe, applyModifications, resolvedReviewRows, recipeIngredientNames, resolveModification, mergeRecipeModifications } from './recipeCommand';
 import RecipeFixUpList from './RecipeFixUpList';
 import ConversationThread from './ConversationThread';
 import FollowUpComposer from './FollowUpComposer';
@@ -23,7 +23,7 @@ import {
 } from './ingredientSource';
 
 const PLACEHOLDER =
-  'Example: 155g cooked turkey, 250g sweet potato, 20 calories BBQ sauce…';
+  'I had three eggs, toast, and yogurt — or “log my overnight oats”…';
 
 const STATE_LABELS = { raw: 'raw', cooked: 'cooked', unknown: '', not_applicable: '' };
 
@@ -99,10 +99,10 @@ const SOURCE_META = {
 const rowSourceKey = ing => (ing.overridden ? 'manual' : (SOURCE_META[ing.source] ? ing.source : 'ai'));
 
 /**
- * The AI Macro Logger. Renders as a full page by default, or inline inside a
- * dialog when `inModal` is set (e.g. the dashboard popup). In modal mode a
- * successful log calls `onLogged` (to refresh the host) and `onClose` (to shut
- * the dialog) instead of navigating away.
+ * Speak or describe a meal in natural language. Renders as a full page by
+ * default, or inline inside a dialog when `inModal` is set (e.g. the dashboard
+ * popup). In modal mode a successful log calls `onLogged` (to refresh the host)
+ * and `onClose` (to shut the dialog) instead of navigating away.
  */
 export default function AiMacroLogger({ inModal = false, onClose, onLogged, initialDate } = {}) {
   const navigate = useNavigate();
@@ -257,6 +257,19 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
       // recipes (we resolve — the AI never silently picks).
       const rl = raw?.recipeLog && typeof raw.recipeLog === 'object' ? raw.recipeLog : null;
       if (rl && rl.recipeName) {
+        // Follow-ups on a matched recipe often return a partial modification
+        // list — merge onto the already-applied swaps instead of replacing them.
+        if (isRevision && recipeReview) {
+          buildRecipeReview(
+            recipeReview.recipe,
+            mergeRecipeModifications(recipeReview.modifications, rl.modifications),
+            freeform,
+            recipeReview.matchConfidence || rl.matchConfidence
+          );
+          setEstimate(null);
+          growThread();
+          return;
+        }
         const match = matchRecipe(rl.recipeName, recipesRef.current);
         if (match.status === 'one') {
           buildRecipeReview(match.recipe, rl.modifications || [], freeform, rl.matchConfidence);
@@ -283,10 +296,11 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
   }
 
   // Resolve a matched recipe + its modifications into a review (applied changes,
-  // final preview rows, adjusted per-serving totals, and slot customizations).
+  // final preview rows, and a receipt to POST with recipe_id).
   function buildRecipeReview(recipe, modifications, fallbackEstimate, matchConfidence) {
     const r = applyModifications(recipe, modifications, labelByIdRef.current, libIndexRef.current);
-    const baseRows = resolvedReviewRows(recipe, labelByIdRef.current, r.resolvedBySlot, r.droppedLines);
+    const baseRows = resolvedReviewRows(recipe, labelByIdRef.current, r.resolvedLines, r.droppedLines);
+    const keepable = (r.keepable || []).filter(k => k.kind === 'ingredient');
     const sumRows = rows => rows.reduce(
       (a, x) => ({
         calories: a.calories + (Number(x.calories) || 0),
@@ -298,8 +312,8 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
     );
 
     if (r.requiresCustomPath) {
-      // Added / non-library-substituted items → log a custom instance from the
-      // final rows. Bake the scale into the recipe portion; AI rows stay as-is.
+      // Extra / non-library rows: bake the scale into the recipe portion so
+      // added items stay at the amount the user asked for; log servings = 1.
       const s = r.servingsScale != null ? r.servingsScale : 1;
       const scaled = baseRows.map(row => ({
         ...row,
@@ -312,17 +326,14 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
       const finalRows = [...scaled, ...r.addedRows];
       setRecipeReview({
         recipe, modifications, requiresCustomPath: true, rows: finalRows, total: sumRows(finalRows), perServing: null,
-        customizations: null, applied: r.applied, unapplied: r.unapplied, keepable: r.keepable,
+        applied: r.applied, unapplied: r.unapplied, keepable,
         hasAi: r.addedRows.some(x => x.source === 'ai'), matchConfidence, fallbackEstimate,
       });
       setRecipeServings(1);
     } else {
-      // Library-only mods → Phase 2 recipe-log path. adjust* needs a plain
-      // {id: ingredient} object (not a Map); sum-of-rows fallback.
-      const adjusted = adjustPerServingMacrosForResolvedClient(recipe, Object.fromEntries(labelByIdRef.current), r.resolvedBySlot);
       setRecipeReview({
-        recipe, modifications, requiresCustomPath: false, rows: baseRows, perServing: adjusted || sumRows(baseRows), total: null,
-        customizations: r.customizations, applied: r.applied, unapplied: r.unapplied, keepable: r.keepable,
+        recipe, modifications, requiresCustomPath: false, rows: baseRows, perServing: sumRows(baseRows), total: null,
+        applied: r.applied, unapplied: r.unapplied, keepable,
         hasAi: false, matchConfidence, fallbackEstimate,
       });
       setRecipeServings(r.servingsScale != null ? r.servingsScale : 1);
@@ -330,20 +341,12 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
     setPicker(null);
   }
 
-  // Keep a one-off change in the saved recipe: a swap becomes another option on
-  // that slot, an added ingredient becomes part of the recipe. The log itself is
-  // unaffected either way — this only edits the recipe for next time.
   async function keepChange(item) {
     if (!recipeReview?.recipe || keepBusy) return;
     setKeepBusy(item.label);
     setError('');
     try {
-      const body = item.kind === 'option'
-        ? addSubstituteOption(recipeReview.recipe, item.slotId, item.ingredientId)
-        : addIngredientToRecipe(recipeReview.recipe, item.row);
-      // null = this recipe has no editable slot to attach it to (an older
-      // Meal Builder recipe stored as plain lines). Say so instead of
-      // reporting a save that didn't happen.
+      const body = addIngredientToRecipe(recipeReview.recipe, item.row);
       if (!body) {
         setError('That change can’t be saved into this recipe automatically — open it in Meal Builder to add it.');
         return;
@@ -386,48 +389,23 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
     else navigate('/history');
   }
 
-  // Log the matched saved recipe — with any applied modifications as
-  // log_slot_customizations — through the normal recipe-log endpoint. The
-  // server resolves the final rows + macros + micros; the original recipe is
-  // never modified.
+  // Log the matched saved recipe through POST /api/log with recipe_id + the
+  // already-built receipt. Limited-use templates still decrement; History
+  // still shows the recipe name. The saved recipe itself is never modified.
   async function logRecipe() {
     if (busy || !recipeReview?.recipe) return;
     setBusy('log');
     setError('');
     try {
-      if (recipeReview.requiresCustomPath) {
-        // Log a custom instance from the final resolved rows (adds / non-library
-        // substitutes). Stores ingredients_json + estimates micros from the rows;
-        // the original saved recipe is untouched.
-        const ingredients = recipeReview.rows
-          .filter(r => r.name)
-          .map(r => ({
-            name: r.name,
-            amount: r.amount != null ? r.amount : undefined,
-            unit: r.unit || '',
-            calories: Number(r.calories) || 0,
-            protein_g: Number(r.protein_g) || 0,
-            carbs_g: Number(r.carbs_g) || 0,
-            fat_g: Number(r.fat_g) || 0,
-            source: r.source === 'ai' ? 'ai' : (r.source === 'recipe' ? 'recipe' : 'library'),
-            ...(r.label_ingredient_id ? { label_ingredient_id: r.label_ingredient_id } : {}),
-          }));
-        const t = recipeReview.total;
-        await createCustomLog({
-          date: logDate || getLocalDateISO(),
-          name: `${recipeReview.recipe.name} (modified)`,
-          calories: t.calories, protein_g: t.protein_g, carbs_g: t.carbs_g, fat_g: t.fat_g,
-          ingredients,
-        });
-      } else {
-        const custom = recipeReview.customizations || {};
-        await createLogEntry({
-          recipe_id: recipeReview.recipe.id,
-          date: logDate || getLocalDateISO(),
-          servings: Number(recipeServings) > 0 ? Number(recipeServings) : 1,
-          ...(Object.keys(custom).length ? { log_slot_customizations: custom } : {}),
-        });
-      }
+      const ingredients = receiptToApiIngredients(recipeReview.rows);
+      await createLogEntry({
+        recipe_id: recipeReview.recipe.id,
+        date: logDate || getLocalDateISO(),
+        servings: recipeReview.requiresCustomPath
+          ? 1
+          : (Number(recipeServings) > 0 ? Number(recipeServings) : 1),
+        ...(ingredients.length ? { ingredients } : {}),
+      });
       // Today's logs live on the dashboard; backfilled days are found in History.
       afterLog(logDate || getLocalDateISO());
     } catch (e) {
@@ -673,7 +651,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
       // Back each ingredient with a library entry so per-serving amounts stay
       // editable at log time; amounts are split across the N servings.
       const ids = await resolveLibraryIdsForRows(estimate.ingredients);
-      const { ingredients, lines } = buildLibraryBackedIngredients(estimate.ingredients, ids, nServings);
+      const { ingredients } = buildLibraryBackedIngredients(estimate.ingredients, ids, nServings);
       await createRecipe({
         name: estimate.mealName.trim() || 'Meal prep',
         serving_size: `1 of ${nServings} meal-prep servings`,
@@ -685,7 +663,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
         recipe_kind: 'limited',
         remaining_uses: nServings,
         max_uses: nServings,
-        meal_builder_meta: { source: 'ai_meal_prep', lines },
+        meal_builder_meta: { source: 'ai_meal_prep' },
       });
       navigate(`/recipes?saved=${encodeURIComponent(`Meal prep saved — ${nServings} servings ready to log.`)}`);
     } catch (e) {
@@ -699,11 +677,9 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
     setBusy('save');
     setError('');
     try {
-      // Back each ingredient with a library entry and record the link in
-      // meal_builder_meta.lines so every amount is editable when this recipe is
-      // later logged from "Log a Meal" (macros recompute from the library item).
+      // Amounts live on `ingredients`; meta only records the source.
       const ids = await resolveLibraryIdsForRows(estimate.ingredients);
-      const { ingredients, lines } = buildLibraryBackedIngredients(estimate.ingredients, ids);
+      const { ingredients } = buildLibraryBackedIngredients(estimate.ingredients, ids);
       await createRecipe({
         name: estimate.mealName.trim() || 'Meal',
         serving_size: '1 meal',
@@ -712,7 +688,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
         carbs_g: totals.carbs,
         fat_g: totals.fat,
         ingredients,
-        meal_builder_meta: { source: 'ai_recipe', lines },
+        meal_builder_meta: { source: 'ai_recipe' },
       });
       navigate(`/recipes?saved=${encodeURIComponent('Recipe saved — ingredient amounts are editable when you log it.')}`);
     } catch (e) {
@@ -727,17 +703,17 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
     <div>
       {!inModal && (
         <Reveal>
-          <h1 className="page-title" style={{ marginBottom: 6 }}>AI Macro Logger</h1>
+          <h1 className="page-title" style={{ marginBottom: 6 }}>AI Estimate</h1>
           <p className="page-subtitle" style={{ marginBottom: 18 }}>
-            Describe a meal and talk through the estimate, then log it once — or say “log my&nbsp;<em>recipe</em>” to pull up and tweak a saved one.
+            Speak or type what you ate in plain language. We’ll jot it down — including matching a saved recipe if you name one.
           </p>
         </Reveal>
       )}
 
       {/* Input — hidden once a conversation is underway; the thread takes over */}
-      {!estimate && (
+      {!estimate && !recipeReview && !picker && (
       <Reveal delay={60} className="card" style={{ marginBottom: 18 }}>
-        <label htmlFor="ai-meal-desc">Describe your meal</label>
+        <label htmlFor="ai-meal-desc">Speak or describe your meal</label>
         <div style={{ position: 'relative' }}>
           <textarea
             id="ai-meal-desc"
@@ -771,6 +747,11 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
           )}
         </div>
         <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <VoiceInput
+            onTranscript={text =>
+              setDescription(d => (d.trim() ? `${d.trimEnd()}\n${text}` : text))
+            }
+          />
           <button
             type="button"
             className={loading ? 'btn-primary btn-loading' : 'btn-primary'}
@@ -782,11 +763,6 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
               ? (<><span className="btn-spinner" aria-hidden="true" />Estimating…</>)
               : 'Generate estimate'}
           </button>
-          <VoiceInput
-            onTranscript={text =>
-              setDescription(d => (d.trim() ? `${d.trimEnd()}\n${text}` : text))
-            }
-          />
         </div>
         {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
       </Reveal>
@@ -812,6 +788,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
             </button>
             <button type="button" className="btn-secondary" onClick={clearAll}>Cancel</button>
           </div>
+          {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
         </div>
       )}
 
@@ -864,7 +841,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
             <div style={{ padding: 12, background: 'var(--color-surface-muted, #f9fafb)', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 12 }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-body)' }}>Keep this in the recipe?</div>
               <p style={{ margin: '2px 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-                One-off by default. Keeping a swap adds it to that ingredient’s options, so next time it’s one tap in Meal Builder.
+                One-off by default. Keeping this adds the ingredient to the saved recipe.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {recipeReview.keepable.map(item => (
@@ -984,6 +961,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
             </button>
             <button type="button" className="btn-secondary" onClick={clearAll} disabled={busy !== ''}>Cancel</button>
           </div>
+          {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
         </div>
       )}
 

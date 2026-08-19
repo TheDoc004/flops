@@ -1,20 +1,14 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-08-11_
+_Last updated: 2026-08-17_
 
-> **▶ Next up: step 1 of the deploy — auth + rate limiting.** Plan is written and decisions are
-> made — see **`docs/future/deployment-and-mcp.md`**. Three steps: (1) auth + rate limiting,
-> (2) Render/Vercel deploy with backups, (3) MCP server so meals can be logged from the
-> Claude app on the phone. That plan also carries a 2026-08-02 codebase audit (what's safe,
-> what breaks once public) so it need not be re-derived.
+> **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
+> Viewing day does not auto-flip at midnight; coach tools are read + summarize.
 >
-> **The endgame is now bigger than "my phone."** FLOPS is headed for the App Store as a
-> coach/gym-facing product — see **`docs/future/coach-layer-and-onboarding.md`** for the
-> economics and platform decisions (FLOPS pays for AI, HealthKit over per-vendor wearable APIs,
-> Capacitor wrap, TestFlight before any listing). Steps 1–3 above are unchanged and are
-> prerequisites for all of it. Two things that plan adds to **step 1**: an `ai_usage` table with
-> a per-user cap (cost control, same seam as rate limiting), and model routing kept in config
-> rather than hardcoded.
+> **Auth / onboarding / coach** are live: Bearer sessions (email OTP + Apple/dev),
+> first-run onboarding, invite codes, consent scopes, Coach roster + soft suggestions.
+> **Deploy:** follow **`docs/deploy-checklist.md`** (Render + Vercel). App Store later:
+> **`docs/app-store-path.md`**.
 
 Snapshot of where the app stands so any session (human or Claude) can pick up quickly.
 For conventions, architecture, and the phase vision, see `CLAUDE.md` — this file is the
@@ -54,10 +48,11 @@ cd server && npm run dev        # plain `node --watch index.js`; does NOT auto-r
 cd client && npm run dev
 ```
 
-SQLite DB: `server/nutrition.db` (a stale copy at repo root — ignore it). Single user,
-`user_id = 0` hardcoded, no auth (intentional while localhost-only — changes at deploy,
-see `docs/future/deployment-and-mcp.md`). Schema + migrations are inline in
-`server/db.js` (`PRAGMA table_info` + conditional `ALTER TABLE`).
+SQLite DB: `server/nutrition.db` (a stale copy at repo root — ignore it). Multi-user with
+auth: Bearer session on `/api/*`; ownership via `req.user.id`. Legacy `user_id = 0` rows
+are migrated to the first account on boot (`migrateLegacyUserZero`). First email sign-in
+claims the legacy `owner@local.flops` row so existing meals/recipes stay yours. Schema +
+migrations are inline in `server/db.js` (`PRAGMA table_info` + conditional `ALTER TABLE`).
 
 > If a running API server predates a schema/route change, **restart it** — a plain
 > `node index.js` will not pick up new code or run new migrations on its own.
@@ -68,41 +63,17 @@ see `docs/future/deployment-and-mcp.md`). Schema + migrations are inline in
 
 ### Nutrition (Phase 1) — solid / feature-complete
 Dashboard, Recipe Library, Ingredient Library (OCR label scan + **barcode scan**), Meal Builder
-(wizard + slots), History, Goals (versioned weekly min/max), Report (PDF), Profile, Adherence,
-and the AI Macro Logger all work. Rough edges are **code-size/debt**, not missing features.
+(wizard), History, Goals (versioned weekly min/max), Report (PDF), Profile, Adherence,
+and AI Estimate all work. Rough edges are **code-size/debt**, not missing features.
 
-**Log an ingredient as a food (2026-08-11).** The Log a Meal picker searches
-saved recipes **and** library ingredients together, so almonds or a banana log without a recipe and
-**without an AI call**. Picking an ingredient swaps Servings for Amount, pre-fills one label
-serving, and previews macros live. It routes through `POST /api/log/custom`, passing the ingredient
-row so the server reads that ingredient's **stored label micros** rather than estimating — a
-barcode-scanned food logs real measured micros. This is the fourth meal-entry tool and it sits
-below the AI logger: **known macros → manual; exact ingredients → builder; one library food →
-this; rough idea → AI logger.**
-
-**Log a Meal — compacted, and scoped to logging (2026-08-06).** The "Customize this log"
-ingredient list is now **one line per ingredient** — name | amount | unit — inside a single
-divided list (`.slot-list` / `.slot-row` in `index.css`), with the field captions in one header
-row instead of repeating per ingredient. Six ingredients went from ~1,000px of scrolling to
-~330px, so you can check portions and reach the Log button without hunting. Time + Notes share a
-row for the same reason. Each row shows **one** name: the slot's own label wins, the library
-ingredient name + brand only fill in when the slot has no label (full name lives in the row's
-`title`), and names ellipsize rather than wrap so rows stay a uniform height.
-
-Two features came out in the process:
-
-- Per-ingredient "Use recipe amount" buttons → **one "Use recipe amounts" reset** beside the
-  "Customize this log" heading, shown only when something differs; it resets every slot at once.
-  List-wide actions belong in the section header, not interleaved with the rows you're reading.
-- **"Save amounts to the recipe" is gone.** Reshaping a recipe belongs to the recipe editor /
-  Meal Builder — offering it mid-log was overengineering, and it needed two lines of explanation
-  to justify itself. `buildRecipeAmountUpdate` (and its tests) went with it; the surviving
-  `recipeAmountUpdate.js` just answers "do these amounts differ from the recipe's?", which gates
-  the reset button. Amounts still carry over to your next log of that recipe via localStorage.
-
-**Design rule this established:** the Log a Meal modal is for *logging*. Before adding to it, ask
-whether the thing serves **this log**; if it shapes the recipe, it goes to the editor. See the
-"Dense edit list" pattern in `docs/design-system.md`.
+**Log Meal vs AI Estimate (2026-08-17).** Log a Meal is a **receipt**: optionally
+seed from a saved recipe, then add/edit library foods. Recipes and ingredients
+are separate pickers — not one combined search. The modal no longer links out to
+AI Estimate or Meal Builder (Today has Hey Estimate; recipes are edited in Meal
+Builder). **AI Estimate** is speak / natural language (“I had three eggs…”)
+including matching a saved recipe by speech — not a second receipt builder.
+Logging a seeded recipe still keeps `recipe_id`; a custom receipt uses the
+custom path. Tap a receipt name for AI substitutes from the Ingredient Library.
 
 **AI Macro Logger — recipe saving fixed (2026-07-26).** "Save as recipe" (and meal-prep
 save) now back each ingredient with an Ingredient Library entry and record the link in

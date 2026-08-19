@@ -1,4 +1,5 @@
 const express = require('express');
+const { uid } = require('../userId');
 
 /** ISO weekday: Monday = 1 … Sunday = 7 */
 const WEEKDAY_RANGE = [1, 2, 3, 4, 5, 6, 7];
@@ -166,19 +167,13 @@ function createGoalsRouter(db) {
   }
 
   router.get('/', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const date = normalizeIsoDate(req.query.date) || getLocalDateISO();
     res.json(buildPayload(userId, date));
   });
 
   router.put('/', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const effectiveStartDate = normalizeIsoDate(req.body?.effective_start_date) || getLocalDateISO();
     const { goals } = req.body;
     if (!Array.isArray(goals)) {

@@ -890,6 +890,22 @@ dialog[open]::backdrop {
   color: var(--color-primary);
   font-weight: 600;
 }
+.menu-pop-item.is-danger {
+  color: var(--color-danger);
+}
+.menu-pop-item.is-danger:hover {
+  background: #fef2f2;
+  color: var(--color-danger-hover);
+}
+
+/* Meal row ⋯ trigger — sized to sit beside ViewToggle on the dashboard. */
+.meal-row-menu-btn {
+  padding: 6px clamp(10px, 1vw, 12px);
+  font-size: clamp(14px, 1vw, 16px);
+  min-height: clamp(32px, 2.4vw, 38px);
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
 
 @media (prefers-reduced-motion: reduce) {
   dialog[open],
@@ -1136,7 +1152,7 @@ dialog[open]::backdrop {
   }
 }
 
-/* ── Slot list: the editable ingredients inside "Customize this log" ──
+/* ── Receipt list: the editable ingredients inside Log Meal ──
    One line per ingredient — name left, amount + unit right — so a whole recipe
    fits on screen and you can check portions and reach the Log button without
    scrolling through a stack of cards. The per-field labels live once in the
@@ -1151,7 +1167,7 @@ dialog[open]::backdrop {
 .slot-list__head,
 .slot-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 74px 64px;
+  grid-template-columns: minmax(0, 1fr) 74px 64px 36px;
   gap: var(--space-8);
   align-items: center;
   padding: var(--space-6) var(--space-10);
@@ -1166,6 +1182,7 @@ dialog[open]::backdrop {
 }
 /* Nudge the field captions over their controls (border + padding of the input). */
 .slot-list__head > span + span { padding-left: var(--space-8); }
+.slot-list__line + .slot-list__line,
 .slot-row + .slot-row { border-top: 1px solid var(--color-divider-strong); }
 .slot-row {
   transition: background var(--dur-fast) var(--ease-out);
@@ -1179,9 +1196,7 @@ dialog[open]::backdrop {
   font-size: var(--text-secondary);
   font-weight: 600;
   color: var(--color-text-strong);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   transition: color var(--dur-fast) var(--ease-out);
 }
 .slot-row:hover .slot-row__name,
@@ -1209,20 +1224,52 @@ dialog[open]::backdrop {
   color: var(--color-text-body);
   padding-left: var(--space-2);
 }
+/* Compact ✕ that stays inside the last grid column instead of a full btn-secondary. */
+.slot-row__remove {
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.slot-row__remove:hover,
+.slot-row__remove:focus-visible {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.slot-list__subs {
+  margin: 0 var(--space-10) var(--space-8);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  font-size: 12px;
+}
 /* Touch devices get no hover state — :hover there sticks after a tap. */
 @media (hover: none) {
   .slot-row:hover { background: #fff; }
   .slot-row:hover .slot-row__name { color: var(--color-text-strong); }
+  .slot-row__remove:hover { background: transparent; color: var(--color-text-muted); }
 }
 @media (max-width: 480px) {
   .slot-list__head,
   .slot-row {
-    grid-template-columns: minmax(0, 1fr) 68px 60px;
+    grid-template-columns: minmax(0, 1fr) 68px 56px 36px;
     gap: var(--space-6);
     padding-inline: var(--space-8);
   }
   .slot-row input,
   .slot-row select { min-height: var(--touch-target); }
+  .slot-row__remove { width: 36px; height: 36px; }
 }
 
 /* ── Logging style selector (Ingredients + Meal Builder) ── */
@@ -1332,9 +1379,7 @@ dialog[open]::backdrop {
 }
 
 /* ── Meal Builder Step 2: ingredient rows ──
-   Desktop keeps the original 5-column grid with role + substitutes always
-   visible. Mobile (≤699px) becomes a stacked card: search → amount+unit →
-   remove, with role label + substitutes collapsed behind "More options". */
+   Four fields per row: ingredient, amount, unit, remove. */
 
 /* Each ingredient is a card at every width. Desktop used to leave .mb-line
    completely unstyled, so five ingredients read as one continuous wall of
@@ -1348,13 +1393,11 @@ dialog[open]::backdrop {
 }
 .mb-line-row {
   display: grid;
-  grid-template-columns: 1.4fr 2fr 100px 80px auto;
+  grid-template-columns: minmax(0, 1fr) 100px 80px auto;
   gap: 8px;
   align-items: end;
 }
 .mb-amount-unit { display: contents; }  /* amount + unit are direct grid cells on desktop */
-.mb-more-toggle { display: none; }       /* mobile-only control */
-.mb-role-mobile { display: none; }       /* desktop uses the in-grid role field */
 /* Header carries the ingredient number at every width. The trash icon inside it
    is mobile-only — desktop keeps the inline Remove button in the grid row. */
 .mb-line-header {
@@ -1411,7 +1454,6 @@ dialog[open]::backdrop {
     gap: 10px;
     order: 1;
   }
-  .mb-role-desktop { display: none; }     /* role moves into the collapsed advanced section */
   .mb-field-ingredient { width: 100%; }
   .mb-amount-unit {
     display: grid;
@@ -1423,27 +1465,6 @@ dialog[open]::backdrop {
   .mb-remove { display: none; }            /* replaced by the trash icon in the header */
 
   .mb-macro { order: 2; }
-
-  .mb-more-toggle {
-    order: 3;
-    display: inline-flex;
-    align-items: center;
-    align-self: flex-start;
-    min-height: 36px;
-    padding: 6px 0;
-    background: transparent;
-    border: none;
-    color: var(--color-link);
-    font-size: 13px;
-    font-weight: 500;
-  }
-
-  .mb-advanced {
-    order: 4;
-    display: none;
-  }
-  .mb-line.is-expanded .mb-advanced { display: block; }
-  .mb-role-mobile { display: block; }
 }
 
 /* ── Meal Builder wizard: stepper header + step navigation ──
@@ -1855,6 +1876,79 @@ dialog[open]::backdrop {
   .ingredient-card-actions {
     flex-shrink: 0;
     justify-content: flex-end;
+  }
+}
+
+/* ── Dashboard off-today banner ──
+   Height expands via grid 0fr→1fr so the greeting below is pushed down while
+   the day ←/→ row above stays put. Content also eases in slightly from above. */
+.day-off-banner-slot {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition:
+    grid-template-rows var(--dur-open) var(--ease-out),
+    margin-bottom var(--dur-open) var(--ease-out);
+  margin-bottom: 0;
+}
+.day-off-banner-slot.is-open {
+  grid-template-rows: 1fr;
+  margin-bottom: 16px;
+}
+.day-off-banner-slot-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.day-off-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e3a8a;
+  font-size: 14px;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition:
+    opacity var(--dur-open) var(--ease-out),
+    transform var(--dur-open) var(--ease-out);
+}
+.day-off-banner--future {
+  background: #faf5ff;
+  border-color: #e9d5ff;
+  color: #581c87;
+}
+.day-off-banner-slot.is-open .day-off-banner {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.day-off-banner-copy {
+  flex: 1 1 200px;
+}
+.day-off-banner-copy span {
+  color: #64748b;
+}
+.day-off-banner--future .day-off-banner-copy span {
+  color: #6b7280;
+}
+.day-off-banner-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .day-off-banner-slot,
+  .day-off-banner {
+    transition: none;
+  }
+  .day-off-banner {
+    transform: none;
   }
 }
 

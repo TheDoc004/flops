@@ -20,9 +20,9 @@ function ingredientMeta(i) {
 }
 
 /**
- * Picker for a saved recipe or — when `ingredients` is passed — a single library
- * ingredient, so snack foods like almonds or a banana are logged from the same
- * search box instead of needing a recipe or the AI logger.
+ * Picker for a saved recipe. Pass `ingredients` to also search the Ingredient
+ * Library in the same box (grouped headers). Log Meal uses recipes-only —
+ * library foods are added via IngredientCombobox on the receipt.
  *
  * @param {object} p
  * @param {Array<{id: number|string, name: string, serving_size?: string}>} p.recipes

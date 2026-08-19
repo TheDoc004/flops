@@ -4,11 +4,15 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { createDb } = require('../db');
+const { createAuthMiddleware } = require('../middleware/auth');
 const { createGoalsRouter } = require('../routes/goals');
 
 function buildApp(db = createDb(':memory:')) {
   const app = express();
+  const { attachUser, requireAuth } = createAuthMiddleware(db);
   app.use(express.json());
+  app.use(attachUser);
+  app.use(requireAuth);
   app.use('/api/goals', createGoalsRouter(db));
   return { app, db };
 }
@@ -18,7 +22,7 @@ describe('GET /api/goals', () => {
     const { app } = buildApp();
     const res = await request(app).get('/api/goals?date=2026-01-01');
     expect(res.status).toBe(200);
-    expect(res.body.user_id).toBe(0);
+    expect(res.body.user_id).toBe(1);
     expect(res.body.goals).toHaveLength(7);
     expect(res.body.goals[0].weekday).toBe(1);
     expect(res.body.goals[0].label).toBe('Monday');
@@ -27,10 +31,11 @@ describe('GET /api/goals', () => {
     expect(res.body.versions).toEqual([]);
   });
 
-  it('returns 400 for invalid user_id', async () => {
+  it('ignores client-supplied user_id and uses the authenticated user', async () => {
     const { app } = buildApp();
-    const res = await request(app).get('/api/goals?user_id=-1');
-    expect(res.status).toBe(400);
+    const res = await request(app).get('/api/goals?user_id=-1&date=2026-01-01');
+    expect(res.status).toBe(200);
+    expect(res.body.user_id).toBe(1);
   });
 });
 
@@ -137,7 +142,7 @@ describe('PUT /api/goals', () => {
 
     const db2 = createDb(dbPath);
     const migrated = db2
-      .prepare('SELECT effective_start_date, calories_min, calories_max FROM day_goal_versions WHERE user_id = 0 AND weekday = 1')
+      .prepare('SELECT effective_start_date, calories_min, calories_max FROM day_goal_versions WHERE user_id = 1 AND weekday = 1')
       .get();
     expect(migrated.effective_start_date).toBe('1970-01-01');
     expect(migrated.calories_min).toBe(2000);

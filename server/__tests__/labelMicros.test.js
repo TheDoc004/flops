@@ -6,7 +6,7 @@ function seedIngredient(db, { id, name, micros, ...rest }) {
     `INSERT INTO label_ingredients
        (id, user_id, name, serving_size_text, calories, protein_g, carbs_g, fat_g,
         tracking_type, unit_name, serving_quantity, grams_per_serving, micros_json)
-     VALUES (@id, 0, @name, '1 serving', 100, 0, 0, 0,
+     VALUES (@id, 1, @name, '1 serving', 100, 0, 0, 0,
              @tracking_type, @unit_name, @serving_quantity, @grams_per_serving, @micros_json)`
   ).run({
     id,
@@ -77,7 +77,7 @@ describe('labelMicrosForRows', () => {
     seedIngredient(db, { id: 1, name: 'Cheerios', grams_per_serving: 37, micros: { iron_mg: 4.5, sodium_mg: 160 } });
     const { micros, covered, uncovered } = labelMicrosForRows(db, [
       { label_ingredient_id: 1, amount: 74, unit: 'g' }, // two servings
-    ]);
+    ], 1);
     expect(micros).toEqual({ iron_mg: 9, sodium_mg: 320 });
     expect(covered).toHaveLength(1);
     expect(uncovered).toHaveLength(0);
@@ -90,7 +90,7 @@ describe('labelMicrosForRows', () => {
     const { micros } = labelMicrosForRows(db, [
       { label_ingredient_id: 1, amount: 100, unit: 'g' },
       { label_ingredient_id: 2, amount: 100, unit: 'g' },
-    ]);
+    ], 1);
     expect(micros).toEqual({ iron_mg: 5, zinc_mg: 1 });
   });
 
@@ -102,7 +102,7 @@ describe('labelMicrosForRows', () => {
       { label_ingredient_id: 1, amount: 100, unit: 'g' },
       { label_ingredient_id: 2, amount: 50, unit: 'g' },
       { name: 'handful of spinach' }, // free-text AI row
-    ]);
+    ], 1);
     expect(micros).toEqual({ iron_mg: 2 });
     expect(covered).toHaveLength(1);
     expect(uncovered).toHaveLength(2);
@@ -111,13 +111,13 @@ describe('labelMicrosForRows', () => {
   it('treats an unresolvable amount as uncovered rather than guessing', () => {
     const db = createDb(':memory:');
     seedIngredient(db, { id: 1, name: 'No serving size', micros: { iron_mg: 2 } });
-    const { micros, uncovered } = labelMicrosForRows(db, [{ label_ingredient_id: 1, amount: 50, unit: 'g' }]);
+    const { micros, uncovered } = labelMicrosForRows(db, [{ label_ingredient_id: 1, amount: 50, unit: 'g' }], 1);
     expect(micros).toEqual({});
     expect(uncovered).toHaveLength(1);
   });
 
   it('handles an empty list', () => {
     const db = createDb(':memory:');
-    expect(labelMicrosForRows(db, [])).toEqual({ micros: {}, covered: [], uncovered: [] });
+    expect(labelMicrosForRows(db, [], 1)).toEqual({ micros: {}, covered: [], uncovered: [] });
   });
 });

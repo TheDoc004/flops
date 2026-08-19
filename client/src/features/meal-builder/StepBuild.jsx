@@ -1,11 +1,9 @@
 import IngredientCombobox from './IngredientCombobox';
-import { newLine, macroSummaryText, getSuggestedSubstitutes } from './builderUtils';
+import { newLine, macroSummaryText } from './builderUtils';
 
 /**
- * Wizard step 1 — assemble the meal from saved ingredients. Live per-row
- * macros and running totals; role labels and substitutes tucked behind the
- * per-row "more options" toggle on mobile. Adding a missing ingredient is an
- * optional detour via onAddIngredient.
+ * Wizard step 1 — assemble the meal from saved ingredients.
+ * Recipes are named ingredient lists with amounts (no slots / substitutes).
  */
 export default function StepBuild({
   savedLabels,
@@ -14,15 +12,9 @@ export default function StepBuild({
   setLines,
   lineMacros,
   totals,
-  expandedLines,
-  toggleLineExpanded,
   updateLine,
-  addSubstituteToLine,
-  removeSubstituteFromLine,
-  handleRoleKeyDown,
   handleIngredientSelect,
   handleAmountKeyDown,
-  roleLabelRefs,
   comboboxRefs,
   amountRefs,
   onRequestCreate,
@@ -41,7 +33,7 @@ export default function StepBuild({
           </button>
         </div>
         <p style={{ margin: '0 0 14px', fontSize: 15, color: 'var(--color-text-muted)' }}>
-          Pick ingredients and amounts — macros calculate automatically.
+          Pick ingredients and amounts — macros calculate automatically. Substitutes happen later when you log.
         </p>
         {savedLabels.length === 0 && (
           <div
@@ -64,7 +56,7 @@ export default function StepBuild({
         {lines.map((line, idx) => {
           const m = lineMacros[idx];
           return (
-            <div key={line.id} className={`mb-line${expandedLines.has(line.id) ? ' is-expanded' : ''}`} style={{ marginBottom: 12 }}>
+            <div key={line.id} className="mb-line" style={{ marginBottom: 12 }}>
               <div className="mb-line-header">
                 <span className="mb-line-title">Ingredient {idx + 1}</span>
                 <button
@@ -81,20 +73,10 @@ export default function StepBuild({
                 </button>
               </div>
               <div className="mb-line-row">
-                <div className="mb-role-desktop">
-                  <label style={{ fontSize: 13 }}>Role label</label>
-                  <input
-                    ref={el => { if (el) roleLabelRefs.current[line.id] = el; else delete roleLabelRefs.current[line.id]; }}
-                    value={line.roleLabel}
-                    onChange={e => updateLine(line.id, { roleLabel: e.target.value })}
-                    onKeyDown={e => handleRoleKeyDown(e, line.id)}
-                    placeholder="e.g. Yogurt"
-                  />
-                </div>
                 <div className="mb-field-ingredient">
                   <IngredientCombobox
                     ref={el => { if (el) comboboxRefs.current[line.id] = el; else delete comboboxRefs.current[line.id]; }}
-                    label="Ingredient (default)"
+                    label="Ingredient"
                     items={savedLabels}
                     value={line.labelIngredientId}
                     onChange={(next) => updateLine(line.id, { labelIngredientId: next })}
@@ -134,78 +116,6 @@ export default function StepBuild({
                 <button type="button" className="btn-secondary mb-remove" onClick={() => setLines(prev => prev.filter(l => l.id !== line.id))} disabled={lines.length <= 1}>Remove</button>
               </div>
 
-              <button
-                type="button"
-                className="mb-more-toggle"
-                onClick={() => toggleLineExpanded(line.id)}
-                aria-expanded={expandedLines.has(line.id)}
-              >
-                {expandedLines.has(line.id) ? '▲ Fewer options' : '▾ Role label & substitutes'}
-              </button>
-
-              <div className="mb-advanced" style={{ marginTop: 8 }}>
-                <div className="mb-role-mobile">
-                  <label style={{ fontSize: 13 }}>Role label</label>
-                  <input
-                    value={line.roleLabel}
-                    onChange={e => updateLine(line.id, { roleLabel: e.target.value })}
-                    placeholder="e.g. Yogurt"
-                  />
-                </div>
-                <label style={{ fontSize: 13, color: 'var(--color-text-muted)', display: 'block', marginBottom: 6 }}>Substitutes (optional)</label>
-                {(line.substitute_label_ingredient_ids || []).length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                    {(line.substitute_label_ingredient_ids || []).map(oid => {
-                      const li = ingById[String(oid)];
-                      return (
-                        <span
-                          key={oid}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            padding: '4px 8px',
-                            background: '#eef2ff',
-                            borderRadius: 6,
-                            fontSize: 14,
-                          }}
-                        >
-                          {li ? li.name : `#${oid}`}
-                          <button
-                            type="button"
-                            aria-label="Remove substitute"
-                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}
-                            onClick={() => removeSubstituteFromLine(line.id, oid)}
-                          >
-                            ×
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-                {line.labelIngredientId ? (() => {
-                  const defaultIng = ingById[line.labelIngredientId];
-                  const alreadyAdded = new Set([
-                    Number(line.labelIngredientId),
-                    ...(line.substitute_label_ingredient_ids || []),
-                  ]);
-                  const subCandidates = savedLabels.filter(x => !alreadyAdded.has(x.id));
-                  const subSuggestions = getSuggestedSubstitutes(defaultIng, subCandidates);
-                  return (
-                    <IngredientCombobox
-                      label=""
-                      items={subCandidates}
-                      value=""
-                      onChange={id => addSubstituteToLine(line.id, id)}
-                      placeholder="Search saved ingredients…"
-                      suggestions={subSuggestions}
-                    />
-                  );
-                })() : (
-                  <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>Choose an ingredient first.</p>
-                )}
-              </div>
               {m && (
                 <div className="mb-macro" style={{ marginTop: 6, fontSize: 13, color: 'var(--color-text-muted)' }}>
                   This row: {macroSummaryText(m)}

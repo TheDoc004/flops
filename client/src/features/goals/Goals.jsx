@@ -99,7 +99,6 @@ export default function Goals() {
     setSaved(false);
     try {
       const data = await saveGoals({
-        user_id: 0,
         effective_start_date: today,
         goals: rows.map(toPayloadRow),
       });

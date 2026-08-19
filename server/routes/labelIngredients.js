@@ -1,4 +1,5 @@
 const express = require('express');
+const { uid } = require('../userId');
 const { normalizeBarcode } = require('../openFoodFactsService');
 const { buildMicrosBlob } = require('../microNutrients');
 
@@ -36,10 +37,7 @@ function createLabelIngredientsRouter(db) {
   const router = express.Router();
 
   router.get('/', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const rows = db
       .prepare(
         `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
@@ -53,7 +51,7 @@ function createLabelIngredientsRouter(db) {
   });
 
   router.get('/:id', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
+    const userId = uid(req);
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
     const row = db
@@ -69,10 +67,7 @@ function createLabelIngredientsRouter(db) {
   });
 
   router.post('/', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const name = String(req.body?.name ?? '').trim();
     const base_label = normalizeOptionalString(req.body?.base_label, { maxLen: 64 });
     const brand_name = normalizeOptionalString(req.body?.brand_name, { maxLen: 64 });
@@ -151,9 +146,8 @@ function createLabelIngredientsRouter(db) {
   });
 
   router.put('/:id', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
+    const userId = uid(req);
     const id = Number(req.params.id);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
 
     const existing = db.prepare('SELECT id FROM label_ingredients WHERE id = ? AND user_id = ?').get(id, userId);
@@ -225,10 +219,7 @@ function createLabelIngredientsRouter(db) {
   });
 
   router.post('/used', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const ids = req.body?.ids;
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ error: 'ids must be a non-empty array' });
@@ -257,7 +248,7 @@ function createLabelIngredientsRouter(db) {
   });
 
   router.delete('/:id', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
+    const userId = uid(req);
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
     const n = db.prepare('DELETE FROM label_ingredients WHERE id = ? AND user_id = ?').run(id, userId);

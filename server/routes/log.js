@@ -1,9 +1,12 @@
 const express = require('express');
+const { uid } = require('../userId');
 const {
   adjustPerServingMacrosForResolvedSlots,
   resolvedIngredientRows,
   resolveSlotsForLog,
   listVariableSlotsFromRecipeRow,
+  listRecipeIngredientLines,
+  resolveReceiptForLog,
 } = require('../recipeIngredients');
 const { buildMicrosBlob } = require('../microNutrients');
 const {
@@ -53,9 +56,9 @@ function ingredientsJsonFromClientRows(rows) {
 }
 
 /** Resolved per-ingredient rows for a recipe log (array). Never throws. */
-function safeRecipeIngredientRows(db, recipe, resolvedSlots) {
+function safeRecipeIngredientRows(db, recipe, resolvedSlots, userId) {
   try {
-    return resolvedIngredientRows(db, recipe, resolvedSlots || {});
+    return resolvedIngredientRows(db, recipe, resolvedSlots || {}, userId);
   } catch {
     return [];
   }
@@ -76,12 +79,12 @@ function ingredientsJsonFromRows(rows) {
  *      e.g. a manual name-only recipe)
  *   4. client-sent micros object
  */
-async function resolveMicrosJson(db, body, recipe, resolvedRows = null) {
+async function resolveMicrosJson(db, body, recipe, resolvedRows = null, userId) {
   if (Array.isArray(body?.ingredients) && body.ingredients.length) {
-    return microsJsonPreferringLabels(db, body.ingredients);
+    return microsJsonPreferringLabels(db, body.ingredients, userId);
   }
   if (Array.isArray(resolvedRows) && resolvedRows.length) {
-    return microsJsonPreferringLabels(db, resolvedRows);
+    return microsJsonPreferringLabels(db, resolvedRows, userId);
   }
   if (recipe && !recipe.is_quick_food) {
     const ings = normalizedIngredientsFromRecipe(db, recipe);
@@ -105,8 +108,32 @@ const ENTRY_JOIN = `
   LEFT JOIN recipes r ON le.recipe_id = r.id
 `;
 
+function hasSlotPayload(body) {
+  return !!(
+    (body?.slot_selections && typeof body.slot_selections === 'object' && !Array.isArray(body.slot_selections)) ||
+    (body?.log_slot_customizations && typeof body.log_slot_customizations === 'object' && !Array.isArray(body.log_slot_customizations))
+  );
+}
+
+/** Default log receipt from the recipe's library lines (no client ingredients). */
+function receiptFromRecipeTemplate(db, recipe, userId) {
+  const lines = listRecipeIngredientLines(recipe);
+  if (!lines.length) return null;
+  return resolveReceiptForLog(
+    db,
+    lines.map(l => ({
+      name: l.name,
+      amount: Number(l.amount),
+      unit: l.unit,
+      label_ingredient_id: l.label_ingredient_id,
+    })),
+    userId
+  );
+}
+
 function mapSlotAdjustError(e) {
   if (!e || !e.code) return 'Could not calculate meal macros.';
+  if (e.code === 'EMPTY_RECEIPT') return 'Add at least one ingredient with a valid amount.';
   if (e.code === 'INVALID_SLOT_SELECTION') return 'Invalid ingredient choice for a variable slot.';
   if (e.code === 'INVALID_LOG_SLOT_CUSTOMIZATION') return 'Invalid log-time ingredient customization.';
   if (e.code === 'INVALID_SLOT_AMOUNT') return 'Invalid amount on a recipe variable slot.';
@@ -141,6 +168,7 @@ function createLogRouter(db) {
   }
 
   router.post('/quick-food', (req, res) => {
+    const userId = uid(req);
     const date = normalizeIsoDate(req.body?.date);
     if (!date) return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
 
@@ -172,39 +200,40 @@ function createLogRouter(db) {
 
     const findExisting = db.prepare(
       `SELECT id FROM recipes
-       WHERE COALESCE(is_quick_food, 0) = 1 AND lower(name) = lower(?) AND serving_size = '100 g'
+       WHERE user_id = ? AND COALESCE(is_quick_food, 0) = 1 AND lower(name) = lower(?) AND serving_size = '100 g'
        ORDER BY id ASC LIMIT 1`
     );
     const updateExisting = db.prepare(
       `UPDATE recipes
        SET calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = NULL, ingredients = '[]', recipe_kind = 'permanent', is_archived = 0, meal_builder_meta = NULL, is_quick_food = 1
-       WHERE id = ?`
+       WHERE id = ? AND user_id = ?`
     );
     const insertRecipe = db.prepare(
-      `INSERT INTO recipes (name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients, recipe_kind, remaining_uses, max_uses, is_archived, meal_builder_meta, is_quick_food)
-       VALUES (?, '100 g', ?, ?, ?, ?, NULL, '[]', 'permanent', NULL, NULL, 0, NULL, 1)`
+      `INSERT INTO recipes (user_id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients, recipe_kind, remaining_uses, max_uses, is_archived, meal_builder_meta, is_quick_food)
+       VALUES (?, ?, '100 g', ?, ?, ?, ?, NULL, '[]', 'permanent', NULL, NULL, 0, NULL, 1)`
     );
     const insertLog = db.prepare(
       `INSERT INTO log_entries (
-         recipe_id, date, time_min, servings, notes,
+         user_id, recipe_id, date, time_min, servings, notes,
          recipe_name, serving_size, recipe_calories, recipe_protein_g, recipe_carbs_g, recipe_fat_g, recipe_fiber_g, recipe_is_quick_food,
          slot_selections_json
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
     );
 
     let entryId;
     try {
       const run = db.transaction(() => {
-        const existing = findExisting.get(name);
+        const existing = findExisting.get(userId, name);
         let recipeId;
         if (existing?.id) {
           recipeId = existing.id;
-          updateExisting.run(calories_100g, protein_g_100g, carbs_g_100g, fat_g_100g, recipeId);
+          updateExisting.run(calories_100g, protein_g_100g, carbs_g_100g, fat_g_100g, recipeId, userId);
         } else {
-          const r = insertRecipe.run(name, calories_100g, protein_g_100g, carbs_g_100g, fat_g_100g);
+          const r = insertRecipe.run(userId, name, calories_100g, protein_g_100g, carbs_g_100g, fat_g_100g);
           recipeId = r.lastInsertRowid;
         }
         const ins = insertLog.run(
+          userId,
           recipeId,
           date,
           t,
@@ -226,7 +255,7 @@ function createLogRouter(db) {
       return res.status(500).json({ error: 'Failed to quick-log food' });
     }
 
-    res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ?`).get(entryId));
+    res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ? AND le.user_id = ?`).get(entryId, userId));
   });
 
   /**
@@ -236,6 +265,7 @@ function createLogRouter(db) {
    * NEVER in the Recipe Library. Deduped by name so repeats don't pile up.
    */
   router.post('/custom', async (req, res) => {
+    const userId = uid(req);
     const date = normalizeIsoDate(req.body?.date);
     if (!date) return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
 
@@ -264,39 +294,40 @@ function createLogRouter(db) {
 
     const findExisting = db.prepare(
       `SELECT id FROM recipes
-       WHERE COALESCE(is_quick_food, 0) = 1 AND lower(name) = lower(?) AND serving_size = '1 serving'
+       WHERE user_id = ? AND COALESCE(is_quick_food, 0) = 1 AND lower(name) = lower(?) AND serving_size = '1 serving'
        ORDER BY id ASC LIMIT 1`
     );
     const updateExisting = db.prepare(
       `UPDATE recipes
        SET calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?, ingredients = '[]', recipe_kind = 'permanent', is_archived = 0, meal_builder_meta = NULL, is_quick_food = 1
-       WHERE id = ?`
+       WHERE id = ? AND user_id = ?`
     );
     const insertRecipe = db.prepare(
-      `INSERT INTO recipes (name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients, recipe_kind, remaining_uses, max_uses, is_archived, meal_builder_meta, is_quick_food)
-       VALUES (?, '1 serving', ?, ?, ?, ?, ?, '[]', 'permanent', NULL, NULL, 0, NULL, 1)`
+      `INSERT INTO recipes (user_id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients, recipe_kind, remaining_uses, max_uses, is_archived, meal_builder_meta, is_quick_food)
+       VALUES (?, ?, '1 serving', ?, ?, ?, ?, ?, '[]', 'permanent', NULL, NULL, 0, NULL, 1)`
     );
     const insertLog = db.prepare(
       `INSERT INTO log_entries (
-         recipe_id, date, time_min, servings, notes,
+         user_id, recipe_id, date, time_min, servings, notes,
          recipe_name, serving_size, recipe_calories, recipe_protein_g, recipe_carbs_g, recipe_fat_g, recipe_fiber_g, recipe_is_quick_food,
          slot_selections_json
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
     );
 
     let entryId;
     try {
       const run = db.transaction(() => {
-        const existing = findExisting.get(name);
+        const existing = findExisting.get(userId, name);
         let recipeId;
         if (existing?.id) {
           recipeId = existing.id;
-          updateExisting.run(calories, protein_g, carbs_g, fat_g, fiber_g, recipeId);
+          updateExisting.run(calories, protein_g, carbs_g, fat_g, fiber_g, recipeId, userId);
         } else {
-          const r = insertRecipe.run(name, calories, protein_g, carbs_g, fat_g, fiber_g);
+          const r = insertRecipe.run(userId, name, calories, protein_g, carbs_g, fat_g, fiber_g);
           recipeId = r.lastInsertRowid;
         }
         const ins = insertLog.run(
+          userId,
           recipeId,
           date,
           t,
@@ -322,20 +353,21 @@ function createLogRouter(db) {
     // Meal Builder rows with macros). Best-effort; old/empty stays null.
     const ingredientsJson = ingredientsJsonFromClientRows(req.body?.ingredients);
     if (ingredientsJson) {
-      db.prepare('UPDATE log_entries SET ingredients_json = ? WHERE id = ?').run(ingredientsJson, entryId);
+      db.prepare('UPDATE log_entries SET ingredients_json = ? WHERE id = ? AND user_id = ?').run(ingredientsJson, entryId, userId);
     }
 
     // Optional micronutrient estimate — ingredients (AI Logger / Meal Builder)
     // or a client-sent micros object. Best-effort; never blocks the log.
-    const microsJson = await resolveMicrosJson(db, req.body, null);
+    const microsJson = await resolveMicrosJson(db, req.body, null, null, userId);
     if (microsJson) {
-      db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ?').run(microsJson, entryId);
+      db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ? AND user_id = ?').run(microsJson, entryId, userId);
     }
 
-    res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ?`).get(entryId));
+    res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ? AND le.user_id = ?`).get(entryId, userId));
   });
 
   router.get('/days', (req, res) => {
+    const userId = uid(req);
     const limitRaw = req.query.limit;
     const offsetRaw = req.query.offset;
     const limit = limitRaw == null ? 60 : Number(limitRaw);
@@ -358,12 +390,13 @@ function createLogRouter(db) {
                COUNT(*) AS entries_count
           FROM log_entries le
           LEFT JOIN recipes r ON r.id = le.recipe_id
+         WHERE le.user_id = ?
          GROUP BY le.date
          ORDER BY le.date DESC
          LIMIT ? OFFSET ?
         `
       )
-      .all(limit, offset)
+      .all(userId, limit, offset)
       .map(r => ({
         ...r,
         calories: r.calories != null ? Number(r.calories) : 0,
@@ -377,22 +410,24 @@ function createLogRouter(db) {
   });
 
   router.get('/', (req, res) => {
+    const userId = uid(req);
     const { date, start, end } = req.query;
     if (date) {
-      return res.json(db.prepare(`${ENTRY_JOIN} WHERE le.date = ? ORDER BY le.id`).all(date));
+      return res.json(db.prepare(`${ENTRY_JOIN} WHERE le.user_id = ? AND le.date = ? ORDER BY le.id`).all(userId, date));
     }
     if (start && end) {
       return res.json(
         db
-          .prepare(`${ENTRY_JOIN} WHERE le.date >= ? AND le.date <= ? ORDER BY le.date, le.id`)
-          .all(start, end)
+          .prepare(`${ENTRY_JOIN} WHERE le.user_id = ? AND le.date >= ? AND le.date <= ? ORDER BY le.date, le.id`)
+          .all(userId, start, end)
       );
     }
     res.status(400).json({ error: 'Provide ?date=YYYY-MM-DD or ?start=YYYY-MM-DD&end=YYYY-MM-DD' });
   });
 
   router.post('/', async (req, res) => {
-    const { recipe_id, date, time_min, servings, notes, slot_selections, log_slot_customizations } = req.body;
+    const userId = uid(req);
+    const { recipe_id, date, time_min, servings, notes, slot_selections, log_slot_customizations, ingredients } = req.body;
     if (!recipe_id || !date || servings == null) {
       return res.status(400).json({ error: 'Missing required fields: recipe_id, date, servings' });
     }
@@ -400,9 +435,9 @@ function createLogRouter(db) {
       .prepare(
         `SELECT id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients,
                 is_quick_food, recipe_kind, remaining_uses, is_archived, meal_builder_meta
-         FROM recipes WHERE id = ?`
+         FROM recipes WHERE id = ? AND user_id = ?`
       )
-      .get(recipe_id);
+      .get(recipe_id, userId);
     if (!recipe) {
       return res.status(404).json({ error: 'Recipe not found' });
     }
@@ -410,52 +445,86 @@ function createLogRouter(db) {
       return res.status(400).json({ error: 'This meal template is archived (no uses left). Reactivate it from Recipes or use another recipe.' });
     }
 
-    const slots = listVariableSlotsFromRecipeRow(recipe);
+    const hasReceipt = Array.isArray(ingredients) && ingredients.length > 0;
     let perServing;
     let slotJson = null;
     let resolvedSlots = null;
-    if (slots.length > 0) {
+    let recipeRows = [];
+    let ingredientsJson = null;
+
+    if (hasReceipt) {
       try {
-        resolvedSlots = resolveSlotsForLog(db, recipe, slot_selections, log_slot_customizations, null, true);
-        perServing = adjustPerServingMacrosForResolvedSlots(db, recipe, resolvedSlots);
-        slotJson = JSON.stringify(resolvedSlots);
+        const resolved = resolveReceiptForLog(db, ingredients, userId);
+        perServing = resolved.perServing;
+        recipeRows = resolved.rows;
+        ingredientsJson = ingredientsJsonFromRows(recipeRows);
       } catch (e) {
         return res.status(400).json({ error: mapSlotAdjustError(e) });
       }
+    } else if (hasSlotPayload(req.body)) {
+      // Dual-read for old clients that still post slot customizations.
+      const slots = listVariableSlotsFromRecipeRow(recipe);
+      if (slots.length > 0) {
+        try {
+          resolvedSlots = resolveSlotsForLog(db, recipe, slot_selections, log_slot_customizations, null, true, userId);
+          perServing = adjustPerServingMacrosForResolvedSlots(db, recipe, resolvedSlots, userId);
+          slotJson = JSON.stringify(resolvedSlots);
+        } catch (e) {
+          return res.status(400).json({ error: mapSlotAdjustError(e) });
+        }
+      } else {
+        perServing = {
+          calories: recipe.calories,
+          protein_g: recipe.protein_g,
+          carbs_g: recipe.carbs_g,
+          fat_g: recipe.fat_g,
+          fiber_g: recipe.fiber_g,
+        };
+      }
+      recipeRows = safeRecipeIngredientRows(db, recipe, resolvedSlots, userId);
+      ingredientsJson = ingredientsJsonFromRows(recipeRows);
     } else {
-      perServing = {
-        calories: recipe.calories,
-        protein_g: recipe.protein_g,
-        carbs_g: recipe.carbs_g,
-        fat_g: recipe.fat_g,
-        fiber_g: recipe.fiber_g,
-      };
+      try {
+        const fromTemplate = receiptFromRecipeTemplate(db, recipe, userId);
+        if (fromTemplate) {
+          perServing = fromTemplate.perServing;
+          recipeRows = fromTemplate.rows;
+          ingredientsJson = ingredientsJsonFromRows(recipeRows);
+        } else {
+          perServing = {
+            calories: recipe.calories,
+            protein_g: recipe.protein_g,
+            carbs_g: recipe.carbs_g,
+            fat_g: recipe.fat_g,
+            fiber_g: recipe.fiber_g,
+          };
+          recipeRows = safeRecipeIngredientRows(db, recipe, null, userId);
+          ingredientsJson = ingredientsJsonFromRows(recipeRows);
+        }
+      } catch (e) {
+        return res.status(400).json({ error: mapSlotAdjustError(e) });
+      }
     }
-
-    // Per-ingredient breakdown of exactly what was logged (best-effort; empty
-    // for recipes with no macro-bearing ingredient lines). Reused below for the
-    // micronutrient estimate so micros reflect substitutions/edits, not defaults.
-    const recipeRows = safeRecipeIngredientRows(db, recipe, resolvedSlots);
-    const ingredientsJson = ingredientsJsonFromRows(recipeRows);
 
     const t = normalizeTimeMin(time_min);
 
     const insertLog = db.prepare(
       `INSERT INTO log_entries (
-         recipe_id, date, time_min, servings, notes,
+         user_id, recipe_id, date, time_min, servings, notes,
          recipe_name, serving_size, recipe_calories, recipe_protein_g, recipe_carbs_g, recipe_fat_g, recipe_fiber_g, recipe_is_quick_food,
          slot_selections_json, ingredients_json
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const decLimited = db.prepare(
       `UPDATE recipes
        SET remaining_uses = remaining_uses - ?,
            is_archived = CASE WHEN remaining_uses - ? <= 0 THEN 1 ELSE is_archived END
-       WHERE id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL AND remaining_uses >= ?`
+       WHERE id = ? AND user_id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL AND remaining_uses >= ?`
     );
 
     const run = db.transaction(() => {
       const result = insertLog.run(
+        userId,
         recipe_id,
         date,
         t,
@@ -473,11 +542,8 @@ function createLogRouter(db) {
         ingredientsJson
       );
       if (recipe.recipe_kind === 'limited' && recipe.remaining_uses != null) {
-        // One use per serving eaten — a 5-serving meal prep is exhausted after
-        // 5 servings no matter how they're grouped into entries. Fractions
-        // round up (half a serving still opens a container).
         const uses = Math.max(1, Math.ceil(Number(servings) || 1));
-        const u = decLimited.run(uses, uses, recipe_id, uses);
+        const u = decLimited.run(uses, uses, recipe_id, userId, uses);
         if (u.changes === 0) {
           throw new Error('LIMIT_USES');
         }
@@ -495,15 +561,12 @@ function createLogRouter(db) {
       throw e;
     }
 
-    // Estimate micronutrients from the ACTUAL logged ingredients (resolved rows
-    // after substitutions/edits/removals), falling back to recipe defaults only
-    // when there are no resolved rows. Best-effort, per serving.
-    const microsJson = await resolveMicrosJson(db, req.body, recipe, recipeRows);
+    const microsJson = await resolveMicrosJson(db, req.body, recipe, recipeRows, userId);
     if (microsJson) {
-      db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ?').run(microsJson, entryId);
+      db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ? AND user_id = ?').run(microsJson, entryId, userId);
     }
 
-    res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ?`).get(entryId));
+    res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ? AND le.user_id = ?`).get(entryId, userId));
   });
 
   /**
@@ -511,11 +574,12 @@ function createLogRouter(db) {
    * Date is intentionally not editable here to avoid accidental day moves.
    */
   router.put('/:id', async (req, res) => {
+    const userId = uid(req);
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: 'Invalid id' });
     }
-    const existing = db.prepare('SELECT * FROM log_entries WHERE id = ?').get(id);
+    const existing = db.prepare('SELECT * FROM log_entries WHERE id = ? AND user_id = ?').get(id, userId);
     if (!existing) {
       return res.status(404).json({ error: 'Log entry not found' });
     }
@@ -530,23 +594,20 @@ function createLogRouter(db) {
       ? req.body.servings
       : existing.servings;
     const notes = Object.prototype.hasOwnProperty.call(req.body, 'notes') ? req.body.notes : existing.notes;
-    const { slot_selections, log_slot_customizations } = req.body;
+    const { slot_selections, log_slot_customizations, ingredients } = req.body;
 
     if (!recipe_id || servings == null) {
       return res.status(400).json({ error: 'Missing required fields: recipe_id, servings' });
     }
-    const fullRecipe = db.prepare('SELECT * FROM recipes WHERE id = ?').get(recipe_id);
+    const fullRecipe = db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(recipe_id, userId);
     if (!fullRecipe) return res.status(404).json({ error: 'Recipe not found' });
 
     const t = normalizeTimeMin(time_min);
 
     const recipeChanged = String(recipe_id) !== String(existing.recipe_id);
+    const hasReceipt = Array.isArray(ingredients) && ingredients.length > 0;
     const slots = listVariableSlotsFromRecipeRow(fullRecipe);
-    const selectionUpdate =
-      recipeChanged ||
-      (slots.length > 0 &&
-        (Object.prototype.hasOwnProperty.call(req.body, 'slot_selections') ||
-          Object.prototype.hasOwnProperty.call(req.body, 'log_slot_customizations')));
+    const selectionUpdate = recipeChanged || hasReceipt || hasSlotPayload(req.body);
 
     // Limited-use accounting for edits — mirrors the POST decrement and the
     // DELETE restore so remaining_uses stays honest however an entry changes:
@@ -559,7 +620,7 @@ function createLogRouter(db) {
       `UPDATE recipes
        SET remaining_uses = remaining_uses - ?,
            is_archived = CASE WHEN remaining_uses - ? <= 0 THEN 1 ELSE is_archived END
-       WHERE id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL AND remaining_uses >= ?`
+       WHERE id = ? AND user_id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL AND remaining_uses >= ?`
     );
     const restoreLimited = db.prepare(
       `UPDATE recipes
@@ -568,19 +629,19 @@ function createLogRouter(db) {
              ELSE remaining_uses + ?
            END,
            is_archived = CASE WHEN remaining_uses <= 0 THEN 0 ELSE is_archived END
-       WHERE id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL`
+       WHERE id = ? AND user_id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL`
     );
     const isLimited = r => r && r.recipe_kind === 'limited' && r.remaining_uses != null;
     function adjustLimitedUses() {
       if (recipeChanged) {
-        const oldRecipe = db.prepare('SELECT * FROM recipes WHERE id = ?').get(existing.recipe_id);
+        const oldRecipe = db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(existing.recipe_id, userId);
         if (isLimited(oldRecipe)) {
           const back = usesOf(existing.servings);
-          restoreLimited.run(back, back, oldRecipe.id);
+          restoreLimited.run(back, back, oldRecipe.id, userId);
         }
         if (isLimited(fullRecipe)) {
           const need = usesOf(servings);
-          if (consumeLimited.run(need, need, fullRecipe.id, need).changes === 0) {
+          if (consumeLimited.run(need, need, fullRecipe.id, userId, need).changes === 0) {
             throw new Error('LIMIT_USES');
           }
         }
@@ -589,11 +650,11 @@ function createLogRouter(db) {
       if (!isLimited(fullRecipe)) return;
       const delta = usesOf(servings) - usesOf(existing.servings);
       if (delta > 0) {
-        if (consumeLimited.run(delta, delta, fullRecipe.id, delta).changes === 0) {
+        if (consumeLimited.run(delta, delta, fullRecipe.id, userId, delta).changes === 0) {
           throw new Error('LIMIT_USES');
         }
       } else if (delta < 0) {
-        restoreLimited.run(-delta, -delta, fullRecipe.id);
+        restoreLimited.run(-delta, -delta, fullRecipe.id, userId);
       }
     }
 
@@ -601,7 +662,20 @@ function createLogRouter(db) {
       let perServing;
       let slotJson = null;
       let resolvedSlots = null;
-      if (slots.length > 0) {
+      let recipeRows = [];
+      let ingredientsJson = null;
+
+      if (hasReceipt) {
+        try {
+          const resolved = resolveReceiptForLog(db, ingredients, userId);
+          perServing = resolved.perServing;
+          recipeRows = resolved.rows;
+          ingredientsJson = ingredientsJsonFromRows(recipeRows);
+          slotJson = null;
+        } catch (e) {
+          return res.status(400).json({ error: mapSlotAdjustError(e) });
+        }
+      } else if (hasSlotPayload(req.body) && slots.length > 0) {
         try {
           resolvedSlots = resolveSlotsForLog(
             db,
@@ -609,25 +683,39 @@ function createLogRouter(db) {
             slot_selections,
             log_slot_customizations,
             existing.slot_selections_json,
-            recipeChanged
+            recipeChanged,
+            userId
           );
-          perServing = adjustPerServingMacrosForResolvedSlots(db, fullRecipe, resolvedSlots);
+          perServing = adjustPerServingMacrosForResolvedSlots(db, fullRecipe, resolvedSlots, userId);
           slotJson = JSON.stringify(resolvedSlots);
         } catch (e) {
           return res.status(400).json({ error: mapSlotAdjustError(e) });
         }
+        recipeRows = safeRecipeIngredientRows(db, fullRecipe, resolvedSlots, userId);
+        ingredientsJson = ingredientsJsonFromRows(recipeRows);
       } else {
-        perServing = {
-          calories: fullRecipe.calories,
-          protein_g: fullRecipe.protein_g,
-          carbs_g: fullRecipe.carbs_g,
-          fat_g: fullRecipe.fat_g,
-          fiber_g: fullRecipe.fiber_g,
-        };
+        try {
+          const fromTemplate = receiptFromRecipeTemplate(db, fullRecipe, userId);
+          if (fromTemplate) {
+            perServing = fromTemplate.perServing;
+            recipeRows = fromTemplate.rows;
+            ingredientsJson = ingredientsJsonFromRows(recipeRows);
+            slotJson = null;
+          } else {
+            perServing = {
+              calories: fullRecipe.calories,
+              protein_g: fullRecipe.protein_g,
+              carbs_g: fullRecipe.carbs_g,
+              fat_g: fullRecipe.fat_g,
+              fiber_g: fullRecipe.fiber_g,
+            };
+            recipeRows = safeRecipeIngredientRows(db, fullRecipe, null, userId);
+            ingredientsJson = ingredientsJsonFromRows(recipeRows);
+          }
+        } catch (e) {
+          return res.status(400).json({ error: mapSlotAdjustError(e) });
+        }
       }
-      // Recompute the per-ingredient breakdown for the (new) recipe + picks.
-      const recipeRows = safeRecipeIngredientRows(db, fullRecipe, resolvedSlots);
-      const ingredientsJson = ingredientsJsonFromRows(recipeRows);
       try {
         db.transaction(() => {
           adjustLimitedUses();
@@ -636,7 +724,7 @@ function createLogRouter(db) {
              SET recipe_id = ?, time_min = ?, servings = ?, notes = ?,
                  recipe_name = ?, serving_size = ?, recipe_calories = ?, recipe_protein_g = ?, recipe_carbs_g = ?, recipe_fat_g = ?, recipe_fiber_g = ?, recipe_is_quick_food = ?,
                  slot_selections_json = ?, ingredients_json = ?
-             WHERE id = ?`
+             WHERE id = ? AND user_id = ?`
           ).run(
             recipe_id,
             t,
@@ -652,7 +740,8 @@ function createLogRouter(db) {
             fullRecipe.is_quick_food ? 1 : 0,
             slotJson,
             ingredientsJson,
-            id
+            id,
+            userId
           );
         })();
       } catch (e) {
@@ -662,26 +751,23 @@ function createLogRouter(db) {
         throw e;
       }
 
-      // The ingredients changed (recipe swap / substitution / amount edit), so
-      // re-estimate micros from the resolved rows. Only overwrite on a real
-      // result; if there are genuinely no ingredients left, clear stale micros;
-      // a transient estimate failure leaves the existing micros untouched.
-      const microsJson = await resolveMicrosJson(db, req.body, fullRecipe, recipeRows);
+      const microsJson = await resolveMicrosJson(db, req.body, fullRecipe, recipeRows, userId);
       if (microsJson) {
-        db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ?').run(microsJson, id);
+        db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ? AND user_id = ?').run(microsJson, id, userId);
       } else if (!recipeRows.length && !(Array.isArray(req.body?.ingredients) && req.body.ingredients.length)) {
-        db.prepare('UPDATE log_entries SET micros_json = NULL WHERE id = ?').run(id);
+        db.prepare('UPDATE log_entries SET micros_json = NULL WHERE id = ? AND user_id = ?').run(id, userId);
       }
     } else {
       try {
         db.transaction(() => {
           adjustLimitedUses();
-          db.prepare('UPDATE log_entries SET recipe_id = ?, time_min = ?, servings = ?, notes = ? WHERE id = ?').run(
+          db.prepare('UPDATE log_entries SET recipe_id = ?, time_min = ?, servings = ?, notes = ? WHERE id = ? AND user_id = ?').run(
             recipe_id,
             t,
             Number(servings),
             notes ?? null,
-            id
+            id,
+            userId
           );
         })();
       } catch (e) {
@@ -692,11 +778,12 @@ function createLogRouter(db) {
       }
     }
 
-    res.json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ?`).get(id));
+    res.json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ? AND le.user_id = ?`).get(id, userId));
   });
 
   router.delete('/:id', (req, res) => {
-    const entry = db.prepare('SELECT * FROM log_entries WHERE id = ?').get(req.params.id);
+    const userId = uid(req);
+    const entry = db.prepare('SELECT * FROM log_entries WHERE id = ? AND user_id = ?').get(req.params.id, userId);
     if (!entry) {
       return res.status(404).json({ error: 'Log entry not found' });
     }
@@ -713,14 +800,14 @@ function createLogRouter(db) {
              ELSE remaining_uses + ?
            END,
            is_archived = CASE WHEN remaining_uses <= 0 THEN 0 ELSE is_archived END
-       WHERE id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL`
+       WHERE id = ? AND user_id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL`
     );
 
     db.transaction(() => {
-      db.prepare('DELETE FROM log_entries WHERE id = ?').run(entry.id);
+      db.prepare('DELETE FROM log_entries WHERE id = ? AND user_id = ?').run(entry.id, userId);
       if (entry.recipe_id != null) {
         const uses = Math.max(1, Math.ceil(Number(entry.servings) || 1));
-        restoreLimited.run(uses, uses, entry.recipe_id);
+        restoreLimited.run(uses, uses, entry.recipe_id, userId);
       }
     })();
 

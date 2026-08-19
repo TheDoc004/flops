@@ -1,12 +1,16 @@
 const request = require('supertest');
 const express = require('express');
 const { createDb } = require('../db');
+const { createAuthMiddleware } = require('../middleware/auth');
 const { createRecipesRouter } = require('../routes/recipes');
 
 function buildApp() {
   const db = createDb(':memory:');
   const app = express();
+  const { attachUser, requireAuth } = createAuthMiddleware(db);
   app.use(express.json());
+  app.use(attachUser);
+  app.use(requireAuth);
   app.use('/api/recipes', createRecipesRouter(db));
   return { app, db };
 }
@@ -16,7 +20,7 @@ function addIngredient(db, { id, name, calories = 100, protein = 5, carbs = 20, 
   db.prepare(
     `INSERT INTO label_ingredients (id, user_id, name, serving_size_text, calories, protein_g, carbs_g, fat_g,
        tracking_type, grams_per_serving, micros_json)
-     VALUES (?, 0, ?, '100 g', ?, ?, ?, ?, 'weight', 100, ?)`
+     VALUES (?, 1, ?, '100 g', ?, ?, ?, ?, 'weight', 100, ?)`
   ).run(
     id, name, calories, protein, carbs, fat,
     // Stored exactly as a barcode import writes it: a blob, not a flat map.
@@ -26,8 +30,8 @@ function addIngredient(db, { id, name, calories = 100, protein = 5, carbs = 20, 
 
 function addRecipe(db, ingredients) {
   return db.prepare(
-    `INSERT INTO recipes (name, serving_size, calories, protein_g, carbs_g, fat_g, ingredients)
-     VALUES ('Test meal', '1 meal', 0, 0, 0, 0, ?)`
+    `INSERT INTO recipes (user_id, name, serving_size, calories, protein_g, carbs_g, fat_g, ingredients)
+     VALUES (1, 'Test meal', '1 meal', 0, 0, 0, 0, ?)`
   ).run(JSON.stringify(ingredients)).lastInsertRowid;
 }
 

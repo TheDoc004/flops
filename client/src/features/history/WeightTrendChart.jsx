@@ -109,6 +109,7 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
   }
   const [weightRows, setWeightRows] = useState([]);
   const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const range = RANGES.find(r => r.key === rangeKey) || RANGES[1];
   const end = getLocalDateISO();
@@ -123,6 +124,7 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      setLoading(true);
       setLoadError('');
       try {
         const wData = await fetchBodyWeights(addDaysLocal(end, -(ALL_LOOKBACK_DAYS - 1)), end);
@@ -133,6 +135,8 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
           setWeightRows([]);
           setLoadError(e.message || 'Failed to load weight data');
         }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
@@ -264,7 +268,26 @@ export default function WeightTrendChart({ bodyUnits, noCard = false, defaultRan
 
       {loadError && <p className="error" style={{ marginTop: 0 }}>{loadError}</p>}
 
-      {!hasAnyWeight && !loadError ? (
+      {loading ? (
+        <div
+          aria-busy="true"
+          style={{
+            height: 280,
+            borderRadius: 14,
+            background: 'linear-gradient(90deg, #f3f0ea 25%, #faf8f4 50%, #f3f0ea 75%)',
+            backgroundSize: '200% 100%',
+            animation: 'none',
+            border: '1px solid var(--color-surface-border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--color-text-faint)',
+            fontSize: 13,
+          }}
+        >
+          Loading weight…
+        </div>
+      ) : !hasAnyWeight && !loadError ? (
         <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>
           No weight entries in this range yet.
         </p>

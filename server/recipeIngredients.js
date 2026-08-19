@@ -1,5 +1,6 @@
 /**
- * Recipe `ingredients` JSON: fixed lines + optional variable slots (Ingredient Library alternatives).
+ * Recipe `ingredients` JSON: named library-backed lines (+ optional free-text lines).
+ * Legacy `kind: 'slot'` rows migrate to `kind: 'ingredient'` (default option only).
  */
 
 const OZ_TO_G = 28.349523125;
@@ -34,29 +35,62 @@ function tryParseLineAmountForVirtual(lineItem) {
   return { amount: String(n), unit: u === 'oz' ? 'oz' : 'g' };
 }
 
+function normalizeUnit(raw) {
+  const u = String(raw ?? 'g').toLowerCase();
+  if (u === 'oz' || u === 'ounce' || u === 'ounces') return 'oz';
+  return u === 'g' || u === 'gram' || u === 'grams' ? 'g' : String(raw || 'g');
+}
+
+/** Convert a legacy slot (or virtual slot) into a named ingredient line. */
+function slotToIngredientLine(slot) {
+  const ids = Array.isArray(slot.option_label_ingredient_ids)
+    ? slot.option_label_ingredient_ids.map(Number).filter(n => Number.isInteger(n) && n > 0)
+    : [];
+  const label_ingredient_id = ids[0];
+  if (!label_ingredient_id) return null;
+  const amount = String(slot.amount ?? '').trim();
+  if (!amount) return null;
+  return {
+    kind: 'ingredient',
+    name: String(slot.label || '').trim() || `Ingredient #${label_ingredient_id}`,
+    amount,
+    unit: normalizeUnit(slot.unit),
+    label_ingredient_id,
+  };
+}
+
 /**
- * Variable slots for logging + macro math: real slots plus legacy Meal Builder
- * `line` rows backed by meal_builder_meta.lines (label_ingredient_id), in recipe order.
+ * Named library-backed lines for seeding Log Meal + micros.
+ * Migrates legacy slots and meal_builder_meta virtual lines on the fly.
  */
-function listLoggingSlotsFromRecipeRow(recipeRow) {
-  const ingredients = parseIngredientsJson(recipeRow.ingredients);
+function listRecipeIngredientLines(recipeRow) {
+  const ingredients = parseIngredientsJson(recipeRow?.ingredients);
   const meta = parseMealBuilderMetaFromRow(recipeRow);
   const metaLines = meta && Array.isArray(meta.lines) ? meta.lines : [];
   const out = [];
+
   for (let i = 0; i < ingredients.length; i++) {
     const item = ingredients[i];
     if (!item) continue;
-    if (item.kind === 'slot') {
+
+    if (item.kind === 'ingredient') {
       out.push(item);
       continue;
     }
+
+    if (item.kind === 'slot') {
+      const migrated = slotToIngredientLine(item);
+      if (migrated) out.push(migrated);
+      continue;
+    }
+
     if (item.kind !== 'line') continue;
     const ml = metaLines[i];
     if (!ml || ml.label_ingredient_id == null) continue;
     const lid = Number(ml.label_ingredient_id);
     if (!Number.isInteger(lid) || lid <= 0) continue;
     let amountStr = ml.amount != null && String(ml.amount).trim() !== '' ? String(ml.amount).trim() : '';
-    let unit = ml.unit === 'oz' ? 'oz' : 'g';
+    let unit = ml.unit === 'oz' ? 'oz' : (ml.unit || 'g');
     if (!amountStr || Number(amountStr) <= 0) {
       const fb = tryParseLineAmountForVirtual(item);
       if (fb) {
@@ -65,59 +99,86 @@ function listLoggingSlotsFromRecipeRow(recipeRow) {
       }
     }
     if (!amountStr || Number(amountStr) <= 0) continue;
-    const slotId =
-      ml.slot_id != null && String(ml.slot_id).trim() !== ''
-        ? String(ml.slot_id).trim()
-        : `mb_legacy_${i}_${lid}`;
     out.push({
-      kind: 'slot',
-      slot_id: slotId,
-      label: item.name,
+      kind: 'ingredient',
+      name: String(item.name || ml.name || '').trim() || `Ingredient #${lid}`,
       amount: amountStr,
       unit,
-      option_label_ingredient_ids: [lid],
+      label_ingredient_id: lid,
     });
   }
   return out;
 }
 
-function parseIngredientsJson(raw) {
-  if (raw == null || raw === '') return [];
-  try {
-    const v = JSON.parse(raw);
-    if (!Array.isArray(v)) return [];
-    return v
-      .filter(item => item && typeof item === 'object')
-      .map(item => {
-        if (item.kind === 'slot') {
-          const slot_id = String(item.slot_id ?? '').trim();
-          const label = String(item.label ?? '').trim();
-          const amount = String(item.amount ?? '').trim();
-          const unit = String(item.unit ?? 'g').toLowerCase() === 'oz' ? 'oz' : 'g';
-          const option_label_ingredient_ids = Array.isArray(item.option_label_ingredient_ids)
-            ? item.option_label_ingredient_ids.map(Number).filter(n => Number.isInteger(n) && n > 0)
-            : [];
-          if (!slot_id || !label || !amount || option_label_ingredient_ids.length === 0) return null;
-          return {
-            kind: 'slot',
-            slot_id,
-            label,
-            amount,
-            unit,
-            option_label_ingredient_ids,
-          };
-        }
-        const name = String(item.name ?? '').trim();
-        const amount = String(item.amount ?? '').trim();
-        if (!name || !amount) return null;
-        return { kind: 'line', name, amount };
-      })
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
+/**
+ * @deprecated Prefer listRecipeIngredientLines. Kept for dual-read of old logs /
+ * AI command paths that still key off slot_id.
+ */
+function listLoggingSlotsFromRecipeRow(recipeRow) {
+  const lines = listRecipeIngredientLines(recipeRow);
+  return lines.map((line, i) => ({
+    kind: 'slot',
+    slot_id: `ing_${line.label_ingredient_id}_${i}`,
+    label: line.name,
+    amount: String(line.amount),
+    unit: line.unit === 'oz' ? 'oz' : (line.unit || 'g'),
+    option_label_ingredient_ids: [line.label_ingredient_id],
+  }));
 }
 
+function parseIngredientsJson(raw) {
+  if (raw == null || raw === '') return [];
+  let arr;
+  if (Array.isArray(raw)) {
+    arr = raw;
+  } else {
+    try {
+      const v = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (!Array.isArray(v)) return [];
+      arr = v;
+    } catch {
+      return [];
+    }
+  }
+  return arr
+    .filter(item => item && typeof item === 'object')
+    .map(item => {
+      if (item.kind === 'ingredient' || (item.label_ingredient_id != null && item.kind !== 'slot' && item.kind !== 'line')) {
+        const label_ingredient_id = Number(item.label_ingredient_id);
+        const name = String(item.name ?? item.label ?? '').trim();
+        const amount = String(item.amount ?? '').trim();
+        if (!Number.isInteger(label_ingredient_id) || label_ingredient_id <= 0 || !name || !amount) return null;
+        return {
+          kind: 'ingredient',
+          name,
+          amount,
+          unit: normalizeUnit(item.unit),
+          label_ingredient_id,
+        };
+      }
+      if (item.kind === 'slot') {
+        // Lazy-migrate: keep only the default option as a named ingredient.
+        return slotToIngredientLine({
+          label: item.label,
+          amount: item.amount,
+          unit: item.unit,
+          option_label_ingredient_ids: Array.isArray(item.option_label_ingredient_ids)
+            ? item.option_label_ingredient_ids.map(Number).filter(n => Number.isInteger(n) && n > 0)
+            : [],
+        });
+      }
+      const name = String(item.name ?? '').trim();
+      const amount = String(item.amount ?? '').trim();
+      if (!name || !amount) return null;
+      return { kind: 'line', name, amount };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Normalize ingredients on create/update. Accepts ingredient + line;
+ * legacy slots are converted to ingredients (default id only).
+ */
 function normalizeIngredientsBody(body) {
   const { ingredients } = body;
   if (ingredients === undefined || ingredients === null) return { ok: true, value: [] };
@@ -126,29 +187,32 @@ function normalizeIngredientsBody(body) {
   for (const item of ingredients) {
     if (item == null || typeof item !== 'object') continue;
     if (item.kind === 'slot') {
-      const slot_id = String(item.slot_id ?? '').trim();
-      const label = String(item.label ?? '').trim();
+      const migrated = slotToIngredientLine({
+        label: item.label || item.name,
+        amount: item.amount,
+        unit: item.unit,
+        option_label_ingredient_ids: Array.isArray(item.option_label_ingredient_ids)
+          ? [...new Set(item.option_label_ingredient_ids.map(Number).filter(n => Number.isInteger(n) && n > 0))]
+          : [],
+      });
+      if (!migrated) return { ok: false };
+      value.push(migrated);
+      continue;
+    }
+    if (item.kind === 'ingredient' || (item.label_ingredient_id != null && item.kind !== 'line')) {
+      const label_ingredient_id = Number(item.label_ingredient_id);
+      const name = String(item.name ?? item.label ?? '').trim();
       const amount = String(item.amount ?? '').trim();
-      const unit = String(item.unit ?? 'g').toLowerCase() === 'oz' ? 'oz' : 'g';
-      const option_label_ingredient_ids = Array.isArray(item.option_label_ingredient_ids)
-        ? [...new Set(item.option_label_ingredient_ids.map(Number).filter(n => Number.isInteger(n) && n > 0))]
-        : [];
-      if (!slot_id || !label || !amount || option_label_ingredient_ids.length === 0) {
+      const unit = normalizeUnit(item.unit);
+      if (!Number.isInteger(label_ingredient_id) || label_ingredient_id <= 0 || !name || !amount) {
         return { ok: false };
       }
-      value.push({
-        kind: 'slot',
-        slot_id,
-        label,
-        amount,
-        unit,
-        option_label_ingredient_ids,
-      });
-    } else {
-      const name = String(item.name ?? '').trim();
-      const amount = String(item.amount ?? '').trim();
-      if (name && amount) value.push({ kind: 'line', name, amount });
+      value.push({ kind: 'ingredient', name, amount, unit, label_ingredient_id });
+      continue;
     }
+    const name = String(item.name ?? '').trim();
+    const amount = String(item.amount ?? '').trim();
+    if (name && amount) value.push({ kind: 'line', name, amount });
   }
   return { ok: true, value };
 }
@@ -207,12 +271,7 @@ function slotDetailFromExisting(existingSlotJson, slot_id, templateAmount, templ
   };
 }
 
-/**
- * Resolves each slot to { label_ingredient_id, amount, unit } for this log instance.
- * - `log_slot_customizations` may pick any library ingredient (not limited to slot options).
- * - Amount/unit default to the recipe template unless overridden.
- */
-function resolveSlotsForLog(db, recipeRow, slot_selections, log_slot_customizations, existingSlotJson, recipeChanged) {
+function resolveSlotsForLog(db, recipeRow, slot_selections, log_slot_customizations, existingSlotJson, recipeChanged, userId) {
   const slots = listLoggingSlotsFromRecipeRow(recipeRow);
   const mergedIds = mergeSlotSelections(slots, slot_selections, existingSlotJson, recipeChanged);
   const custom =
@@ -244,7 +303,7 @@ function resolveSlotsForLog(db, recipeRow, slot_selections, log_slot_customizati
       unit = d.unit;
     }
 
-    if (!checkLi.get(label_ingredient_id, 0)) {
+    if (!checkLi.get(label_ingredient_id, userId)) {
       const err = new Error('LABEL_INGREDIENT_NOT_FOUND');
       err.code = 'LABEL_INGREDIENT_NOT_FOUND';
       throw err;
@@ -259,12 +318,6 @@ function resolveSlotsForLog(db, recipeRow, slot_selections, log_slot_customizati
   return resolved;
 }
 
-/**
- * The unit to SHOW for a logged line. Amounts on a unit-tracked ingredient are
- * counts, not grams — 3 eggs, 1 spray, 2 slices — so labelling them "g" (as the
- * internal g/oz amount unit does) is simply wrong on screen. Weight-tracked
- * ingredients keep their real g/oz unit.
- */
 function displayUnitForIngredient(ingRow, amountUnit) {
   if (ingRow?.tracking_type === 'unit') {
     return String(ingRow.unit_name || '').trim() || 'unit';
@@ -272,10 +325,6 @@ function displayUnitForIngredient(ingRow, amountUnit) {
   return amountUnit === 'oz' ? 'oz' : 'g';
 }
 
-/**
- * Macros for a label-ingredient at a given amount/unit (per the ingredient's
- * own tracking type). Pure; returns null if the amount/unit can't be resolved.
- */
 function ingredientMacrosForAmount(ingRow, amountValue, unit) {
   if (!ingRow) return null;
   if (ingRow.tracking_type === 'unit') {
@@ -305,10 +354,133 @@ function ingredientMacrosForAmount(ingRow, amountValue, unit) {
   };
 }
 
+function r2(n) {
+  return Math.round(Number(n) * 100) / 100;
+}
+
 /**
- * Per-serving macros after applying resolved slot picks (ingredient + optional amount/unit vs template).
+ * Sum macros from client/server receipt rows (already scaled).
+ * Returns null if no usable macro fields exist.
  */
-function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot) {
+function macrosFromReceiptRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const tot = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
+  let any = false;
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    const c = Number(r.calories);
+    const p = Number(r.protein_g);
+    const cb = Number(r.carbs_g);
+    const f = Number(r.fat_g);
+    if (![c, p, cb, f].every(Number.isFinite)) continue;
+    any = true;
+    tot.calories += c;
+    tot.protein_g += p;
+    tot.carbs_g += cb;
+    tot.fat_g += f;
+    const fib = Number(r.fiber_g);
+    if (Number.isFinite(fib)) tot.fiber_g += fib;
+  }
+  if (!any) return null;
+  return {
+    calories: r2(tot.calories),
+    protein_g: r2(tot.protein_g),
+    carbs_g: r2(tot.carbs_g),
+    fat_g: r2(tot.fat_g),
+    fiber_g: r2(tot.fiber_g),
+  };
+}
+
+/**
+ * Build receipt rows + per-serving macros from a freeform ingredients payload.
+ * Recomputes from the library when label_ingredient_id is present; otherwise
+ * trusts client macros on the row.
+ */
+function resolveReceiptForLog(db, rawRows, userId) {
+  if (!Array.isArray(rawRows) || rawRows.length === 0) {
+    const err = new Error('EMPTY_RECEIPT');
+    err.code = 'EMPTY_RECEIPT';
+    throw err;
+  }
+  const getIng = id =>
+    db.prepare('SELECT * FROM label_ingredients WHERE id = ? AND user_id = ?').get(id, userId);
+  const rows = [];
+  for (const r of rawRows) {
+    if (!r || typeof r !== 'object') continue;
+    const name = String(r.name ?? '').trim();
+    if (!name) continue;
+    const lid = Number(r.label_ingredient_id);
+    const hasLid = Number.isInteger(lid) && lid > 0;
+    const amount = r.amount != null && r.amount !== '' && Number.isFinite(Number(r.amount)) ? Number(r.amount) : null;
+    if (amount != null && amount <= 0) continue;
+
+    if (hasLid) {
+      const ing = getIng(lid);
+      if (!ing) {
+        const err = new Error('LABEL_INGREDIENT_NOT_FOUND');
+        err.code = 'LABEL_INGREDIENT_NOT_FOUND';
+        throw err;
+      }
+      const unitRaw = r.unit != null ? String(r.unit) : 'g';
+      const amountUnit = unitRaw.toLowerCase() === 'oz' ? 'oz' : (ing.tracking_type === 'unit' ? unitRaw : 'g');
+      const amountVal = amount != null ? amount : Number(r.amount);
+      if (!Number.isFinite(amountVal) || amountVal <= 0) continue;
+      const m = ingredientMacrosForAmount(ing, amountVal, amountUnit);
+      if (!m) {
+        const err = new Error('LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING');
+        err.code = 'LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING';
+        throw err;
+      }
+      rows.push({
+        name: ing.name || name,
+        amount: amountVal,
+        unit: displayUnitForIngredient(ing, amountUnit),
+        calories: r2(m.calories),
+        protein_g: r2(m.protein_g),
+        carbs_g: r2(m.carbs_g),
+        fat_g: r2(m.fat_g),
+        fiber_g: r2(m.fiber_g),
+        source: 'library',
+        label_ingredient_id: lid,
+      });
+      continue;
+    }
+
+    const num = v => (Number.isFinite(Number(v)) ? r2(v) : null);
+    const calories = num(r.calories);
+    const protein_g = num(r.protein_g);
+    const carbs_g = num(r.carbs_g);
+    const fat_g = num(r.fat_g);
+    if (calories == null || protein_g == null || carbs_g == null || fat_g == null) continue;
+    const row = {
+      name,
+      amount,
+      unit: typeof r.unit === 'string' ? r.unit : '',
+      calories,
+      protein_g,
+      carbs_g,
+      fat_g,
+      source: ['provided', 'library', 'ai', 'recipe', 'common', 'manual'].includes(r.source) ? r.source : 'estimated',
+    };
+    if (r.fiber_g != null) row.fiber_g = num(r.fiber_g);
+    rows.push(row);
+    if (rows.length >= 60) break;
+  }
+  if (rows.length === 0) {
+    const err = new Error('EMPTY_RECEIPT');
+    err.code = 'EMPTY_RECEIPT';
+    throw err;
+  }
+  const perServing = macrosFromReceiptRows(rows);
+  if (!perServing) {
+    const err = new Error('EMPTY_RECEIPT');
+    err.code = 'EMPTY_RECEIPT';
+    throw err;
+  }
+  return { rows, perServing };
+}
+
+function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot, userId) {
   const base = {
     calories: Number(recipeRow.calories),
     protein_g: Number(recipeRow.protein_g),
@@ -320,9 +492,7 @@ function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot) {
   if (slots.length === 0) return base;
 
   const getIng = id =>
-    db.prepare('SELECT * FROM label_ingredients WHERE id = ? AND user_id = ?').get(id, 0);
-
-  const macrosForIngredientAmount = ingredientMacrosForAmount;
+    db.prepare('SELECT * FROM label_ingredients WHERE id = ? AND user_id = ?').get(id, userId);
 
   let adj = { ...base };
   for (const slot of slots) {
@@ -341,8 +511,8 @@ function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot) {
       err.code = 'LABEL_INGREDIENT_NOT_FOUND';
       throw err;
     }
-    const mDef = macrosForIngredientAmount(defIng, slot.amount, slot.unit);
-    const mSel = macrosForIngredientAmount(selIng, res.amount, res.unit);
+    const mDef = ingredientMacrosForAmount(defIng, slot.amount, slot.unit);
+    const mSel = ingredientMacrosForAmount(selIng, res.amount, res.unit);
     if (!mDef || !mSel) {
       const err = new Error('LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING');
       err.code = 'LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING';
@@ -357,22 +527,11 @@ function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot) {
   return adj;
 }
 
-/**
- * Per-ingredient breakdown rows for a recipe log (per serving), AFTER applying
- * the resolved slot picks (substitutions + edited amounts). Each macro-bearing
- * line/slot becomes one row { name, amount, unit, calories, protein_g, carbs_g,
- * fat_g, fiber_g, source:'library', label_ingredient_id }. Zeroed/removed
- * ingredients (amount <= 0) and rows whose macros can't be computed are omitted
- * so the breakdown reflects exactly what was logged. Returns [] when the recipe
- * has no macro-bearing ingredient lines (e.g. a manual name-only recipe) — the
- * caller then stores null and the entry displays as totals only.
- */
-function resolvedIngredientRows(db, recipeRow, resolvedBySlot) {
+function resolvedIngredientRows(db, recipeRow, resolvedBySlot, userId) {
   const slots = listLoggingSlotsFromRecipeRow(recipeRow);
   if (slots.length === 0) return [];
   const getIng = id =>
-    db.prepare('SELECT * FROM label_ingredients WHERE id = ? AND user_id = ?').get(id, 0);
-  const r2 = n => Math.round(n * 100) / 100;
+    db.prepare('SELECT * FROM label_ingredients WHERE id = ? AND user_id = ?').get(id, userId);
   const rows = [];
   for (const slot of slots) {
     const res =
@@ -382,10 +541,10 @@ function resolvedIngredientRows(db, recipeRow, resolvedBySlot) {
         unit: slot.unit === 'oz' ? 'oz' : 'g',
       };
     const amount = Number(res.amount);
-    if (!Number.isFinite(amount) || amount <= 0) continue; // removed / zeroed
+    if (!Number.isFinite(amount) || amount <= 0) continue;
     const ing = getIng(res.label_ingredient_id);
     const m = ingredientMacrosForAmount(ing, res.amount, res.unit);
-    if (!m) continue; // can't compute macros for this line — omit
+    if (!m) continue;
     rows.push({
       name: (ing && ing.name) || slot.label,
       amount,
@@ -402,34 +561,10 @@ function resolvedIngredientRows(db, recipeRow, resolvedBySlot) {
   return rows;
 }
 
-/**
- * @deprecated Prefer resolveSlotsForLog + adjustPerServingMacrosForResolvedSlots.
- * Per-serving macros after swapping slot selections vs template (first option per slot), same grams as template.
- */
-function adjustPerServingMacrosForSlotSelections(db, recipeRow, slotSelections) {
-  const slots = listLoggingSlotsFromRecipeRow(recipeRow);
-  const resolved = {};
-  for (const s of slots) {
-    const selId = Number(slotSelections[s.slot_id]);
-    const defId = s.option_label_ingredient_ids[0];
-    const id =
-      Number.isInteger(selId) && selId > 0 && s.option_label_ingredient_ids.includes(selId) ? selId : defId;
-    resolved[s.slot_id] = {
-      label_ingredient_id: id,
-      amount: String(s.amount),
-      unit: s.unit === 'oz' ? 'oz' : 'g',
-    };
-  }
-  return adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolved);
-}
-
 function listVariableSlotsFromRecipeRow(recipeRow) {
   return listLoggingSlotsFromRecipeRow(recipeRow);
 }
 
-/**
- * @param {boolean} recipeChanged - if true, ignore previous log JSON (new recipe).
- */
 function mergeSlotSelections(slots, bodySelections, existingSlotJson, recipeChanged) {
   let existing = {};
   if (!recipeChanged && existingSlotJson) {
@@ -456,13 +591,16 @@ function mergeSlotSelections(slots, bodySelections, existingSlotJson, recipeChan
 module.exports = {
   parseIngredientsJson,
   normalizeIngredientsBody,
-  adjustPerServingMacrosForSlotSelections,
   adjustPerServingMacrosForResolvedSlots,
   resolvedIngredientRows,
   resolveSlotsForLog,
   listVariableSlotsFromRecipeRow,
   listLoggingSlotsFromRecipeRow,
+  listRecipeIngredientLines,
   mergeSlotSelections,
   gramsFromAmount,
   displayUnitForIngredient,
+  ingredientMacrosForAmount,
+  macrosFromReceiptRows,
+  resolveReceiptForLog,
 };

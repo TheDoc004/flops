@@ -1,4 +1,5 @@
 const express = require('express');
+const { uid } = require('../userId');
 const {
   lookupBarcode,
   normalizeBarcode,
@@ -16,10 +17,7 @@ function createBarcodeRouter(db, { fetchImpl } = {}) {
   const router = express.Router();
 
   router.get('/:code', async (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const code = normalizeBarcode(req.params.code);
     if (!code) return res.status(400).json({ error: 'That barcode does not look valid.' });
 

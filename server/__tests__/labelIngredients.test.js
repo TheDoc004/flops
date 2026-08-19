@@ -1,12 +1,16 @@
 const request = require('supertest');
 const express = require('express');
 const { createDb } = require('../db');
+const { createAuthMiddleware } = require('../middleware/auth');
 const { createLabelIngredientsRouter } = require('../routes/labelIngredients');
 
 function buildApp() {
   const db = createDb(':memory:');
   const app = express();
+  const { attachUser, requireAuth } = createAuthMiddleware(db);
   app.use(express.json());
+  app.use(attachUser);
+  app.use(requireAuth);
   app.use('/api/label-ingredients', createLabelIngredientsRouter(db));
   return { app, db };
 }

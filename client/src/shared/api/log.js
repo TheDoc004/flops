@@ -1,19 +1,19 @@
-import { apiUrl } from './base';
+import { apiFetch } from './base';
 
 export async function fetchLogForDate(date) {
-  const res = await fetch(apiUrl(`/api/log?date=${date}`));
+  const res = await apiFetch(`/api/log?date=${date}`);
   if (!res.ok) throw new Error('Failed to fetch log');
   return res.json();
 }
 
 export async function fetchLogRange(start, end) {
-  const res = await fetch(apiUrl(`/api/log?start=${start}&end=${end}`));
+  const res = await apiFetch(`/api/log?start=${start}&end=${end}`);
   if (!res.ok) throw new Error('Failed to fetch log range');
   return res.json();
 }
 
 export async function fetchLogDays({ limit = 60, offset = 0 } = {}) {
-  const res = await fetch(apiUrl(`/api/log/days?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`));
+  const res = await apiFetch(`/api/log/days?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`);
   if (!res.ok) {
     const e = await res.json().catch(() => null);
     throw new Error(e?.error || 'Failed to fetch logged days');
@@ -22,9 +22,8 @@ export async function fetchLogDays({ limit = 60, offset = 0 } = {}) {
 }
 
 export async function createLogEntry(data) {
-  const res = await fetch(apiUrl('/api/log'), {
+  const res = await apiFetch('/api/log', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed to log meal'); }
@@ -32,9 +31,8 @@ export async function createLogEntry(data) {
 }
 
 export async function createQuickFoodLog(data) {
-  const res = await fetch(apiUrl('/api/log/quick-food'), {
+  const res = await apiFetch('/api/log/quick-food', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -45,9 +43,8 @@ export async function createQuickFoodLog(data) {
 }
 
 export async function createCustomLog(data) {
-  const res = await fetch(apiUrl('/api/log/custom'), {
+  const res = await apiFetch('/api/log/custom', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -58,9 +55,8 @@ export async function createCustomLog(data) {
 }
 
 export async function updateLogEntry(id, data) {
-  const res = await fetch(apiUrl(`/api/log/${id}`), {
+  const res = await apiFetch(`/api/log/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -71,6 +67,6 @@ export async function updateLogEntry(id, data) {
 }
 
 export async function deleteLogEntry(id) {
-  const res = await fetch(apiUrl(`/api/log/${id}`), { method: 'DELETE' });
+  const res = await apiFetch(`/api/log/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete log entry');
 }

@@ -62,7 +62,7 @@ export default function History() {
   const [focusMonth, setFocusMonth] = useState(null);
   const [reportDays, setReportDays] = useState([]);
   const [reportDates, setReportDates] = useState([]);
-  const [reportLoading, setReportLoading] = useState(false);
+  const [reportLoading, setReportLoading] = useState(true);
   const [reportError, setReportError] = useState('');
   const reportRef = useRef(null);
 
@@ -169,7 +169,20 @@ export default function History() {
   async function handleEditMeal(data) {
     if (!editEntry) return;
     try {
-      await updateLogEntry(editEntry.id, data);
+      if (data?.custom) {
+        // Edited into a freeform receipt without keeping the recipe link —
+        // update macros + ingredients on the existing entry via PUT fields
+        // the log router understands when ingredients are present.
+        await updateLogEntry(editEntry.id, {
+          recipe_id: editEntry.recipe_id,
+          servings: data.custom.servings ?? 1,
+          notes: data.custom.notes,
+          time_min: data.custom.time_min,
+          ingredients: data.custom.ingredients,
+        });
+      } else {
+        await updateLogEntry(editEntry.id, data);
+      }
       setEditEntry(null);
       await refreshAfterEdit();
     } catch (e) {

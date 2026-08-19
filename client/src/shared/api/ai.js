@@ -1,4 +1,4 @@
-import { apiUrl } from './base';
+import { apiFetch } from './base';
 
 /**
  * Ask the server-side AI to estimate macros for a natural-language meal.
@@ -17,7 +17,7 @@ import { apiUrl } from './base';
  * @returns {Promise<string>} the transcript ('' when no speech was detected)
  */
 export async function transcribeAudio(blob) {
-  const res = await fetch(apiUrl('/api/ai/transcribe'), {
+  const res = await apiFetch('/api/ai/transcribe', {
     method: 'POST',
     headers: { 'Content-Type': blob.type || 'audio/webm' },
     body: blob,
@@ -31,14 +31,29 @@ export async function transcribeAudio(blob) {
 }
 
 export async function estimateMacros({ description, corrections, currentEstimate, recipes } = {}) {
-  const res = await fetch(apiUrl('/api/ai/macro-estimate'), {
+  const res = await apiFetch('/api/ai/macro-estimate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ description, corrections, currentEstimate, recipes }),
   });
   if (!res.ok) {
     const e = await res.json().catch(() => null);
     throw new Error(e?.error || 'Failed to estimate macros.');
+  }
+  return res.json();
+}
+
+/**
+ * Ask AI for substitute ingredients from the user's library.
+ * @param {{ ingredient: object, library: object[], limit?: number }} payload
+ */
+export async function suggestSubstitutes({ ingredient, library, limit } = {}) {
+  const res = await apiFetch('/api/ai/suggest-substitutes', {
+    method: 'POST',
+    body: JSON.stringify({ ingredient, library, limit }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => null);
+    throw new Error(e?.error || 'Failed to suggest substitutes.');
   }
   return res.json();
 }

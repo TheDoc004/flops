@@ -1,4 +1,4 @@
-import { apiUrl } from './base';
+import { apiFetch } from './base';
 
 async function readJsonIfPresent(res) {
   const contentType = res.headers.get('content-type') || '';
@@ -13,16 +13,15 @@ async function readJsonIfPresent(res) {
 }
 
 export async function fetchProfile() {
-  const res = await fetch(apiUrl('/api/profile'));
+  const res = await apiFetch('/api/profile');
   if (!res.ok) throw new Error('Failed to load profile');
   return res.json();
 }
 
 export async function saveProfile(body) {
-  const res = await fetch(apiUrl('/api/profile'), {
+  const res = await apiFetch('/api/profile', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 0, ...body }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
@@ -33,16 +32,15 @@ export async function saveProfile(body) {
 
 export async function fetchBodyWeights(start, end) {
   const q = start && end ? `?start=${start}&end=${end}` : '';
-  const res = await fetch(apiUrl(`/api/body-weights${q}`));
+  const res = await apiFetch(`/api/body-weights${q}`);
   if (!res.ok) throw new Error('Failed to load weight history');
   return res.json();
 }
 
 export async function saveBodyWeight(date, weightKg) {
-  const res = await fetch(apiUrl('/api/body-weights'), {
+  const res = await apiFetch('/api/body-weights', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 0, date, weight_kg: weightKg }),
+    body: JSON.stringify({ date, weight_kg: weightKg }),
   });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
@@ -52,7 +50,7 @@ export async function saveBodyWeight(date, weightKg) {
 }
 
 export async function deleteBodyWeight(date) {
-  const res = await fetch(apiUrl(`/api/body-weights/${date}?user_id=0`), { method: 'DELETE' });
+  const res = await apiFetch(`/api/body-weights/${date}`, { method: 'DELETE' });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
     throw new Error(e?.error || 'Failed to delete entry');

@@ -1,4 +1,4 @@
-import { apiUrl } from './base';
+import { apiFetch } from './base';
 
 async function readJsonIfPresent(res) {
   const contentType = res.headers.get('content-type') || '';
@@ -14,15 +14,14 @@ async function readJsonIfPresent(res) {
 
 export async function fetchGoals({ date } = {}) {
   const qs = date ? `?date=${encodeURIComponent(date)}` : '';
-  const res = await fetch(apiUrl(`/api/goals${qs}`));
+  const res = await apiFetch(`/api/goals${qs}`);
   if (!res.ok) throw new Error('Failed to load nutrition goals');
   return res.json();
 }
 
 export async function saveGoals(payload) {
-  const res = await fetch(apiUrl('/api/goals'), {
+  const res = await apiFetch('/api/goals', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
