@@ -12,7 +12,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@rolldown/binding-darwin-arm64": "^1.0.0-rc.15",
     "@zxing/browser": "^0.2.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
