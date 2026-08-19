@@ -1,15 +1,6 @@
 /**
- * Turns reviewed AI-logger rows into a recipe that is genuinely BUILT FROM
- * INGREDIENTS, rather than a template with one frozen macro total.
- *
- * Each row backed by an Ingredient Library entry becomes a real `slot` — the
- * same shape Meal Builder writes — so the saved recipe can later be reopened in
- * the builder to change amounts or swap an ingredient, and its macros are
- * recomputed from the library rather than read from a stored number. Rows the
- * AI couldn't quantify stay plain text lines: visible, but not editable.
- *
- * `ingredients` and `meal_builder_meta.lines` stay index-aligned, which is what
- * `listLoggingSlotsFromRecipe` on the server relies on to pair them.
+ * Turns reviewed AI-logger rows into a recipe built from library ingredients.
+ * Each library-backed row becomes a named ingredient line (no slots / substitutes).
  */
 
 const fmt = v => {
@@ -38,24 +29,22 @@ export function buildLibraryBackedIngredients(rows, ids, divisor = 1) {
     const id = idList[idx];
 
     if (id && qty > 0) {
-      const unit = /^(oz|ounce|ounces)$/i.test(i?.unit || '') ? 'oz' : 'g';
-      const slot_id = `ai_line_${ingredients.length}`;
+      const rawUnit = String(i?.unit || '').trim();
+      const unit = /^(oz|ounce|ounces)$/i.test(rawUnit)
+        ? 'oz'
+        : (/^(g|gram|grams)$/i.test(rawUnit) || !rawUnit ? 'g' : rawUnit);
       ingredients.push({
-        kind: 'slot',
-        slot_id,
-        label: name,
+        kind: 'ingredient',
+        name,
         amount: String(qty),
         unit,
-        option_label_ingredient_ids: [id],
+        label_ingredient_id: id,
       });
       lines.push({
         label_ingredient_id: id,
         name,
-        role_label: name,
         amount: String(qty),
         unit,
-        slot_id,
-        substitute_label_ingredient_ids: [],
       });
     } else {
       ingredients.push({
@@ -63,7 +52,7 @@ export function buildLibraryBackedIngredients(rows, ids, divisor = 1) {
         name,
         amount: qty > 0 ? `${fmt(qty)} ${i?.unit || ''}`.trim() : 'as estimated',
       });
-      lines.push({}); // keep index alignment
+      lines.push({});
     }
   });
 
@@ -71,10 +60,12 @@ export function buildLibraryBackedIngredients(rows, ids, divisor = 1) {
 }
 
 /**
- * True when a recipe's lines are backed by library ingredients — whoever made
- * it. Decides whether "Edit in Builder" opens the ingredient flow.
+ * True when a recipe's lines are backed by library ingredients.
  */
 export function isIngredientBuilt(recipe) {
+  if (Array.isArray(recipe?.ingredients) && recipe.ingredients.some(i => i?.kind === 'ingredient' && i.label_ingredient_id != null)) {
+    return true;
+  }
   const lines = recipe?.meal_builder_meta?.lines;
   return Array.isArray(lines) && lines.some(l => l && l.label_ingredient_id != null);
 }

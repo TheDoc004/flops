@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { MacroUnitsProvider } from '@shared/context/MacroUnitsContext';
+import { useAuth } from '@shared/context/AuthContext';
 import Navbar from '@shared/ui/Navbar';
 import BottomNav from '@shared/ui/BottomNav';
 import Dashboard from '@features/dashboard';
@@ -13,11 +14,13 @@ import PlanLayout from './layouts/PlanLayout';
 import TrainingWorkouts from '@features/training-workouts';
 import Ingredients from '@features/ingredients';
 import AiMacroLogger from '@features/ai-macro-logger';
+import Login from '@features/auth/Login';
+import Onboarding from '@features/auth/Onboarding';
+import Coach from '@features/coach';
 
-// Inner shell so we can read the route: the dashboard gets a wider content
-// container (.app-main--wide); every other page keeps the standard 1152px width.
 function AppShell() {
   const { pathname } = useLocation();
+  const { isCoach } = useAuth();
   const wide = pathname === '/';
   return (
     <>
@@ -31,6 +34,7 @@ function AppShell() {
           <Route path="/meal-builder" element={<MealBuilder />} />
           <Route path="/ai-logger" element={<AiMacroLogger />} />
           <Route path="/training" element={<TrainingWorkouts />} />
+          <Route path="/coach" element={isCoach ? <Coach /> : <Navigate to="/" replace />} />
 
           <Route path="/plan" element={<PlanLayout />}>
             <Route index element={<Navigate to="/plan/goals" replace />} />
@@ -39,7 +43,6 @@ function AppShell() {
             <Route path="profile" element={<Profile />} />
           </Route>
 
-          {/* Back-compat redirects */}
           <Route path="/goals" element={<Navigate to="/plan/goals" replace />} />
           <Route path="/report" element={<Navigate to="/plan/report" replace />} />
           <Route path="/profile" element={<Navigate to="/plan/profile" replace />} />
@@ -50,11 +53,26 @@ function AppShell() {
   );
 }
 
+function AuthGate() {
+  const { loading, isAuthenticated, needsOnboarding } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+        Loading…
+      </div>
+    );
+  }
+  if (!isAuthenticated) return <Login />;
+  if (needsOnboarding) return <Onboarding />;
+  return <AppShell />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <MacroUnitsProvider>
-        <AppShell />
+        <AuthGate />
       </MacroUnitsProvider>
     </BrowserRouter>
   );

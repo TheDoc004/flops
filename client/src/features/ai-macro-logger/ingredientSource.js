@@ -190,6 +190,15 @@ export function deriveBasis(row, library) {
   return { amount: 1, unit: row.unit || 'serving', calories: r1m(nn(row.calories) / q), protein: r1m(nn(row.protein) / q), carbs: r1m(nn(row.carbs) / q), fat: r1m(nn(row.fat) / q), perKind: 'unit' };
 }
 
+/**
+ * Best saved-library ingredient for a name: { best, score }. Same scorer the
+ * freeform rows use, exposed so recipe substitutions resolve names the same way
+ * ("sweet potato" → "Sweet Potato, raw") instead of demanding an exact match.
+ */
+export function bestLibraryMatch(name, library) {
+  return bestMatch(name, Array.isArray(library) ? library : [], x => x.name);
+}
+
 /** Best candidate by name score; ties go to the most-used (use_count) item. */
 function bestMatch(name, candidates, getName) {
   let best = null, bestScore = 0;

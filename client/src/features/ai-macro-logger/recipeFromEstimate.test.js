@@ -4,28 +4,20 @@ import { buildLibraryBackedIngredients, isIngredientBuilt } from './recipeFromEs
 const row = (over = {}) => ({ name: 'Chicken breast', quantity: 200, unit: 'g', ...over });
 
 describe('buildLibraryBackedIngredients', () => {
-  /**
-   * The point of the whole change: a library-backed row must become a real
-   * slot, not a text line, because slots are what Meal Builder can reopen and
-   * what makes an ingredient swappable.
-   */
-  it('turns a library-backed row into an editable slot', () => {
+  it('turns a library-backed row into a named ingredient line', () => {
     const { ingredients, lines } = buildLibraryBackedIngredients([row()], [7]);
     expect(ingredients[0]).toEqual({
-      kind: 'slot',
-      slot_id: 'ai_line_0',
-      label: 'Chicken breast',
+      kind: 'ingredient',
+      name: 'Chicken breast',
       amount: '200',
       unit: 'g',
-      option_label_ingredient_ids: [7],
+      label_ingredient_id: 7,
     });
     expect(lines[0]).toMatchObject({
       label_ingredient_id: 7,
       name: 'Chicken breast',
-      role_label: 'Chicken breast',
       amount: '200',
       unit: 'g',
-      slot_id: 'ai_line_0',
     });
   });
 
@@ -45,19 +37,18 @@ describe('buildLibraryBackedIngredients', () => {
     const { ingredients, lines } = buildLibraryBackedIngredients(rows, [3, null, 9]);
     expect(ingredients).toHaveLength(3);
     expect(lines).toHaveLength(3);
-    // The server pairs these by index, so a gap must stay a placeholder.
     expect(ingredients[1].kind).toBe('line');
     expect(lines[1]).toEqual({});
-    expect(ingredients[2].slot_id).toBe(lines[2].slot_id);
+    expect(ingredients[2].label_ingredient_id).toBe(lines[2].label_ingredient_id);
   });
 
-  it('normalizes ounces and leaves other units as grams', () => {
+  it('normalizes ounces and preserves count units', () => {
     const { ingredients } = buildLibraryBackedIngredients(
-      [row({ unit: 'ounces' }), row({ name: 'Milk', unit: 'ml' })],
+      [row({ unit: 'ounces' }), row({ name: 'Egg', unit: 'egg' })],
       [1, 2]
     );
     expect(ingredients[0].unit).toBe('oz');
-    expect(ingredients[1].unit).toBe('g');
+    expect(ingredients[1].unit).toBe('egg');
   });
 
   it('divides amounts across meal-prep servings', () => {
@@ -73,9 +64,11 @@ describe('buildLibraryBackedIngredients', () => {
 });
 
 describe('isIngredientBuilt', () => {
-  it('recognises recipes built from library ingredients, whatever made them', () => {
+  it('recognises recipes built from library ingredients', () => {
     expect(isIngredientBuilt({ meal_builder_meta: { source: 'ai_recipe', lines: [{ label_ingredient_id: 4 }] } })).toBe(true);
-    expect(isIngredientBuilt({ meal_builder_meta: { source: 'meal_builder', lines: [{ label_ingredient_id: 4 }] } })).toBe(true);
+    expect(isIngredientBuilt({
+      ingredients: [{ kind: 'ingredient', name: 'Egg', amount: '2', unit: 'egg', label_ingredient_id: 3 }],
+    })).toBe(true);
   });
 
   it('rejects recipes with nothing editable behind them', () => {

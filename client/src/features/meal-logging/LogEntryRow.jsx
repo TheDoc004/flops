@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ResponsiveContainer,
   PieChart,
@@ -14,62 +14,84 @@ import { MACRO_COLORS } from '@shared/utils/colors';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
 import IngredientBreakdown from './IngredientBreakdown';
 import MealMicrosPanel from './MealMicrosPanel';
+import ViewToggle from './ViewToggle';
 import { mealEmoji } from './mealEmoji';
 import { parseMicros } from '@shared/utils/microNutrients';
 
-/** Small paired toggle: Macros | Micros. Active one is filled; clicking it again collapses. */
-function ViewToggle({ view, setView, hasMicros, compact = false }) {
-  const base = {
-    fontSize: compact ? 12 : 'clamp(12px, 1vw, 13.5px)',
-    padding: compact ? '4px 10px' : '6px clamp(10px, 1vw, 14px)',
-    minHeight: compact ? 30 : 'clamp(32px, 2.6vw, 40px)',
-    lineHeight: 1,
-    border: '1px solid #e5e7eb',
-    background: '#fff',
-    color: 'var(--color-text-body)',
-    cursor: 'pointer',
-    fontWeight: 600,
-  };
-  /* Both states must set the SAME border property. `active` used to set the
-     `borderColor` longhand while `base` set the `border` shorthand: collapsing
-     made React drop the longhand, and since the shorthand's colour had already
-     been consumed, border-color fell back to currentColor — leaving the button
-     outlined in near-black text colour instead of returning to the grey. */
-  const active = {
-    background: 'var(--color-primary-ink, #312e81)',
-    border: '1px solid var(--color-primary-ink, #312e81)',
-    color: '#fff',
-  };
-  const btn = key => ({
-    ...base,
-    ...(view === key ? active : {}),
-  });
+const PIE_COLORS = { protein: MACRO_COLORS.protein, carbs: MACRO_COLORS.carbs, fat: MACRO_COLORS.fat };
+
+/** Meal-row ⋯ menu — same pop + outside-click pattern as SortMenu in RangeReport. */
+function MealRowMenu({ onMacros, onDelete, onCopyToToday, showCopyToToday }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDocPointerDown(e) {
+      if (!rootRef.current || rootRef.current.contains(e.target)) return;
+      setOpen(false);
+    }
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown);
+  }, [open]);
+
+  const hasActions = onMacros || onDelete || (showCopyToToday && onCopyToToday);
+  if (!hasActions) return null;
+
   return (
-    <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+    <div ref={rootRef} style={{ position: 'relative' }}>
       <button
         type="button"
-        style={{ ...btn('macros'), borderRadius: '8px 0 0 8px', borderRight: 'none' }}
-        onClick={() => setView(view === 'macros' ? null : 'macros')}
-        aria-expanded={view === 'macros'}
-        title="Macro breakdown per ingredient"
+        className="btn-secondary meal-row-menu-btn"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Meal actions"
+        title="Meal actions"
+        onClick={() => setOpen(v => !v)}
       >
-        Macros
+        ⋯
       </button>
-      <button
-        type="button"
-        style={{ ...btn('micros'), borderRadius: '0 8px 8px 0', opacity: hasMicros ? 1 : 0.45, cursor: hasMicros ? 'pointer' : 'default' }}
-        onClick={() => hasMicros && setView(view === 'micros' ? null : 'micros')}
-        aria-expanded={view === 'micros'}
-        disabled={!hasMicros}
-        title={hasMicros ? 'Micronutrients in this meal' : 'No micronutrient estimate for this meal'}
-      >
-        Micros
-      </button>
-    </span>
+      {open && (
+        <div
+          role="menu"
+          className="menu-pop dropdown-in"
+          style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 30, minWidth: 168, transformOrigin: 'top right' }}
+        >
+          {onMacros && (
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-pop-item"
+              onClick={() => { onMacros(); setOpen(false); }}
+            >
+              Macros
+            </button>
+          )}
+          {showCopyToToday && onCopyToToday && (
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-pop-item"
+              onClick={() => { onCopyToToday(); setOpen(false); }}
+            >
+              Copy to today
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-pop-item is-danger"
+              onClick={() => { onDelete(); setOpen(false); }}
+            >
+              Remove from day
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
-
-const PIE_COLORS = { protein: MACRO_COLORS.protein, carbs: MACRO_COLORS.carbs, fat: MACRO_COLORS.fat };
 
 function buildPieData(entry) {
   const cal = mealMacroCalorieBreakdown(entry);
@@ -85,7 +107,14 @@ function buildPieData(entry) {
   };
 }
 
-export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline' }) {
+export default function LogEntryRow({
+  entry,
+  onDelete,
+  onEdit,
+  onCopyToToday,
+  showCopyToToday = false,
+  variant = 'inline',
+}) {
   const m = computeEntryMacros(entry);
   // Which panel is open: null (collapsed), 'macros', or 'micros'.
   const [view, setView] = useState(null);
@@ -128,18 +157,14 @@ export default function LogEntryRow({ entry, onDelete, onEdit, variant = 'inline
           </div>
 
           {/* Actions — always top-right */}
-          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'flex-start' }}>
             <ViewToggle view={view} setView={openView} hasMicros={hasMicros} />
-            {onDelete && (
-              <button
-                className="btn-danger"
-                style={{ padding: '6px clamp(10px, 1vw, 12px)', fontSize: 'clamp(12px, 0.9vw, 13px)', minHeight: 'clamp(32px, 2.4vw, 38px)', lineHeight: 1 }}
-                onClick={() => onDelete(entry)}
-                title="Remove entry"
-              >
-                ✕
-              </button>
-            )}
+            <MealRowMenu
+              onMacros={() => openView('macros')}
+              onDelete={onDelete ? () => onDelete(entry) : null}
+              onCopyToToday={onCopyToToday ? () => onCopyToToday(entry) : null}
+              showCopyToToday={showCopyToToday}
+            />
           </div>
         </div>
 

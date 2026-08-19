@@ -1,5 +1,6 @@
-import { listLoggingSlotsFromRecipe, listNonEditableTemplateLines } from '@features/meal-logging';
+import { listRecipeIngredientLines, listNonEditableTemplateLines } from '@features/meal-logging/recipeReceipt';
 import { macrosForLabelServingAmount } from '@features/label-ocr';
+import { bestLibraryMatch, libraryMacrosFor, MATCH_THRESHOLD } from './ingredientSource';
 
 export const normName = s => String(s || '').toLowerCase().trim().replace(/\s+/g, ' ');
 const macroNum = v => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v) * 10) / 10 : 0);
@@ -42,69 +43,142 @@ export function recipeIngredientNames(recipe, labelById) {
   const out = [];
   const seen = new Set();
   const push = nm => { const n = String(nm || '').trim(); if (n && !seen.has(n.toLowerCase())) { seen.add(n.toLowerCase()); out.push(n); } };
-  for (const slot of listLoggingSlotsFromRecipe(recipe)) {
-    const id = slot.option_label_ingredient_ids?.[0];
-    const ing = id != null && labelById ? labelById.get(Number(id)) : null;
-    push((ing && ing.name) || slot.label);
+  for (const line of listRecipeIngredientLines(recipe)) {
+    const ing = line.label_ingredient_id != null && labelById ? labelById.get(Number(line.label_ingredient_id)) : null;
+    push((ing && ing.name) || line.name);
   }
-  for (const line of listNonEditableTemplateLines(recipe)) push(line.name);
+  for (const tline of listNonEditableTemplateLines(recipe)) push(tline.name);
   return out;
 }
 
-function slotDisplayName(slot, labelById) {
-  const id = slot.option_label_ingredient_ids?.[0];
-  const ing = id != null && labelById ? labelById.get(Number(id)) : null;
-  return (ing && ing.name) || slot.label;
+function lineDisplayName(line, labelById) {
+  const ing = line.label_ingredient_id != null && labelById ? labelById.get(Number(line.label_ingredient_id)) : null;
+  return (ing && ing.name) || line.name;
+}
+
+/** The saved ingredient library as a plain array, from either index map. */
+function libraryFrom(labelById, labelByName) {
+  const src = labelById?.values ? labelById : (labelByName?.values ? labelByName : null);
+  return src ? [...src.values()] : [];
 }
 
 /**
- * Apply AI-detected modifications to a recipe's slots, producing the data needed
- * to log a customized instance through the normal recipe-log endpoint.
+ * Resolve a substituted/added ingredient NAME to a saved library ingredient.
+ * Exact (normalized) name first, then the same fuzzy scorer the freeform rows
+ * use — the AI writes "sweet potato", the library says "Sweet Potato, raw", and
+ * an exact-only lookup would silently downgrade a real ingredient (with its
+ * label macros AND label micros) to an AI guess.
+ */
+function findLibraryIngredient(name, labelByName, library) {
+  if (!name) return null;
+  const exact = labelByName ? labelByName.get(normName(name)) : null;
+  if (exact && exact.id != null) return exact;
+  const { best, score } = bestLibraryMatch(name, library);
+  return best && best.id != null && score >= MATCH_THRESHOLD ? best : null;
+}
+
+/**
+ * The amount/unit to log a saved ingredient at: what the AI said when it's
+ * usable, otherwise one serving of that ingredient ("add blueberries" with no
+ * amount shouldn't lose to a missing number).
+ */
+export function amountFor(ing, quantity, unit) {
+  const q = Number(quantity);
+  if (Number.isFinite(q) && q > 0 && unit) return [q, unit];
+  if (ing.tracking_type === 'unit') {
+    const sq = Number(ing.serving_quantity);
+    return [Number.isFinite(sq) && sq > 0 ? sq : 1, String(ing.unit_name || 'unit')];
+  }
+  const gps = Number(ing.grams_per_serving);
+  return [gps > 0 ? gps : 100, 'g'];
+}
+
+/** A library-backed row for the receipt (carries the id, so label micros apply). */
+function libraryRow(ing, amount, unit) {
+  const m = libraryMacrosFor(ing, amount, unit);
+  if (!m) return null;
+  return {
+    name: ing.name,
+    amount: Number(amount),
+    unit,
+    calories: macroNum(m.calories),
+    protein_g: macroNum(m.protein_g),
+    carbs_g: macroNum(m.carbs_g),
+    fat_g: macroNum(m.fat_g),
+    source: 'library',
+    label_ingredient_id: Number(ing.id),
+  };
+}
+
+function pickUnit(requested, fallback) {
+  if (requested === 'oz') return 'oz';
+  if (requested === 'g') return 'g';
+  return fallback;
+}
+
+/**
+ * Apply AI-detected modifications to a recipe's library lines, producing the
+ * receipt rows needed to log a customized instance through POST /api/log.
  *
  * Returns:
- *   - customizations: { [slot_id]: {label_ingredient_id, amount, unit} } for the
- *     CHANGED slots only (sent as log_slot_customizations; server defaults the rest).
- *   - resolvedBySlot: every slot resolved (default + changes) — for the preview.
+ *   - resolvedLines: every library line after changes (removed lines have amount 0).
  *   - servingsScale: number|null (whole-recipe scale, e.g. 0.5 for half).
- *   - applied: string[] summaries; unapplied: [{text, reason}] shown in review.
- *
- * Only remove / set_amount / substitute-to-library / scale are applied here;
- * add and non-library substitutes are surfaced as "couldn't apply" (Phase 3).
+ *   - droppedLines: Set of non-editable template line names replaced/removed here.
+ *   - keepable: new library ingredients that could be saved onto the recipe.
+ *   - applied: string[] summaries; unapplied: [{text, reason, modIndex, fix?}].
+ *   - requiresCustomPath: true when extra AI/library rows or dropped template
+ *     lines mean the log must send a full receipt (not recipe defaults).
  */
 export function applyModifications(recipe, modifications, labelById, labelByName) {
-  const slots = listLoggingSlotsFromRecipe(recipe);
-  const resolvedBySlot = {};
-  for (const s of slots) {
-    resolvedBySlot[s.slot_id] = {
-      label_ingredient_id: s.option_label_ingredient_ids?.[0],
-      amount: String(s.amount),
-      unit: s.unit === 'oz' ? 'oz' : 'g',
-    };
-  }
+  const libraryLines = listRecipeIngredientLines(recipe);
+  const library = libraryFrom(labelById, labelByName);
+  const resolvedLines = libraryLines.map((line, i) => ({
+    key: `line_${i}`,
+    label_ingredient_id: line.label_ingredient_id,
+    name: line.name,
+    amount: String(line.amount),
+    unit: line.unit || 'g',
+  }));
 
-  // Index slots by both the recipe label and the library ingredient name.
-  const slotByName = new Map();
-  for (const s of slots) {
-    slotByName.set(normName(s.label), s);
-    slotByName.set(normName(slotDisplayName(s, labelById)), s);
+  const lineByName = new Map();
+  for (const line of resolvedLines) {
+    lineByName.set(normName(line.name), line);
+    lineByName.set(normName(lineDisplayName(line, labelById)), line);
   }
-  const findSlot = target => {
+  const findResolved = target => {
     if (!target) return null;
     const t = normName(target);
-    if (slotByName.has(t)) return slotByName.get(t);
-    for (const [name, s] of slotByName) if (name.includes(t) || t.includes(name)) return s;
+    if (lineByName.has(t)) return lineByName.get(t);
+    for (const [name, line] of lineByName) if (name.includes(t) || t.includes(name)) return line;
     return null;
   };
 
-  const customizations = {};
+  const lineNames = listNonEditableTemplateLines(recipe).map(l => String(l.name || '')).filter(Boolean);
+  const findTemplateLine = target => {
+    if (!target) return null;
+    const t = normName(target);
+    return lineNames.find(nm => normName(nm) === t)
+      || lineNames.find(nm => normName(nm).includes(t) || t.includes(normName(nm)))
+      || null;
+  };
+
   const applied = [];
   const unapplied = [];
-  const addedRows = []; // AI-estimated rows (add / non-library substitute) — need the custom-log path
+  const addedRows = [];
+  const droppedLines = new Set();
+  const keepable = [];
   let servingsScale = null;
 
-  for (const m of modifications || []) {
+  const mods = Array.isArray(modifications) ? modifications : [];
+  for (let modIndex = 0; modIndex < mods.length; modIndex++) {
+    const m = mods[modIndex];
+    const cantApply = (text, reason, wanted) => {
+      unapplied.push({
+        text, reason, modIndex,
+        ...(wanted ? { fix: { kind: m.type, name: wanted, quantity: m.quantity ?? null, unit: m.unit || '' } } : {}),
+      });
+    };
     if (m.type === 'scale') {
-      // The model sometimes puts the factor in "quantity" instead of "scale".
       const sc = Number(m.scale) > 0 ? Number(m.scale) : (Number(m.quantity) > 0 ? Number(m.quantity) : null);
       if (sc != null) {
         servingsScale = sc;
@@ -114,7 +188,13 @@ export function applyModifications(recipe, modifications, labelById, labelByName
     }
     if (m.type === 'add') {
       const name = m.newName || m.target;
-      if (name && hasMacroEstimate(m)) {
+      const lib = findLibraryIngredient(name, labelByName, library);
+      const row = lib ? libraryRow(lib, ...amountFor(lib, m.quantity, m.unit)) : null;
+      if (row) {
+        addedRows.push(row);
+        applied.push(`Added ${row.name}${normName(row.name) === normName(name) ? '' : ` (matched “${name}”)`} from your library`);
+        keepable.push({ kind: 'ingredient', row, label: `Add ${row.name} to the recipe` });
+      } else if (name && hasMacroEstimate(m)) {
         addedRows.push({
           name, amount: m.quantity != null ? Number(m.quantity) : null, unit: m.unit || '',
           calories: macroNum(m.calories), protein_g: macroNum(m.protein), carbs_g: macroNum(m.carbs), fat_g: macroNum(m.fat),
@@ -123,93 +203,152 @@ export function applyModifications(recipe, modifications, labelById, labelByName
         const calOnly = m.calories != null && m.protein == null && m.carbs == null && m.fat == null;
         applied.push(`Added ${name} (AI estimate${calOnly ? ', calories only' : ''})`);
       } else {
-        unapplied.push({ text: `Add ${[m.quantity, m.unit, name].filter(Boolean).join(' ')}`.trim() || 'Add ingredient', reason: 'needs review — couldn’t estimate this item’s macros' });
+        cantApply(`Add ${[m.quantity, m.unit, name].filter(Boolean).join(' ')}`.trim() || 'Add ingredient', 'couldn’t estimate this item’s macros', name);
       }
       continue;
     }
-    const slot = findSlot(m.target);
-    if (!slot) {
-      if (m.type === 'add') unapplied.push({ text: `Add ${[m.quantity, m.unit, m.newName].filter(Boolean).join(' ')}`.trim(), reason: 'Adding new ingredients isn’t supported yet' });
-      else unapplied.push({ text: `${m.type} ${m.target || ''}`.trim(), reason: `“${m.target || 'that ingredient'}” isn’t in this recipe` });
+    const line = findResolved(m.target);
+    if (!line) {
+      const tline = findTemplateLine(m.target);
+      if (tline && m.type === 'remove') {
+        droppedLines.add(tline);
+        applied.push(`Removed ${tline}`);
+      } else if (tline && m.type === 'substitute') {
+        const lib = findLibraryIngredient(m.newName, labelByName, library);
+        const row = lib ? libraryRow(lib, ...amountFor(lib, m.quantity, m.unit)) : null;
+        if (row) {
+          droppedLines.add(tline);
+          addedRows.push(row);
+          applied.push(`Substituted ${tline} → ${row.name} (from your library)`);
+        } else if (m.newName && hasMacroEstimate(m)) {
+          droppedLines.add(tline);
+          addedRows.push({
+            name: m.newName, amount: m.quantity != null ? Number(m.quantity) : null, unit: m.unit || '',
+            calories: macroNum(m.calories), protein_g: macroNum(m.protein), carbs_g: macroNum(m.carbs), fat_g: macroNum(m.fat),
+            source: 'ai',
+          });
+          applied.push(`Substituted ${tline} → ${m.newName} (AI estimate)`);
+        } else {
+          cantApply(`Substitute ${tline} → ${m.newName || '?'}`, m.newName ? `couldn’t estimate macros for “${m.newName}”` : 'no replacement specified', m.newName);
+        }
+      } else {
+        cantApply(`${m.type} ${m.target || ''}`.trim(), `“${m.target || 'that ingredient'}” isn’t in this recipe`);
+      }
       continue;
     }
-    const cur = resolvedBySlot[slot.slot_id];
-    const name = slotDisplayName(slot, labelById);
+    const name = lineDisplayName(line, labelById);
 
     if (m.type === 'remove' || (m.type === 'set_amount' && Number(m.quantity) <= 0)) {
-      resolvedBySlot[slot.slot_id] = { ...cur, amount: '0' };
-      customizations[slot.slot_id] = { label_ingredient_id: cur.label_ingredient_id, amount: '0', unit: cur.unit };
+      line.amount = '0';
       applied.push(`Removed ${name}`);
     } else if (m.type === 'set_amount') {
-      const unit = m.unit === 'oz' ? 'oz' : (m.unit === 'g' ? 'g' : cur.unit);
-      const amount = String(m.quantity);
-      resolvedBySlot[slot.slot_id] = { ...cur, amount, unit };
-      customizations[slot.slot_id] = { label_ingredient_id: cur.label_ingredient_id, amount, unit };
-      applied.push(`Set ${name} to ${amount} ${unit}`);
+      const unit = pickUnit(m.unit, line.unit);
+      line.amount = String(m.quantity);
+      line.unit = unit;
+      applied.push(`Set ${name} to ${line.amount} ${unit}`);
     } else if (m.type === 'substitute') {
-      const sub = labelByName ? labelByName.get(normName(m.newName)) : null;
-      if (sub && sub.id != null) {
-        const unit = m.unit === 'oz' ? 'oz' : (m.unit === 'g' ? 'g' : cur.unit);
-        const amount = m.quantity != null && Number(m.quantity) > 0 ? String(m.quantity) : cur.amount;
-        // Only apply if the substitute has enough data to compute macros — else
-        // the recipe-log endpoint would reject it; surface it instead.
-        if (macrosForLabelServingAmount(sub, amount, unit)) {
-          resolvedBySlot[slot.slot_id] = { label_ingredient_id: Number(sub.id), amount, unit };
-          customizations[slot.slot_id] = { label_ingredient_id: Number(sub.id), amount, unit };
-          applied.push(`Substituted ${name} → ${sub.name}`);
+      const sub = findLibraryIngredient(m.newName, labelByName, library);
+      if (sub) {
+        const unit = pickUnit(m.unit, line.unit);
+        const amount = m.quantity != null && Number(m.quantity) > 0 ? String(m.quantity) : line.amount;
+        if (libraryMacrosFor(sub, amount, unit)) {
+          line.label_ingredient_id = Number(sub.id);
+          line.amount = amount;
+          line.unit = unit;
+          const asked = normName(m.newName) === normName(sub.name) ? '' : ` (matched “${m.newName}”)`;
+          applied.push(`Substituted ${name} → ${sub.name}${asked}`);
+        } else if (m.newName && hasMacroEstimate(m)) {
+          const prevAmount = Number(line.amount);
+          line.amount = '0';
+          addedRows.push({
+            name: sub.name, amount: m.quantity != null ? Number(m.quantity) : prevAmount, unit: m.unit || line.unit,
+            calories: macroNum(m.calories), protein_g: macroNum(m.protein), carbs_g: macroNum(m.carbs), fat_g: macroNum(m.fat),
+            source: 'ai',
+          });
+          applied.push(`Substituted ${name} → ${sub.name} (AI estimate — saved macros don’t cover this amount)`);
         } else {
-          unapplied.push({ text: `Substitute ${name} → ${sub.name}`, reason: `“${sub.name}” needs nutrition info (grams per serving) before it can be used` });
+          cantApply(`Substitute ${name} → ${sub.name}`, `“${sub.name}” needs nutrition info (grams per serving) before it can be used`, sub.name);
         }
       } else if (m.newName && hasMacroEstimate(m)) {
-        // Non-library substitute with an AI estimate → drop the original slot and
-        // add the substitute as an AI-estimated row (routes through the custom path).
-        resolvedBySlot[slot.slot_id] = { ...cur, amount: '0' };
+        const prevAmount = Number(line.amount);
+        line.amount = '0';
         addedRows.push({
-          name: m.newName, amount: m.quantity != null ? Number(m.quantity) : Number(cur.amount), unit: m.unit || cur.unit,
+          name: m.newName, amount: m.quantity != null ? Number(m.quantity) : prevAmount, unit: m.unit || line.unit,
           calories: macroNum(m.calories), protein_g: macroNum(m.protein), carbs_g: macroNum(m.carbs), fat_g: macroNum(m.fat),
           source: 'ai',
         });
         applied.push(`Substituted ${name} → ${m.newName} (AI estimate)`);
       } else {
-        unapplied.push({ text: `Substitute ${name} → ${m.newName || '?'}`, reason: m.newName ? `couldn’t estimate macros for “${m.newName}” — needs review` : 'no replacement specified' });
+        cantApply(`Substitute ${name} → ${m.newName || '?'}`, m.newName ? `couldn’t estimate macros for “${m.newName}”` : 'no replacement specified', m.newName);
       }
     }
   }
 
-  return { customizations, resolvedBySlot, servingsScale, applied, unapplied, addedRows, requiresCustomPath: addedRows.length > 0 };
+  return {
+    resolvedLines, servingsScale, applied, unapplied, addedRows, droppedLines, keepable,
+    requiresCustomPath: addedRows.length > 0 || droppedLines.size > 0,
+  };
 }
 
 /**
- * Per-ingredient preview rows after applying the resolved selections (display
- * only — the logged rows come from the server's recipe-log resolution). Removed
- * (amount<=0) slots are dropped; manual name-only lines render without macros.
+ * Follow-up corrections return a partial modification list. Keep earlier
+ * swaps/amounts as the baseline and append the new ones (don't replace blindly).
  */
-export function resolvedReviewRows(recipe, labelById, resolvedBySlot) {
+export function mergeRecipeModifications(prev, next) {
+  const a = Array.isArray(prev) ? prev : [];
+  const b = Array.isArray(next) ? next : [];
+  if (!a.length) return b;
+  if (!b.length) return a;
+  return [...a, ...b];
+}
+
+/**
+ * Replace one modification with a hand-resolved version: the exact saved
+ * ingredient the user picked, at the amount they confirmed. Re-running
+ * applyModifications over the result applies it through the normal library
+ * path, so a manual fix and an AI-matched swap produce identical logs.
+ */
+export function resolveModification(modifications, modIndex, ingredient, quantity, unit) {
+  const list = Array.isArray(modifications) ? [...modifications] : [];
+  const m = list[modIndex];
+  if (!m || !ingredient?.name) return list;
+  const q = Number(quantity);
+  list[modIndex] = {
+    ...m,
+    newName: ingredient.name,
+    quantity: Number.isFinite(q) && q > 0 ? q : null,
+    unit: unit || m.unit || '',
+  };
+  return list;
+}
+
+/**
+ * Per-ingredient preview rows after applying the resolved library lines.
+ * Removed (amount<=0) lines are dropped; manual name-only lines render without
+ * macros unless they were removed/swapped out (`droppedLines`).
+ */
+export function resolvedReviewRows(recipe, labelById, resolvedLines, droppedLines) {
   const rows = [];
-  for (const slot of listLoggingSlotsFromRecipe(recipe)) {
-    const res = resolvedBySlot?.[slot.slot_id] || {
-      label_ingredient_id: slot.option_label_ingredient_ids?.[0],
-      amount: slot.amount,
-      unit: slot.unit,
-    };
-    const amt = Number(res.amount);
-    if (!Number.isFinite(amt) || amt <= 0) continue; // removed
-    const ing = res.label_ingredient_id != null && labelById ? labelById.get(Number(res.label_ingredient_id)) : null;
-    const m = ing ? macrosForLabelServingAmount(ing, res.amount, res.unit) : null;
+  for (const line of resolvedLines || []) {
+    const amt = Number(line.amount);
+    if (!Number.isFinite(amt) || amt <= 0) continue;
+    const ing = line.label_ingredient_id != null && labelById ? labelById.get(Number(line.label_ingredient_id)) : null;
+    const m = ing ? macrosForLabelServingAmount(ing, line.amount, line.unit) : null;
     rows.push({
-      name: (ing && ing.name) || slot.label,
+      name: (ing && ing.name) || line.name,
       amount: amt,
-      unit: res.unit,
+      unit: line.unit,
       calories: m ? m.calories : null,
       protein_g: m ? m.protein_g : null,
       carbs_g: m ? m.carbs_g : null,
       fat_g: m ? m.fat_g : null,
       source: 'library',
-      label_ingredient_id: res.label_ingredient_id != null ? Number(res.label_ingredient_id) : undefined,
+      label_ingredient_id: line.label_ingredient_id != null ? Number(line.label_ingredient_id) : undefined,
     });
   }
-  for (const line of listNonEditableTemplateLines(recipe)) {
-    rows.push({ name: line.name, amountText: line.amount, calories: null, protein_g: null, carbs_g: null, fat_g: null, source: 'recipe' });
+  for (const tline of listNonEditableTemplateLines(recipe)) {
+    if (droppedLines?.has?.(tline.name)) continue;
+    rows.push({ name: tline.name, amountText: tline.amount, calories: null, protein_g: null, carbs_g: null, fat_g: null, source: 'recipe' });
   }
   return rows;
 }

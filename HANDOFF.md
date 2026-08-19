@@ -1,12 +1,14 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-08-02_
+_Last updated: 2026-08-17_
 
-> **▶ Next up: deploy + MCP connector.** Plan is written and decisions are made —
-> see **`docs/future/deployment-and-mcp.md`**. Three steps: (1) auth + rate limiting,
-> (2) Render/Vercel deploy with backups, (3) MCP server so meals can be logged from the
-> Claude app on the phone. Start at step 1. That plan also carries a 2026-08-02 codebase
-> audit (what's safe, what breaks once public) so it need not be re-derived.
+> **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
+> Viewing day does not auto-flip at midnight; coach tools are read + summarize.
+>
+> **Auth / onboarding / coach** are live: Bearer sessions (email OTP + Apple/dev),
+> first-run onboarding, invite codes, consent scopes, Coach roster + soft suggestions.
+> **Deploy:** follow **`docs/deploy-checklist.md`** (Render + Vercel). App Store later:
+> **`docs/app-store-path.md`**.
 
 Snapshot of where the app stands so any session (human or Claude) can pick up quickly.
 For conventions, architecture, and the phase vision, see `CLAUDE.md` — this file is the
@@ -46,10 +48,11 @@ cd server && npm run dev        # plain `node --watch index.js`; does NOT auto-r
 cd client && npm run dev
 ```
 
-SQLite DB: `server/nutrition.db` (a stale copy at repo root — ignore it). Single user,
-`user_id = 0` hardcoded, no auth (intentional while localhost-only — changes at deploy,
-see `docs/future/deployment-and-mcp.md`). Schema + migrations are inline in
-`server/db.js` (`PRAGMA table_info` + conditional `ALTER TABLE`).
+SQLite DB: `server/nutrition.db` (a stale copy at repo root — ignore it). Multi-user with
+auth: Bearer session on `/api/*`; ownership via `req.user.id`. Legacy `user_id = 0` rows
+are migrated to the first account on boot (`migrateLegacyUserZero`). First email sign-in
+claims the legacy `owner@local.flops` row so existing meals/recipes stay yours. Schema +
+migrations are inline in `server/db.js` (`PRAGMA table_info` + conditional `ALTER TABLE`).
 
 > If a running API server predates a schema/route change, **restart it** — a plain
 > `node index.js` will not pick up new code or run new migrations on its own.
@@ -60,8 +63,17 @@ see `docs/future/deployment-and-mcp.md`). Schema + migrations are inline in
 
 ### Nutrition (Phase 1) — solid / feature-complete
 Dashboard, Recipe Library, Ingredient Library (OCR label scan + **barcode scan**), Meal Builder
-(wizard + slots), History, Goals (versioned weekly min/max), Report (PDF), Profile, Adherence,
-and the AI Macro Logger all work. Rough edges are **code-size/debt**, not missing features.
+(wizard), History, Goals (versioned weekly min/max), Report (PDF), Profile, Adherence,
+and AI Estimate all work. Rough edges are **code-size/debt**, not missing features.
+
+**Log Meal vs AI Estimate (2026-08-17).** Log a Meal is a **receipt**: optionally
+seed from a saved recipe, then add/edit library foods. Recipes and ingredients
+are separate pickers — not one combined search. The modal no longer links out to
+AI Estimate or Meal Builder (Today has Hey Estimate; recipes are edited in Meal
+Builder). **AI Estimate** is speak / natural language (“I had three eggs…”)
+including matching a saved recipe by speech — not a second receipt builder.
+Logging a seeded recipe still keeps `recipe_id`; a custom receipt uses the
+custom path. Tap a receipt name for AI substitutes from the Ingredient Library.
 
 **AI Macro Logger — recipe saving fixed (2026-07-26).** "Save as recipe" (and meal-prep
 save) now back each ingredient with an Ingredient Library entry and record the link in
@@ -141,7 +153,10 @@ skip the 1 MB global JSON limit. Service: `server/supplementLabelService.js`. **
 provider key** (same one the AI Macro Logger uses).
 
 ### Cross-cutting foundation — healthy
-Mobile nav works (`Navbar` → `BottomNav` switch at 768px, 44px+ targets). Shared UI in
+Mobile nav works (`Navbar` → `BottomNav` switch at 768px, 44px+ targets). **Both navs are now flat
+— every item is a direct link**; the desktop dropdowns and the mobile bottom sheets were both
+deleted once their groups were down to one or two destinations, so `Navbar.jsx` and `BottomNav.jsx`
+are plain link lists. Shared UI in
 `shared/ui`, hooks in `shared/hooks`, utils in `shared/utils` (well unit-tested). Server routes
 are all Jest-tested. **`server/aiClient.js` now supports vision** — `callProviderJson({imageDataUrl})`
 attaches a base64 image for OpenAI (`image_url`) or Anthropic (base64 `image` block); reusable
@@ -151,8 +166,54 @@ by any future feature (e.g. barcode/label flows).
 
 ## 4. Git state
 
-`main` is **pushed and in sync with `origin/main`** (2026-07-30). Server **223** tests, client
-**154**, all passing; client builds clean.
+> **✅ Tree cleared 2026-08-09.** The several sessions of stacked work that sat uncommitted are
+> now six topic commits on branch **`feature/log-modal-compact`** (the branch name predates most
+> of them), on top of `a642f74`:
+>
+> 1. `98f22b4` docs(strategy) — coach layer, platform and sponsorship decisions
+> 2. `ab45bfd` feat(recipes) — `GET /api/recipes/:id/nutrition`, micro cache, `mealMicros.js`
+>    extracted out of `routes/log.js`
+> 3. `98e2a49` refactor(meals) — `ViewToggle` extracted from `LogEntryRow` for reuse
+> 4. `60a43b9` feat(recipes) — recipe cards expand to macros/micros/ingredients
+> 5. `fe30501` feat(nav) — Meal Builder folded into a "Recipes & Ingredients" section,
+>    bottom-sheet groups removed, `LibrarySubNav` added
+> 6. `a370792` feat(ai-logger) — conversational corrections, off-list swaps, "Keep in recipe"
+>
+> 7. `cbe251d` docs(handoff) — this section
+>
+> Verified at that point: server **233** tests, client **248**, client build clean.
+
+`origin/main` is still at `edb06ca` — all 8 commits from `a642f74` onward are local only, on
+`feature/log-modal-compact`. **Nothing is merged to `main` and nothing is pushed.**
+
+> **Committed 2026-08-11 (`28981bd`, `57e071e`, `118e149`).** Two more features, green at
+> server **233** / client **254** / build clean. Working tree is empty; still nothing pushed:
+>
+> **`28981bd` — Nav simplification.** The desktop `Recipes & Ingredients` dropdown became a direct link to
+> `/recipes` that stays lit across all three section routes. `+ Build a meal` moved out of the
+> Recipe Library title row into `LibrarySubNav`, so it sits beside the Recipes/Ingredients toggle
+> and is reachable from **both** pages — with the dropdown gone, the Ingredients page otherwise had
+> no route to Meal Builder at all. Since every top-nav item is now a direct link, the whole
+> dropdown mechanism was dead and came out: `openMenu` state, outside-click/Escape handlers, and
+> ~115 lines of menu CSS (`Navbar.module.css` 302 → 186). Same treatment `BottomNav`'s sheets got
+> in `fe30501`. Files: `Navbar.jsx`, `Navbar.module.css`, `LibrarySubNav.jsx(+css)`, `Recipes.jsx`.
+>
+> **`57e071e` — Log an ingredient as a food.** The Log a Meal picker now searches recipes **and** library
+> ingredients together, grouped under headers, so almonds or a banana log without a recipe and
+> **without an AI call**. Picking an ingredient swaps Servings for Amount (g/oz for weight-tracked,
+> the ingredient's own unit for counted ones), pre-fills one label serving, and shows a live macro
+> preview. It logs through the existing `POST /api/log/custom` one-off path (`is_quick_food = 1`),
+> passing the ingredient row so the server reads its **stored label micros** instead of estimating
+> — barcode-scanned foods therefore log real measured micros. Offered only when creating, not when
+> editing an entry. **No server changes were needed**; `logLabelMicros.test.js` already covered the
+> payload shape. Files: `LogMealModal.jsx`, `RecipeCombobox.jsx` (+ new `RecipeCombobox.test.jsx`,
+> 6 tests), `Dashboard.jsx`, `History.jsx`.
+>
+> Two decisions worth not re-deriving: the amount-seeding is a **selection handler, not a
+> `useEffect`**, because lint here bans `setState` in effect bodies; and the macro math reuses
+> **`macrosForLabelServingAmount`** from `@features/label-ocr` (already shared by Meal Builder, the
+> AI logger and `ingredientSource`) rather than adding a fourth copy — `recipeLogMacros.js` still
+> carries its own private duplicate of that math, which is pre-existing and left alone.
 
 Merged 2026-07-30: the **Today tab slimmed down** (adherence moved off it, weight raised under
 the supplement strip, supplements became a compact strip rather than a section), the **weight
@@ -187,7 +248,7 @@ consolidation. That tree passed server 112 / client 105.
 
 - **Oversized components** (refactor when next touched): `AiMacroLogger.jsx` (~1,360),
   `TrainingWorkouts.jsx` (~900), `Ingredients.jsx` (~777, grew with the barcode entry point),
-  `MealBuilder.jsx` (~720), `LogMealModal.jsx` (~567). `ManageSupplementsModal.jsx` (~393) is
+  `MealBuilder.jsx` (~720), `LogMealModal.jsx` (~645). `ManageSupplementsModal.jsx` (~393) is
   borderline after the micro + label-scan additions. `client/src/hooks/` is empty; extract
   custom hooks here.
 - **Pre-existing lint errors** in `Profile.jsx` (`H3`/`UnitOption` components declared inside

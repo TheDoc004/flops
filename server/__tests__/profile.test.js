@@ -1,12 +1,16 @@
 const request = require('supertest');
 const express = require('express');
 const { createDb } = require('../db');
+const { createAuthMiddleware } = require('../middleware/auth');
 const { createProfileRouter, createBodyWeightsRouter } = require('../routes/profile');
 
 function buildApp() {
   const db = createDb(':memory:');
   const app = express();
+  const { attachUser, requireAuth } = createAuthMiddleware(db);
   app.use(express.json());
+  app.use(attachUser);
+  app.use(requireAuth);
   app.use('/api/profile', createProfileRouter(db));
   app.use('/api/body-weights', createBodyWeightsRouter(db));
   return app;
@@ -16,7 +20,7 @@ describe('GET /api/profile', () => {
   it('returns empty profile for new user', async () => {
     const res = await request(buildApp()).get('/api/profile');
     expect(res.status).toBe(200);
-    expect(res.body.user_id).toBe(0);
+    expect(res.body.user_id).toBe(1);
     expect(res.body.height_cm).toBeNull();
   });
 });

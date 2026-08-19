@@ -32,10 +32,8 @@ export default function StepReview({
       return {
         id: l.id,
         name: ing.name,
-        role: String(l.roleLabel || '').trim(),
         amount: l.amount,
         unit: ing.tracking_type === 'unit' ? (ing.unit_name || 'unit') : l.unit,
-        subsCount: (l.substitute_label_ingredient_ids || []).length,
         m,
       };
     })
@@ -75,11 +73,10 @@ export default function StepReview({
               >
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-strong)' }}>
-                    {r.role ? `${r.role} — ${r.name}` : r.name}
+                    {r.name}
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
                     {r.amount} {r.unit}
-                    {r.subsCount > 0 && ` · ${r.subsCount} substitute${r.subsCount === 1 ? '' : 's'}`}
                   </div>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>

@@ -1,4 +1,5 @@
 const express = require('express');
+const { uid } = require('../userId');
 const { buildMicrosBlob, MICRO_KEYS } = require('../microNutrients');
 const {
   scanSupplementLabel,
@@ -146,10 +147,7 @@ function createSupplementsRouter(db) {
   // --- Definitions ---------------------------------------------------------
 
   router.get('/', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const rows = db
       .prepare(
         `SELECT ${SELECT_COLS} FROM supplements
@@ -161,10 +159,7 @@ function createSupplementsRouter(db) {
   });
 
   router.post('/', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const name = String(req.body?.name ?? '').trim();
     if (!name) return res.status(400).json({ error: 'name is required' });
 
@@ -198,10 +193,7 @@ function createSupplementsRouter(db) {
   // Today's checklist: every active supplement + whether it's been taken on the
   // date, plus the macro totals contributed by taken items flagged to count.
   router.get('/today', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const date = isoDateOrNull(req.query.date);
     if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
 
@@ -240,10 +232,7 @@ function createSupplementsRouter(db) {
 
   // Toggle/set taken state for a supplement on a date.
   router.put('/log', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const date = isoDateOrNull(req.body?.date);
     if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
     const supplementId = Number(req.body?.supplement_id);
@@ -279,10 +268,7 @@ function createSupplementsRouter(db) {
   // AND the macros of items flagged to count, so a past day totals the same way
   // Today does. Items that carry neither are skipped, keeping the payload small.
   router.get('/range', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const start = isoDateOrNull(req.query.start);
     const end = isoDateOrNull(req.query.end);
     if (!start || !end) return res.status(400).json({ error: 'Invalid start/end (use YYYY-MM-DD)' });
@@ -399,9 +385,8 @@ function createSupplementsRouter(db) {
   // Declared AFTER the literal /today and /log routes so Express doesn't match
   // those paths as :id.
   router.put('/:id', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
+    const userId = uid(req);
     const id = Number(req.params.id);
-    if (!Number.isInteger(userId) || userId < 0) return res.status(400).json({ error: 'Invalid user_id' });
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
 
     const existing = db.prepare('SELECT id FROM supplements WHERE id = ? AND user_id = ?').get(id, userId);
@@ -433,7 +418,7 @@ function createSupplementsRouter(db) {
 
   // Soft delete — keeps historical supplement_log rows meaningful.
   router.delete('/:id', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
+    const userId = uid(req);
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
     const r = db

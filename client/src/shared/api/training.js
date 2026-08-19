@@ -1,4 +1,4 @@
-import { apiUrl } from './base';
+import { apiFetch } from './base';
 
 async function readJsonIfPresent(res) {
   const contentType = res.headers.get('content-type') || '';
@@ -13,16 +13,15 @@ async function readJsonIfPresent(res) {
 }
 
 export async function fetchDailyTrainingContext(date) {
-  const res = await fetch(apiUrl(`/api/training/daily-context?date=${encodeURIComponent(date)}`));
+  const res = await apiFetch(`/api/training/daily-context?date=${encodeURIComponent(date)}`);
   if (!res.ok) throw new Error('Failed to load daily training context');
   return res.json();
 }
 
 export async function saveDailyTrainingContext(payload) {
-  const res = await fetch(apiUrl('/api/training/daily-context'), {
+  const res = await apiFetch('/api/training/daily-context', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 0, ...payload }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
@@ -32,16 +31,15 @@ export async function saveDailyTrainingContext(payload) {
 }
 
 export async function fetchTrainingSchedule() {
-  const res = await fetch(apiUrl('/api/training/schedule'));
+  const res = await apiFetch('/api/training/schedule');
   if (!res.ok) throw new Error('Failed to load training schedule');
   return res.json();
 }
 
 export async function saveTrainingSchedule(schedule) {
-  const res = await fetch(apiUrl('/api/training/schedule'), {
+  const res = await apiFetch('/api/training/schedule', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 0, schedule }),
+    body: JSON.stringify({ schedule }),
   });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
@@ -51,16 +49,15 @@ export async function saveTrainingSchedule(schedule) {
 }
 
 export async function fetchTrainingOverride(date) {
-  const res = await fetch(apiUrl(`/api/training/override?date=${date}`));
+  const res = await apiFetch(`/api/training/override?date=${date}`);
   if (!res.ok) throw new Error('Failed to load today override');
   return res.json();
 }
 
 export async function saveTrainingOverride(payload) {
-  const res = await fetch(apiUrl('/api/training/override'), {
+  const res = await apiFetch('/api/training/override', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 0, ...payload }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
@@ -70,7 +67,7 @@ export async function saveTrainingOverride(payload) {
 }
 
 export async function deleteTrainingOverride(date) {
-  const res = await fetch(apiUrl(`/api/training/override/${date}?user_id=0`), { method: 'DELETE' });
+  const res = await apiFetch(`/api/training/override/${date}`, { method: 'DELETE' });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
     throw new Error(e?.error || 'Failed to delete override');
@@ -78,22 +75,21 @@ export async function deleteTrainingOverride(date) {
 }
 
 export async function fetchTrainingToday({ date, weekday }) {
-  const res = await fetch(apiUrl(`/api/training/today?date=${date}&weekday=${weekday}`));
+  const res = await apiFetch(`/api/training/today?date=${date}&weekday=${weekday}`);
   if (!res.ok) throw new Error('Failed to load today training');
   return res.json();
 }
 
 export async function fetchTrainingFeedback(date) {
-  const res = await fetch(apiUrl(`/api/training/feedback?date=${date}`));
+  const res = await apiFetch(`/api/training/feedback?date=${date}`);
   if (!res.ok) throw new Error('Failed to load workout feedback');
   return res.json();
 }
 
 export async function saveTrainingFeedback(payload) {
-  const res = await fetch(apiUrl('/api/training/feedback'), {
+  const res = await apiFetch('/api/training/feedback', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 0, ...payload }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
@@ -101,4 +97,3 @@ export async function saveTrainingFeedback(payload) {
   }
   return res.json();
 }
-

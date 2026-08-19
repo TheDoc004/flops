@@ -69,8 +69,7 @@
 }
 
 /* ── Nav links ── */
-/* Grouped nav has a fixed handful of top-level items, so they fit without a
-   scroll area; overflow stays visible so dropdown menus aren't clipped. */
+/* A fixed handful of top-level items, so they fit without a scroll area. */
 .links {
   display: flex;
   gap: 6px;
@@ -80,8 +79,7 @@
   align-items: center;
 }
 
-.links a,
-.groupBtn {
+.links a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -105,18 +103,9 @@
 }
 
 /* Pressed state: a small settle, restrained (no spring). */
-.links a:active,
-.groupBtn:active {
+.links a:active {
   transform: translateY(1px);
 }
-
-.caret {
-  font-size: 11px;
-  opacity: 0.7;
-  transition: transform var(--dur-fast) var(--ease-out);
-}
-/* Chevron rotates smoothly while the menu is open. */
-.caretOpen { transform: rotate(180deg); }
 
 /* Narrow desktop / tablet landscape: shrink the brand and tighten the tabs so
    all six sections (incl. the longer "Goals & Profile") fit on one row without
@@ -128,13 +117,10 @@
   .brandName { font-size: 22px; }
   .divider { height: 26px; }
   .links { gap: 4px; }
-  .links a,
-  .groupBtn { padding: 8px 11px; font-size: 14px; }
-  .caret { font-size: 10px; }
+  .links a { padding: 8px 11px; font-size: 14px; }
 }
 
-.links a:hover,
-.groupBtn:hover {
+.links a:hover {
   background: #f0eeff;
   border-color: #c4b5fd;
   color: #312e81;
@@ -148,111 +134,9 @@
   box-shadow: 0 2px 8px rgba(49, 46, 129, 0.28) !important;
 }
 
-/* ── Dropdown group ── */
-.group {
-  position: relative;
-  display: inline-flex;
-}
-
-.menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 30;
-  min-width: 200px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px;
-  background: #fff;
-  border: 1px solid #e8e4dc;
-  border-radius: 12px;
-  box-shadow: 0 10px 28px rgba(30, 27, 75, 0.16);
-  /* Closed state: collapsed toward the trigger, ready to unroll downward.
-     scaleY from the top edge makes the panel visibly drop open (not just fade);
-     the small translateY adds travel so it reads as motion, not distortion.
-     visibility (delayed until the exit finishes) removes it from tab/a11y order
-     while closed and lets the exit animation play. */
-  opacity: 0;
-  transform: translateY(-8px) scaleY(0.7);
-  transform-origin: top center;
-  visibility: hidden;
-  pointer-events: none;
-  transition:
-    opacity var(--dur-close) var(--ease-in),
-    transform var(--dur-close) var(--ease-in),
-    visibility 0s linear var(--dur-close);
-}
-
-.menuOpen {
-  opacity: 1;
-  transform: translateY(0) scaleY(1);
-  visibility: visible;
-  pointer-events: auto;
-  transition:
-    opacity var(--dur-open) var(--ease-out),
-    transform var(--dur-open) var(--ease-out),
-    visibility 0s;
-}
-
-.menuItem {
-  display: block;
-  padding: 10px 12px;
-  border-radius: 8px;
-  color: #4b5563;
-  font-family: 'DM Serif Display', Georgia, serif;
-  font-size: 15px;
-  white-space: nowrap;
-  text-decoration: none;
-  /* Items ride the unroll: hidden/lifted while closed, cascading in top→bottom
-     as the panel opens (nth-child delays below). Delays are per-property so the
-     hover background/color transitions stay instant. */
-  opacity: 0;
-  transform: translateY(-6px);
-  transition:
-    background 0.12s, color 0.12s,
-    opacity var(--dur-close) var(--ease-in),
-    transform var(--dur-close) var(--ease-in);
-}
-.menuOpen .menuItem {
-  opacity: 1;
-  transform: none;
-  transition:
-    background 0.12s, color 0.12s,
-    opacity var(--dur-open) var(--ease-out),
-    transform var(--dur-open) var(--ease-out);
-}
-.menuOpen .menuItem:nth-child(2) { transition-delay: 0s, 0s, 40ms, 40ms; }
-.menuOpen .menuItem:nth-child(3) { transition-delay: 0s, 0s, 80ms, 80ms; }
-.menuOpen .menuItem:nth-child(4) { transition-delay: 0s, 0s, 120ms, 120ms; }
-.menuOpen .menuItem:nth-child(n+5) { transition-delay: 0s, 0s, 160ms, 160ms; }
-.menuItem:hover {
-  background: #f0eeff;
-  color: #312e81;
-}
-.menuItemActive {
-  background: #ede9fe;
-  color: #312e81;
-  font-weight: 600;
-}
-
-/* Reduced motion: keep a quick opacity change, drop travel/scale/rotation. */
+/* Reduced motion: drop the pressed-state travel. */
 @media (prefers-reduced-motion: reduce) {
-  .menu,
-  .menuOpen {
-    transform: none;
-    transition: opacity 0.01ms, visibility 0s;
-  }
-  .menuItem,
-  .menuOpen .menuItem {
-    opacity: 1;
-    transform: none;
-    transition: background 0.12s, color 0.12s;
-    transition-delay: 0s;
-  }
-  .caret { transition: none; }
-  .links a:active,
-  .groupBtn:active { transform: none; }
+  .links a:active { transform: none; }
 }
 
 /* ── Mobile ── */

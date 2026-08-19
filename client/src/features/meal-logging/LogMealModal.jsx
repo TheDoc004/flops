@@ -1,55 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { fetchRecipe, fetchRecipes, updateRecipe } from '@shared/api/recipes';
+import { fetchRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
+import { suggestSubstitutes } from '@shared/api/ai';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
-import { adjustPerServingMacrosForResolvedClient } from './recipeLogMacros';
-import { listLoggingSlotsFromRecipe, listNonEditableTemplateLines } from './recipeLoggingSlots';
-import { amountsDifferFromRecipe, buildRecipeAmountUpdate } from './recipeAmountUpdate';
-
-function lastSubsKey(recipeId) { return `nlog_lastSubs_${recipeId}`; }
-function lastAmountsKey(recipeId) { return `nlog_lastAmounts_${recipeId}`; }
-
-function loadLastSubs(recipeId) {
-  try {
-    const raw = localStorage.getItem(lastSubsKey(recipeId));
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
-}
-
-function saveLastSubs(recipeId, subs) {
-  try { localStorage.setItem(lastSubsKey(recipeId), JSON.stringify(subs)); } catch { /* storage may be unavailable */ }
-}
-
-/**
- * Amounts work like substitutions: the portion you last logged for a slot is
- * what comes back next time, so bumping blueberries to 100g sticks without
- * touching the saved recipe. Stored per recipe, and only ever a starting
- * value — the field stays editable.
- */
-function loadLastAmounts(recipeId) {
-  try {
-    const raw = localStorage.getItem(lastAmountsKey(recipeId));
-    const p = raw ? JSON.parse(raw) : null;
-    return p && typeof p === 'object' ? p : {};
-  } catch { return {}; }
-}
-
-function saveLastAmounts(recipeId, amounts) {
-  try { localStorage.setItem(lastAmountsKey(recipeId), JSON.stringify(amounts)); } catch { /* storage may be unavailable */ }
-}
-
-function clearLastAmounts(recipeId) {
-  try { localStorage.removeItem(lastAmountsKey(recipeId)); } catch { /* storage may be unavailable */ }
-}
-
-/** A remembered amount is only usable if it still parses as a real portion. */
-function validRememberedAmount(saved) {
-  if (!saved || typeof saved !== 'object') return null;
-  const n = Number(saved.amount);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return { amount: String(n), unit: saved.unit === 'oz' ? 'oz' : 'g' };
-}
+import IngredientCombobox from '@features/meal-builder/IngredientCombobox';
+import {
+  buildReceiptLine,
+  defaultAmountForIngredient,
+  getSuggestedSubstitutes,
+  loadLastReceiptAmounts,
+  receiptToApiIngredients,
+  refreshReceiptLine,
+  saveLastReceiptAmounts,
+  seedReceiptFromRecipe,
+  seedReceiptFromLoggedSelections,
+  sumReceiptMacros,
+} from './recipeReceipt';
 
 function parseHHMMToTimeMin(hhmm) {
   if (!hhmm || typeof hhmm !== 'string') return null;
@@ -62,8 +28,14 @@ function parseHHMMToTimeMin(hhmm) {
   return hh * 60 + mm;
 }
 
-export default function LogMealModal({ onLog, onClose, initialEntry, title, submitLabel, onOpenAi }) {
+function lineDisplayName(line) {
+  if (!line?.name) return 'Ingredient';
+  return line.brand_name ? `${line.name} (${line.brand_name})` : line.name;
+}
+
+export default function LogMealModal({ onLog, onClose, initialEntry, title, submitLabel }) {
   const ref = useRef(null);
+  const recipeComboboxRef = useRef(null);
   const [recipes, setRecipes] = useState([]);
   const [recipeId, setRecipeId] = useState(initialEntry?.recipe_id ? String(initialEntry.recipe_id) : '');
   const [servings, setServings] = useState(
@@ -81,33 +53,19 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [labelIngredients, setLabelIngredients] = useState([]);
-  const [slotSelections, setSlotSelections] = useState({});
-  const [customizeOpen, setCustomizeOpen] = useState(false);
-  const [slotLogAmounts, setSlotLogAmounts] = useState({});
-  const [savingRecipeAmounts, setSavingRecipeAmounts] = useState(false);
-  const [recipeAmountsMsg, setRecipeAmountsMsg] = useState('');
-  const [recipeAmountsError, setRecipeAmountsError] = useState('');
-  const prevRecipeIdRef = useRef(null);
-  const recipeComboboxRef = useRef(null);
+  const [receipt, setReceipt] = useState([]);
+  const [addIngredientId, setAddIngredientId] = useState('');
+  const [seededFromRecipeId, setSeededFromRecipeId] = useState(null);
+  const [subLineId, setSubLineId] = useState(null);
+  const [subSuggestions, setSubSuggestions] = useState([]);
+  const [subBusy, setSubBusy] = useState(false);
+  const [subError, setSubError] = useState('');
+  const [subSource, setSubSource] = useState(''); // 'ai' | 'heuristic'
+  const receiptSeededRef = useRef(false);
 
   const selectedRecipe = useMemo(
     () => recipes.find(r => String(r.id) === String(recipeId)) || null,
     [recipes, recipeId]
-  );
-
-  const variableSlots = useMemo(
-    () => listLoggingSlotsFromRecipe(selectedRecipe),
-    [selectedRecipe]
-  );
-
-  const templateLinesOnlyManual = useMemo(
-    () => listNonEditableTemplateLines(selectedRecipe),
-    [selectedRecipe]
-  );
-
-  const slotsNeedingChoice = useMemo(
-    () => variableSlots.filter(s => (s.option_label_ingredient_ids?.length || 0) > 1),
-    [variableSlots]
   );
 
   const labelById = useMemo(
@@ -115,87 +73,11 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     [labelIngredients]
   );
 
-  // Reset per-slot state when recipe changes
-  useEffect(() => {
-    if (prevRecipeIdRef.current != null && prevRecipeIdRef.current !== recipeId) {
-      setSlotLogAmounts({});
-      setSlotSelections({});
-    }
-    prevRecipeIdRef.current = recipeId;
-  }, [recipeId]);
+  const receiptTotals = useMemo(() => sumReceiptMacros(receipt), [receipt]);
 
-  // Auto-expand ingredient section whenever a recipe with variable slots is selected
-  useEffect(() => {
-    setCustomizeOpen(selectedRecipe != null && variableSlots.length > 0);
-  }, [selectedRecipe?.id, variableSlots.length]);
-
-  // Auto-focus the recipe input when the modal opens
   useEffect(() => {
     requestAnimationFrame(() => recipeComboboxRef.current?.focus());
   }, []);
-
-  // Initialize per-slot amounts: last-used first, then the recipe's own amount
-  // (preserves existing state on re-render). Editing an existing log ignores
-  // the memory — that entry's own amounts load below and must win.
-  useEffect(() => {
-    if (!selectedRecipe) {
-      setSlotLogAmounts({});
-      return;
-    }
-    const slots = listLoggingSlotsFromRecipe(selectedRecipe);
-    if (slots.length === 0) {
-      setSlotLogAmounts({});
-      return;
-    }
-    const remembered = (initialEntry || !selectedRecipe.id) ? {} : loadLastAmounts(selectedRecipe.id);
-    setSlotLogAmounts(prev => {
-      const next = {};
-      for (const s of slots) {
-        const keep = prev[s.slot_id];
-        const last = validRememberedAmount(remembered[s.slot_id]);
-        next[s.slot_id] = {
-          amount: keep?.amount != null ? String(keep.amount) : String(last?.amount ?? s.amount),
-          unit: keep?.unit === 'oz' || keep?.unit === 'g'
-            ? keep.unit
-            : (last?.unit ?? (s.unit === 'oz' ? 'oz' : 'g')),
-        };
-      }
-      return next;
-    });
-  }, [recipeId, selectedRecipe?.id, initialEntry?.id]);
-
-  // Load saved customizations from an existing log entry (edit mode)
-  useEffect(() => {
-    if (!initialEntry?.slot_selections_json || !selectedRecipe?.id) return;
-    try {
-      const p = JSON.parse(initialEntry.slot_selections_json);
-      if (!p || typeof p !== 'object') return;
-      const slots = listLoggingSlotsFromRecipe(selectedRecipe);
-      const selPatch = {};
-      const amtPatch = {};
-      let ok = false;
-      for (const s of slots) {
-        const raw = p[s.slot_id];
-        if (raw != null && typeof raw === 'object' && raw.label_ingredient_id != null) {
-          selPatch[s.slot_id] = Number(raw.label_ingredient_id);
-          amtPatch[s.slot_id] = {
-            amount: String(raw.amount != null ? raw.amount : s.amount),
-            unit: raw.unit === 'oz' ? 'oz' : 'g',
-          };
-          ok = true;
-        } else if (typeof raw === 'number' && Number.isInteger(raw) && raw > 0) {
-          selPatch[s.slot_id] = raw;
-          ok = true;
-        }
-      }
-      if (ok) {
-        setSlotSelections(prev => ({ ...prev, ...selPatch }));
-        setSlotLogAmounts(prev => ({ ...prev, ...amtPatch }));
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [initialEntry?.id, initialEntry?.slot_selections_json, selectedRecipe?.id]);
 
   useEffect(() => {
     (async () => {
@@ -228,470 +110,532 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     ref.current?.showModal();
   }, []);
 
-  // Initialize substitute slot selections from last-used or recipe defaults
+  // Seed receipt once labels + recipes are ready (edit mode or create).
   useEffect(() => {
-    if (!selectedRecipe) return;
-    if (slotsNeedingChoice.length === 0) {
-      setSlotSelections({});
-      return;
-    }
-    let fromEntry = {};
-    if (initialEntry?.slot_selections_json) {
+    if (receiptSeededRef.current) return;
+    if (labelIngredients.length === 0 && !initialEntry) return;
+
+    if (initialEntry?.ingredients_json) {
       try {
-        fromEntry = JSON.parse(initialEntry.slot_selections_json);
-        if (!fromEntry || typeof fromEntry !== 'object') fromEntry = {};
-      } catch { fromEntry = {}; }
-    }
-    const lastUsed = selectedRecipe?.id ? loadLastSubs(selectedRecipe.id) : {};
-    const next = {};
-    for (const s of slotsNeedingChoice) {
-      const v = fromEntry[s.slot_id];
-      // Handle both new format {label_ingredient_id, ...} and old format (plain number)
-      const ingId = typeof v === 'object' && v?.label_ingredient_id != null
-        ? Number(v.label_ingredient_id)
-        : (typeof v === 'number' ? v : null);
-      if (ingId != null && Number.isInteger(ingId) && ingId > 0 && s.option_label_ingredient_ids.includes(ingId)) {
-        next[s.slot_id] = ingId;
-      } else {
-        const lastId = Number(lastUsed[s.slot_id]);
-        if (Number.isInteger(lastId) && lastId > 0 && s.option_label_ingredient_ids.includes(lastId)) {
-          next[s.slot_id] = lastId;
-        } else {
-          next[s.slot_id] = s.option_label_ingredient_ids[0];
+        const rows = typeof initialEntry.ingredients_json === 'string'
+          ? JSON.parse(initialEntry.ingredients_json)
+          : initialEntry.ingredients_json;
+        if (Array.isArray(rows) && rows.length) {
+          const lines = [];
+          for (const r of rows) {
+            const lid = Number(r.label_ingredient_id);
+            const ing = Number.isInteger(lid) && lid > 0 ? labelById[String(lid)] : null;
+            if (ing) {
+              const line = buildReceiptLine(ing, r.amount, r.unit || 'g', { source: r.source || 'library' });
+              if (line) lines.push(line);
+            } else if (r.name && r.calories != null) {
+              lines.push({
+                id: `legacy_${lines.length}`,
+                label_ingredient_id: lid > 0 ? lid : null,
+                name: r.name,
+                amount: String(r.amount ?? ''),
+                unit: r.unit || '',
+                calories: r.calories,
+                protein_g: r.protein_g,
+                carbs_g: r.carbs_g,
+                fat_g: r.fat_g,
+                fiber_g: r.fiber_g,
+                source: r.source || 'estimated',
+              });
+            }
+          }
+          if (lines.length) {
+            setReceipt(lines);
+            receiptSeededRef.current = true;
+            if (initialEntry.recipe_id) setSeededFromRecipeId(String(initialEntry.recipe_id));
+            return;
+          }
         }
+      } catch {
+        /* fall through */
       }
     }
-    setSlotSelections(next);
-  }, [selectedRecipe, slotsNeedingChoice, initialEntry?.id, initialEntry?.slot_selections_json]);
 
-  // Macro preview using current slot selections + amounts
-  const slotResolved = useMemo(() => {
-    if (!selectedRecipe || variableSlots.length === 0) return null;
-    const built = {};
-    for (const s of variableSlots) {
-      const defId = s.option_label_ingredient_ids[0];
-      const hasChoices = (s.option_label_ingredient_ids?.length || 0) > 1;
-      const selId = hasChoices ? (slotSelections[s.slot_id] ?? defId) : defId;
-      const amt = slotLogAmounts[s.slot_id];
-      built[s.slot_id] = {
-        label_ingredient_id: selId,
-        amount: amt?.amount != null ? String(amt.amount) : String(s.amount),
-        unit: amt?.unit === 'oz' ? 'oz' : 'g',
-      };
+    if (initialEntry?.slot_selections_json && Object.keys(labelById).length > 0) {
+      const lines = seedReceiptFromLoggedSelections(initialEntry.slot_selections_json, labelById);
+      if (lines.length) {
+        setReceipt(lines);
+        receiptSeededRef.current = true;
+        if (initialEntry.recipe_id) setSeededFromRecipeId(String(initialEntry.recipe_id));
+        return;
+      }
     }
-    return adjustPerServingMacrosForResolvedClient(selectedRecipe, labelById, built);
-  }, [selectedRecipe, variableSlots, slotSelections, slotLogAmounts, labelById]);
 
-  // Does this log use portions the recipe itself doesn't? Gates the offer to
-  // make them permanent.
-  const amountsChanged = useMemo(
-    () => amountsDifferFromRecipe(variableSlots, slotLogAmounts, labelById),
-    [variableSlots, slotLogAmounts, labelById]
-  );
+    if (selectedRecipe && Object.keys(labelById).length > 0) {
+      const remembered = initialEntry ? {} : loadLastReceiptAmounts(selectedRecipe.id);
+      const lines = seedReceiptFromRecipe(selectedRecipe, labelById, remembered);
+      setReceipt(lines);
+      setSeededFromRecipeId(String(selectedRecipe.id));
+      receiptSeededRef.current = true;
+    }
+  }, [selectedRecipe, labelById, labelIngredients.length, initialEntry]);
 
-  /** Single entry point for amount edits, so the save note never goes stale. */
-  function setSlotAmount(slot, patch) {
-    setRecipeAmountsMsg('');
-    setRecipeAmountsError('');
-    setSlotLogAmounts(prev => {
-      const cur = prev[slot.slot_id];
-      return {
-        ...prev,
-        [slot.slot_id]: {
-          amount: patch.amount != null ? patch.amount : (cur?.amount ?? String(slot.amount)),
-          unit: patch.unit != null ? patch.unit : (cur?.unit ?? (slot.unit === 'oz' ? 'oz' : 'g')),
-        },
-      };
-    });
-  }
-
-  function resetSlotAmount(slot) {
-    setSlotAmount(slot, { amount: String(slot.amount), unit: slot.unit === 'oz' ? 'oz' : 'g' });
-  }
-
-  /** Make the current amounts the recipe's own (ingredient swaps stay one-off). */
-  async function saveAmountsToRecipe() {
-    if (!selectedRecipe?.id || savingRecipeAmounts) return;
-    setRecipeAmountsError('');
-    const body = buildRecipeAmountUpdate(selectedRecipe, variableSlots, slotLogAmounts, labelById);
-    if (!body) {
-      setRecipeAmountsError("Couldn't rescale this recipe — check that every amount is above 0.");
+  function applyRecipeSeed(recipe) {
+    if (!recipe) {
+      setReceipt([]);
+      setSeededFromRecipeId(null);
       return;
     }
-    setSavingRecipeAmounts(true);
-    try {
-      const updated = await updateRecipe(selectedRecipe.id, body);
-      setRecipes(prev => prev.map(r => (String(r.id) === String(updated.id) ? updated : r)));
-      // These amounts are the recipe now, so the remembered override is noise.
-      clearLastAmounts(selectedRecipe.id);
-      setRecipeAmountsMsg('Saved to the recipe.');
-    } catch (e) {
-      setRecipeAmountsError(e.message || 'Failed to update the recipe');
-    } finally {
-      setSavingRecipeAmounts(false);
+    const remembered = loadLastReceiptAmounts(recipe.id);
+    const lines = seedReceiptFromRecipe(recipe, labelById, remembered);
+    setReceipt(lines);
+    setSeededFromRecipeId(String(recipe.id));
+    setSubLineId(null);
+    setSubSuggestions([]);
+  }
+
+  function handlePick(nextId) {
+    setRecipeId(nextId);
+    const recipe = recipes.find(r => String(r.id) === String(nextId));
+    applyRecipeSeed(recipe || null);
+  }
+
+  function handleAddIngredient(nextId) {
+    setAddIngredientId('');
+    const ing = labelById[String(nextId)];
+    if (!ing) return;
+    const def = defaultAmountForIngredient(ing);
+    const line = buildReceiptLine(ing, def.amount, def.unit, { source: 'library' });
+    if (!line) {
+      setError(`${ing.name} needs grams per serving before it can be logged. Edit it in the Ingredient Library.`);
+      return;
+    }
+    setError('');
+    setReceipt(prev => [...prev, line]);
+  }
+
+  function updateLine(id, patch) {
+    setReceipt(prev =>
+      prev.map(line => {
+        if (line.id !== id) return line;
+        const next = { ...line, ...patch };
+        const ing = labelById[String(next.label_ingredient_id)];
+        if (ing) return refreshReceiptLine(next, ing);
+        return next;
+      })
+    );
+  }
+
+  function removeLine(id) {
+    setReceipt(prev => prev.filter(l => l.id !== id));
+    if (subLineId === id) {
+      setSubLineId(null);
+      setSubSuggestions([]);
     }
   }
 
-  function buildLogSlotCustomizationsPayload() {
-    if (variableSlots.length === 0) return null;
-    const out = {};
-    for (const s of variableSlots) {
-      const defId = s.option_label_ingredient_ids[0];
-      const hasChoices = (s.option_label_ingredient_ids?.length || 0) > 1;
-      const selId = hasChoices ? (slotSelections[s.slot_id] ?? defId) : defId;
-      const amt = slotLogAmounts[s.slot_id];
-      out[s.slot_id] = {
-        label_ingredient_id: selId,
-        amount: amt?.amount != null ? String(amt.amount) : String(s.amount),
-        unit: amt?.unit === 'oz' ? 'oz' : 'g',
-      };
+  function resetToRecipeAmounts() {
+    if (!selectedRecipe) return;
+    const lines = seedReceiptFromRecipe(selectedRecipe, labelById, {});
+    setReceipt(lines);
+    setSeededFromRecipeId(String(selectedRecipe.id));
+  }
+
+  async function openSubstitutes(line) {
+    setSubLineId(line.id);
+    setSubError('');
+    setSubSuggestions([]);
+    setSubBusy(true);
+    const current = labelById[String(line.label_ingredient_id)];
+    const library = labelIngredients.filter(x => Number(x.id) !== Number(line.label_ingredient_id));
+    try {
+      const res = await suggestSubstitutes({
+        ingredient: current
+          ? {
+              name: current.name,
+              brand_name: current.brand_name,
+              base_label: current.base_label,
+              tracking_type: current.tracking_type,
+            }
+          : { name: line.name },
+        library: library.slice(0, 80).map(x => ({
+          id: x.id,
+          name: x.name,
+          brand_name: x.brand_name,
+          base_label: x.base_label,
+          last_used_at: x.last_used_at,
+        })),
+        limit: 5,
+      });
+      const ids = Array.isArray(res?.suggestions)
+        ? res.suggestions.map(s => Number(s.label_ingredient_id)).filter(n => Number.isInteger(n) && n > 0)
+        : [];
+      const byId = new Map(library.map(x => [Number(x.id), x]));
+      const fromAi = ids.map(id => byId.get(id)).filter(Boolean);
+      if (fromAi.length) {
+        setSubSuggestions(fromAi);
+        setSubSource('ai');
+        setSubBusy(false);
+        return;
+      }
+    } catch (e) {
+      setSubError(e.message || 'AI substitutes unavailable — showing similar foods from your library.');
     }
-    return out;
+    setSubSuggestions(getSuggestedSubstitutes(current, library, { excludeId: line.label_ingredient_id, limit: 5 }));
+    setSubSource('heuristic');
+    setSubBusy(false);
+  }
+
+  function applySubstitute(lineId, ing) {
+    setReceipt(prev =>
+      prev.map(line => {
+        if (line.id !== lineId) return line;
+        const sameTracking =
+          (line.tracking_type === 'unit') === (ing.tracking_type === 'unit');
+        let amount = line.amount;
+        let unit = line.unit;
+        if (!sameTracking) {
+          const def = defaultAmountForIngredient(ing);
+          amount = def.amount;
+          unit = def.unit;
+        } else if (ing.tracking_type === 'unit') {
+          unit = ing.unit_name || unit;
+        }
+        return refreshReceiptLine(
+          { ...line, amount, unit, label_ingredient_id: Number(ing.id), source: 'library' },
+          ing
+        );
+      })
+    );
+    setSubLineId(null);
+    setSubSuggestions([]);
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (submitting) return; // guard against double-submit (rapid clicks / Enter)
+    if (submitting) return;
     setError('');
+
+    const apiIngredients = receiptToApiIngredients(receipt);
+    const time_min = parseHHMMToTimeMin(timeHHMM);
+    const notesVal = notes.trim() || undefined;
+
     try {
-      if (!recipeId) return setError('Select a recipe');
-      const payload = {
-        recipe_id: Number(recipeId),
-        servings: Number(servings),
-        notes: notes.trim() || undefined,
-        time_min: parseHHMMToTimeMin(timeHHMM),
-      };
-      if (variableSlots.length > 0) {
-        for (const s of slotsNeedingChoice) {
-          if (slotSelections[s.slot_id] == null) {
-            return setError(`Choose an option for: ${s.label || 'ingredient slot'}`);
-          }
-        }
-        payload.log_slot_customizations = buildLogSlotCustomizationsPayload();
-      }
       setSubmitting(true);
-      await onLog(payload);
-      if (slotsNeedingChoice.length > 0 && recipeId) {
-        const toSave = {};
-        for (const s of slotsNeedingChoice) {
-          const chosenId = slotSelections[s.slot_id];
-          if (chosenId != null) toSave[s.slot_id] = Number(chosenId);
+
+      // Recipe with a built receipt (library lines).
+      if (recipeId && seededFromRecipeId && String(recipeId) === String(seededFromRecipeId) && apiIngredients.length > 0) {
+        if (receipt.some(l => l.label_ingredient_id && l.calories == null)) {
+          setSubmitting(false);
+          return setError('One or more ingredients need grams per serving. Edit them in the Ingredient Library.');
         }
-        if (Object.keys(toSave).length > 0) saveLastSubs(Number(recipeId), toSave);
-      }
-      // Remember the portions used, so the next log of this recipe starts here.
-      if (variableSlots.length > 0 && recipeId) {
+        const payload = {
+          recipe_id: Number(recipeId),
+          servings: Number(servings) || 1,
+          notes: notesVal,
+          time_min,
+          ingredients: apiIngredients,
+        };
+        await onLog(payload);
         const amounts = {};
-        for (const s of variableSlots) {
-          const amt = slotLogAmounts[s.slot_id];
-          const n = Number(amt?.amount);
-          if (Number.isFinite(n) && n > 0) {
-            amounts[s.slot_id] = { amount: String(n), unit: amt?.unit === 'oz' ? 'oz' : 'g' };
+        for (const l of receipt) {
+          const n = Number(l.amount);
+          if (l.label_ingredient_id && Number.isFinite(n) && n > 0) {
+            amounts[String(l.label_ingredient_id)] = {
+              amount: String(n),
+              unit: l.tracking_type === 'unit' ? 'g' : (l.unit === 'oz' ? 'oz' : 'g'),
+            };
           }
         }
-        if (Object.keys(amounts).length > 0) saveLastAmounts(Number(recipeId), amounts);
+        if (Object.keys(amounts).length) saveLastReceiptAmounts(Number(recipeId), amounts);
+      } else if (recipeId && apiIngredients.length === 0) {
+        // Manual / known-macro recipe with no library lines — servings only.
+        await onLog({
+          recipe_id: Number(recipeId),
+          servings: Number(servings) || 1,
+          notes: notesVal,
+          time_min,
+        });
+      } else if (apiIngredients.length > 0) {
+        if (receipt.some(l => l.label_ingredient_id && l.calories == null)) {
+          setSubmitting(false);
+          return setError('One or more ingredients need grams per serving. Edit them in the Ingredient Library.');
+        }
+        const name = selectedRecipe?.name || apiIngredients.map(x => x.name).slice(0, 3).join(' + ') || 'Custom meal';
+        const totals = sumReceiptMacros(receipt);
+        await onLog({
+          custom: {
+            name,
+            calories: Math.round((totals?.calories || 0) * 10) / 10,
+            protein_g: Math.round((totals?.protein_g || 0) * 100) / 100,
+            carbs_g: Math.round((totals?.carbs_g || 0) * 100) / 100,
+            fat_g: Math.round((totals?.fat_g || 0) * 100) / 100,
+            fiber_g: totals?.fiber_g > 0 ? Math.round(totals.fiber_g * 100) / 100 : undefined,
+            servings: 1,
+            notes: notesVal,
+            time_min,
+            ingredients: apiIngredients,
+          },
+        });
+      } else {
+        setSubmitting(false);
+        return setError('Add at least one ingredient, or pick a recipe.');
       }
+
       ref.current?.close();
       onClose();
     } catch (err) {
       setError(err.message);
-      setSubmitting(false); // re-enable so the user can retry
+      setSubmitting(false);
     }
   }
 
-  function close() { if (submitting) return; ref.current?.close(); onClose(); }
+  function close() {
+    if (submitting) return;
+    ref.current?.close();
+    onClose();
+  }
 
   return (
-    <dialog ref={ref} onClose={onClose}>
+    <dialog
+      ref={ref}
+      onClose={onClose}
+      style={{ width: 'min(560px, 94vw)', maxHeight: '92vh', overflowY: 'auto' }}
+    >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>{title || 'Log a Meal'}</h2>
         <button type="button" className="modal-close-x" aria-label="Close" onClick={close}>✕</button>
       </div>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-        {/* One-off meals live in the AI logger now — this modal logs saved recipes.
-            On the dashboard, onOpenAi hands off to the AI popup in place (no
-            navigation); elsewhere we fall back to the full /ai-logger page. */}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {onOpenAi ? (
-            <button
-              type="button"
-              className="btn-ai"
-              onClick={() => { close(); onOpenAi(); }}
-              style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem' }}
-            >
-              <span className="spark" aria-hidden="true">✨</span> AI Estimate — describe or speak a meal
-            </button>
-          ) : (
-            <Link
-              to="/ai-logger"
-              className="btn-ai"
-              onClick={close}
-              style={{ minHeight: 48, padding: '0 20px', fontSize: '1rem' }}
-            >
-              <span className="spark" aria-hidden="true">✨</span> AI Estimate — describe or speak a meal
-            </Link>
+        <div>
+          <RecipeCombobox
+            ref={recipeComboboxRef}
+            label="Start from a recipe"
+            recipes={recipes}
+            value={recipeId}
+            valueKind="recipe"
+            onChange={handlePick}
+            placeholder="Search a saved recipe…"
+          />
+          {selectedRecipe && (
+            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
+              Seeded from <strong style={{ color: 'var(--color-text-strong)' }}>{selectedRecipe.name}</strong>
+              {' — edit the receipt below; the saved recipe stays unchanged.'}
+            </p>
           )}
         </div>
 
-        {/* Meal Builder shortcut */}
-        <div>
-          <Link
-            to="/meal-builder"
-            onClick={close}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 13,
-              color: '#4b5563',
-              textDecoration: 'none',
-              padding: '7px 14px',
-              border: '1px solid #d1d5db',
-              borderRadius: 8,
-              background: 'white',
-            }}
-          >
-            Open Meal Builder →
-          </Link>
-        </div>
+        {recipeId && (
+          <div>
+            <label>Servings</label>
+            <input
+              type="number"
+              min="0.25"
+              step="0.25"
+              value={servings}
+              onChange={e => setServings(e.target.value)}
+              required
+            />
+          </div>
+        )}
 
-        <div className="panel-in" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {/* Recipe picker */}
+        <div className="panel-in" style={{ padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 28, marginBottom: 8 }}>
             <div>
-              <RecipeCombobox
-                ref={recipeComboboxRef}
-                label="Recipe"
-                recipes={recipes}
-                value={recipeId}
-                onChange={(next) => {
-                  // A different recipe means the previous save note no longer applies.
-                  setRecipeAmountsMsg('');
-                  setRecipeAmountsError('');
-                  setRecipeId(next);
-                }}
-                placeholder="Search recipe or meal…"
-              />
-              {selectedRecipe && (
-                <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-                  Selected: <strong style={{ color: 'var(--color-text-strong)' }}>{selectedRecipe.name}</strong> · per {selectedRecipe.serving_size}
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>
+                Receipt
+              </p>
+              {receipt.length > 0 && (
+                <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-text-muted)' }}>
+                  Tap a name to swap from your library.
                 </p>
               )}
             </div>
-
-            {/* Servings */}
-            <div>
-              <label>Servings</label>
-              <input type="number" min="0.25" step="0.25" value={servings} onChange={e => setServings(e.target.value)} required />
-            </div>
-
-            {/* Customize ingredients toggle */}
-            {selectedRecipe && variableSlots.length > 0 && (
-              <div>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setCustomizeOpen(v => !v)}
-                >
-                  {customizeOpen ? 'Hide ingredient details ↑' : 'Customize ingredients…'}
-                </button>
-              </div>
-            )}
-
-            {/* Inline customize section — unified for all recipes with variable slots */}
-            {customizeOpen && selectedRecipe && variableSlots.length > 0 && (
-              <div className="panel-in" style={{ padding: 14, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
-                <p style={{ margin: '0 0 14px', fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>Customize this log</p>
-
-                {/* Fixed (manual text) rows that can't be edited */}
-                {templateLinesOnlyManual.length > 0 && (
-                  <div style={{ marginBottom: 14, padding: 10, background: '#f0fdf4', borderRadius: 8, fontSize: 12, color: '#4b5563' }}>
-                    <strong>Fixed items:</strong>
-                    <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-                      {templateLinesOnlyManual.map((ln, i) => (
-                        <li key={`${ln.name}-${i}`}>{ln.name} — {ln.amount}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  {variableSlots.map(slot => {
-                    const hasChoices = (slot.option_label_ingredient_ids?.length || 0) > 1;
-                    const defId = slot.option_label_ingredient_ids[0];
-                    const resolvedIngId = hasChoices ? (slotSelections[slot.slot_id] ?? defId) : defId;
-                    const resolvedIng = labelById[String(resolvedIngId)];
-                    const amt = slotLogAmounts[slot.slot_id];
-                    const slotIsUnit = resolvedIng?.tracking_type === 'unit';
-                    const slotUnitLabel = resolvedIng?.unit_name || 'unit';
-                    const slotAmountChanged = amountsDifferFromRecipe([slot], slotLogAmounts, labelById);
-                    return (
-                      <div
-                        key={slot.slot_id}
-                        style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, background: 'white' }}
-                      >
-                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--color-text-strong)' }}>
-                          {slot.label || 'Ingredient slot'}
-                        </div>
-
-                        {hasChoices ? (
-                          <div style={{ marginBottom: 10 }}>
-                            <label style={{ fontSize: 12 }}>Ingredient</label>
-                            <select
-                              value={String(slotSelections[slot.slot_id] ?? defId ?? '')}
-                              onChange={e =>
-                                setSlotSelections(prev => ({ ...prev, [slot.slot_id]: Number(e.target.value) }))
-                              }
-                            >
-                              {slot.option_label_ingredient_ids.map(oid => {
-                                const li = labelById[String(oid)];
-                                const isDef = oid === defId;
-                                return (
-                                  <option key={oid} value={oid}>
-                                    {li ? `${li.name}${li.brand_name ? ` (${li.brand_name})` : ''}` : `Ingredient #${oid}`}
-                                    {isDef ? ' — default' : ''}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          </div>
-                        ) : (
-                          <div style={{ marginBottom: 10 }}>
-                            <span style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 4 }}>Ingredient</span>
-                            <div style={{ fontSize: 13, color: 'var(--color-text-body)' }}>
-                              {resolvedIng?.name || `#${defId}`}
-                              {resolvedIng?.brand_name ? ` (${resolvedIng.brand_name})` : ''}
-                            </div>
-                          </div>
-                        )}
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px', gap: 8 }}>
-                          <div>
-                            <label style={{ fontSize: 12 }}>Amount</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={amt?.amount ?? String(slot.amount)}
-                              onChange={e => setSlotAmount(slot, { amount: e.target.value })}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 12 }}>Unit</label>
-                            {slotIsUnit ? (
-                              <div style={{ height: 38, display: 'flex', alignItems: 'center', fontSize: 14, color: 'var(--color-text-body)' }}>
-                                {slotUnitLabel}
-                              </div>
-                            ) : (
-                              <select
-                                value={amt?.unit ?? (slot.unit === 'oz' ? 'oz' : 'g')}
-                                onChange={e => setSlotAmount(slot, { unit: e.target.value === 'oz' ? 'oz' : 'g' })}
-                              >
-                                <option value="g">g</option>
-                                <option value="oz">oz</option>
-                              </select>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Say when the amount isn't the recipe's own — the
-                            remembered portion is a default, not a lock-in. */}
-                        {slotAmountChanged && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
-                            <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-                              Recipe uses {slot.amount}{slotIsUnit ? ` ${slotUnitLabel}` : (slot.unit === 'oz' ? ' oz' : ' g')}
-                            </span>
-                            <button
-                              type="button"
-                              className="btn-secondary"
-                              onClick={() => resetSlotAmount(slot)}
-                              style={{ minHeight: 0, padding: '5px 12px', fontSize: 13 }}
-                            >
-                              Use recipe amount
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Macro preview */}
-                {slotResolved && (
-                  <div
-                    style={{
-                      marginTop: 14,
-                      padding: 10,
-                      borderRadius: 8,
-                      background: '#eff6ff',
-                      border: '1px solid #bfdbfe',
-                      fontSize: 12,
-                      color: '#1e3a8a',
-                    }}
-                  >
-                    <strong>Adjusted recipe (per serving):</strong>{' '}
-                    {Math.round(slotResolved.calories)} cal · P {slotResolved.protein_g.toFixed(1)}g · C{' '}
-                    {slotResolved.carbs_g.toFixed(1)}g · F {slotResolved.fat_g.toFixed(1)}g
-                    {slotResolved.fiber_g > 0 && ` · Fiber ${slotResolved.fiber_g.toFixed(1)}g`}
-                    <span style={{ color: '#64748b', display: 'block', marginTop: 6 }}>
-                      This log ({Number(servings) || 1} serving{Number(servings) === 1 ? '' : 's'}):{' '}
-                      <strong style={{ color: '#0f172a' }}>
-                        {Math.round(slotResolved.calories * (Number(servings) || 1))} cal
-                      </strong>
-                    </span>
-                  </div>
-                )}
-
-                {/* Amounts carry over to the next log on their own. This is the
-                    other option: make them the recipe's real amounts. */}
-                {(amountsChanged || recipeAmountsMsg || recipeAmountsError) && (
-                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #e5e7eb' }}>
-                    {amountsChanged && (
-                      <>
-                        <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-                          These amounts are remembered for next time. Make them permanent?
-                        </p>
-                        <button
-                          type="button"
-                          className={savingRecipeAmounts ? 'btn-secondary btn-loading' : 'btn-secondary'}
-                          onClick={saveAmountsToRecipe}
-                          disabled={savingRecipeAmounts}
-                        >
-                          {savingRecipeAmounts
-                            ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>)
-                            : 'Save these amounts to the recipe'}
-                        </button>
-                        <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-faint)' }}>
-                          Updates the recipe's amounts and macros. Ingredient swaps stay on this log only.
-                        </p>
-                      </>
-                    )}
-                    {recipeAmountsMsg && (
-                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#047857' }}>{recipeAmountsMsg}</p>
-                    )}
-                    {recipeAmountsError && (
-                      <p className="error" style={{ margin: '8px 0 0', fontSize: 13 }}>{recipeAmountsError}</p>
-                    )}
-                  </div>
-                )}
-              </div>
+            {selectedRecipe && receipt.length > 0 && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={resetToRecipeAmounts}
+                style={{ minHeight: 0, padding: '5px 12px', fontSize: 12, whiteSpace: 'nowrap' }}
+              >
+                Reset to recipe
+              </button>
             )}
           </div>
 
-        {/* Time */}
-        <div>
-          <label>Time (optional)</label>
-          <input
-            type="time"
-            value={timeHHMM}
-            onChange={e => setTimeHHMM(e.target.value)}
-          />
+          {receipt.length === 0 ? (
+            <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+              Pick a recipe to preload, or add foods below.
+            </p>
+          ) : (
+            <div className="slot-list">
+              <div className="slot-list__head" aria-hidden="true">
+                <span>Ingredient</span>
+                <span>Amount</span>
+                <span>Unit</span>
+                <span />
+              </div>
+              {receipt.map(line => {
+                const isUnit = line.tracking_type === 'unit';
+                const unitLabel = line.unit_name || line.unit || 'unit';
+                const open = subLineId === line.id;
+                return (
+                  <div key={line.id} className="slot-list__line">
+                    <div className="slot-row">
+                      <div className="slot-row__name" title={lineDisplayName(line)}>
+                        <button
+                          type="button"
+                          onClick={() => (open ? setSubLineId(null) : openSubstitutes(line))}
+                          aria-expanded={open}
+                          aria-label={`Find substitutes for ${line.name}`}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            margin: 0,
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            color: 'var(--color-text-strong)',
+                            font: 'inherit',
+                            textDecoration: 'underline',
+                            textDecorationStyle: 'dotted',
+                          }}
+                          title="Find substitutes from your library"
+                        >
+                          {line.name}
+                        </button>
+                        {line.calories != null && (
+                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                            {Math.round(line.calories)} cal · P {Number(line.protein_g).toFixed(1)} · C{' '}
+                            {Number(line.carbs_g).toFixed(1)} · F {Number(line.fat_g).toFixed(1)}
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        aria-label={`Amount for ${line.name}`}
+                        value={line.amount}
+                        onChange={e => updateLine(line.id, { amount: e.target.value })}
+                      />
+                      {isUnit ? (
+                        <div className="slot-row__unit-static">{unitLabel}</div>
+                      ) : (
+                        <select
+                          aria-label={`Unit for ${line.name}`}
+                          value={line.unit === 'oz' ? 'oz' : 'g'}
+                          onChange={e => updateLine(line.id, { unit: e.target.value === 'oz' ? 'oz' : 'g' })}
+                        >
+                          <option value="g">g</option>
+                          <option value="oz">oz</option>
+                        </select>
+                      )}
+                      <button
+                        type="button"
+                        className="slot-row__remove"
+                        aria-label={`Remove ${line.name}`}
+                        onClick={() => removeLine(line.id)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {open && (
+                      <div className="slot-list__subs">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                          <div style={{ fontWeight: 600 }}>
+                            Substitutes from your library
+                            {subSource === 'ai' ? ' (AI)' : subSource === 'heuristic' ? ' (similar)' : ''}
+                          </div>
+                          <button
+                            type="button"
+                            className="slot-row__remove"
+                            aria-label="Close substitutes"
+                            onClick={() => { setSubLineId(null); setSubSuggestions([]); }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        {subBusy && <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>Looking…</p>}
+                        {subError && !subBusy && (
+                          <p style={{ margin: '0 0 6px', color: '#92400e' }}>{subError}</p>
+                        )}
+                        {!subBusy && subSuggestions.length === 0 && (
+                          <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>No close matches found.</p>
+                        )}
+                        {!subBusy && subSuggestions.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {subSuggestions.map(ing => (
+                              <button
+                                key={ing.id}
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => applySubstitute(line.id, ing)}
+                                style={{
+                                  justifyContent: 'flex-start',
+                                  textAlign: 'left',
+                                  minHeight: 0,
+                                  padding: '6px 10px',
+                                  fontSize: 12,
+                                }}
+                              >
+                                {ing.name}
+                                {ing.brand_name ? ` (${ing.brand_name})` : ''}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={{ marginTop: 10 }}>
+            <IngredientCombobox
+              label="Add ingredient"
+              items={labelIngredients}
+              value={addIngredientId}
+              onChange={handleAddIngredient}
+              placeholder="Type to add from your library…"
+              allowCreate={false}
+            />
+          </div>
+
+          {receiptTotals && (
+            <div
+              style={{
+                marginTop: 8,
+                padding: '7px 10px',
+                borderRadius: 8,
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                fontSize: 12,
+                color: '#1e3a8a',
+              }}
+            >
+              <strong>Receipt total:</strong>{' '}
+              {Math.round(receiptTotals.calories)} cal · P {receiptTotals.protein_g.toFixed(1)}g · C{' '}
+              {receiptTotals.carbs_g.toFixed(1)}g · F {receiptTotals.fat_g.toFixed(1)}g
+              {receiptTotals.fiber_g > 0 && ` · Fiber ${receiptTotals.fiber_g.toFixed(1)}g`}
+              {recipeId && Number(servings) !== 1 && (
+                <span style={{ color: '#64748b' }}>
+                  {' — '}this log ({Number(servings) || 1} servings):{' '}
+                  <strong style={{ color: '#0f172a' }}>
+                    {Math.round(receiptTotals.calories * (Number(servings) || 1))} cal
+                  </strong>
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Notes */}
-        <div>
-          <label>Notes (optional)</label>
-          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. post-workout" />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+          <div>
+            <label>Time (optional)</label>
+            <input type="time" value={timeHHMM} onChange={e => setTimeHHMM(e.target.value)} />
+          </div>
+          <div>
+            <label>Notes (optional)</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. post-workout" />
+          </div>
         </div>
 
         {error && <p className="error">{error}</p>}

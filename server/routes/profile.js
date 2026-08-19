@@ -1,4 +1,5 @@
 const express = require('express');
+const { uid } = require('../userId');
 
 const PROFILE_FIELDS = [
   'height_cm',
@@ -111,10 +112,7 @@ function createProfileRouter(db) {
   const router = express.Router();
 
   router.get('/', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     let row = db.prepare('SELECT * FROM user_profile WHERE user_id = ?').get(userId);
     if (!row) {
       row = {
@@ -149,10 +147,7 @@ function createProfileRouter(db) {
   });
 
   router.put('/', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const existing = db.prepare('SELECT * FROM user_profile WHERE user_id = ?').get(userId) || {
       user_id: userId,
       height_cm: null,
@@ -235,10 +230,7 @@ function createBodyWeightsRouter(db) {
   const router = express.Router();
 
   router.get('/', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const { start, end } = req.query;
     let rows;
     if (start && end) {
@@ -256,10 +248,7 @@ function createBodyWeightsRouter(db) {
   });
 
   router.put('/', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const { date, weight_kg } = req.body;
     if (!date || typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
@@ -278,7 +267,7 @@ function createBodyWeightsRouter(db) {
   });
 
   router.delete('/:date', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
+    const userId = uid(req);
     const { date } = req.params;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Invalid date' });

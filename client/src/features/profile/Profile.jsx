@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchProfile, saveProfile } from '@shared/api/profile';
+import { getInviteCode, linkCoach, myCoaches, revokeCoach } from '@shared/api/coach';
+import { useAuth } from '@shared/context/AuthContext';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import {
   cmToFeetInches,
@@ -20,6 +22,7 @@ const ACTIVITY_OPTIONS = [
 
 export default function Profile() {
   const { macroUnits, setMacroUnits, bodyUnits, setBodyUnits } = useMacroUnits();
+  const { user, isCoach, updateMe, logout } = useAuth();
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -36,6 +39,13 @@ export default function Profile() {
   // Tracks whether the user has interacted with dash prefs yet.
   // Prevents auto-save from firing during the initial data load.
   const dashInteracted = useRef(false);
+
+  const [coachBusy, setCoachBusy] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
+  const [linkCode, setLinkCode] = useState('');
+  const [scopes, setScopes] = useState({ nutrition: true, training: true, weight: true });
+  const [coaches, setCoaches] = useState([]);
+  const [coachMsg, setCoachMsg] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +64,12 @@ export default function Profile() {
         });
         setDashAdherenceView(['7d', '2w', '3w', 'calendar'].includes(p.dash_adherence_view) ? p.dash_adherence_view : '7d');
         setDashSupplementsEnabled(p.dash_supplements_enabled !== 0 && p.dash_supplements_enabled !== false);
+        const linked = await myCoaches();
+        if (!cancelled) setCoaches(linked);
+        if (user?.is_coach) {
+          const inv = await getInviteCode();
+          if (!cancelled) setInviteCode(inv.invite_code || '');
+        }
       } catch (e) {
         if (!cancelled) setError(e.message);
       } finally {
@@ -61,7 +77,7 @@ export default function Profile() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [user?.is_coach]);
 
   const set = key => e => {
     setForm(f => ({ ...f, [key]: e.target.value }));
@@ -132,6 +148,59 @@ export default function Profile() {
     }
   }
 
+  async function toggleCoach(next) {
+    setCoachBusy(true);
+    setCoachMsg('');
+    try {
+      const u = await updateMe({ is_coach: next });
+      if (next) {
+        const inv = await getInviteCode();
+        setInviteCode(inv.invite_code || u.invite_code || '');
+        setCoachMsg('Coaching tools enabled. Share your invite code with clients.');
+      } else {
+        setCoachMsg('Coaching tools turned off. Existing client links stay until they revoke.');
+      }
+    } catch (err) {
+      setCoachMsg(err.message);
+    } finally {
+      setCoachBusy(false);
+    }
+  }
+
+  async function handleLinkCoach(e) {
+    e.preventDefault();
+    setCoachBusy(true);
+    setCoachMsg('');
+    try {
+      await linkCoach(linkCode.trim().toUpperCase(), {
+        scope_nutrition: scopes.nutrition,
+        scope_training: scopes.training,
+        scope_weight: scopes.weight,
+      });
+      setLinkCode('');
+      setCoaches(await myCoaches());
+      setCoachMsg('Coach linked. They can see the scopes you allowed.');
+    } catch (err) {
+      setCoachMsg(err.message);
+    } finally {
+      setCoachBusy(false);
+    }
+  }
+
+  async function handleRevoke(coachId) {
+    setCoachBusy(true);
+    setCoachMsg('');
+    try {
+      await revokeCoach(coachId);
+      setCoaches(await myCoaches());
+      setCoachMsg('Access revoked.');
+    } catch (err) {
+      setCoachMsg(err.message);
+    } finally {
+      setCoachBusy(false);
+    }
+  }
+
   // Auto-save dashboard prefs whenever the user changes them.
   // dashInteracted guard prevents a spurious save during initial load.
   useEffect(() => {
@@ -177,7 +246,6 @@ export default function Profile() {
       background: current === value ? '#f5f3ff' : 'transparent',
       transition: 'border-color 0.12s, background 0.12s',
     }}>
-      {/* width:auto overrides the global `input { width: 100% }` rule */}
       <input
         type="radio"
         name={name}
@@ -200,7 +268,110 @@ export default function Profile() {
 
       {error && <p className="error">{error}</p>}
 
-      {/* ── Settings tiles: units + dashboard prefs ── */}
+      <Reveal delay={40} className="card" style={{ marginBottom: 16 }}>
+        <H3>Account</H3>
+        <p style={{ margin: '0 0 10px', color: '#6b7280', fontSize: 13 }}>
+          Signed in as {user?.email || user?.display_name || `User #${user?.id}`}
+        </p>
+        <button type="button" className="btn-secondary" onClick={() => logout()}>
+          Sign out
+        </button>
+      </Reveal>
+
+      <Reveal delay={50} className="card" style={{ marginBottom: 16 }}>
+        <H3>Coaching tools</H3>
+        <p style={{ margin: '0 0 10px', color: '#6b7280', fontSize: 13 }}>
+          Unlock a Coach tab to share an invite code and view consented client summaries (read-only).
+        </p>
+        <label style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
+          padding: '8px 10px', marginBottom: 10, borderRadius: 9,
+          border: `1px solid ${isCoach ? '#c4b5fd' : '#e8e4dc'}`,
+          background: isCoach ? '#f5f3ff' : 'transparent',
+        }}>
+          <input
+            type="checkbox"
+            checked={!!isCoach}
+            disabled={coachBusy}
+            onChange={e => toggleCoach(e.target.checked)}
+            style={{ flexShrink: 0, marginTop: 3, width: 'auto' }}
+          />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Become a coach / coaching tools</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-faint)' }}>
+              Instagram-style upgrade — same account, extra tools
+            </div>
+          </div>
+        </label>
+        {isCoach && inviteCode ? (
+          <p style={{ fontSize: 13, margin: '0 0 8px' }}>
+            Your invite code: <code style={{ letterSpacing: '0.08em', fontWeight: 700 }}>{inviteCode}</code>
+          </p>
+        ) : null}
+        {coachMsg && <p style={{ fontSize: 13, color: '#059669', margin: '8px 0 0' }}>{coachMsg}</p>}
+      </Reveal>
+
+      <Reveal delay={55} className="card" style={{ marginBottom: 16 }}>
+        <H3>Link a coach</H3>
+        <p style={{ margin: '0 0 10px', color: '#6b7280', fontSize: 13 }}>
+          Paste your coach&apos;s invite code. They only see what you allow; you can revoke anytime.
+        </p>
+        {coaches.length > 0 && (
+          <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px' }}>
+            {coaches.map(c => (
+              <li key={c.id} style={{
+                display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center',
+                padding: '8px 0', borderBottom: '1px solid #f0ebe3', fontSize: 13,
+              }}>
+                <div>
+                  <strong>{c.coach_name || `Coach #${c.coach_user_id}`}</strong>
+                  <div style={{ color: '#6b7280', fontSize: 12 }}>
+                    Can see:{' '}
+                    {[
+                      c.scope_nutrition ? 'nutrition' : null,
+                      c.scope_training ? 'training' : null,
+                      c.scope_weight ? 'weight' : null,
+                    ].filter(Boolean).join(', ') || 'nothing'}
+                  </div>
+                </div>
+                <button type="button" disabled={coachBusy} onClick={() => handleRevoke(c.coach_user_id)}>
+                  Revoke
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form onSubmit={handleLinkCoach}>
+          <label>Invite code</label>
+          <input
+            value={linkCode}
+            onChange={e => setLinkCode(e.target.value.toUpperCase())}
+            placeholder="ABCD1234"
+            style={{ marginBottom: 8 }}
+          />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 10, fontSize: 13 }}>
+            {[
+              ['nutrition', 'Nutrition'],
+              ['training', 'Training'],
+              ['weight', 'Weight'],
+            ].map(([key, label]) => (
+              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={scopes[key]}
+                  onChange={e => setScopes(s => ({ ...s, [key]: e.target.checked }))}
+                  style={{ width: 'auto' }}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <button type="submit" className="btn-primary" disabled={coachBusy || !linkCode.trim()}>
+            Link coach
+          </button>
+        </form>
+      </Reveal>
+
       <Reveal delay={60} className="settings-grid">
         <div className="card">
           <H3>Nutrition units</H3>
@@ -229,7 +400,6 @@ export default function Profile() {
         </div>
         <div className="card">
           <H3>Dashboard</H3>
-          {/* Supplements checklist toggle */}
           <label style={{
             display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
             padding: '8px 10px', marginBottom: 10, borderRadius: 9,
@@ -251,11 +421,10 @@ export default function Profile() {
                 Show supplements checklist
               </div>
               <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>
-                Check-off strip under today's macros
+                Check-off strip under today&apos;s macros
               </div>
             </div>
           </label>
-          {/* Goal adherence: the dashboard shows exactly one view (no tabs) */}
           <div style={{ marginTop: 10 }}>
             <label style={{ marginBottom: 4 }}>Goal adherence view</label>
             <select
@@ -276,10 +445,8 @@ export default function Profile() {
             <p style={{ marginTop: 8, fontSize: 12, color: '#059669' }}>Saved.</p>
           )}
         </div>
-
       </Reveal>
 
-      {/* ── Personal stats (full width) ── */}
       <Reveal>
       <form onSubmit={handleSaveProfile} className="card" style={{ marginBottom: 16 }}>
         <H3>Personal stats</H3>
@@ -359,7 +526,6 @@ export default function Profile() {
         </div>
       </form>
       </Reveal>
-
     </div>
   );
 }

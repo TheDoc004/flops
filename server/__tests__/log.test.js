@@ -1,13 +1,17 @@
 const request = require('supertest');
 const express = require('express');
 const { createDb } = require('../db');
+const { createAuthMiddleware } = require('../middleware/auth');
 const { createRecipesRouter } = require('../routes/recipes');
 const { createLogRouter } = require('../routes/log');
 
 function buildApp() {
   const db = createDb(':memory:');
   const app = express();
+  const { attachUser, requireAuth } = createAuthMiddleware(db);
   app.use(express.json());
+  app.use(attachUser);
+  app.use(requireAuth);
   app.use('/api/recipes', createRecipesRouter(db));
   app.use('/api/log', createLogRouter(db));
   return app;

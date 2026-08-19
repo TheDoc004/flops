@@ -312,6 +312,30 @@ function createDb(dbPath) {
       PRIMARY KEY (user_id, date, supplement_id),
       FOREIGN KEY (supplement_id) REFERENCES supplements(id)
     );
+
+    /* Soft personal meal prep / plan-ahead drafts (not logged until client applies) */
+    CREATE TABLE IF NOT EXISTS day_prep_items (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL,
+      date         TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'planned',
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    /* Coach suggestions — client applies into their own notebook */
+    CREATE TABLE IF NOT EXISTS coach_day_suggestions (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      coach_user_id   INTEGER NOT NULL,
+      client_user_id  INTEGER NOT NULL,
+      for_date        TEXT NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'offered',
+      note            TEXT,
+      payload_json    TEXT NOT NULL DEFAULT '{}',
+      created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      responded_at    TEXT
+    );
   `);
   const recipeCols = db.prepare('PRAGMA table_info(recipes)').all().map(c => c.name);
   if (!recipeCols.includes('ingredients')) {
@@ -342,6 +366,16 @@ function createDb(dbPath) {
   // simply have no known age. New rows are stamped explicitly on insert.
   if (recipeCols.length && !recipeCols.includes('created_at')) {
     db.exec(`ALTER TABLE recipes ADD COLUMN created_at TEXT`);
+  }
+  // Cached micronutrients for the recipe's DEFAULT ingredients, so browsing the
+  // library doesn't pay for an AI estimate on every expand. The fingerprint is a
+  // hash of the ingredients the estimate was computed from — when the recipe is
+  // edited it stops matching and the cache is recomputed on next request.
+  if (recipeCols.length && !recipeCols.includes('micros_json')) {
+    db.exec(`ALTER TABLE recipes ADD COLUMN micros_json TEXT`);
+  }
+  if (recipeCols.length && !recipeCols.includes('micros_fingerprint')) {
+    db.exec(`ALTER TABLE recipes ADD COLUMN micros_fingerprint TEXT`);
   }
   const logCols = db.prepare('PRAGMA table_info(log_entries)').all().map(c => c.name);
   if (logCols.length && !logCols.includes('time_min')) {
@@ -627,6 +661,9 @@ function createDb(dbPath) {
     });
     seedExercises();
   }
+
+  const { migrateLegacyUserZero } = require('./authService');
+  migrateLegacyUserZero(db);
 
   return db;
 }

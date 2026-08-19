@@ -86,7 +86,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
     setLastFocusMonth(focusMonth);
     setMonth(focusMonth);
   }
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [goalRows, setGoalRows] = useState(null);
   const [monthTotals, setMonthTotals] = useState([]);
@@ -251,8 +251,25 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
       </div>
 
       {error && <p className="error">{error}</p>}
-      {loading && <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>Loading…</p>}
-
+      {loading ? (
+        <div
+          aria-busy="true"
+          style={{
+            marginTop: 10,
+            minHeight: dayMinHeight * 5 + 40,
+            borderRadius: 12,
+            border: '1px solid var(--color-surface-border)',
+            background: '#f8f6f2',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--color-text-faint)',
+            fontSize: 13,
+          }}
+        >
+          Loading calendar…
+        </div>
+      ) : (
       <div className="cal-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', marginTop: 10 }}>
         {SUNDAY_FIRST_WEEKDAYS.map(k => (
           <div key={k} style={{ fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'center', fontWeight: 600 }}>
@@ -342,6 +359,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
         })}
         {trailingDates.map(renderOutsideDay)}
       </div>
+      )}
 
       {(offscreenSelected.before > 0 || offscreenSelected.after > 0) && (
         <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--color-text-faint)' }}>

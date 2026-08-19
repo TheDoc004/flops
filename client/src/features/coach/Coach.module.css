@@ -1,0 +1,155 @@
+.page {
+  padding-bottom: 24px;
+}
+
+.muted {
+  color: #6b7280;
+  font-size: 13px;
+  margin: 6px 0 16px;
+}
+
+.inviteCard {
+  margin-bottom: 16px;
+}
+
+.codeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.code {
+  font-size: 1.25rem;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: #1e1b4b;
+  background: #f5f3ff;
+  border: 1px solid #c4b5fd;
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.roster {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rowCard {
+  padding: 0;
+  overflow: hidden;
+}
+
+.rowHead {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+
+.chevron {
+  color: #7c3aed;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.expand {
+  border-top: 1px solid #efe9df;
+  padding: 12px 16px 16px;
+}
+
+.expand h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.dayList {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dayList li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ghost {
+  border: 1px solid #e8e4dc;
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.note {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  background: #f8f6f1;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #374151;
+}
+
+.back {
+  border: none;
+  background: none;
+  color: #7c3aed;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid #e8e4dc;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th,
+.table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f0ebe3;
+  text-align: left;
+}
+
+.table th {
+  background: #f8f6f1;
+  font-weight: 600;
+  color: #4b5563;
+}

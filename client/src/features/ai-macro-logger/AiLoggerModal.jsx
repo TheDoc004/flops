@@ -2,9 +2,9 @@ import { useEffect, useRef } from 'react';
 import AiMacroLogger from './AiMacroLogger';
 
 /**
- * Dashboard popup wrapper for the AI Macro Logger. Reuses the full logger UI
- * inside a native <dialog> (same pattern as LogMealModal) so the user can
- * describe, review, revise, and log a meal without ever leaving the dashboard.
+ * Dashboard popup wrapper for AI Estimate. Reuses the full logger UI inside a
+ * native <dialog> (same pattern as LogMealModal) so the user can speak or
+ * describe a meal, review, and log without leaving Today.
  *
  * @param {string} [initialDate] date the logger defaults to (usually today)
  * @param {() => void} [onLogged] called after a successful log — refresh the host
@@ -30,12 +30,12 @@ export default function AiLoggerModal({ initialDate, onLogged, onClose }) {
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
         <h2 style={{ margin: 0 }}>
-          <span className="spark" aria-hidden="true">✨</span> AI Macro Logger
+          <span className="spark" aria-hidden="true">✨</span> AI Estimate
         </h2>
         <button type="button" className="modal-close-x" aria-label="Close" onClick={close}>✕</button>
       </div>
       <p style={{ margin: '0 0 16px', fontSize: 14, color: 'var(--color-text-muted)' }}>
-        Describe a meal and talk through the estimate, then log it once — or say “log my <em>recipe</em>” to pull up and tweak a saved one.
+        Speak or type what you ate — “I had three eggs, toast, yogurt” — or name a saved recipe to pull it up.
       </p>
       <AiMacroLogger inModal initialDate={initialDate} onLogged={onLogged} onClose={close} />
     </dialog>

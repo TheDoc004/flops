@@ -1,13 +1,17 @@
 const request = require('supertest');
 const express = require('express');
 const { createDb } = require('../db');
+const { createAuthMiddleware } = require('../middleware/auth');
 const { createRecipesRouter } = require('../routes/recipes');
 const { createLogRouter } = require('../routes/log');
 
 function buildApp() {
   const db = createDb(':memory:');
   const app = express();
+  const { attachUser, requireAuth } = createAuthMiddleware(db);
   app.use(express.json());
+  app.use(attachUser);
+  app.use(requireAuth);
   app.use('/api/recipes', createRecipesRouter(db));
   return app;
 }
@@ -53,12 +57,15 @@ describe('GET /api/recipes', () => {
   it('hides quick food recipes by default', async () => {
     const db = createDb(':memory:');
     const app = express();
+    const { attachUser, requireAuth } = createAuthMiddleware(db);
     app.use(express.json());
+    app.use(attachUser);
+    app.use(requireAuth);
     app.use('/api/recipes', createRecipesRouter(db));
 
     db.prepare(
-      `INSERT INTO recipes (name, serving_size, calories, protein_g, carbs_g, fat_g, ingredients, recipe_kind, is_archived, meal_builder_meta, is_quick_food)
-       VALUES ('Banana', '100 g', 89, 1.1, 22.8, 0.3, '[]', 'permanent', 0, NULL, 1)`
+      `INSERT INTO recipes (user_id, name, serving_size, calories, protein_g, carbs_g, fat_g, ingredients, recipe_kind, is_archived, meal_builder_meta, is_quick_food)
+       VALUES (1, 'Banana', '100 g', 89, 1.1, 22.8, 0.3, '[]', 'permanent', 0, NULL, 1)`
     ).run();
 
     const res = await request(app).get('/api/recipes');
@@ -147,7 +154,10 @@ describe('POST /api/recipes/:id/reactivate', () => {
   it('un-archives a limited template after uses are exhausted', async () => {
     const db = createDb(':memory:');
     const app = express();
+    const { attachUser, requireAuth } = createAuthMiddleware(db);
     app.use(express.json());
+    app.use(attachUser);
+    app.use(requireAuth);
     app.use('/api/recipes', createRecipesRouter(db));
     app.use('/api/log', createLogRouter(db));
 
@@ -226,7 +236,10 @@ describe('DELETE /api/recipes/:id', () => {
   it('allows deleting a recipe even when it has log entries', async () => {
     const db = createDb(':memory:');
     const app = express();
+    const { attachUser, requireAuth } = createAuthMiddleware(db);
     app.use(express.json());
+    app.use(attachUser);
+    app.use(requireAuth);
     app.use('/api/recipes', createRecipesRouter(db));
     app.use('/api/log', createLogRouter(db));
     const { body: recipe } = await request(app).post('/api/recipes').send(sample);

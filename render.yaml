@@ -1,0 +1,36 @@
+# Optional Render Blueprint — create the Web Service in the dashboard if you prefer.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: flops-api
+    runtime: node
+    rootDir: server
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /var/data/nutrition.db
+      - key: ALLOWED_ORIGIN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SMTP_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: AI_MONTHLY_CAP
+        value: "200"
+    disk:
+      name: flops-sqlite
+      mountPath: /var/data
+      sizeGB: 1

@@ -59,7 +59,7 @@ export default function VoiceInput({ onTranscript }) {
           ? (<><span className="btn-spinner" aria-hidden="true" />Transcribing…</>)
           : isRecording
             ? (<><span className="voice-dot" aria-hidden="true" />Stop · {fmtElapsed(elapsed)}</>)
-            : (<><span aria-hidden="true">🎤</span> Speak</>)}
+            : (<><span aria-hidden="true">🎤</span> Speak a meal</>)}
       </button>
       {error && (
         <p className="error" style={{ margin: '6px 0 0', fontSize: 13 }}>{error}</p>

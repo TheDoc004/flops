@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import RecipeRow from './RecipeRow';
+import LibrarySubNav from '@shared/ui/LibrarySubNav';
 import { LogMealModal } from '@features/meal-logging';
 import { fetchRecipes, deleteRecipe, reactivateLimitedRecipe } from '@shared/api/recipes';
 import { createLogEntry } from '@shared/api/log';
@@ -92,15 +93,12 @@ export default function Recipes() {
 
   return (
     <div>
-      <Reveal style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <LibrarySubNav />
+
+      {/* "Build a meal" lives in LibrarySubNav above, so it's in the same place
+          on both pages of the section rather than only in this title row. */}
+      <Reveal style={{ marginBottom: 16 }}>
         <h1 className="page-title">Recipe Library</h1>
-        <button
-          className="btn-primary"
-          onClick={() => navigate('/meal-builder')}
-          title="Create recipes in Meal Builder"
-        >
-          + Add Recipe
-        </button>
       </Reveal>
 
       {error && <p className="error">{error}</p>}
@@ -111,14 +109,10 @@ export default function Recipes() {
       )}
 
       <Reveal delay={60} style={{ marginBottom: 12, fontSize: 13, color: 'var(--color-text-muted)' }}>
-        Create and edit recipes in <Link to="/meal-builder" style={{ color: 'var(--color-link)' }}>Meal Builder</Link>.
+        Building and editing both happen in Meal Builder — “Build a meal” to start a new one, “Edit” on any recipe below.
       </Reveal>
 
       <Reveal delay={120} className="card">
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer' }}>
-          <input type="checkbox" checked={includeArchived} onChange={e => setIncludeArchived(e.target.checked)} />
-          <span>Show archived limited-use templates</span>
-        </label>
         <label htmlFor="recipe-search" style={{ marginBottom: 4 }}>Search by name</label>
         <input
           id="recipe-search"
@@ -127,8 +121,15 @@ export default function Recipes() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           autoComplete="off"
-          style={{ marginBottom: 12 }}
+          style={{ marginBottom: 10 }}
         />
+        {/* Sits under the search box, not above it: finding a recipe is the
+            job you came for, and widening the set to finished meal preps is a
+            refinement of that search — not a decision to make first. */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer', fontSize: 13, color: 'var(--color-text-muted)' }}>
+          <input type="checkbox" checked={includeArchived} onChange={e => setIncludeArchived(e.target.checked)} />
+          <span>Include finished meal preps &amp; archived templates</span>
+        </label>
         {filtered.length === 0 ? (
           <p className="empty-state">{recipes.length === 0 ? 'No recipes yet. Create one in Meal Builder.' : 'No recipes match your search.'}</p>
         ) : (
@@ -139,7 +140,8 @@ export default function Recipes() {
             </p>
             <div
               ref={listRef}
-              style={{ display: 'flex', flexDirection: 'column', minHeight: listMinHeight || undefined }}
+              className="recipe-list"
+              style={{ minHeight: listMinHeight || undefined }}
             >
               <GrowStack slideFrom={slideFrom}>
                 {paginated.map(recipe => (

@@ -1,34 +1,31 @@
 ---
 tags: [flops, meal-logging, decision]
-date: 2026-06-22
-commit: 0e95a4c
+date: 2026-08-17
 ---
 
-# Flops — "Log once" vs "Save as recipe"
+# Flops — "Log once" vs "Save as recipe" (and Log Meal receipts)
 
-**Commit:** `0e95a4c` — *feat: clear 'Log once' vs 'Save as recipe' distinction* (branch `refactor/folder-structure`)
+## Current model (2026-08-17)
 
-## What changed
-Logging a meal no longer forces it into the Recipe Library. Logging and saving are now separate, explicit actions with plain-language labels.
+**Log Meal** builds a freeform **receipt** of Ingredient Library rows (amounts + live macros).
+A saved **recipe** is a named ingredient list that can **seed** that receipt; logging never
+rewrites the recipe. The log keeps `recipe_id` for History naming and stores the final receipt
+in `log_entries.ingredients_json`.
 
-## Files changed
-- `server/routes/log.js` — new `POST /api/log/custom` (logs a one-off meal from absolute macros)
-- `client/src/shared/api/log.js` — `createCustomLog()` wrapper
-- `client/src/features/meal-logging/LogMealModal.jsx` — new **"Log once (custom)"** mode (paste name + cal/P/C/F)
-- `client/src/features/dashboard/Dashboard.jsx` · `features/history/History.jsx` · `features/recipes/Recipes.jsx` — dispatch `log_custom` → `createCustomLog`
-- `client/src/features/meal-builder/MealBuilder.jsx` · `RecipeForm.jsx` — replaced "Permanent / Limited-use template" radios with **"Log once"** vs **"Save as recipe"** (consistent across Smart Meal Builder + Manual recipe)
+**Meal Builder → Save as recipe** writes `kind: 'ingredient'` lines (library id + amount/unit).
+Substitutes are suggested at log time (AI / heuristic), not authored onto the recipe.
 
-## Why reuse `is_quick_food` instead of changing the schema
-`log_entries.recipe_id` is `NOT NULL` (FK → `recipes`), so **every log entry needs a backing recipe row**. The cleaner data model (nullable `recipe_id`) would mean a migration touching the FK and every query that joins `recipes` — higher risk. The existing **quick-food** path already solved "logged but invisible," so I reused that mechanism: no migration, lowest risk.
+**Log once** (Meal Builder review, AI Macro Logger, receipt without keeping a recipe seed) still
+uses `POST /api/log/custom` and a hidden `is_quick_food` backing recipe so one-offs stay out of
+the Recipe Library.
 
-## How one-time logs stay out of the library
-A "Log once" meal writes a backing recipe with **`is_quick_food = 1`**. `GET /api/recipes` (the library list) filters out `is_quick_food`, `is_archived`, and `is_deleted` by default. So one-off meals:
-- ✅ appear in the **daily log / history** (via `log_entries`, with macros denormalized onto the row)
-- ❌ never appear in the **Recipe Library**
+## Why `is_quick_food` (unchanged)
 
-Backing rows are **deduped by name**, so repeats don't pile up. "Save as recipe" still calls `POST /api/recipes` → a normal, visible library recipe.
+`log_entries.recipe_id` is `NOT NULL`, so every entry needs a backing recipe row. Quick-food
+rows are filtered out of `GET /api/recipes` by default.
 
-> Limited-use templates: server logic left intact (existing ones still work); only removed from the creation UI.
+## Related
 
-## Sets up the AI Macro Logger
-The AI Macro Logger should log AI-estimated meals through this **same "Log once" path** (`createCustomLog` → `POST /api/log/custom`). That keeps AI-logged meals in the daily log without polluting the Recipe Library — the exact problem this change fixed. The endpoint already takes plain absolute macros (name + cal/P/C/F[/fiber]), which is the natural shape of an AI estimate.
+- Receipt logging: `POST /api/log` with `{ recipe_id, ingredients: [...] }`
+- AI substitutes: `POST /api/ai/suggest-substitutes`
+- Design rule: Log Meal is for *this log*; reshaping a recipe belongs in Meal Builder.

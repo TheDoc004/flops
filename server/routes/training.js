@@ -1,4 +1,5 @@
 const express = require('express');
+const { uid } = require('../userId');
 
 /** ISO weekday: Monday = 1 … Sunday = 7 */
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];
@@ -63,10 +64,7 @@ function createTrainingRouter(db) {
   const router = express.Router();
 
   router.get('/daily-context', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const date = isoDateOrNull(req.query.date);
     if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
 
@@ -80,10 +78,7 @@ function createTrainingRouter(db) {
   });
 
   router.put('/daily-context', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const date = isoDateOrNull(req.body?.date);
     if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
     const context_type = normalizeDailyContextType(req.body?.context_type);
@@ -106,10 +101,7 @@ function createTrainingRouter(db) {
   });
 
   router.get('/schedule', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
 
     const rows = db
       .prepare(
@@ -140,10 +132,7 @@ function createTrainingRouter(db) {
   });
 
   router.put('/schedule', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const { schedule } = req.body || {};
     if (!Array.isArray(schedule)) {
       return res.status(400).json({ error: 'Body must include schedule: array' });
@@ -196,10 +185,7 @@ function createTrainingRouter(db) {
   });
 
   router.get('/override', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const date = isoDateOrNull(req.query.date);
     if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
 
@@ -220,10 +206,7 @@ function createTrainingRouter(db) {
   });
 
   router.put('/override', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const date = isoDateOrNull(req.body?.date);
     if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
 
@@ -251,10 +234,7 @@ function createTrainingRouter(db) {
   });
 
   router.delete('/override/:date', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const date = isoDateOrNull(req.params.date);
     if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
 
@@ -264,10 +244,7 @@ function createTrainingRouter(db) {
   });
 
   router.get('/today', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const date = isoDateOrNull(req.query.date);
     if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
     const weekday = Number(req.query.weekday);
@@ -320,10 +297,7 @@ function createTrainingRouter(db) {
   });
 
   router.get('/feedback', (req, res) => {
-    const userId = Number(req.query.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const date = isoDateOrNull(req.query.date);
     if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
     const row = db
@@ -333,10 +307,7 @@ function createTrainingRouter(db) {
   });
 
   router.put('/feedback', (req, res) => {
-    const userId = Number(req.body?.user_id ?? 0);
-    if (!Number.isInteger(userId) || userId < 0) {
-      return res.status(400).json({ error: 'Invalid user_id' });
-    }
+    const userId = uid(req);
     const date = isoDateOrNull(req.body?.date);
     if (!date) return res.status(400).json({ error: 'Invalid date (use YYYY-MM-DD)' });
 

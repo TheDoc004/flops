@@ -1,4 +1,4 @@
-import { apiUrl } from './base';
+import { apiFetch } from './base';
 
 /**
  * Look up a scanned barcode. The server proxies Open Food Facts and normalizes
@@ -9,7 +9,7 @@ import { apiUrl } from './base';
  * manual paths instead of showing a red error.
  */
 export async function lookupBarcode(code) {
-  const res = await fetch(apiUrl(`/api/barcode/${encodeURIComponent(code)}?user_id=0`));
+  const res = await apiFetch(`/api/barcode/${encodeURIComponent(code)}`);
   let body = null;
   try {
     body = await res.json();

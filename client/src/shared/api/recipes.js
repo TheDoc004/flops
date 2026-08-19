@@ -1,8 +1,8 @@
-import { apiUrl } from './base';
+import { apiFetch } from './base';
 
 export async function fetchRecipes({ includeArchived = false } = {}) {
   const q = includeArchived ? '?include_archived=1' : '';
-  const res = await fetch(apiUrl(`/api/recipes${q}`));
+  const res = await apiFetch(`/api/recipes${q}`);
   if (!res.ok) throw new Error('Failed to fetch recipes');
   return res.json();
 }
@@ -20,7 +20,7 @@ async function readJsonIfPresent(res) {
 }
 
 export async function fetchRecipe(id) {
-  const res = await fetch(apiUrl(`/api/recipes/${id}`));
+  const res = await apiFetch(`/api/recipes/${id}`);
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
     throw new Error(e?.error || `Failed to fetch recipe (HTTP ${res.status})`);
@@ -31,9 +31,8 @@ export async function fetchRecipe(id) {
 }
 
 export async function createRecipe(data) {
-  const res = await fetch(apiUrl('/api/recipes'), {
+  const res = await apiFetch('/api/recipes', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -46,9 +45,8 @@ export async function createRecipe(data) {
 }
 
 export async function updateRecipe(id, data) {
-  const res = await fetch(apiUrl(`/api/recipes/${id}`), {
+  const res = await apiFetch(`/api/recipes/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -61,7 +59,7 @@ export async function updateRecipe(id, data) {
 }
 
 export async function deleteRecipe(id) {
-  const res = await fetch(apiUrl(`/api/recipes/${id}`), { method: 'DELETE' });
+  const res = await apiFetch(`/api/recipes/${id}`, { method: 'DELETE' });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
     throw new Error(e?.error || `Failed to delete recipe (HTTP ${res.status})`);
@@ -69,14 +67,29 @@ export async function deleteRecipe(id) {
 }
 
 export async function reactivateLimitedRecipe(id, remainingUses) {
-  const res = await fetch(apiUrl(`/api/recipes/${id}/reactivate`), {
+  const res = await apiFetch(`/api/recipes/${id}/reactivate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ remaining_uses: remainingUses }),
   });
   if (!res.ok) {
     const e = await readJsonIfPresent(res);
     throw new Error(e?.error || `Failed to reactivate (HTTP ${res.status})`);
+  }
+  const json = await readJsonIfPresent(res);
+  if (!json) throw new Error('Invalid server response');
+  return json;
+}
+
+/**
+ * Macros, micros and the ingredient breakdown for a recipe's DEFAULT
+ * ingredients — what the library expands to show, without logging anything.
+ * The server caches the micro estimate per recipe, so repeat expands are free.
+ */
+export async function fetchRecipeNutrition(id) {
+  const res = await apiFetch(`/api/recipes/${id}/nutrition`);
+  if (!res.ok) {
+    const e = await readJsonIfPresent(res);
+    throw new Error(e?.error || `Failed to load recipe nutrition (HTTP ${res.status})`);
   }
   const json = await readJsonIfPresent(res);
   if (!json) throw new Error('Invalid server response');

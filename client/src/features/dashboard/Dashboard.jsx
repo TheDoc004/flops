@@ -1,20 +1,66 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
 import { AiLoggerModal } from '@features/ai-macro-logger';
 import MacroTotals from '@shared/ui/MacroTotals';
 import Reveal from '@shared/ui/Reveal';
-import { fetchLogRange, createLogEntry, deleteLogEntry } from '@shared/api/log';
+import { fetchLogRange, createLogEntry, createCustomLog, deleteLogEntry } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
 import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
-import { getLocalDateISO, parseLocalDateISO } from '@shared/utils/dateLocal';
+import { getLocalDateISO, parseLocalDateISO, loadViewingDate, saveViewingDate, shouldOfferNewDay, dismissNewDayOffer, goToCalendarToday, addDaysLocal } from '@shared/utils/dateLocal';
 import { goalsToTargets, hasAnyTarget, resolveGoalRowForDate } from '@features/adherence';
 import DashboardWeightRow from './DashboardWeightRow';
+import PrepStrip from './PrepStrip';
 import { SupplementStrip } from '@features/supplements';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
+
+/** Vault Prep/Plan on Today until ready — flip to true to remount PrepStrip. */
+const SHOW_PREP_PLAN = false;
+
+/** Dwell on a viewing date before slide-down so ←/→ scrubbing doesn't spam the banner. */
+const BANNER_DWELL_MS = 5000;
+
+/** Parse ingredients_json into POST /api/log(…/custom) ingredient rows. Never throws. */
+function ingredientsPayloadFromEntry(entry) {
+  const raw = entry?.ingredients_json;
+  if (!raw) return null;
+  let v;
+  try { v = typeof raw === 'string' ? JSON.parse(raw) : raw; }
+  catch { return null; }
+  if (!Array.isArray(v) || !v.length) return null;
+  const rows = [];
+  for (const r of v) {
+    if (!r || typeof r !== 'object') continue;
+    const name = String(r.name ?? '').trim();
+    if (!name) continue;
+    const row = { name };
+    if (r.amount != null && r.amount !== '') row.amount = r.amount;
+    if (typeof r.unit === 'string') row.unit = r.unit;
+    if (r.calories != null) row.calories = r.calories;
+    if (r.protein_g != null) row.protein_g = r.protein_g;
+    if (r.carbs_g != null) row.carbs_g = r.carbs_g;
+    if (r.fat_g != null) row.fat_g = r.fat_g;
+    if (r.fiber_g != null) row.fiber_g = r.fiber_g;
+    if (r.source) row.source = r.source;
+    if (r.label_ingredient_id != null) row.label_ingredient_id = r.label_ingredient_id;
+    rows.push(row);
+  }
+  return rows.length ? rows : null;
+}
+
+/** Parse slot_selections_json for POST /api/log when no receipt rows exist. */
+function slotSelectionsFromEntry(entry) {
+  const raw = entry?.slot_selections_json;
+  if (!raw) return null;
+  let v;
+  try { v = typeof raw === 'string' ? JSON.parse(raw) : raw; }
+  catch { return null; }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  return v;
+}
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -22,6 +68,13 @@ function getGreeting() {
   if (hour >= 12 && hour < 17) return 'Good afternoon!';
   if (hour >= 17 && hour < 21) return 'Good evening!';
   return 'Late night check-in!';
+}
+
+/** Initial dismiss: respect day-hold stay for past dates; future always offers. */
+function initialBannerDismissed(viewing, cal) {
+  if (viewing === cal) return true;
+  if (viewing < cal) return !shouldOfferNewDay(viewing, cal);
+  return false;
 }
 
 export default function Dashboard() {
@@ -33,7 +86,13 @@ export default function Dashboard() {
       window.scrollTo({ top: 0, behavior: 'instant' });
     }
   }, [location.state?.scrollToTop]);
-  const [today, setToday] = useState(() => getLocalDateISO());
+  const [today, setToday] = useState(() => loadViewingDate());
+  const [calendarToday, setCalendarToday] = useState(() => getLocalDateISO());
+  const [bannerDismissed, setBannerDismissed] = useState(() =>
+    initialBannerDismissed(loadViewingDate(), getLocalDateISO()),
+  );
+  const [bannerOpen, setBannerOpen] = useState(false);
+  const bannerDelayRef = useRef(null);
   const [entries, setEntries] = useState([]);
   const [targets, setTargets] = useState({ calories: null, protein_g: null, carbs_g: null, fat_g: null });
   const [goalsLabel, setGoalsLabel] = useState('');
@@ -42,28 +101,89 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [error, setError] = useState('');
+  const [copyStatus, setCopyStatus] = useState('');
+  const copyStatusTimerRef = useRef(null);
   const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
   const [supplementMacros, setSupplementMacros] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 
   const greeting = useMemo(() => getGreeting(), []);
+  const isFutureDay = today > calendarToday;
+  const isPastDay = today < calendarToday;
+  const isOffToday = today !== calendarToday;
+  const bannerDesired = isOffToday && !bannerDismissed;
 
+  function shiftDay(delta) {
+    const next = addDaysLocal(today, delta);
+    const cal = getLocalDateISO();
+    setToday(next);
+    // Arrow navigation always re-offers the off-today banner (fixes past-day miss).
+    setBannerDismissed(next === cal);
+  }
+
+  // Delayed reveal: cancel while scrubbing dates, then slide open.
   useEffect(() => {
-    function syncToday() {
-      setToday(prev => {
-        const n = getLocalDateISO();
-        return prev === n ? prev : n;
-      });
+    if (bannerDelayRef.current != null) {
+      clearTimeout(bannerDelayRef.current);
+      bannerDelayRef.current = null;
     }
-    const id = setInterval(syncToday, 60_000);
+    if (!bannerDesired) {
+      setBannerOpen(false);
+      return undefined;
+    }
+    setBannerOpen(false);
+    bannerDelayRef.current = setTimeout(() => {
+      setBannerOpen(true);
+      bannerDelayRef.current = null;
+    }, BANNER_DWELL_MS);
+    return () => {
+      if (bannerDelayRef.current != null) {
+        clearTimeout(bannerDelayRef.current);
+        bannerDelayRef.current = null;
+      }
+    };
+  }, [bannerDesired, today]);
+
+  // Notebook day-hold: watch the calendar clock, but never auto-flip the viewing date.
+  useEffect(() => {
+    function syncCalendar() {
+      const n = getLocalDateISO();
+      setCalendarToday(n);
+      if (today === n) {
+        setBannerDismissed(true);
+      } else if (today < n) {
+        // Overnight roll: respect stay dismiss for day-hold.
+        setBannerDismissed(!shouldOfferNewDay(today, n));
+      }
+      // Future day while calendar ticks: leave session dismiss alone.
+    }
+    const id = setInterval(syncCalendar, 60_000);
     const onVis = () => {
-      if (document.visibilityState === 'visible') syncToday();
+      if (document.visibilityState === 'visible') syncCalendar();
     };
     document.addEventListener('visibilitychange', onVis);
     return () => {
       clearInterval(id);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, []);
+  }, [today]);
+
+  function handleGoToToday() {
+    const n = goToCalendarToday(getLocalDateISO());
+    setCalendarToday(n);
+    setToday(n);
+    setBannerDismissed(true);
+    setBannerOpen(false);
+  }
+
+  function handleStayOnDay() {
+    if (today < calendarToday) dismissNewDayOffer(today, calendarToday);
+    setBannerDismissed(true);
+    setBannerOpen(false);
+  }
+
+  useEffect(() => {
+    saveViewingDate(today);
+  }, [today]);
 
   const load = useCallback(async () => {
     setGoalsError('');
@@ -121,13 +241,84 @@ export default function Dashboard() {
   }, [load]);
 
   async function handleLog(data) {
-    await createLogEntry({ ...data, date: today });
+    // A bare ingredient logs as a one-off food, not a recipe log.
+    if (data?.custom) await createCustomLog({ ...data.custom, date: today });
+    else await createLogEntry({ ...data, date: today });
     await load();
   }
 
   async function handleDelete(entry) {
     try { await deleteLogEntry(entry.id); load(); }
     catch (e) { setError(e.message); }
+  }
+
+  function flashCopyStatus(msg) {
+    if (copyStatusTimerRef.current != null) {
+      clearTimeout(copyStatusTimerRef.current);
+      copyStatusTimerRef.current = null;
+    }
+    setCopyStatus(msg);
+    copyStatusTimerRef.current = setTimeout(() => {
+      setCopyStatus('');
+      copyStatusTimerRef.current = null;
+    }, 2800);
+  }
+
+  useEffect(() => () => {
+    if (copyStatusTimerRef.current != null) clearTimeout(copyStatusTimerRef.current);
+  }, []);
+
+  /** Duplicate a logged meal onto calendar today (not the viewing date). */
+  async function handleCopyToToday(entry) {
+    const target = getLocalDateISO();
+    setError('');
+    const ingredients = ingredientsPayloadFromEntry(entry);
+    const slotSelections = slotSelectionsFromEntry(entry);
+    const isQuick = !!Number(entry.recipe_is_quick_food);
+
+    try {
+      let copied = false;
+      if (entry.recipe_id && !isQuick) {
+        try {
+          await createLogEntry({
+            recipe_id: entry.recipe_id,
+            date: target,
+            servings: entry.servings,
+            ...(entry.notes != null && String(entry.notes).trim() ? { notes: String(entry.notes).trim() } : {}),
+            ...(entry.time_min != null ? { time_min: entry.time_min } : {}),
+            ...(ingredients?.length ? { ingredients } : {}),
+            ...(!ingredients?.length && slotSelections ? { slot_selections: slotSelections } : {}),
+          });
+          copied = true;
+        } catch {
+          // Recipe gone / archived / receipt rejected — denormalized custom log.
+        }
+      }
+      if (!copied) {
+        await createCustomLog({
+          date: target,
+          name: (entry.recipe_name && String(entry.recipe_name).trim()) || 'Meal',
+          calories: Number(entry.recipe_calories) || 0,
+          protein_g: Number(entry.recipe_protein_g) || 0,
+          carbs_g: Number(entry.recipe_carbs_g) || 0,
+          fat_g: Number(entry.recipe_fat_g) || 0,
+          ...(entry.recipe_fiber_g != null && entry.recipe_fiber_g !== ''
+            && Number.isFinite(Number(entry.recipe_fiber_g))
+            ? { fiber_g: Number(entry.recipe_fiber_g) }
+            : {}),
+          servings: Number(entry.servings) > 0 ? Number(entry.servings) : 1,
+          ...(entry.notes != null && String(entry.notes).trim() ? { notes: String(entry.notes).trim() } : {}),
+          ...(entry.time_min != null ? { time_min: entry.time_min } : {}),
+          ...(ingredients?.length ? { ingredients } : {}),
+        });
+      }
+      flashCopyStatus('Copied to today');
+      // Stay on the viewing day so the user can copy multiple meals; reload
+      // only if they were already on today (list would otherwise be stale).
+      if (today === target) await load();
+    } catch (e) {
+      setError(e.message || 'Failed to copy meal');
+    }
   }
 
   const totals = sumMacros(entries);
@@ -142,58 +333,162 @@ export default function Dashboard() {
       }
     : totals;
 
-  // Larger, presence-boosted actions for the two primary dashboard buttons.
-  // Scoped to these instances (inline) so the global .btn-* sizing is untouched.
+  // The two primary dashboard buttons. With no "Log" tab in the nav, these ARE
+  // the way into logging, so they're sized to be the first thing you reach for
+  // rather than header trim. Scoped inline so the global .btn-* sizing is
+  // untouched.
   const dashActionStyle = {
-    fontSize: 'clamp(14px, 1vw, 16.5px)',
-    padding: 'clamp(11px, 1vw, 15px) clamp(16px, 1.7vw, 26px)',
-    minHeight: 'clamp(44px, 3.4vw, 52px)',
+    fontSize: 'clamp(15px, 1.15vw, 18px)',
+    fontWeight: 700,
+    padding: 'clamp(13px, 1.2vw, 18px) clamp(20px, 2.1vw, 32px)',
+    minHeight: 'clamp(52px, 4vw, 60px)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+  };
+
+  const dayNavBtnStyle = {
+    flexShrink: 0,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    border: '1px solid #e8e4dc',
+    background: '#fff',
+    fontSize: 22,
+    cursor: 'pointer',
+    color: '#1e1b4b',
   };
 
   return (
     <div className="dashboard">
-      {/* ── Header ── */}
+      {/* ── Day ← / → row stays fixed in Y; banner animates below and may push the greeting ── */}
       <Reveal style={{
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'flex-end',
-        marginBottom: 'clamp(24px, 2.6vw, 34px)',
+        alignItems: 'center',
+        marginBottom: 12,
         gap: 12,
         flexWrap: 'wrap',
       }}>
-        <div>
-          <h1 style={{
-            margin: 0, fontSize: 'clamp(38px, 3.4vw, 52px)', fontWeight: 400, color: 'var(--color-primary-ink)',
-            fontFamily: "'DM Serif Display', Georgia, serif",
-            letterSpacing: '-0.02em', lineHeight: 1.05,
-          }}>
-            {greeting}
-          </h1>
-          <p style={{ margin: '10px 0 0', color: 'var(--color-text-muted)', fontSize: 'clamp(15px, 1vw, 17px)' }}>
-            {goalsLoaded && !goalsError
-              ? (
-                <>
-                  {goalsLabel}
-                  {' · '}
-                  <Link to="/goals" style={{ color: 'var(--color-text-muted)', textDecoration: 'underline', textUnderlineOffset: 3 }}>
-                    {hasAnyTarget(targets) ? 'Edit goals' : 'Set goals'}
-                  </Link>
-                </>
-              )
-              : today}
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: '1 1 220px' }}>
+          <button
+            type="button"
+            aria-label="Previous day"
+            onClick={() => shiftDay(-1)}
+            style={dayNavBtnStyle}
+          >
+            ←
+          </button>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'clamp(15px, 1vw, 17px)' }}>
+              <strong style={{ color: 'var(--color-primary-ink)', fontWeight: 600 }}>{today}</strong>
+              {goalsLoaded && !goalsError
+                ? (
+                  <>
+                    {' · '}
+                    {goalsLabel}
+                    {' · '}
+                    <Link to="/goals" style={{ color: 'var(--color-text-muted)', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                      {hasAnyTarget(targets) ? 'Edit goals' : 'Set goals'}
+                    </Link>
+                  </>
+                )
+                : null}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Next day"
+            onClick={() => shiftDay(1)}
+            style={dayNavBtnStyle}
+          >
+            →
+          </button>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button type="button" className="btn-ai" onClick={() => setShowAiModal(true)} style={dashActionStyle}>
+          <button
+            type="button"
+            className="btn-ai"
+            onClick={() => setShowAiModal(true)}
+            style={dashActionStyle}
+            title="Speak or describe a meal in plain language"
+          >
             <span className="spark" aria-hidden="true">✨</span> AI Estimate
           </button>
-          <button className="btn-primary" onClick={() => setShowModal(true)} style={dashActionStyle}>
+          <button
+            className="btn-primary"
+            onClick={() => setShowModal(true)}
+            style={dashActionStyle}
+            title="Build a receipt from a recipe or ingredients"
+          >
             + Log a Meal
           </button>
         </div>
       </Reveal>
 
+      <div
+        className={`day-off-banner-slot${bannerOpen ? ' is-open' : ''}`}
+        aria-hidden={!bannerOpen}
+      >
+        <div className="day-off-banner-slot-inner">
+          <div
+            className={`day-off-banner${isFutureDay ? ' day-off-banner--future' : ''}`}
+            role="status"
+          >
+            <div className="day-off-banner-copy">
+              {isFutureDay ? (
+                <>
+                  <strong>Planning ahead</strong>
+                  <span>
+                    {' — '}{today} is ahead of today. Plan ahead here, or jump back to {calendarToday}.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <strong>You’re looking at {today}</strong>
+                  <span>
+                    {' — '}go to today ({calendarToday})?
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="day-off-banner-actions">
+              <button type="button" className="btn-primary" onClick={handleGoToToday} style={{ minHeight: 40, padding: '8px 16px' }}>
+                Go to today
+              </button>
+              <button type="button" className="btn-secondary" onClick={handleStayOnDay} style={{ minHeight: 40, padding: '8px 16px' }}>
+                {isFutureDay ? 'Stay & plan' : `Stay on ${today}`}
+              </button>
+              <button
+                type="button"
+                className="modal-close-x"
+                aria-label="Dismiss"
+                onClick={handleStayOnDay}
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h1 style={{
+        margin: '0 0 clamp(24px, 2.6vw, 34px)',
+        fontSize: 'clamp(32px, 3.2vw, 52px)',
+        fontWeight: 400,
+        color: 'var(--color-primary-ink)',
+        fontFamily: "'DM Serif Display', Georgia, serif",
+        letterSpacing: '-0.02em',
+        lineHeight: 1.05,
+      }}>
+        {isFutureDay ? 'Planning ahead' : isPastDay ? 'Looking back' : greeting}
+      </h1>
+
       {error && <p className="error" style={{ marginTop: 0, marginBottom: 16 }}>{error}</p>}
+      {copyStatus && (
+        <p style={{ marginTop: 0, marginBottom: 16, color: 'var(--color-success)', fontSize: 'var(--text-secondary)' }}>
+          {copyStatus}
+        </p>
+      )}
       {goalsError && (
         <p className="error" style={{ marginBottom: 16 }}>
           Could not load goals: {goalsError}
@@ -219,6 +514,12 @@ export default function Dashboard() {
       <Reveal style={{ marginTop: 16 }}>
         <DashboardWeightRow today={today} bodyUnits={bodyUnits} />
       </Reveal>
+
+      {SHOW_PREP_PLAN && (
+        <Reveal delay={90}>
+          <PrepStrip date={today} onLogged={load} />
+        </Reveal>
+      )}
 
       {/* ── Today's meals ── */}
       <Reveal delay={120} style={{ marginTop: 'clamp(28px, 3vw, 40px)', marginBottom: 24 }}>
@@ -267,7 +568,7 @@ export default function Dashboard() {
               borderRadius: 14,
               border: '1px solid #e8e4dc',
               boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-              overflow: 'hidden',
+              overflow: 'visible',
             }}>
               {entries.map((entry, idx) => (
                 <Reveal
@@ -275,7 +576,13 @@ export default function Dashboard() {
                   delay={Math.min(idx, 6) * 60}
                   style={{ borderBottom: idx < entries.length - 1 ? '1px solid #f0ede8' : 'none' }}
                 >
-                  <LogEntryRow entry={entry} onDelete={handleDelete} variant="dashboard" />
+                  <LogEntryRow
+                    entry={entry}
+                    onDelete={handleDelete}
+                    onCopyToToday={handleCopyToToday}
+                    showCopyToToday={isOffToday}
+                    variant="dashboard"
+                  />
                 </Reveal>
               ))}
             </div>
@@ -286,7 +593,6 @@ export default function Dashboard() {
       {showModal && (
         <LogMealModal
           onLog={handleLog}
-          onOpenAi={() => { setShowModal(false); setShowAiModal(true); }}
           onClose={() => setShowModal(false)}
         />
       )}
