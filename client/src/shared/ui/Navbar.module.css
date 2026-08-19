@@ -128,11 +128,11 @@
 }
 
 .active {
-  background: #312e81 !important;
+  background: var(--color-primary) !important;
   color: #ffffff !important;
-  border-color: #312e81 !important;
+  border-color: var(--color-primary) !important;
   font-weight: 400 !important;
-  box-shadow: 0 2px 8px rgba(49, 46, 129, 0.28) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18) !important;
 }
 
 /* Reduced motion: drop the pressed-state travel. */

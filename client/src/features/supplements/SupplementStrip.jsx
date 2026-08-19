@@ -140,32 +140,15 @@ export default function SupplementStrip({ date, onMacrosChange }) {
             {rows.map(r => (
               <div
                 key={r.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 12px',
-                  borderRadius: 12, border: '1px solid', minHeight: 44,
-                  borderColor: r.taken ? '#a7f3d0' : 'var(--color-surface-border)',
-                  background: r.taken ? '#f0fdf9' : 'var(--color-surface)',
-                  transition: 'background 0.15s, border-color 0.15s',
-                }}
+                className={`supp-chip${r.taken ? ' is-taken' : ''}`}
               >
                 <button
                   type="button"
+                  className="supp-chip__toggle"
                   onClick={() => void toggle(r)}
                   aria-pressed={!!r.taken}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 9, background: 'none', border: 'none',
-                    padding: 0, cursor: 'pointer', font: 'inherit', textAlign: 'left',
-                  }}
                 >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      flexShrink: 0, width: 20, height: 20, borderRadius: 6, border: '2px solid',
-                      borderColor: r.taken ? '#059669' : '#cbd5e1', background: r.taken ? '#059669' : 'transparent',
-                      color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 13, fontWeight: 700, transition: 'background 0.15s, border-color 0.15s',
-                    }}
-                  >
+                  <span className="supp-chip__check" aria-hidden="true">
                     {r.taken ? '✓' : ''}
                   </span>
                   {/* Name over dose: the dose is a detail, not a peer of the name. */}

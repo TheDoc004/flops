@@ -62,7 +62,7 @@ function MacroRing({ label, value, target, macroUnits }) {
       statusColor = 'var(--color-danger)';
     } else if (inRange) {
       statusText = 'In range';
-      statusColor = '#065f46';
+      statusColor = 'var(--color-success)';
     } else {
       // below min
       const deficit = target.min - value;
