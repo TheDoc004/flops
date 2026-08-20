@@ -141,7 +141,7 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, no
         onSubmit={handleSubmit}
         className="weight-row"
       >
-        <div style={{ position: 'relative', flex: '1 1 140px', maxWidth: 180 }}>
+        <div className="weight-field">
           <input
             type="number"
             min="0.1"
@@ -151,17 +151,8 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, no
             value={input}
             onChange={e => setInput(e.target.value)}
             placeholder={bodyUnits === 'us' ? 'e.g. 165' : 'e.g. 72.5'}
-            style={{ paddingRight: 44 }}
           />
-          <span
-            aria-hidden="true"
-            style={{
-              position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)',
-              fontSize: 14, color: 'var(--color-text-muted)', pointerEvents: 'none',
-            }}
-          >
-            {unitLabel}
-          </span>
+          <span className="weight-field-unit" aria-hidden="true">{unitLabel}</span>
         </div>
 
         {!settled && (

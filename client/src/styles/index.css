@@ -891,10 +891,36 @@ label {
   gap: var(--space-12);
   flex-wrap: wrap;
 }
-.weight-row input {
-  max-width: 160px;
+.weight-field {
+  position: relative;
+  width: 10.5rem;
+  flex: 0 0 auto;
+}
+.weight-field input {
+  width: 100%;
+  max-width: none;
+  padding-right: 2.5rem;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+.weight-field input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.weight-field input[type="number"]::-webkit-outer-spin-button,
+.weight-field input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.weight-field-unit {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: var(--color-text-muted);
+  pointer-events: none;
+  line-height: 1;
 }
 .weight-status {
   margin: 8px 0 0;
