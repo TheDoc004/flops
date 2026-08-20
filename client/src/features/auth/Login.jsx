@@ -64,10 +64,10 @@ export default function Login() {
       <div className={styles.card}>
         <div className={styles.brand}>
           <img src="/flops-badge.png" alt="" className={styles.badge} />
-          <h1>FLOPS</h1>
+          <h1>Flops</h1>
         </div>
         <p className={styles.lede}>
-          Your nutrition notebook — you write it; AI helps when you ask. Sign in to keep your log private.
+          Your nutrition notebook. You write it; AI helps when you ask. Sign in to keep your log private.
         </p>
 
         {error && <p className={styles.error}>{error}</p>}
@@ -132,7 +132,7 @@ export default function Login() {
           <span>or</span>
         </div>
 
-        <button type="button" className={styles.apple} onClick={signInAppleDev} disabled={busy}>
+        <button type="button" className="btn-primary" style={{ width: '100%' }} onClick={signInAppleDev} disabled={busy}>
           Sign in with Apple
         </button>
         <p className={styles.footnote}>

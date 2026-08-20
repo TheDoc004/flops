@@ -61,8 +61,9 @@ function AuthGate() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
-        Loading…
+      <div className="boot-screen">
+        <p className="boot-wordmark">Flops</p>
+        <p>Loading</p>
       </div>
     );
   }

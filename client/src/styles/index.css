@@ -505,6 +505,26 @@ body {
 
 a { color: inherit; text-decoration: none; }
 
+.boot-screen {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-size: var(--text-body);
+}
+.boot-wordmark {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--color-primary-ink);
+}
+
 button {
   cursor: pointer;
   border: none;
