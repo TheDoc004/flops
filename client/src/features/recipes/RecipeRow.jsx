@@ -59,8 +59,8 @@ export default function RecipeRow({ recipe, onLog, onEditInBuilder, onDelete, on
               const isPrep = recipe.meal_builder_meta?.source === 'ai_meal_prep'
                 || /meal-prep/i.test(recipe.serving_size || '');
               const label = isPrep
-                ? (archived ? '🍱 Meal prep · finished' : `🍱 Meal prep · ${recipe.remaining_uses ?? '—'} left`)
-                : (archived ? 'Template · archived' : `Template · ${recipe.remaining_uses ?? '—'} left`);
+                ? (archived ? 'Meal prep · finished' : `Meal prep · ${recipe.remaining_uses ?? '–'} left`)
+                  : (archived ? 'Template · archived' : `Template · ${recipe.remaining_uses ?? '–'} left`);
               const tint = archived
                 ? { color: 'var(--color-text-faint)', background: 'var(--color-divider)' }
                 : isPrep
@@ -84,24 +84,34 @@ export default function RecipeRow({ recipe, onLog, onEditInBuilder, onDelete, on
         </div>
 
         <div className="recipe-card-macros">
-          <span><strong>{recipe.calories}</strong> cal</span>
-          <span>P: {recipe.protein_g}g</span>
-          <span>C: {recipe.carbs_g}g</span>
-          <span>F: {recipe.fat_g}g</span>
-          {recipe.fiber_g != null && <span>Fiber: {recipe.fiber_g}g</span>}
+          <span><strong>{Math.round(Number(recipe.calories) || 0)}</strong> cal</span>
+          <span>P {formatMacroMass(recipe.protein_g, macroUnits)}</span>
+          <span>C {formatMacroMass(recipe.carbs_g, macroUnits)}</span>
+          <span>F {formatMacroMass(recipe.fat_g, macroUnits)}</span>
+          {recipe.fiber_g != null && Number(recipe.fiber_g) > 0 && (
+            <span>Fiber {formatMacroMass(recipe.fiber_g, macroUnits)}</span>
+          )}
         </div>
 
         <div className="recipe-card-actions">
           {limited && archived && onReactivate && (
             <button type="button" className="btn-secondary" onClick={() => onReactivate(recipe)}>Reactivate</button>
           )}
-          {onLog && <button className="btn-secondary" onClick={() => onLog(recipe)}>Log</button>}
+          {onLog && <button className="btn-ai" onClick={() => onLog(recipe)}>Log</button>}
           {onEditInBuilder && (
-            <button className="btn-secondary" onClick={() => onEditInBuilder(recipe)}>
-              {hasMealBuilderMeta ? 'Edit in Meal Builder' : 'Edit'}
+            <button className="btn-ghost" onClick={() => onEditInBuilder(recipe)}>
+              Edit
             </button>
           )}
-          <button className="btn-danger" onClick={() => onDelete(recipe)}>Delete</button>
+          <button
+            className="btn-danger-ghost"
+            onClick={() => {
+              if (!window.confirm(`Delete “${recipe.name}”?`)) return;
+              onDelete(recipe);
+            }}
+          >
+            Delete
+          </button>
         </div>
       </div>
 

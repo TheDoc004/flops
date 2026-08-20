@@ -552,6 +552,8 @@ button:not(:disabled):active,
 .btn-primary,
 .btn-secondary,
 .btn-danger,
+.btn-danger-ghost,
+.btn-ghost,
 .btn-ai {
   display: inline-flex;
   align-items: center;
@@ -576,6 +578,8 @@ button:not(:disabled):active,
 .btn-primary:disabled,
 .btn-secondary:disabled,
 .btn-danger:disabled,
+.btn-danger-ghost:disabled,
+.btn-ghost:disabled,
 .btn-ai:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -595,6 +599,18 @@ button:not(:disabled):active,
   border-color: var(--color-border);
   box-shadow: none;
 }
+
+.btn-ghost,
+.btn-danger-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  font-weight: 500;
+}
+.btn-ghost { color: var(--color-primary); }
+.btn-ghost:hover:not(:disabled) { background: var(--color-primary-subtle); }
+.btn-danger-ghost { color: var(--color-danger); }
+.btn-danger-ghost:hover:not(:disabled) { background: #fef2f2; }
 
 /* Off-today: cool charcoal secondary family, light type, no glow. */
 html[data-notebook-day] .btn-ai {
@@ -626,6 +642,8 @@ html[data-notebook-day] .btn-secondary {
 .btn-primary:active:not(:disabled),
 .btn-secondary:active:not(:disabled),
 .btn-danger:active:not(:disabled),
+.btn-danger-ghost:active:not(:disabled),
+.btn-ghost:active:not(:disabled),
 .btn-ai:active:not(:disabled) {
   transform: scale(0.97);
   transition-duration: 60ms;
@@ -633,14 +651,16 @@ html[data-notebook-day] .btn-secondary {
 .btn-primary:focus-visible,
 .btn-secondary:focus-visible,
 .btn-danger:focus-visible,
+.btn-danger-ghost:focus-visible,
+.btn-ghost:focus-visible,
 .btn-ai:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .btn-primary, .btn-secondary, .btn-danger, .btn-ai,
-  .btn-primary:active, .btn-secondary:active, .btn-danger:active, .btn-ai:active {
+  .btn-primary, .btn-secondary, .btn-danger, .btn-danger-ghost, .btn-ghost, .btn-ai,
+  .btn-primary:active, .btn-secondary:active, .btn-danger:active, .btn-danger-ghost:active, .btn-ghost:active, .btn-ai:active {
     transition: none;
     transform: none;
   }
@@ -1901,8 +1921,6 @@ dialog[open]::backdrop {
    readers rely on, and tracking it out is what keeps a long name like
    "EGG TOAST YOGURT WOMBO COMBO" scannable. */
 .name-uniform {
-  text-transform: uppercase;
-  letter-spacing: 0.045em;
   font-weight: 600;
 }
 .recipe-card-macros {

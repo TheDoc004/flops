@@ -106,7 +106,7 @@ export default function Recipes() {
       )}
 
       <Reveal delay={60} style={{ marginBottom: 12, fontSize: 13, color: 'var(--color-text-muted)' }}>
-        Building and editing both happen in Meal Builder — “Build a meal” to start a new one, “Edit” on any recipe below.
+        Building and editing happen in Meal Builder. Use “Build a meal” to start, or Edit on a recipe below.
       </Reveal>
 
       <Reveal delay={120} className="card">

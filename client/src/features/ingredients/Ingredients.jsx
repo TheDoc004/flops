@@ -720,7 +720,7 @@ export default function Ingredients() {
                     <button type="button" className="btn-secondary" onClick={() => startEdit(i)}>Edit</button>
                     <button
                       type="button"
-                      className="btn-danger"
+                      className="btn-danger-ghost"
                       onClick={async () => {
                         if (!window.confirm(`Delete ingredient "${i.name}"?`)) return;
                         await deleteLabelIngredient(i.id);

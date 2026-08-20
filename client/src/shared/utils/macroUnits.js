@@ -13,12 +13,13 @@ export function ozToGrams(oz) {
 
 /** Display macro mass: grams (metric) or ounces (us) */
 export function formatMacroMass(grams, macroUnits) {
-  if (grams == null || !Number.isFinite(Number(grams))) return '—';
+  if (grams == null || !Number.isFinite(Number(grams))) return '–';
   const g = Number(grams);
   if (macroUnits === 'us') {
     return `${gramsToOz(g).toFixed(1)} oz`;
   }
-  return `${g.toFixed(1)} g`;
+  if (Math.abs(g) >= 100) return `${Math.round(g)} g`;
+  return `${(Math.round(g * 10) / 10).toFixed(1)} g`;
 }
 
 /** String for number inputs (stable rounding) */
