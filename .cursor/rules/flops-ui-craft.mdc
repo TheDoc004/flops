@@ -1,9 +1,27 @@
 ---
-description: Use design craft skills + FLOPS design system for UI work
+description: For visual/UI work, use design craft skills + FLOPS design system (anti-slop)
 globs: client/**/*.{css,jsx,tsx,js},docs/design-system.md
 alwaysApply: false
 ---
 
-For visual/UI work, read the emil-design-eng, impeccable, and design-taste skills AND docs/design-system.md.
+# FLOPS UI craft
 
-The design-system and FLOPS notebook/restraint aesthetic win over generic landing-page patterns. No sparkles, lavender AI chrome, or vibe-slop.
+When doing visual/UI work (layout, polish, typography, motion, color, components, or anti-slop cleanup):
+
+1. Read the installed design skills: **emil-design-eng**, **impeccable**, and **design-taste** (under `.cursor/skills/`).
+2. Read and follow `docs/design-system.md`.
+
+## Precedence
+
+`docs/design-system.md` and FLOPS product constraints **win** over generic landing-page or skill defaults:
+
+- Notebook restraint: calm, precise, physical — data is the personality; UI is the frame
+- No Inter / Geist / system-default typography stacks when the design system specifies otherwise
+- No vibe-slop or generic “AI SaaS” chrome
+
+## Anti-slop (consistent with de-slop)
+
+- No sparkles / ✨ glyphs
+- No lavender / purple AI chrome, gradients, or glow on buttons and selection
+- No emoji decoration as UI affordances
+- Prefer flat semantic color and cool neutrals over decorative accents
