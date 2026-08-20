@@ -20,7 +20,8 @@ const SECTION_HEADING = {
   fontSize: 15,
   fontWeight: 400,
   color: 'var(--color-primary-ink)',
-  fontFamily: "'DM Serif Display', Georgia, serif",
+  fontFamily: 'var(--font-sans)',
+  fontWeight: 600,
 };
 
 // Field labels sit at 13px, not 12px — small enough to defer to the value,
@@ -425,7 +426,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                 <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '5px 10px', minHeight: 32 }} onClick={() => startEdit(s)}>
                   Edit
                 </button>
-                <button type="button" className="btn-danger" style={{ fontSize: 12, padding: '5px 10px', minHeight: 32 }} onClick={() => void handleDelete(s)} disabled={busy}>
+                <button type="button" className="btn-danger-ghost" style={{ fontSize: 12, padding: '5px 10px', minHeight: 32 }} onClick={() => void handleDelete(s)} disabled={busy}>
                   Remove
                 </button>
               </div>
@@ -636,7 +637,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                 disabled={scanBusy || busy}
                 style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 8 }}
               >
-                {scanBusy ? 'Reading label…' : '📷 Scan Supplement Facts label'}
+                {scanBusy ? 'Reading label…' : 'Scan Supplement Facts label'}
               </button>
             </div>
           </div>

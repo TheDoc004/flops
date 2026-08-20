@@ -63,7 +63,7 @@ function TabBar({ active, onChange }) {
       style={{
         display: 'flex',
         gap: 4,
-        background: '#f3f4f6',
+        background: 'var(--color-secondary-bg)',
         borderRadius: 12,
         padding: 4,
         marginBottom: 20,
@@ -85,9 +85,9 @@ function TabBar({ active, onChange }) {
             fontSize: 14,
             fontWeight: 600,
             transition: 'background 0.15s, color 0.15s',
-            background: active === t.key ? 'white' : 'transparent',
-            color: active === t.key ? '#111827' : '#6b7280',
-            boxShadow: active === t.key ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
+            background: active === t.key ? 'var(--color-surface)' : 'transparent',
+            color: active === t.key ? 'var(--color-text-strong)' : 'var(--color-text-muted)',
+            boxShadow: 'none',
           }}
         >
           {t.label}
@@ -205,7 +205,7 @@ function ProgressChart({ exercise }) {
   );
 
   if (!exercise) return null;
-  if (loading) return <p style={{ color: '#6b7280', fontSize: 14 }}>Loading…</p>;
+  if (loading) return <p style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>Loading</p>;
   if (error) return <p className="error">{error}</p>;
   if (data.length === 0) {
     return <p className="empty-state">No logs yet for {exercise}.</p>;
@@ -398,7 +398,7 @@ export default function TrainingWorkouts() {
         );
       }
       await Promise.all(jobs);
-      notify(jobs.length ? 'Saved.' : 'Nothing to save — fill in at least one field.');
+      notify(jobs.length ? 'Saved.' : 'Nothing to save. Fill in at least one field.');
       if (jobs.length) {
         const prev = await fetchPreviousSessionLogs(todayExercises.map(e => e.name));
         setPrevLogs(prev || {});
@@ -531,7 +531,7 @@ export default function TrainingWorkouts() {
                   onChange={e => void handleSelectTodayPreset(e.target.value)}
                   style={{ width: '100%' }}
                 >
-                  <option value="">— No workout —</option>
+                  <option value="">No workout</option>
                   {presets.map(p => (
                     <option key={p.id} value={p.id}>
                       {p.name}{p.intensity_label ? ` (${p.intensity_label})` : ''}
@@ -786,7 +786,7 @@ export default function TrainingWorkouts() {
                       </button>
                       <button
                         type="button"
-                        className="btn-danger"
+                        className="btn-danger-ghost"
                         style={{ fontSize: 13, padding: '7px 14px', minHeight: 36 }}
                         onClick={() => void handleDeletePreset(workoutsSelectedPreset)}
                       >
@@ -842,7 +842,7 @@ export default function TrainingWorkouts() {
                         </div>
                         <button
                           type="button"
-                          className="btn-danger"
+                          className="btn-danger-ghost"
                           style={{ fontSize: 12, padding: '5px 10px', minHeight: 32 }}
                           onClick={() => void handleRemoveExercise(ex)}
                         >
@@ -862,7 +862,7 @@ export default function TrainingWorkouts() {
                     library={library}
                     value={newExerciseName}
                     onChange={setNewExerciseName}
-                    placeholder="Add exercise — search or type any name…"
+                    placeholder="Add exercise. Search or type any name…"
                   />
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button

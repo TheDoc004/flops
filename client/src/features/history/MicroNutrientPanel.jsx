@@ -126,7 +126,7 @@ export default function MicroNutrientPanel({ values, confidence = null, coverage
                     <span aria-hidden="true" style={{ display: 'inline-block', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s', color: '#9ca3af', fontSize: 12 }}>▸</span>
                     <span style={{
                       fontSize: 14, fontWeight: 600, color: 'var(--color-primary-ink)',
-                      fontFamily: "'DM Serif Display', Georgia, serif",
+                      fontFamily: 'var(--font-sans)',
                     }}>
                       {group.label}
                     </span>

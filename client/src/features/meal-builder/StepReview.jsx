@@ -101,7 +101,7 @@ export default function StepReview({
         )}
         {mealLoggedOnce && (
           <p style={{ color: 'var(--color-success)', fontSize: 14 }}>
-            Logged to today. It&apos;s in your daily log — not saved to your Recipe Library.
+            Logged to today. It&apos;s in your daily log, not saved to your Recipe Library.
           </p>
         )}
 

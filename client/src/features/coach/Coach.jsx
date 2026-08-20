@@ -11,7 +11,7 @@ import { getLocalDateISO } from '@shared/utils/dateLocal';
 import styles from './Coach.module.css';
 
 function formatMacros(day) {
-  if (!day) return '—';
+  if (!day) return '–';
   return `${day.calories} kcal · P ${day.protein_g}g · C ${day.carbs_g}g · F ${day.fat_g}g`;
 }
 
@@ -236,7 +236,7 @@ export default function Coach() {
 
       <div className={`card ${styles.inviteCard}`}>
         <h3 className="section-title">Add client</h3>
-        <p className={styles.muted}>Share this code face-to-face or by text. They paste it under Profile → Link a coach.</p>
+        <p className={styles.muted}>Share this code face-to-face or by text. They paste it under Profile, Link a coach.</p>
         <div className={styles.codeRow}>
           <code className={styles.code}>{invite?.invite_code || '········'}</code>
           <button type="button" className="btn-primary" onClick={copyCode} disabled={!invite?.invite_code}>

@@ -315,11 +315,11 @@ export default function LogEntryRow({
         )}
         {onDelete && (
           <button
-            className="btn-danger"
+            className="btn-danger-ghost"
             style={{ padding: '4px 10px', fontSize: 12 }}
             onClick={() => onDelete(entry)}
           >
-            ✕
+            Delete
           </button>
         )}
       </div>

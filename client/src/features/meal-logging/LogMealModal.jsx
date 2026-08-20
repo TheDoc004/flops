@@ -274,7 +274,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
         return;
       }
     } catch (e) {
-      setSubError(e.message || 'AI substitutes unavailable — showing similar foods from your library.');
+      setSubError(e.message || 'AI substitutes unavailable. Showing similar foods from your library.');
     }
     setSubSuggestions(getSuggestedSubstitutes(current, library, { excludeId: line.label_ingredient_id, limit: 5 }));
     setSubSource('heuristic');
@@ -398,8 +398,12 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       style={{ width: 'min(560px, 94vw)', maxHeight: '92vh', overflowY: 'auto' }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-        <h2 style={{ margin: 0 }}>{title || 'Log a Meal'}</h2>
-        <button type="button" className="modal-close-x" aria-label="Close" onClick={close}>✕</button>
+        <h2 className="section-title" style={{ margin: 0 }}>{title || 'Log a Meal'}</h2>
+        <button type="button" className="modal-close-x" aria-label="Close" onClick={close}>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
       </div>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>
@@ -415,7 +419,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           {selectedRecipe && (
             <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
               Seeded from <strong style={{ color: 'var(--color-text-strong)' }}>{selectedRecipe.name}</strong>
-              {' — edit the receipt below; the saved recipe stays unchanged.'}
+              {'. Edit the receipt below; the saved recipe stays unchanged.'}
             </p>
           )}
         </div>
@@ -616,9 +620,9 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               {receiptTotals.carbs_g.toFixed(1)}g · F {receiptTotals.fat_g.toFixed(1)}g
               {receiptTotals.fiber_g > 0 && ` · Fiber ${receiptTotals.fiber_g.toFixed(1)}g`}
               {recipeId && Number(servings) !== 1 && (
-                <span style={{ color: '#64748b' }}>
-                  {' — '}this log ({Number(servings) || 1} servings):{' '}
-                  <strong style={{ color: '#0f172a' }}>
+                <span style={{ color: 'var(--color-text-muted)' }}>
+                  {'. This log '}({Number(servings) || 1} servings):{' '}
+                  <strong style={{ color: 'var(--color-text-strong)' }}>
                     {Math.round(receiptTotals.calories * (Number(servings) || 1))} cal
                   </strong>
                 </span>

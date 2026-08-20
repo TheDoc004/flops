@@ -219,7 +219,7 @@ export default function RangeReport({ days, onAddMeal, onEditMeal, onDeleteMeal 
               <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
                 {gaps.map(g => (
                   <li key={g.def.key} style={{ fontSize: 13, color: '#92400e', marginBottom: 3 }}>
-                    <strong>{g.def.name}</strong> — averaged {Math.round(g.avgPct * 100)}% of target · low {g.daysBelow} of {g.daysWith} day{g.daysWith === 1 ? '' : 's'}
+                    <strong>{g.def.name}</strong>: averaged {Math.round(g.avgPct * 100)}% of target · low {g.daysBelow} of {g.daysWith} day{g.daysWith === 1 ? '' : 's'}
                   </li>
                 ))}
               </ul>

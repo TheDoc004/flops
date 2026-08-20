@@ -805,7 +805,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
             </div>
             {recipeReview.recipe.recipe_kind === 'limited' && recipeReview.recipe.remaining_uses != null && (
               <div className="prep-badge">
-                🍱 Meal prep — {recipeReview.recipe.remaining_uses}
+                Meal prep · {recipeReview.recipe.remaining_uses}
                 {Number(recipeReview.recipe.max_uses) > 0 ? ` of ${recipeReview.recipe.max_uses}` : ''} serving
                 {recipeReview.recipe.remaining_uses === 1 ? '' : 's'} left
                 {(() => {
@@ -1250,7 +1250,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
                 onClick={() => setPrep({ isMealPrep: true, servings: 4 })}
                 style={{ width: '100%', minHeight: 48, fontWeight: 700 }}
               >
-                🍱 This is a meal prep — split into servings
+                This is a meal prep. Split into servings
               </button>
             </div>
           )}

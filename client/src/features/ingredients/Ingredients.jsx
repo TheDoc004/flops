@@ -152,7 +152,7 @@ export default function Ingredients() {
     const existing = product?.existing_ingredient;
     if (existing) {
       const row = items.find(i => i.id === existing.id);
-      setNotice(`"${existing.name}" is already in your library — opened it for editing.`);
+      setNotice(`"${existing.name}" is already in your library. Opened it for editing.`);
       if (row) startEdit(row);
       return;
     }
@@ -166,7 +166,7 @@ export default function Ingredients() {
     const micros = product?.micros && Object.keys(product.micros).length ? product.micros : null;
     setScannedMicros(micros);
     const microNote = micros
-      ? [`Captured ${Object.keys(micros).length} micronutrients from the label — these will be used instead of estimates.`]
+      ? [`Captured ${Object.keys(micros).length} micronutrients from the label. These will be used instead of estimates.`]
       : [];
     setLabelScanFeedback(scanFeedback ? [...scanFeedback, ...microNote] : microNote.length ? microNote : null);
     setLabelScanFieldStatus(fieldStatus);
@@ -355,13 +355,13 @@ export default function Ingredients() {
           <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #f0ede8' }}>
             <h4 style={{
               margin: '0 0 4px', fontSize: 15, fontWeight: 400,
-              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
+              color: 'var(--color-primary-ink)', fontFamily: 'var(--font-sans)', fontWeight: 600,
             }}>
               Scan barcode{' '}
               <span style={{ fontSize: 12, color: 'var(--color-text-faint)', fontFamily: 'inherit' }}>(optional)</span>
             </h4>
             <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-              Fastest for packaged food — fills the form from the product database.
+              Fastest for packaged food. Fills the form from the product database.
             </p>
             <button
               type="button"
@@ -369,7 +369,7 @@ export default function Ingredients() {
               onClick={() => setBarcodeOpen(true)}
               style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 8 }}
             >
-              📷 Scan barcode
+              Scan barcode
             </button>
           </div>
         )}
@@ -379,7 +379,7 @@ export default function Ingredients() {
           <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #f0ede8' }}>
             <h4 style={{
               margin: '0 0 4px', fontSize: 15, fontWeight: 400,
-              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
+              color: 'var(--color-primary-ink)', fontFamily: 'var(--font-sans)', fontWeight: 600,
             }}>
               Scan label{' '}
               <span style={{ fontSize: 12, color: 'var(--color-text-faint)', fontFamily: 'inherit' }}>(optional)</span>
@@ -438,7 +438,7 @@ export default function Ingredients() {
           <div style={{ marginBottom: 20 }}>
             <h4 style={{
               margin: '0 0 12px', fontSize: 15, fontWeight: 400,
-              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
+              color: 'var(--color-primary-ink)', fontFamily: 'var(--font-sans)', fontWeight: 600,
             }}>Basic info</h4>
             <div className="form-grid-2">
               <div style={{ gridColumn: '1 / -1' }}>
@@ -482,10 +482,10 @@ export default function Ingredients() {
           <div style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid #f0ede8' }}>
             <h4 style={{
               margin: '0 0 6px', fontSize: 15, fontWeight: 400,
-              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
+              color: 'var(--color-primary-ink)', fontFamily: 'var(--font-sans)', fontWeight: 600,
             }}>Serving &amp; scaling</h4>
             <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--color-text-faint)' }}>
-              Enter the serving size from the label — use whatever it says: 170 g, 1 cup, 1 slice, 1 scoop, 1 egg.
+              Enter the serving size from the label. Use whatever it says: 170 g, 1 cup, 1 slice, 1 scoop, 1 egg.
             </p>
             <div className="form-grid-2">
               <div>
@@ -534,7 +534,7 @@ export default function Ingredients() {
                     placeholder="e.g. 31"
                   />
                   <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
-                    Optional — the weight of one {unitLabel(form)} for more precise scaling (e.g. 1 scoop = 31&nbsp;g).
+                    Optional. The weight of one {unitLabel(form)} for more precise scaling (e.g. 1 scoop = 31&nbsp;g).
                   </p>
                 </div>
               )}
@@ -545,7 +545,7 @@ export default function Ingredients() {
           <div style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid #f0ede8' }}>
             <h4 style={{
               margin: '0 0 12px', fontSize: 15, fontWeight: 400,
-              color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
+              color: 'var(--color-primary-ink)', fontFamily: 'var(--font-sans)', fontWeight: 600,
             }}>Nutrition per serving</h4>
             <div className="form-grid-2">
               <div>

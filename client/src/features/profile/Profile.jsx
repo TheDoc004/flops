@@ -225,7 +225,7 @@ export default function Profile() {
   }, [dashChartEnabled, dashChartDays, dashAdherenceView, dashSupplementsEnabled]);
 
   if (loading) {
-    return <p style={{ color: '#6b7280' }}>Loading…</p>;
+    return <p style={{ color: 'var(--color-text-muted)' }}>Loading</p>;
   }
 
   const heightFeetIn = cmToFeetInches(
