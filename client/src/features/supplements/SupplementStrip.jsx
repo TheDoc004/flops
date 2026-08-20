@@ -94,7 +94,7 @@ export default function SupplementStrip({ date, onMacrosChange }) {
   const takenCount = rows.filter(r => r.taken).length;
 
   return (
-    <Reveal delay={90} style={{ marginTop: 14 }}>
+    <Reveal style={{ marginTop: 14 }}>
       <div
         style={{
           background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', borderRadius: 14,

@@ -4,7 +4,7 @@ import useInView from '@shared/hooks/useInView';
 // Pause before the next sibling may start opening (see GrowStack). Tuned
 // against --grow-dur in index.css: long enough that each row's expansion is
 // clearly underway before the next begins, short enough to never feel slow.
-const CHAIN_DELAY = 110;
+const CHAIN_DELAY = 60;
 
 /**
  * A list row with two entrance modes (see `.grow-reveal` in index.css):

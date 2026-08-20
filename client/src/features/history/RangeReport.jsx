@@ -195,7 +195,7 @@ export default function RangeReport({ days, onAddMeal, onEditMeal, onDeleteMeal 
                 <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6b7280' }} tickFormatter={v => (v.length >= 10 ? `${v.slice(5, 7)}/${v.slice(8, 10)}` : v)} />
                 <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} width={44} />
                 <Tooltip formatter={v => [`${v} cal`, 'Calories']} labelFormatter={l => getWeekdayLongNameFromIsoDate(l)} />
-                <Line type="monotone" dataKey="calories" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={!reduceMotion} animationDuration={900} />
+                <Line type="monotone" dataKey="calories" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={!reduceMotion} animationDuration={250} />
               </LineChart>
             </ResponsiveContainer>
           </ChartReveal>

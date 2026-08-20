@@ -89,7 +89,7 @@ function MacroRing({ label, value, target, macroUnits }) {
             style={{
               stroke: ringColor,
               strokeDashoffset: hasTarget ? offset : circumference,
-              transition: 'stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.3s ease',
+              transition: 'stroke-dashoffset 220ms var(--ease-out), stroke 180ms var(--ease-out)',
             }}
           />
         </svg>

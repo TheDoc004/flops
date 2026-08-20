@@ -228,7 +228,7 @@ function ProgressChart({ exercise }) {
               dot={false}
               name="Weight"
               isAnimationActive={!reduceMotion}
-              animationDuration={900}
+              animationDuration={250}
             />
             <Line
               type="monotone"
@@ -238,7 +238,7 @@ function ProgressChart({ exercise }) {
               dot={false}
               name="Reps"
               isAnimationActive={!reduceMotion}
-              animationDuration={900}
+              animationDuration={250}
               animationBegin={reduceMotion ? 0 : 250}
             />
           </LineChart>

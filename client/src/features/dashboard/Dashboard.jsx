@@ -556,7 +556,7 @@ export default function Dashboard() {
       )}
 
       {/* ── Macro totals (meals + any macro-counting supplements taken today) ── */}
-      <Reveal delay={60}>
+      <Reveal>
         <MacroTotals totals={combinedTotals} targets={targets} />
       </Reveal>
 
@@ -576,13 +576,13 @@ export default function Dashboard() {
       </Reveal>
 
       {SHOW_PREP_PLAN && (
-        <Reveal delay={90}>
+        <Reveal>
           <PrepStrip date={today} onLogged={load} />
         </Reveal>
       )}
 
       {/* ── Meals for the viewing day ── */}
-      <Reveal delay={120} style={{ marginTop: 'clamp(28px, 3vw, 40px)', marginBottom: 24 }}>
+      <Reveal style={{ marginTop: 'clamp(28px, 3vw, 40px)', marginBottom: 24 }}>
         {/* Card header */}
         <div style={{
           display: 'flex',

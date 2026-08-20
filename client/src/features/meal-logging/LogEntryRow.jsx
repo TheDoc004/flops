@@ -255,7 +255,7 @@ export default function LogEntryRow({
                       paddingAngle={2}
                       isAnimationActive={!reduceMotion}
                       animationBegin={180}
-                      animationDuration={800}
+                      animationDuration={250}
                     >
                       {pie.rows.map((row, i) => (
                         <Cell key={i} fill={row.fill} />
