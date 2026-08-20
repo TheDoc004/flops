@@ -24,6 +24,21 @@
   margin-bottom: 8px;
 }
 
+.back {
+  margin: 0 0 16px;
+  font-size: var(--text-secondary);
+}
+
+.back a {
+  color: var(--color-link);
+  text-decoration: none;
+}
+
+.back a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .brand h1 {
   margin: 0;
   font-family: var(--font-serif);

@@ -17,6 +17,7 @@ import LibraryLayout from './layouts/LibraryLayout';
 import AiMacroLogger from '@features/ai-macro-logger';
 import Login from '@features/auth/Login';
 import Onboarding from '@features/auth/Onboarding';
+import Landing from '@features/marketing/Landing';
 import Coach from '@features/coach';
 
 function AppShell() {
@@ -58,6 +59,7 @@ function AppShell() {
 
 function AuthGate() {
   const { loading, isAuthenticated, needsOnboarding } = useAuth();
+  const { pathname } = useLocation();
 
   if (loading) {
     return (
@@ -67,8 +69,12 @@ function AuthGate() {
       </div>
     );
   }
-  if (!isAuthenticated) return <Login />;
+  if (!isAuthenticated) {
+    if (pathname === '/login') return <Login />;
+    return <Landing />;
+  }
   if (needsOnboarding) return <Onboarding />;
+  if (pathname === '/login') return <Navigate to="/" replace />;
   return <AppShell />;
 }
 

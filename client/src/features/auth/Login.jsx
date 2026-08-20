@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { requestOtp, verifyOtp, appleSignIn } from '@shared/api/auth';
 import { useAuth } from '@shared/context/AuthContext';
 import styles from './Login.module.css';
@@ -62,6 +63,9 @@ export default function Login() {
   return (
     <div className={styles.page}>
       <div className={styles.card}>
+        <p className={styles.back}>
+          <Link to="/">What is Flops?</Link>
+        </p>
         <div className={styles.brand}>
           <img src="/flops-badge.png" alt="" className={styles.badge} />
           <h1>Flops</h1>
