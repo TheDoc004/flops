@@ -10,7 +10,7 @@ const RING_COLORS = {
   Fat:      MACRO_COLORS.fat,
 };
 
-function MacroRing({ label, value, target, macroUnits }) {
+function MacroCell({ label, value, target, macroUnits }) {
   const radius = 26;
   const circumference = 2 * Math.PI * radius;
   const animated = useAnimatedNumber(value);
@@ -18,27 +18,22 @@ function MacroRing({ label, value, target, macroUnits }) {
   const hasTarget = target?.max != null;
   const isCalories = label === 'Calories';
 
-  // Progress ring always fills toward the upper bound (max). The SVG arc
-  // still tweens via CSS from the live `value`; digits count via `animated`.
   const pct = hasTarget ? Math.min((value / target.max) * 100, 100) : 0;
   const offset = circumference - (pct / 100) * circumference;
   const pctDisplay = hasTarget
     ? Math.round(Math.min((animated / target.max) * 100, 100))
     : 0;
 
-  // Range-aware status
   const belowMin = hasTarget && value < target.min;
   const overMax  = hasTarget && value > target.max;
   const inRange  = hasTarget && !belowMin && !overMax;
 
   const ringColor = overMax ? 'var(--color-danger)' : RING_COLORS[label];
 
-  // Current value display
   const displayVal = isCalories
     ? Math.round(animated).toLocaleString('en-US')
     : formatMacroMass(animated, macroUnits);
 
-  // Goal display — show range if min ≠ max, otherwise just max
   const hasRange = hasTarget && Math.abs(target.max - target.min) > 0.5;
 
   function fmtGoal(n) {
@@ -51,35 +46,26 @@ function MacroRing({ label, value, target, macroUnits }) {
       : fmtGoal(target.max)
     : null;
 
-  // Status text and color
-  let statusText = null;
-  let statusColor = 'var(--color-text-muted)';
-
+  let statusText = 'No goal set';
+  let statusMod = 'muted';
   if (hasTarget) {
     if (overMax) {
-      const excess = value - target.max;
-      statusText = `${fmtGoal(excess)} over`;
-      statusColor = 'var(--color-danger)';
+      statusText = `${fmtGoal(value - target.max)} over`;
+      statusMod = 'over';
     } else if (inRange) {
       statusText = 'In range';
-      statusColor = 'var(--color-success)';
+      statusMod = 'ok';
     } else {
-      // below min
-      const deficit = target.min - value;
-      statusText = `${fmtGoal(deficit)} to range`;
-      statusColor = 'var(--color-text-muted)';
+      statusText = `${fmtGoal(target.min - value)} to range`;
+      statusMod = 'muted';
     }
   }
 
   return (
-    <div className="macro-ring-card">
-      {/* Ring scales up on desktop via CSS width/height (viewBox stays 64), so
-          the stroke + percentage badge grow proportionally; mobile stays at 64. */}
-      <div style={{ position: 'relative', flexShrink: 0, width: 'clamp(64px, 5.4vw, 78px)', height: 'clamp(64px, 5.4vw, 78px)' }}>
-        <svg viewBox="0 0 64 64" style={{ width: '100%', height: '100%', display: 'block', transform: 'rotate(-90deg)' }} aria-hidden="true">
-          {/* Track */}
+    <div className="macro-cell">
+      <div className="macro-ring" aria-hidden="true">
+        <svg viewBox="0 0 64 64">
           <circle cx="32" cy="32" r={radius} fill="none" strokeWidth="6" stroke="var(--color-ring-track)" />
-          {/* Fill — strokeDashoffset in style enables CSS transition */}
           <circle
             cx="32" cy="32" r={radius}
             fill="none"
@@ -89,43 +75,18 @@ function MacroRing({ label, value, target, macroUnits }) {
             style={{
               stroke: ringColor,
               strokeDashoffset: hasTarget ? offset : circumference,
-              transition: 'stroke-dashoffset 220ms var(--ease-out), stroke 180ms var(--ease-out)',
             }}
           />
         </svg>
-        <span style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 'clamp(11px, 0.95vw, 13px)', fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-          color: overMax ? 'var(--color-danger)' : 'var(--color-primary-ink)',
-        }}>
-          {hasTarget ? `${pctDisplay}%` : '—'}
+        <span className={`macro-ring-pct${overMax ? ' is-over' : ''}`}>
+          {hasTarget ? `${pctDisplay}%` : '–'}
         </span>
       </div>
-
-      <div style={{ minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: 'clamp(11px, 0.9vw, 12.5px)', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          {label}
-        </p>
-        <p style={{ margin: '4px 0 2px', fontSize: 'clamp(20px, 1.9vw, 25px)', fontWeight: 700, color: 'var(--color-text-strong)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-          {displayVal}
-        </p>
-        {goalDisplay && (
-          <p style={{ margin: '2px 0 2px', fontSize: 'clamp(11px, 0.9vw, 12.5px)', color: 'var(--color-text-faint)', fontVariantNumeric: 'tabular-nums' }}>
-            Goal: {goalDisplay}
-          </p>
-        )}
-        {statusText && (
-          <p style={{ margin: 0, fontSize: 'clamp(12px, 0.95vw, 13.5px)', color: statusColor, fontWeight: inRange ? 600 : 400 }}>
-            {inRange && (
-              <span style={{ marginRight: 3 }}>✓</span>
-            )}
-            {statusText}
-          </p>
-        )}
-        {!hasTarget && (
-          <p style={{ margin: 0, fontSize: 'clamp(12px, 0.95vw, 13.5px)', color: 'var(--color-text-muted)' }}>No goal set</p>
-        )}
+      <div className="macro-meta">
+        <p className="macro-label">{label}</p>
+        <p className="macro-value">{displayVal}</p>
+        <p className={`macro-status is-${statusMod}`}>{statusText}</p>
+        {goalDisplay && <p className="macro-range">{goalDisplay}</p>}
       </div>
     </div>
   );
@@ -135,11 +96,11 @@ export default function MacroTotals({ totals, targets }) {
   const { macroUnits } = useMacroUnits();
 
   return (
-    <div className="macro-grid" style={{ marginBottom: 0 }}>
-      <MacroRing label="Calories" value={totals.calories}  target={targets.calories}  macroUnits={macroUnits} />
-      <MacroRing label="Protein"  value={totals.protein_g} target={targets.protein_g} macroUnits={macroUnits} />
-      <MacroRing label="Carbs"    value={totals.carbs_g}   target={targets.carbs_g}   macroUnits={macroUnits} />
-      <MacroRing label="Fat"      value={totals.fat_g}     target={targets.fat_g}     macroUnits={macroUnits} />
+    <div className="macro-strip">
+      <MacroCell label="Calories" value={totals.calories}  target={targets.calories}  macroUnits={macroUnits} />
+      <MacroCell label="Protein"  value={totals.protein_g} target={targets.protein_g} macroUnits={macroUnits} />
+      <MacroCell label="Carbs"    value={totals.carbs_g}   target={targets.carbs_g}   macroUnits={macroUnits} />
+      <MacroCell label="Fat"      value={totals.fat_g}     target={targets.fat_g}     macroUnits={macroUnits} />
     </div>
   );
 }

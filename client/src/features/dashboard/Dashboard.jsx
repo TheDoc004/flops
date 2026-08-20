@@ -405,11 +405,10 @@ export default function Dashboard() {
   // rather than header trim. Scoped inline so the global .btn-* sizing is
   // untouched.
   const dashActionStyle = {
-    fontSize: 'clamp(15px, 1.15vw, 18px)',
-    fontWeight: 700,
-    padding: 'clamp(13px, 1.2vw, 18px) clamp(20px, 2.1vw, 32px)',
-    minHeight: 'clamp(52px, 4vw, 60px)',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+    fontSize: '15px',
+    fontWeight: 600,
+    padding: '10px 18px',
+    minHeight: '44px',
   };
 
   const dayBodyAnim = skipDayAnim.current
@@ -419,25 +418,20 @@ export default function Dashboard() {
   return (
     <div className="dashboard">
       {/* ── Day ← / → row stays fixed in Y; banner animates below and may push the greeting ── */}
-      <Reveal style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 12,
-        gap: 12,
-        flexWrap: 'wrap',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: '1 1 220px' }}>
+      <Reveal className="dash-toolbar">
+        <div className="dash-day">
           <button
             type="button"
             className="day-nav-btn"
             aria-label="Previous day"
             onClick={() => shiftDay(-1)}
           >
-            ←
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M15 6 9 12l6 6" />
+            </svg>
           </button>
           <div style={{ minWidth: 0 }}>
-            <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'clamp(15px, 1vw, 17px)' }}>
+            <p className="dash-day-meta">
               <strong style={{ color: 'var(--color-primary-ink)', fontWeight: 600 }}>{formatDisplayDate(today)}</strong>
               {goalsLoaded && !goalsError
                 ? (
@@ -459,10 +453,12 @@ export default function Dashboard() {
             aria-label="Next day"
             onClick={() => shiftDay(1)}
           >
-            →
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m9 6 6 6-6 6" />
+            </svg>
           </button>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="dash-actions">
           <button
             type="button"
             className="btn-ai"
@@ -497,14 +493,14 @@ export default function Dashboard() {
                 <>
                   <strong>Planning ahead</strong>
                   <span>
-                    {' — '}{formatDisplayDate(today)} is ahead of today. Plan ahead here, or jump back to {formatDisplayDate(calendarToday)}.
+                    {formatDisplayDate(today)} is ahead of today. Plan ahead here, or jump back to {formatDisplayDate(calendarToday)}.
                   </span>
                 </>
               ) : (
                 <>
                   <strong>You’re looking at {formatDisplayDate(today)}</strong>
                   <span>
-                    {' — '}go to today ({formatDisplayDate(calendarToday)})?
+                    {' '}Go to today ({formatDisplayDate(calendarToday)})?
                   </span>
                 </>
               )}
@@ -521,9 +517,11 @@ export default function Dashboard() {
                 className="modal-close-x"
                 aria-label="Dismiss"
                 onClick={handleStayOnDay}
-                style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}
               >
-                ✕
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
               </button>
             </div>
           </div>
@@ -531,15 +529,7 @@ export default function Dashboard() {
       </div>
 
       <div key={today} className={`dashboard-day-body${dayBodyAnim}`}>
-      <h1 style={{
-        margin: '0 0 clamp(24px, 2.6vw, 34px)',
-        fontSize: 'clamp(32px, 3.2vw, 52px)',
-        fontWeight: 400,
-        color: 'var(--color-primary-ink)',
-        fontFamily: "'DM Serif Display', Georgia, serif",
-        letterSpacing: '-0.02em',
-        lineHeight: 1.05,
-      }}>
+      <h1 className="page-title dash-greeting">
         {isFutureDay ? 'Planning ahead' : isPastDay ? 'Looking back' : greeting}
       </h1>
 
@@ -571,7 +561,7 @@ export default function Dashboard() {
           with the other daily actions rather than below the meal list. The
           trend chart lives in History (WeightTrendChart) — Today is for doing,
           Review is for looking. */}
-      <Reveal style={{ marginTop: 16 }}>
+      <Reveal className="dash-section">
         <DashboardWeightRow today={today} bodyUnits={bodyUnits} />
       </Reveal>
 
@@ -582,7 +572,7 @@ export default function Dashboard() {
       )}
 
       {/* ── Meals for the viewing day ── */}
-      <Reveal style={{ marginTop: 'clamp(28px, 3vw, 40px)', marginBottom: 24 }}>
+      <Reveal className="dash-section" style={{ marginBottom: 24 }}>
         {/* Card header */}
         <div style={{
           display: 'flex',
@@ -592,14 +582,10 @@ export default function Dashboard() {
           gap: 8,
         }}>
           <div>
-            <h2 style={{
-              margin: 0, fontSize: 'clamp(28px, 2.6vw, 34px)', fontWeight: 400, color: 'var(--color-primary-ink)',
-              fontFamily: "'DM Serif Display', Georgia, serif",
-              letterSpacing: '-0.01em',
-            }}>
+            <h2 className="section-title" style={{ margin: 0 }}>
               {formatMealsSectionTitle(today, calendarToday)}
             </h2>
-            <p style={{ margin: '4px 0 0', fontSize: 'clamp(13px, 1vw, 14.5px)', color: 'var(--color-text-muted)' }}>
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-secondary)', color: 'var(--color-text-muted)' }}>
               {entries.length === 0
                 ? 'Nothing logged yet'
                 : `${entries.length} meal${entries.length !== 1 ? 's' : ''} · ${totalLoggedCal.toLocaleString()} kcal`}

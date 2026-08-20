@@ -94,15 +94,10 @@ export default function SupplementStrip({ date, onMacrosChange }) {
   const takenCount = rows.filter(r => r.taken).length;
 
   return (
-    <Reveal style={{ marginTop: 14 }}>
-      <div
-        style={{
-          background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', borderRadius: 14,
-          padding: '14px 16px',
-        }}
-      >
+    <Reveal className="dash-section">
+      <div className="card" style={{ padding: '14px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: rows.length ? 10 : 0 }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--color-text-strong)', letterSpacing: '-0.01em' }}>
+          <h3 className="section-title" style={{ margin: 0 }}>
             Supplements
             {rows.length > 0 && (
               <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 500, color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
@@ -125,7 +120,7 @@ export default function SupplementStrip({ date, onMacrosChange }) {
 
         {loading ? null : rows.length === 0 ? (
           <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>
-            None yet —{' '}
+            None yet.{' '}
             <button
               type="button"
               onClick={() => setShowManage(true)}

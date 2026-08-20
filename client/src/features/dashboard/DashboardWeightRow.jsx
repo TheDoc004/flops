@@ -109,7 +109,6 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, no
 
   let buttonLabel = 'Save weight';
   if (saving) buttonLabel = 'Saving…';
-  else if (settled) buttonLabel = '✓ Weight saved';
   else if (isSaved) buttonLabel = 'Update weight';
 
   // One line of context under the field: what you weighed last time before
@@ -122,7 +121,7 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, no
   } else if (previous?.weight_kg != null) {
     status = `Last weigh-in ${formatWeightKg(previous.weight_kg, bodyUnits)} on ${shortDate(previous.date)}`;
   } else {
-    status = 'No weigh-ins yet — this one becomes your starting point.';
+    status = 'No weigh-ins yet. This one becomes your starting point.';
   }
 
   const inner = (
@@ -132,24 +131,17 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, no
         {/* Full history means the weight trend, which lives in Review. */}
         <Link
           to="/history#weight-trend"
-          className="btn-secondary"
-          style={{ minHeight: 0, padding: '7px 14px', fontSize: 13, flexShrink: 0 }}
+          style={{ fontSize: 13, color: 'var(--color-link)', flexShrink: 0 }}
         >
-          Full history →
+          Full history
         </Link>
       </div>
 
       <form
         onSubmit={handleSubmit}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(140px, 1fr) minmax(170px, 230px)',
-          gap: 12,
-          alignItems: 'stretch',
-        }}
+        className="weight-row"
       >
-        {/* Unit sits inside the field, so the number reads as the whole input. */}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', flex: '1 1 140px', maxWidth: 180 }}>
           <input
             type="number"
             min="0.1"
@@ -159,7 +151,7 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, no
             value={input}
             onChange={e => setInput(e.target.value)}
             placeholder={bodyUnits === 'us' ? 'e.g. 165' : 'e.g. 72.5'}
-            style={{ minHeight: 52, fontSize: 18, fontWeight: 600, paddingRight: 44, fontVariantNumeric: 'tabular-nums' }}
+            style={{ paddingRight: 44 }}
           />
           <span
             aria-hidden="true"
@@ -172,40 +164,20 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, no
           </span>
         </div>
 
-        <button
-          type="submit"
-          className={saving ? 'btn-primary btn-loading' : 'btn-primary'}
-          disabled={saving || settled}
-          aria-disabled={settled || undefined}
-          style={{
-            minHeight: 52,
-            fontSize: 15,
-            fontWeight: 600,
-            width: '100%',
-            ...(settled
-              ? {
-                  // Settled isn't "disabled and greyed out" — it's a confirmation,
-                  // so it stays fully legible in the success green.
-                  background: 'var(--color-success)',
-                  color: '#fff',
-                  opacity: 1,
-                  cursor: 'default',
-                }
-              : null),
-          }}
-        >
-          {saving ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>) : buttonLabel}
-        </button>
+        {!settled && (
+          <button
+            type="submit"
+            className={saving ? 'btn-primary btn-loading' : 'btn-primary'}
+            disabled={saving}
+          >
+            {saving ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>) : buttonLabel}
+          </button>
+        )}
       </form>
 
       <p
         aria-live="polite"
-        style={{
-          margin: '10px 0 0',
-          fontSize: 13,
-          color: settled ? 'var(--color-success)' : 'var(--color-text-muted)',
-          fontWeight: settled ? 600 : 400,
-        }}
+        className={`weight-status${settled ? ' is-saved' : ''}`}
       >
         {status}
       </p>
@@ -216,7 +188,7 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, no
 
   if (noCard) return inner;
   return (
-    <div className="card" style={{ marginBottom: 16, padding: '16px 20px' }}>
+    <div className="card" style={{ padding: '16px 20px' }}>
       {inner}
     </div>
   );
