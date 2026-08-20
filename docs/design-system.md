@@ -59,7 +59,7 @@ Color communicates status, not decoration. Use these and nothing else for state.
 |---|---|---|
 | `--color-text` | `#111827` | Primary content |
 | `--color-text-secondary` | `#4b5563` | Labels, supporting text |
-| `--color-text-muted` | `#9ca3af` | Placeholders, timestamps, disabled |
+| `--color-text-muted` | `#6b7280` | Placeholders, timestamps, captions |
 
 ### Macro Colors
 Fixed. Never change per-macro color mid-screen.
@@ -105,25 +105,29 @@ Generous internal spacing is what makes content feel premium, not the design its
 
 ## Typography
 
-System UI only. No custom fonts, no web fonts, no importing. The device's native sans-serif renders crisply and feels native.
+System sans (`-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`) for all UI: labels, nav, buttons, data, body.
 
-| Role | Size | Weight | Line height |
-|---|---|---|---|
-| Page title | `28px` | `700` | `1.1` |
-| Section heading | `16px` | `600` | `1.3` |
-| Section label | `11px` | `600` | `1` |
-| Body | `15px` | `400` | `1.6` |
-| Label | `13px` | `500` | `1.4` |
-| Caption | `12px` | `400` | `1.4` |
-| Stat — primary | `36px` | `700` | `1` |
-| Stat — secondary | `24px` | `600` | `1` |
+**DM Serif Display is wordmark-only** (the “Flops” brand in the header). Page titles may use it at a fixed `28px`. Never use it on nav, buttons, labels, meal names, or data.
+
+| Role | Size | Weight | Line height | Family |
+|---|---|---|---|---|
+| Wordmark | `28px` desktop / `22px` mobile | `400` | `1` | DM Serif |
+| Page title | `28px` | `400` serif or `700` sans | `1.1` | Wordmark-adjacent only |
+| Section heading | `16px` | `600` | `1.3` | Sans |
+| Section label | `11px` | `600` | `1` | Sans, uppercase |
+| Body | `15px` | `400` | `1.6` | Sans |
+| Label | `13px` | `500` | `1.4` | Sans |
+| Caption | `12px` | `400` | `1.4` | Sans |
+| Stat — primary | `36px` | `700` | `1` | Sans, tabular-nums |
+| Stat — secondary | `24px` | `600` | `1` | Sans, tabular-nums |
 
 **Rules:**
 - Stats and numbers use `font-variant-numeric: tabular-nums` so digits don't shift as values change.
 - Page titles use `letter-spacing: -0.02em`. Stats use `-0.02em`. Body text: default.
-- Section labels use `text-transform: uppercase; letter-spacing: 0.07em; color: #9ca3af`. Use `.section-label` CSS class.
+- No fluid `clamp()` display headings. Product UI uses a fixed rem/px scale.
+- Section labels use `text-transform: uppercase; letter-spacing: 0.07em; color: var(--color-text-muted)`. Use `.section-label`.
 - Don't use `font-weight: 800` or `900`. `700` is the ceiling for UI text.
-- Secondary text should feel clearly lighter — don't fight the hierarchy.
+- No all-caps body copy or recipe/ingredient names.
 - At `900px` content width, stat numbers below `36px` feel like text, not data. `36px` is the minimum for primary stats.
 
 ---
@@ -169,13 +173,13 @@ Four types in the button system:
 - **Primary** — filled, `--color-primary`. One per screen context. The clearest action.
 - **Secondary** — cool neutral fill (`--color-secondary-bg`), primary ink. Supporting actions.
 - **AI Estimate** (`.btn-ai`) — flat `--color-primary-subtle`, no sparkle/gradient/glow.
-- **Danger** — filled, `--color-negative`. Irreversible actions only (delete, remove).
+- **Danger** — filled `--color-negative` only on irreversible confirm. List-row delete is text/ghost danger, not a filled red button.
 
 Height: `40px` desktop, `44px` mobile minimum. Padding: `12px 20px`.
 Never use icon-only buttons without a tooltip. Never disable a button without explaining why.
 
 ### Cards
-`background: white`, `border-radius: 12px`, `box-shadow: 0 1px 4px rgba(0,0,0,0.06)`, `padding: 20–28px`.
+`background: var(--color-surface)` (`#faf9f7`), `border-radius: 12px`, `box-shadow: var(--shadow-card)`, `padding: 20–28px`. Never pure `#fff`.
 
 A card contains one topic. If you're adding a second unrelated thing to a card, make a second card.
 Cards should not feel like containers — they should feel like documents.
@@ -201,7 +205,7 @@ Use `.section-label` (defined in `index.css`) before any dashboard section group
 .section-label {
   font-size: 11px;
   font-weight: 600;
-  color: #9ca3af;
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   margin: 0 0 10px;
@@ -258,10 +262,13 @@ The Dashboard has one job: answer *"How am I doing today?"* in under three secon
 
 **Section order (fixed — do not reorder):**
 1. **Macro totals** — always first, always visible
-2. **TODAY'S MEALS** — grouped list card, immediately below macros
-3. **Training context** — compact single-row card
-4. **TRENDS** — weight/calorie chart + weight entry row
-5. **7-day adherence** — weekly context, lowest priority
+2. **Supplements** — daily tick-off, sits under the macros it feeds
+3. **Today's weight** — daily action; the trend chart lives on Review
+4. **Today's meals** — grouped list card
+5. **Training context** — compact, when enabled
+6. **Adherence** — weekly context, lowest priority on Today
+
+Chrome dates use a human format (`Wed, Aug 19`). ISO `YYYY-MM-DD` stays in data and APIs, not in the UI.
 
 Section labels (`TODAY'S MEALS`, `TRENDS`) appear before their section group. They are the mechanism for creating visual progression — without them, sections blur together into one undifferentiated scroll.
 

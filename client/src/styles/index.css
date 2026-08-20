@@ -39,7 +39,7 @@
   --color-text-strong: #111827;
   --color-text-body: #374151;
   --color-text-muted: #6b7280;
-  /* Was #9ca3af — too light to read on white (~2.5:1). Darkened to a legible
+  /* Was #9ca3af — too light to read on cream (~2.5:1). Darkened to a legible
      grey; "faint" now reads as secondary via size/weight, not near-invisibility. */
   --color-text-faint: #6b7280;
 
@@ -54,11 +54,12 @@
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-serif: 'DM Serif Display', Georgia, serif;
 
-  /* ── Typography · scale (32 / 20 / 16 / 14 / 13 / 12) ── */
-  --text-page-title: 32px;
-  --text-section: 20px;
+  /* ── Typography · scale (28 / 16 / 15 / 13 / 12) ──
+     Page titles may use DM Serif at 28px. Everything else is system sans. */
+  --text-page-title: 28px;
+  --text-section: 16px;
   --text-subsection: 16px;
-  --text-body: 14px;
+  --text-body: 15px;
   --text-secondary: 13px;
   --text-caption: 12px;
 
@@ -73,21 +74,24 @@
   --space-16: 16px;
   --space-20: 20px;
   --space-24: 24px;
+  --space-28: 28px;
   --space-32: 32px;
 
   /* ── Border radius ── */
-  --radius-sm: 8px;    /* buttons, inputs */
-  --radius-md: 10px;   /* option cards, dropdowns */
-  --radius-lg: 14px;   /* cards, dialogs */
+  --radius-sm: 4px;     /* badges, tags, inline chips */
+  --radius-md: 8px;     /* inputs, buttons */
+  --radius-lg: 12px;    /* cards */
+  --radius-xl: 16px;    /* modals, sheets */
   --radius-pill: 999px;
 
   /* ── Interaction ── */
   --touch-target: 44px;
 
   /* ── Elevation ── */
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.05);
-  --shadow-pop: 0 10px 28px rgba(0,0,0,0.08);
-  --shadow-modal: 0 20px 60px rgba(0,0,0,0.2);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.07);
+  --shadow-pop: 0 4px 16px rgba(0,0,0,0.07);
+  --shadow-modal: 0 8px 32px rgba(0,0,0,0.10);
+  --shadow-focus: 0 0 0 3px rgba(29, 78, 216, 0.2);
 
   /* ── Motion ──
      Shared timing/easing so dropdowns, collapses, and chevrons feel consistent.
@@ -129,7 +133,7 @@
   --bd-divider: #ece7dd;
 
   /* Macro ring track (the unfilled arc). */
-  --color-ring-track: #dbeafe;
+  --color-ring-track: #e6e1d7;
 }
 
 /* ── Off-today notebook page ──
@@ -492,7 +496,7 @@ html[data-notebook-day="future"] {
 }
 
 /* ── Typography ── */
-/* DM Serif Display is loaded via index.html for headings/brand moments */
+/* DM Serif Display is loaded via index.html for the wordmark and page titles. */
 .font-display {
   font-family: var(--font-serif);
 }
@@ -515,7 +519,7 @@ a { color: inherit; text-decoration: none; }
 button {
   cursor: pointer;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: var(--space-10) var(--space-16);
   font-size: var(--text-body);
   font-weight: 500;
@@ -564,7 +568,7 @@ button:not(:disabled):active,
   align-items: center;
   justify-content: center;
   gap: var(--space-6);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: var(--space-10) var(--space-16);
   font-size: var(--text-body);
   font-weight: 500;
@@ -620,85 +624,42 @@ html[data-notebook-day] .btn-secondary {
 }
 
 /* ── Button motion ──
-   Every .btn-* lifts slightly on hover and presses down on tap/click — a
-   tactile response layered on top of each variant's own colors/shadows.
-   The press transition is extra quick so it tracks the finger/cursor.
-
-   Press sweep: a translucent wash fills the button left→right while pressed
-   (::after overlay), then fades out on release; the scaleX reset is delayed
-   behind the fade so the retreat is never visible. White wash on the solid
-   variants, primary-blue tint on the light ones. */
-.btn-primary, .btn-secondary, .btn-danger, .btn-ai {
-  position: relative;
-  overflow: hidden; /* clips the sweep to the rounded corners */
-}
-.btn-primary::after,
-.btn-secondary::after,
-.btn-danger::after,
-.btn-ai::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0.10));
-  transform: scaleX(0);
-  transform-origin: left center;
-  opacity: 0;
-  transition: opacity 0.3s var(--ease-out), transform 0s 0.3s;
-}
-.btn-secondary::after,
-.btn-ai::after {
-  background: linear-gradient(90deg, rgba(29, 78, 216, 0.14), rgba(29, 78, 216, 0.05));
-}
-.btn-primary:active:not(:disabled)::after,
-.btn-secondary:active:not(:disabled)::after,
-.btn-danger:active:not(:disabled)::after,
-.btn-ai:active:not(:disabled)::after {
-  transform: scaleX(1);
-  opacity: 1;
-  transition: transform 0.35s var(--ease-out), opacity 0s;
-}
-
-.btn-primary:hover:not(:disabled),
-.btn-secondary:hover:not(:disabled),
-.btn-danger:hover:not(:disabled),
-.btn-ai:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-.btn-primary:hover:not(:disabled),
-.btn-danger:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(29, 78, 216, 0.22);
-}
-.btn-secondary:hover:not(:disabled) {
-  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.10);
+   Color change on hover; a small scale on press. No lift, no colored
+   shadow, no shine gradient. Hover is gated so touch devices don't stick. */
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled),
+  .btn-danger:hover:not(:disabled),
+  .btn-secondary:hover:not(:disabled),
+  .btn-ai:hover:not(:disabled) {
+    /* Color already handled on the variant; keep transform idle. */
+  }
 }
 .btn-primary:active:not(:disabled),
 .btn-secondary:active:not(:disabled),
 .btn-danger:active:not(:disabled),
 .btn-ai:active:not(:disabled) {
-  transform: translateY(0) scale(0.97);
-  box-shadow: none;
+  transform: scale(0.97);
   transition-duration: 60ms;
+}
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.btn-danger:focus-visible,
+.btn-ai:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .btn-primary, .btn-secondary, .btn-danger, .btn-ai,
-  .btn-primary:hover, .btn-secondary:hover, .btn-danger:hover, .btn-ai:hover,
   .btn-primary:active, .btn-secondary:active, .btn-danger:active, .btn-ai:active {
     transition: none;
     transform: none;
-  }
-  .btn-primary::after,
-  .btn-secondary::after,
-  .btn-danger::after,
-  .btn-ai::after {
-    display: none;
   }
 }
 
 input, select, textarea {
   border: 1px solid var(--color-input-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: var(--space-10) var(--space-12);
   font-size: var(--text-body);
   width: 100%;
@@ -717,9 +678,10 @@ input[type="checkbox"], input[type="radio"] {
   border-radius: 0;
 }
 
-input:focus, select:focus, textarea:focus {
-  outline: 2px solid var(--color-primary);
-  border-color: transparent;
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-focus);
 }
 
 label {
@@ -758,17 +720,20 @@ label {
 }
 .section-title {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: var(--text-section);
-  font-weight: 400;
+  font-weight: 600;
   color: var(--color-primary-ink);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 .subsection-title {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: var(--text-subsection);
-  font-weight: 400;
+  font-weight: 600;
   color: var(--color-primary-ink);
+  line-height: 1.3;
 }
 .page-subtitle {
   margin: 0 0 var(--space-20);
@@ -849,7 +814,7 @@ input.scan-field-review {
 
 dialog {
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   padding: var(--space-24);
   width: min(480px, 90vw);
   box-shadow: var(--shadow-modal);
@@ -1119,25 +1084,7 @@ dialog[open]::backdrop {
   cursor: progress;
 }
 
-/* Indeterminate sheen: repurposes the press-sweep ::after overlay (the button
-   is disabled while loading, so the press sweep can't fire and conflict). */
-@keyframes btn-loading-sheen {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(100%); }
-}
-.btn-loading::after {
-  opacity: 1;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
-  animation: btn-loading-sheen 1.4s var(--ease-out) infinite;
-  transition: none;
-}
-.btn-secondary.btn-loading::after,
-.btn-ai.btn-loading::after {
-  background: linear-gradient(90deg, transparent, rgba(29, 78, 216, 0.10), transparent);
-}
-@media (prefers-reduced-motion: reduce) {
-  .btn-loading::after { animation: none; opacity: 0; }
-}
+/* Loading uses .btn-spinner only — no sheen gradient. */
 
 /* ── Voice input (AI logger) ──
    While the mic is live the button shifts to a red-tinted "recording" look
@@ -1182,10 +1129,10 @@ dialog[open]::backdrop {
 }
 .prep-panel__title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 400;
+  font-size: var(--text-section);
+  font-weight: 600;
   color: var(--color-primary-ink);
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: var(--font-sans);
 }
 .prep-split {
   display: flex;
@@ -1662,7 +1609,7 @@ dialog[open]::backdrop {
   padding: 8px 16px;
   background: var(--color-secondary-bg);
   border: 1px solid var(--color-secondary-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   color: var(--color-primary);
   font-family: inherit;
   font-size: 14px;
@@ -1772,9 +1719,9 @@ dialog[open]::backdrop {
 .goals-day-card:last-child { padding-bottom: 0; border-bottom: none; }
 .goals-day-title {
   margin: 0 0 10px;
-  font-family: var(--font-serif);
-  font-size: 18px;
-  font-weight: 400;
+  font-family: var(--font-sans);
+  font-size: var(--text-section);
+  font-weight: 600;
   color: var(--color-primary-ink);
 }
 .goals-macro { margin-bottom: 12px; }
@@ -2288,15 +2235,13 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
 }
 
 /* ── Dashboard "Today's Meals" card ── */
-/* Meal name: the card's title. Uses the display serif so it reads a clear step
-   above the sans ingredient names below it, while staying smaller than the 28px
-   "Today's Meals" section heading — giving four distinct hierarchy levels.
-   Up to 2 lines, then ellipsis (no awkward single-line cut-off). */
+/* Meal name: the card's title. Sans, one step above body, smaller than the
+   28px page title. Up to 2 lines, then ellipsis. */
 .meal-name {
-  font-family: var(--font-serif);
-  font-weight: 400;
-  font-size: clamp(19px, 1.5vw, 22px);
-  line-height: 1.25;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.3;
   letter-spacing: -0.01em;
   color: var(--color-primary-ink);
   overflow: hidden;
