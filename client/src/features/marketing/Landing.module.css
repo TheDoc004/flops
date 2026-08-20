@@ -65,18 +65,17 @@
 }
 
 .hero {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-32);
   max-width: 1152px;
   margin: 0 auto;
   padding: 48px 24px 56px;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 720px) {
   .hero {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
-    align-items: center;
-    padding-top: 64px;
+    padding-top: 56px;
   }
 }
 
@@ -115,13 +114,30 @@
   flex-direction: column;
   gap: var(--space-16);
   min-width: 0;
+  width: 100%;
+}
+
+.previewGreeting {
+  margin: 0 0 4px;
+  font-family: var(--font-serif);
+  font-size: var(--text-page-title);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--color-primary-ink);
 }
 
 .previewDate {
   margin: 0;
   font-size: var(--text-secondary);
-  font-weight: 600;
-  color: var(--color-primary-ink);
+  color: var(--color-text-muted);
+}
+
+/* Keep the demo strip readable: same 4-across layout as Today, no wrapping units. */
+.preview :global(.macro-value),
+.preview :global(.macro-status),
+.preview :global(.macro-range) {
+  white-space: nowrap;
 }
 
 .logCard {

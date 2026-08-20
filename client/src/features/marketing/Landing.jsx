@@ -48,6 +48,7 @@ export default function Landing() {
           </div>
 
           <div className={styles.preview} aria-hidden="true">
+            <p className={styles.previewGreeting}>Good morning!</p>
             <p className={styles.previewDate}>Thursday, Aug 20</p>
             <MacroTotals totals={DEMO_TOTALS} targets={DEMO_TARGETS} />
             <div className={styles.logCard}>
