@@ -10,7 +10,7 @@ export default function AdherenceDayTile({ row, onOpen, delay = 0 }) {
   const short = row.date.slice(5);
   const wd = ISO_WEEKDAY_LABELS[row.weekday] || '';
   const title = `${row.date} (${wd}): ${m.label}${
-    row.missed?.length ? ` — missed: ${row.missed.map(x => x.label).join(', ')}` : ''
+    row.missed?.length ? `. Missed: ${row.missed.map(x => x.label).join(', ')}` : ''
   }`;
   return (
     <div

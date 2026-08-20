@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { buildDayAdherenceDetail } from './goalAdherence';
 import { ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
+import { formatDisplayDate } from '@shared/utils/dateLocal';
 import { STATUS_META } from './statusMeta';
 
 /**
@@ -39,14 +40,11 @@ export default function GoalAdherenceDayDetailDialog({ row, macroUnits, onClose,
 
   return (
     <dialog ref={ref} onClose={onClose}>
-      <h2 style={{
-        marginTop: 0, marginBottom: 4, fontSize: 20, fontWeight: 400,
-        color: 'var(--color-primary-ink)', fontFamily: "'DM Serif Display', Georgia, serif",
-      }}>
+      <h2 className="section-title" style={{ marginTop: 0, marginBottom: 4 }}>
         Day summary
       </h2>
       <p style={{ margin: '0 0 8px', color: 'var(--color-text-muted)', fontSize: 14 }}>
-        <strong>{wdName}</strong>{' · '}{row.date}
+        <strong>{wdName}</strong>{' · '}{formatDisplayDate(row.date)}
       </p>
       <p style={{ margin: '0 0 16px', fontSize: 14 }}>
         <span style={{
@@ -59,7 +57,7 @@ export default function GoalAdherenceDayDetailDialog({ row, macroUnits, onClose,
 
       {isFuture && (
         <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-          Upcoming day — nothing logged yet.
+          Upcoming day. Nothing logged yet.
         </p>
       )}
       {row.status === 'no_data' && (

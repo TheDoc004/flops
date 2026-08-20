@@ -62,7 +62,7 @@ export default function DayAdherencePopover({ row, rect, macroUnits }) {
 
       {noData ? (
         <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>
-          {row.status === 'upcoming' ? 'Upcoming — nothing logged yet.' : 'No meals logged.'}
+          {row.status === 'upcoming' ? 'Upcoming. Nothing logged yet.' : 'No meals logged.'}
         </p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>

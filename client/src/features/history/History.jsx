@@ -215,32 +215,30 @@ export default function History() {
   return (
     <div>
       <Reveal>
-        <h1 className="page-title" style={{ marginBottom: 20 }}>History & Trends</h1>
+        <h1 className="page-title" style={{ marginBottom: 20 }}>Review</h1>
       </Reveal>
 
       {error && <p className="error" style={{ marginBottom: 16 }}>{error}</p>}
 
       {/* ── Calendar & adherence card (anchor target for the dashboard's
             "Open full adherence in History →" button) ── */}
-      <Reveal delay={60} id="goal-adherence" className="card" style={{ marginBottom: 20, scrollMarginTop: 90 }}>
-        <h2 className="section-title" style={{ marginBottom: 4 }}>Calendar & adherence</h2>
+      <Reveal id="goal-adherence" className="card" style={{ marginBottom: 20, scrollMarginTop: 90 }}>
+        <p className="section-label">Calendar and adherence</p>
         <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--color-text-faint)' }}>
-          Days are colored by adherence.
+          Color is the day’s status. Hover a day for the numbers.
         </p>
 
-        {/* Preset ranges — each toggles, so pressing the lit one clears it. */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        <div className="seg-bar" style={{ marginBottom: 14 }} role="group" aria-label="Range">
           {[7, 14, 30].map(n => {
             const active = presetN === n;
             return (
               <button
                 key={n}
                 type="button"
-                className={active ? 'btn-primary' : 'btn-secondary'}
-                style={{ minHeight: 0, padding: '7px 14px', fontSize: 13 }}
+                className={active ? 'is-on' : ''}
                 onClick={() => applyPreset(n)}
                 aria-pressed={active}
-                title={active ? `Showing the last ${n} days — press again to clear` : `Show the last ${n} days`}
+                title={active ? `Showing the last ${n} days. Press again to clear.` : `Show the last ${n} days`}
               >
                 {n}D
               </button>
@@ -262,7 +260,7 @@ export default function History() {
 
         {/* Selection summary + actions */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 16 }}>
-          <p style={{ margin: 0, fontSize: 13, color: '#6b7280', fontWeight: 500 }}>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)', fontWeight: 500 }}>
             {selectionLabel}{reportLoading ? ' · updating…' : ''}
           </p>
           {/* No "Edit a day" jump any more — meals are edited in the report
@@ -302,10 +300,10 @@ export default function History() {
       </Reveal>
 
       {addForDate && (
-        <LogMealModal title={`Add meal — ${addForDate}`} submitLabel="Add Meal" onLog={handleAddMeal} onClose={() => setAddForDate(null)} />
+        <LogMealModal title={`Add meal · ${formatDisplayDate(addForDate)}`} submitLabel="Add Meal" onLog={handleAddMeal} onClose={() => setAddForDate(null)} />
       )}
       {editEntry && (
-        <LogMealModal title={`Edit meal — ${editEntry.date}`} submitLabel="Save Changes" initialEntry={editEntry} onLog={handleEditMeal} onClose={() => setEditEntry(null)} />
+        <LogMealModal title={`Edit meal · ${formatDisplayDate(editEntry.date)}`} submitLabel="Save Changes" initialEntry={editEntry} onLog={handleEditMeal} onClose={() => setEditEntry(null)} />
       )}
     </div>
   );

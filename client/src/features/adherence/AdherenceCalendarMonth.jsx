@@ -17,12 +17,6 @@ import { STATUS_META } from './statusMeta';
  */
 const HOVER_DELAY_MS = 500;
 
-// Compact metric labels so missed-macro text fits inside small calendar tiles.
-const SHORT_METRIC = { Calories: 'Cal', Protein: 'Pro', Carbs: 'Carb', Fat: 'Fat', Fiber: 'Fib' };
-function shortMetric(label) {
-  return SHORT_METRIC[label] || label;
-}
-
 function monthStartIso(yyyyMm) {
   const [y, m] = yyyyMm.split('-').map(Number);
   return getLocalDateISO(new Date(y, m - 1, 1));
@@ -232,14 +226,18 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
         )}
         {showNav && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button type="button" className="btn-secondary" onClick={prevMonth} style={{ padding: '6px 10px' }}>
-              ←
+            <button type="button" className="day-nav-btn" onClick={prevMonth} aria-label="Previous month" style={{ width: 40, height: 40 }}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M15 6 9 12l6 6" />
+              </svg>
             </button>
             <strong style={{ fontSize: 14, color: 'var(--color-text-body)', minWidth: 160, textAlign: 'center' }}>
               {monthLabel(month)}
             </strong>
-            <button type="button" className="btn-secondary" onClick={nextMonth} style={{ padding: '6px 10px' }}>
-              →
+            <button type="button" className="day-nav-btn" onClick={nextMonth} aria-label="Next month" style={{ width: 40, height: 40 }}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m9 6 6 6-6 6" />
+              </svg>
             </button>
           </div>
         )}
@@ -324,42 +322,25 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <strong style={{ fontSize: 13, color: 'var(--color-text-strong)' }}>{dayNum}</strong>
-                {hasTarget && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: m.color }}>
-                    {row.status === 'no_target'
-                      ? ''
-                      : row.status === 'no_data'
-                        ? '—'
-                        : row.status === 'upcoming'
-                          ? '↗'
-                          : row.status.toUpperCase().slice(0, 1)}
-                  </span>
-                )}
               </div>
-              {hasTarget && row.status !== 'hit' && row.missed?.length ? (
-                <div className="cal-day-missed" style={{ color: m.color }}>
-                  {row.missed.slice(0, 3).map(x => shortMetric(x.label)).join(' ')}
-                  {row.missed.length > 3 ? ` +${row.missed.length - 3}` : ''}
-                </div>
-              ) : (
-                <div className="cal-day-note">
-                  {hasTarget
-                    ? row.status === 'hit'
-                      ? 'Hit'
-                      : row.status === 'no_data'
-                        ? 'Not logged'
-                        : row.status === 'upcoming'
-                          ? 'Upcoming'
-                          : ''
-                    : ''}
-                </div>
-              )}
+              <div className="cal-day-note" style={{ color: m.color }}>
+                {hasTarget && row.status !== 'no_target' ? (STATUS_META[row.status]?.label || '') : ''}
+              </div>
             </div>
           );
         })}
         {trailingDates.map(renderOutsideDay)}
       </div>
       )}
+
+      <ul className="cal-legend" aria-label="Adherence legend">
+        {['hit', 'partial', 'miss', 'upcoming'].map(key => (
+          <li key={key}>
+            <span className="cal-legend-swatch" style={{ background: STATUS_META[key].bg, borderColor: STATUS_META[key].border }} />
+            {STATUS_META[key].label}
+          </li>
+        ))}
+      </ul>
 
       {(offscreenSelected.before > 0 || offscreenSelected.after > 0) && (
         <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--color-text-faint)' }}>
