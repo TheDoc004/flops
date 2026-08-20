@@ -2262,6 +2262,10 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
 .day-nav-btn:active:not(:disabled) {
   transform: scale(0.96);
 }
+.day-nav-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
 
 /* Dose ± on the supplement strip. */
 .stepper-btn {

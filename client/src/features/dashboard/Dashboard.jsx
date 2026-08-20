@@ -60,6 +60,14 @@ function persistMealClipboard(snapshot) {
 /** Vault Prep/Plan on Today until ready — flip to true to remount PrepStrip. */
 const SHOW_PREP_PLAN = false;
 
+/** Vault future-day planning until ready — past days stay so missed meals can be logged. */
+const ALLOW_FUTURE_DAYS = false;
+
+function clampViewingDate(viewing, cal = getLocalDateISO()) {
+  if (!ALLOW_FUTURE_DAYS && viewing > cal) return cal;
+  return viewing;
+}
+
 /** Dwell on a viewing date before slide-down so ←/→ scrubbing doesn't spam the banner. */
 const BANNER_DWELL_MS = 5000;
 
@@ -126,10 +134,10 @@ export default function Dashboard() {
       window.scrollTo({ top: 0, behavior: 'instant' });
     }
   }, [location.state?.scrollToTop]);
-  const [today, setToday] = useState(() => loadViewingDate());
+  const [today, setToday] = useState(() => clampViewingDate(loadViewingDate()));
   const [calendarToday, setCalendarToday] = useState(() => getLocalDateISO());
   const [bannerDismissed, setBannerDismissed] = useState(() =>
-    initialBannerDismissed(loadViewingDate(), getLocalDateISO()),
+    initialBannerDismissed(clampViewingDate(loadViewingDate()), getLocalDateISO()),
   );
   const [bannerOpen, setBannerOpen] = useState(false);
   const bannerDelayRef = useRef(null);
@@ -151,15 +159,17 @@ export default function Dashboard() {
   const isFutureDay = today > calendarToday;
   const isPastDay = today < calendarToday;
   const isOffToday = today !== calendarToday;
+  const canGoForward = ALLOW_FUTURE_DAYS || today < calendarToday;
   const bannerDesired = isOffToday && !bannerDismissed;
   const dayShiftDir = useRef('fwd');
   const skipDayAnim = useRef(true);
 
   function shiftDay(delta) {
-    skipDayAnim.current = false;
-    dayShiftDir.current = delta < 0 ? 'back' : 'fwd';
     const next = addDaysLocal(today, delta);
     const cal = getLocalDateISO();
+    if (!ALLOW_FUTURE_DAYS && next > cal) return;
+    skipDayAnim.current = false;
+    dayShiftDir.current = delta < 0 ? 'back' : 'fwd';
     setToday(next);
     // Arrow navigation always re-offers the off-today banner (fixes past-day miss).
     setBannerDismissed(next === cal);
@@ -193,6 +203,11 @@ export default function Dashboard() {
     function syncCalendar() {
       const n = getLocalDateISO();
       setCalendarToday(n);
+      if (!ALLOW_FUTURE_DAYS && today > n) {
+        setToday(n);
+        setBannerDismissed(true);
+        return;
+      }
       if (today === n) {
         setBannerDismissed(true);
       } else if (today < n) {
@@ -451,6 +466,7 @@ export default function Dashboard() {
             type="button"
             className="day-nav-btn"
             aria-label="Next day"
+            disabled={!canGoForward}
             onClick={() => shiftDay(1)}
           >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
