@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ResponsiveContainer,
   PieChart,
@@ -19,15 +20,54 @@ import { parseMicros } from '@shared/utils/microNutrients';
 
 const PIE_COLORS = { protein: MACRO_COLORS.protein, carbs: MACRO_COLORS.carbs, fat: MACRO_COLORS.fat };
 
-/** Meal-row ⋯ menu — same pop + outside-click pattern as SortMenu in RangeReport. */
+/** Meal-row ⋯ menu. Fixed to the trigger so a parent card can't clip it,
+ *  and flips up when there isn't room below (last meal, bottom of the page). */
 function MealRowMenu({ onMacros, onMicros, onCopyMeal, onDelete }) {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const [coords, setCoords] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setCoords(null);
+      return undefined;
+    }
+    function place() {
+      const btn = btnRef.current;
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      const menuH = menuRef.current?.offsetHeight || 196;
+      const menuW = Math.max(168, menuRef.current?.offsetWidth || 168);
+      const gap = 6;
+      const pad = 8;
+      const bottomChrome = window.matchMedia('(max-width: 768px)').matches ? 72 : 12;
+      const spaceBelow = window.innerHeight - r.bottom - pad - bottomChrome;
+      const openUp = spaceBelow < menuH && r.top > menuH + gap + pad;
+      const top = openUp ? Math.max(pad, r.top - gap - menuH) : r.bottom + gap;
+      const left = Math.max(pad, Math.min(r.right - menuW, window.innerWidth - menuW - pad));
+      setCoords({
+        top,
+        left,
+        minWidth: menuW,
+        transformOrigin: openUp ? 'bottom right' : 'top right',
+      });
+    }
+    place();
+    const id = requestAnimationFrame(place);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      cancelAnimationFrame(id);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
     function onDocPointerDown(e) {
-      if (!rootRef.current || rootRef.current.contains(e.target)) return;
+      if (btnRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return;
       setOpen(false);
     }
     document.addEventListener('pointerdown', onDocPointerDown);
@@ -37,9 +77,67 @@ function MealRowMenu({ onMacros, onMicros, onCopyMeal, onDelete }) {
   const hasActions = onMacros || onMicros || onCopyMeal || onDelete;
   if (!hasActions) return null;
 
+  const menu = open ? (
+    <div
+      ref={menuRef}
+      role="menu"
+      className="menu-pop is-fixed dropdown-in"
+      style={{
+        position: 'fixed',
+        top: coords?.top ?? -9999,
+        left: coords?.left ?? 0,
+        minWidth: coords?.minWidth ?? 168,
+        transformOrigin: coords?.transformOrigin ?? 'top right',
+        visibility: coords ? 'visible' : 'hidden',
+      }}
+    >
+      {onMacros && (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-pop-item"
+          onClick={() => { onMacros(); setOpen(false); }}
+        >
+          Macros
+        </button>
+      )}
+      {onMicros && (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-pop-item"
+          onClick={() => { onMicros(); setOpen(false); }}
+        >
+          Micros
+        </button>
+      )}
+      {onCopyMeal && (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-pop-item"
+          onClick={() => { onCopyMeal(); setOpen(false); }}
+        >
+          Copy Meal
+        </button>
+      )}
+      {onDelete && (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-pop-item is-danger"
+          onClick={() => { onDelete(); setOpen(false); }}
+        >
+          Remove from day
+        </button>
+      )}
+    </div>
+  ) : null;
+
   return (
-    <div ref={rootRef} style={{ position: 'relative' }}>
+    <div style={{ position: 'relative' }}>
       <button
+        ref={btnRef}
         type="button"
         className="btn-secondary meal-row-menu-btn"
         aria-haspopup="menu"
@@ -50,54 +148,7 @@ function MealRowMenu({ onMacros, onMicros, onCopyMeal, onDelete }) {
       >
         ⋯
       </button>
-      {open && (
-        <div
-          role="menu"
-          className="menu-pop dropdown-in"
-          style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 30, minWidth: 168, transformOrigin: 'top right' }}
-        >
-          {onMacros && (
-            <button
-              type="button"
-              role="menuitem"
-              className="menu-pop-item"
-              onClick={() => { onMacros(); setOpen(false); }}
-            >
-              Macros
-            </button>
-          )}
-          {onMicros && (
-            <button
-              type="button"
-              role="menuitem"
-              className="menu-pop-item"
-              onClick={() => { onMicros(); setOpen(false); }}
-            >
-              Micros
-            </button>
-          )}
-          {onCopyMeal && (
-            <button
-              type="button"
-              role="menuitem"
-              className="menu-pop-item"
-              onClick={() => { onCopyMeal(); setOpen(false); }}
-            >
-              Copy Meal
-            </button>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              role="menuitem"
-              className="menu-pop-item is-danger"
-              onClick={() => { onDelete(); setOpen(false); }}
-            >
-              Remove from day
-            </button>
-          )}
-        </div>
-      )}
+      {menu ? createPortal(menu, document.body) : null}
     </div>
   );
 }
