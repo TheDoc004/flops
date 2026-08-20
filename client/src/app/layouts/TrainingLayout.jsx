@@ -1,11 +1,10 @@
 import { Link, Outlet } from 'react-router-dom';
 import Reveal from '@shared/ui/Reveal';
-import TrainingWorkouts from '@features/training-workouts';
+import GymApp from '@features/training-workouts';
 
 /**
  * Gym dashboard shell. Navbar / BottomNav own Today, Schedule, Workouts,
- * and Progress. This layout keeps the page title, the hop back to
- * nutrition, and the shared workout state so drafts survive a tab change.
+ * and Progress. This layout keeps the page title and the hop back to nutrition.
  */
 const hopStyle = {
   fontSize: '15px',
@@ -29,7 +28,7 @@ export default function TrainingLayout() {
           Nutrition
         </Link>
       </Reveal>
-      <TrainingWorkouts />
+      <GymApp />
       <Outlet />
     </div>
   );

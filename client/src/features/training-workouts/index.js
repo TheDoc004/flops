@@ -1,1 +1,1 @@
-export { default } from './TrainingWorkouts';
+export { default } from './GymApp';
