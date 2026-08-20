@@ -1,0 +1,9 @@
+---
+description: Use design craft skills + FLOPS design system for UI work
+globs: client/**/*.{css,jsx,tsx,js},docs/design-system.md
+alwaysApply: false
+---
+
+For visual/UI work, read the emil-design-eng, impeccable, and design-taste skills AND docs/design-system.md.
+
+The design-system and FLOPS notebook/restraint aesthetic win over generic landing-page patterns. No sparkles, lavender AI chrome, or vibe-slop.
