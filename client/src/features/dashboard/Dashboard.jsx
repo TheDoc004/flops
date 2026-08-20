@@ -152,6 +152,9 @@ export default function Dashboard() {
   const [copyStatus, setCopyStatus] = useState('');
   const copyStatusTimerRef = useRef(null);
   const [mealClipboard, setMealClipboard] = useState(() => loadMealClipboard());
+  const pasteLockRef = useRef(false);
+  const pasteDoneTimerRef = useRef(null);
+  const [pasteUi, setPasteUi] = useState('idle'); // idle | pasting | done
   const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
   const [supplementMacros, setSupplementMacros] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 
@@ -247,6 +250,15 @@ export default function Dashboard() {
     saveViewingDate(today);
   }, [today]);
 
+  useEffect(() => {
+    setPasteUi('idle');
+    pasteLockRef.current = false;
+    if (pasteDoneTimerRef.current != null) {
+      clearTimeout(pasteDoneTimerRef.current);
+      pasteDoneTimerRef.current = null;
+    }
+  }, [today]);
+
   // Invert the whole chrome while this page is looking at a non-today date.
   // Cleared on unmount so Recipes/Review stay the living beige theme.
   useEffect(() => {
@@ -338,6 +350,7 @@ export default function Dashboard() {
 
   useEffect(() => () => {
     if (copyStatusTimerRef.current != null) clearTimeout(copyStatusTimerRef.current);
+    if (pasteDoneTimerRef.current != null) clearTimeout(pasteDoneTimerRef.current);
   }, []);
 
   /** Stash a meal snapshot for paste onto any viewing day. */
@@ -349,10 +362,13 @@ export default function Dashboard() {
     flashCopyStatus('Meal copied');
   }
 
-  /** Paste the clipboard meal onto the viewing day (today state). */
+  /** Paste the clipboard meal onto the viewing day. Locked until the row lands. */
   async function handlePasteMeal() {
+    if (pasteLockRef.current) return;
     const entry = mealClipboard;
     if (!entry) return;
+    pasteLockRef.current = true;
+    setPasteUi('pasting');
     setError('');
     const ingredients = ingredientsPayloadFromEntry(entry);
     const slotSelections = slotSelectionsFromEntry(entry);
@@ -394,12 +410,18 @@ export default function Dashboard() {
           ...(ingredients?.length ? { ingredients } : {}),
         });
       }
-      flashCopyStatus('Meal pasted');
       await load();
-      setMealClipboard(null);
-      persistMealClipboard(null);
+      setPasteUi('done');
+      if (pasteDoneTimerRef.current != null) clearTimeout(pasteDoneTimerRef.current);
+      pasteDoneTimerRef.current = setTimeout(() => {
+        setPasteUi('idle');
+        pasteLockRef.current = false;
+        pasteDoneTimerRef.current = null;
+      }, 1400);
     } catch (e) {
       setError(e.message || 'Failed to paste meal');
+      setPasteUi('idle');
+      pasteLockRef.current = false;
     }
   }
 
@@ -610,11 +632,25 @@ export default function Dashboard() {
           {mealClipboard && (
             <button
               type="button"
-              className="btn-secondary paste-meal-btn"
+              className={`btn-secondary paste-meal-btn${pasteUi === 'pasting' ? ' btn-loading' : ''}${pasteUi === 'done' ? ' is-pasted' : ''}`}
               onClick={() => { void handlePasteMeal(); }}
+              disabled={pasteUi !== 'idle'}
+              aria-busy={pasteUi === 'pasting'}
+              aria-live="polite"
               title="Paste the copied meal onto this day"
             >
-              Paste meal
+              {pasteUi === 'pasting' ? (
+                <><span className="btn-spinner" aria-hidden="true" />Pasting…</>
+              ) : pasteUi === 'done' ? (
+                <>
+                  <svg className="paste-meal-check" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M5 12.5 9.5 17 19 7" />
+                  </svg>
+                  Pasted
+                </>
+              ) : (
+                'Paste meal'
+              )}
             </button>
           )}
         </div>

@@ -1098,6 +1098,28 @@ dialog[open]::backdrop {
   color: var(--color-danger-hover);
 }
 
+/* Off-today inverts page tokens, so a tokenized pop blends into charcoal.
+   Keep the menu on paper so Macros / Micros / Copy stay readable. */
+html[data-notebook-day] .menu-pop {
+  background: #faf9f7;
+  border-color: #e8e4dc;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+html[data-notebook-day] .menu-pop-item {
+  color: #374151;
+}
+html[data-notebook-day] .menu-pop-item:hover {
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+html[data-notebook-day] .menu-pop-item.is-danger {
+  color: #dc2626;
+}
+html[data-notebook-day] .menu-pop-item.is-danger:hover {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
 /* Meal row ⋯ trigger — sized for the dashboard meal card header. */
 .meal-row-menu-btn {
   padding: 6px clamp(10px, 1vw, 12px);
@@ -2409,14 +2431,27 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
 /* Paste meal control — soft appear when clipboard is non-empty */
 .paste-meal-btn {
   flex-shrink: 0;
+  min-width: 8.75rem;
   animation: paste-meal-in 180ms var(--ease-out, ease-out);
+}
+.paste-meal-btn.is-pasted {
+  color: var(--color-success);
+}
+.paste-meal-check {
+  flex-shrink: 0;
+  animation: paste-check-in 180ms var(--ease-out, ease-out);
+}
+@keyframes paste-check-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes paste-meal-in {
   from { opacity: 0; transform: translateY(-4px) scale(0.97); }
   to { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .paste-meal-btn {
+  .paste-meal-btn,
+  .paste-meal-check {
     animation: none;
   }
 }
