@@ -32,7 +32,7 @@ function groupSummary(group, values) {
 /**
  * Daily micronutrient panel, sectioned so 28 nutrients don't land as one wall
  * of bars: a "needs attention" strip answers the headline question, then each
- * category (Vitamins / Minerals / Omega-3s / Other) is a collapsible section
+ * category (Vitamins / Minerals / Omega-3s) is a collapsible section
  * whose header carries an on-track summary — open only what you want to read.
  */
 export default function MicroNutrientPanel({ values, confidence = null, coverage = null, supplementCount = 0 }) {

@@ -13,7 +13,6 @@ export const MICRO_CATEGORIES = [
   { key: 'vitamin', label: 'Vitamins' },
   { key: 'mineral', label: 'Minerals' },
   { key: 'lipid', label: 'Omega-3s' },
-  { key: 'other', label: 'Other' },
 ];
 
 // key, name, category, unit, target, upperLimit?, watch?, sourceType, description
@@ -49,14 +48,14 @@ const ADULT_MALE = [
   { key: 'selenium_mcg',    name: 'Selenium',     category: 'mineral', unit: 'mcg', target: 55,   upperLimit: 400,  sourceType: 'RDA', description: 'Antioxidant defense and thyroid.' },
   { key: 'sodium_mg',       name: 'Sodium',       category: 'mineral', unit: 'mg',  target: 2300, upperLimit: 2300, watch: true, sourceType: 'RDA', description: 'A watch nutrient — most people get plenty.' },
   { key: 'zinc_mg',         name: 'Zinc',         category: 'mineral', unit: 'mg',  target: 11,   upperLimit: 40,   sourceType: 'RDA', description: 'Immune support.' },
+  // Display-only: Fiber and choline used to be a two-row Other group.
+  { key: 'fiber_g',         name: 'Fiber',        category: 'mineral', unit: 'g',   target: 38,   sourceType: 'RDA', description: 'Supports digestion and fullness.' },
+  { key: 'choline_mg',      name: 'Choline',      category: 'mineral', unit: 'mg',  target: 550,  upperLimit: 3500, sourceType: 'AI', description: 'Liver, muscle, and brain function.' },
   // ── Omega-3s ── (EPA/DHA have no official DRI; 250 mg each is a common
   // general reference for regular fish/fish-oil intake, not medical advice.)
   { key: 'omega3_ala_g',    name: 'ALA',          category: 'lipid',   unit: 'g',   target: 1.6,  sourceType: 'AI', description: 'Plant omega-3 (flax, chia, walnuts).' },
   { key: 'omega3_epa_mg',   name: 'EPA',          category: 'lipid',   unit: 'mg',  target: 250,  sourceType: 'AI', description: 'Marine omega-3; heart and inflammation.' },
   { key: 'omega3_dha_mg',   name: 'DHA',          category: 'lipid',   unit: 'mg',  target: 250,  sourceType: 'AI', description: 'Marine omega-3; brain and eyes.' },
-  // ── Other ──
-  { key: 'fiber_g',         name: 'Fiber',        category: 'other',   unit: 'g',   target: 38,   sourceType: 'RDA', description: 'Supports digestion and fullness.' },
-  { key: 'choline_mg',      name: 'Choline',      category: 'other',   unit: 'mg',  target: 550,  upperLimit: 3500, sourceType: 'AI', description: 'Liver, muscle, and brain function.' },
 ];
 
 const PROFILES = {
