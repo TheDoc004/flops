@@ -437,10 +437,8 @@ export default function Dashboard() {
       }
     : totals;
 
-  // The two primary dashboard buttons. With no "Log" tab in the nav, these ARE
-  // the way into logging, so they're sized to be the first thing you reach for
-  // rather than header trim. Scoped inline so the global .btn-* sizing is
-  // untouched.
+  // Logging actions plus a hop to the gym dashboard. Sized as header
+  // controls, not trim. Scoped inline so the global .btn-* sizing is untouched.
   const dashActionStyle = {
     fontSize: '15px',
     fontWeight: 600,
@@ -514,6 +512,14 @@ export default function Dashboard() {
           >
             + Log a Meal
           </button>
+          <Link
+            to="/training"
+            className="btn-secondary"
+            style={{ ...dashActionStyle, textDecoration: 'none' }}
+            title="Open the gym dashboard"
+          >
+            Training
+          </Link>
         </div>
       </Reveal>
 

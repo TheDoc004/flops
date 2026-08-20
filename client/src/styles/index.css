@@ -2465,6 +2465,17 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   border-color: var(--color-text-strong);
 }
 
+/* Gym dashboard shell: serif title + tab rhythm, same as Plan pills. */
+.training-dash {
+  padding-bottom: var(--space-24);
+}
+.training-dash .page-title {
+  margin: 0 0 4px;
+}
+.training-tabs {
+  margin-bottom: 24px;
+}
+
 /* Library section: fade the page body when Recipes ↔ Ingredients swaps.
    The subnav lives in LibraryLayout so it does not remount. */
 @keyframes library-outlet-in {

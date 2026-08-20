@@ -11,7 +11,7 @@ import Report from '@features/report';
 import Profile from '@features/profile';
 import MealBuilder from '@features/meal-builder';
 import PlanLayout from './layouts/PlanLayout';
-import TrainingWorkouts from '@features/training-workouts';
+import TrainingLayout from './layouts/TrainingLayout';
 import Ingredients from '@features/ingredients';
 import LibraryLayout from './layouts/LibraryLayout';
 import AiMacroLogger from '@features/ai-macro-logger';
@@ -23,7 +23,7 @@ import Coach from '@features/coach';
 function AppShell() {
   const { pathname } = useLocation();
   const { isCoach } = useAuth();
-  const wide = pathname === '/';
+  const wide = pathname === '/' || pathname === '/training' || pathname.startsWith('/training/');
   return (
     <>
       <Navbar />
@@ -37,7 +37,12 @@ function AppShell() {
           <Route path="/history" element={<History />} />
           <Route path="/meal-builder" element={<MealBuilder />} />
           <Route path="/ai-logger" element={<AiMacroLogger />} />
-          <Route path="/training" element={<TrainingWorkouts />} />
+          <Route path="/training" element={<TrainingLayout />}>
+            <Route index element={null} />
+            <Route path="schedule" element={null} />
+            <Route path="workouts" element={null} />
+            <Route path="progress" element={null} />
+          </Route>
           <Route path="/coach" element={isCoach ? <Coach /> : <Navigate to="/" replace />} />
 
           <Route path="/plan" element={<PlanLayout />}>

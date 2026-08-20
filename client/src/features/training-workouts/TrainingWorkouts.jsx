@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   CartesianGrid,
   Line,
@@ -51,50 +52,11 @@ function formatDateHeader(iso) {
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
-function TabBar({ active, onChange }) {
-  const tabs = [
-    { key: 'today', label: 'Today' },
-    { key: 'schedule', label: 'Schedule' },
-    { key: 'workouts', label: 'Workouts' },
-    { key: 'progress', label: 'Progress' },
-  ];
-  return (
-    <div
-      style={{
-        display: 'flex',
-        gap: 4,
-        background: 'var(--color-secondary-bg)',
-        borderRadius: 12,
-        padding: 4,
-        marginBottom: 20,
-        width: 'fit-content',
-        maxWidth: '100%',
-      }}
-    >
-      {tabs.map(t => (
-        <button
-          key={t.key}
-          type="button"
-          onClick={() => onChange(t.key)}
-          style={{
-            padding: '10px 20px',
-            minHeight: 44,
-            border: 'none',
-            borderRadius: 9,
-            cursor: 'pointer',
-            fontSize: 14,
-            fontWeight: 600,
-            transition: 'background 0.15s, color 0.15s',
-            background: active === t.key ? 'var(--color-surface)' : 'transparent',
-            color: active === t.key ? 'var(--color-text-strong)' : 'var(--color-text-muted)',
-            boxShadow: 'none',
-          }}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
+function tabFromPath(pathname) {
+  if (pathname.startsWith('/training/schedule')) return 'schedule';
+  if (pathname.startsWith('/training/workouts')) return 'workouts';
+  if (pathname.startsWith('/training/progress')) return 'progress';
+  return 'today';
 }
 
 function ExerciseCard({ exercise, draft, prev, unit, onChangeDraft, onViewProgress }) {
@@ -252,11 +214,13 @@ function ProgressChart({ exercise }) {
 
 export default function TrainingWorkouts() {
   const { bodyUnits } = useMacroUnits();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
   const today = getLocalDateISO();
   const unit = weightUnit(bodyUnits);
+  const activeTab = tabFromPath(pathname);
 
   // shared
-  const [activeTab, setActiveTab] = useState('today');
   const [presets, setPresets] = useState([]);
   const [error, setError] = useState('');
   const [savedMsg, setSavedMsg] = useState('');
@@ -489,18 +453,10 @@ export default function TrainingWorkouts() {
 
   return (
     <div>
-      <Reveal style={{ marginBottom: 20 }}>
-        <h1 className="page-title" style={{ margin: 0 }}>Training</h1>
-      </Reveal>
-
       {error && <p className="error">{error}</p>}
       {savedMsg && (
         <p style={{ color: '#059669', fontSize: 14, marginBottom: 12 }}>{savedMsg}</p>
       )}
-
-      <Reveal delay={60}>
-        <TabBar active={activeTab} onChange={setActiveTab} />
-      </Reveal>
 
       {/* ── TODAY TAB ─────────────────────────────────────────────────── */}
       {activeTab === 'today' && (
@@ -548,7 +504,8 @@ export default function TrainingWorkouts() {
             </p>
           ) : todayExercises.length === 0 ? (
             <p className="empty-state" style={{ padding: '32px 0' }}>
-              No exercises in this preset. Add some in the Workouts tab.
+              No exercises in this preset. Add some in{' '}
+              <Link to="/training/workouts">Workouts</Link>.
             </p>
           ) : (
             <>
@@ -564,7 +521,7 @@ export default function TrainingWorkouts() {
                     onViewProgress={name => {
                       setProgressExercise(name);
                       setProgressInput(name);
-                      setActiveTab('progress');
+                      navigate('/training/progress');
                     }}
                   />
                 ))}
