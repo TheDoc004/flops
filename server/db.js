@@ -284,6 +284,94 @@ function createDb(dbPath) {
       equipment          TEXT NOT NULL
     );
 
+    /* --- Gym (Setgraph-style per-set logging). Nutrition tables stay above. --- */
+    CREATE TABLE IF NOT EXISTS gym_exercises (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id            INTEGER NOT NULL DEFAULT 0,
+      name               TEXT NOT NULL,
+      primary_muscle     TEXT NOT NULL DEFAULT 'other',
+      secondary_muscles  TEXT NOT NULL DEFAULT '[]',
+      movement_type      TEXT NOT NULL DEFAULT 'other',
+      equipment          TEXT NOT NULL DEFAULT '',
+      rest_sec           INTEGER,
+      is_deleted         INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS gym_exercises_user_name
+      ON gym_exercises (user_id, name) WHERE is_deleted = 0;
+
+    CREATE TABLE IF NOT EXISTS gym_templates (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id            INTEGER NOT NULL,
+      name               TEXT NOT NULL,
+      split_label        TEXT,
+      notes              TEXT,
+      progression_notes  TEXT,
+      is_deleted         INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS gym_template_exercises (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id        INTEGER NOT NULL,
+      template_id    INTEGER NOT NULL,
+      exercise_id    INTEGER NOT NULL,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      target_sets    INTEGER,
+      target_reps    INTEGER,
+      target_weight  REAL,
+      rest_sec       INTEGER,
+      notes          TEXT,
+      FOREIGN KEY (template_id) REFERENCES gym_templates(id),
+      FOREIGN KEY (exercise_id) REFERENCES gym_exercises(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS gym_schedule (
+      user_id       INTEGER NOT NULL,
+      weekday       INTEGER NOT NULL CHECK (weekday >= 1 AND weekday <= 7),
+      enabled       INTEGER NOT NULL DEFAULT 0,
+      template_id   INTEGER,
+      duration_min  INTEGER,
+      PRIMARY KEY (user_id, weekday)
+    );
+
+    CREATE TABLE IF NOT EXISTS gym_sessions (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id        INTEGER NOT NULL,
+      date           TEXT NOT NULL,
+      started_at     TEXT NOT NULL,
+      ended_at       TEXT,
+      duration_sec   INTEGER,
+      activity_type  TEXT NOT NULL DEFAULT 'strength',
+      template_id    INTEGER,
+      notes          TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS gym_sets (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL,
+      session_id   INTEGER NOT NULL,
+      exercise_id  INTEGER NOT NULL,
+      set_index    INTEGER NOT NULL,
+      reps         INTEGER,
+      weight       REAL,
+      weight_unit  TEXT,
+      is_warmup    INTEGER NOT NULL DEFAULT 0,
+      is_1rm       INTEGER NOT NULL DEFAULT 0,
+      note         TEXT,
+      logged_at    TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES gym_sessions(id),
+      FOREIGN KEY (exercise_id) REFERENCES gym_exercises(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS gym_one_rep_maxes (
+      user_id      INTEGER NOT NULL,
+      exercise_id  INTEGER NOT NULL,
+      estimated    REAL,
+      tested       REAL,
+      formula      TEXT,
+      updated_at   TEXT NOT NULL,
+      PRIMARY KEY (user_id, exercise_id)
+    );
+
     /* --- Supplement tracker (Nutrition) ---
        Definitions the user maintains; some carry macros, some are checklist-only.
        counts_toward_macros=1 means a taken dose feeds that day's macro totals. */
@@ -582,6 +670,8 @@ function createDb(dbPath) {
     db.exec(`ALTER TABLE workout_preset_exercises ADD COLUMN exercise_library_id INTEGER`);
   }
 
+  const { GYM_EXERCISES } = require('./gymCatalog');
+
   // Seed exercise library if empty
   const libCount = db.prepare('SELECT COUNT(*) AS n FROM exercise_library').get().n;
   if (libCount === 0) {
@@ -590,76 +680,21 @@ function createDb(dbPath) {
        VALUES (?, ?, ?, ?, ?)`
     );
     const seedExercises = db.transaction(() => {
-      const exercises = [
-        // Push — Chest
-        ['Barbell Bench Press',      'chest',      '["triceps","shoulders"]',       'push',   'barbell'],
-        ['Incline Barbell Press',    'chest',      '["triceps","shoulders"]',       'push',   'barbell'],
-        ['Dumbbell Bench Press',     'chest',      '["triceps","shoulders"]',       'push',   'dumbbell'],
-        ['Incline Dumbbell Press',   'chest',      '["triceps","shoulders"]',       'push',   'dumbbell'],
-        ['Dumbbell Chest Fly',       'chest',      '["shoulders"]',                 'push',   'dumbbell'],
-        ['Cable Chest Fly',          'chest',      '["shoulders"]',                 'push',   'cable'],
-        ['Push-up',                  'chest',      '["triceps","shoulders"]',       'push',   'bodyweight'],
-        ['Machine Chest Press',      'chest',      '["triceps","shoulders"]',       'push',   'machine'],
-        // Push — Shoulders
-        ['Overhead Press',           'shoulders',  '["triceps"]',                   'push',   'barbell'],
-        ['Dumbbell Shoulder Press',  'shoulders',  '["triceps"]',                   'push',   'dumbbell'],
-        ['Lateral Raise',            'shoulders',  '[]',                            'push',   'dumbbell'],
-        ['Front Raise',              'shoulders',  '[]',                            'push',   'dumbbell'],
-        // Push — Triceps
-        ['Tricep Pushdown',          'triceps',    '[]',                            'push',   'cable'],
-        ['Skull Crusher',            'triceps',    '[]',                            'push',   'barbell'],
-        ['Overhead Tricep Extension','triceps',    '[]',                            'push',   'dumbbell'],
-        ['Dips',                     'triceps',    '["chest","shoulders"]',          'push',   'bodyweight'],
-        // Pull — Back
-        ['Deadlift',                 'back',       '["glutes","hamstrings"]',       'pull',   'barbell'],
-        ['Barbell Row',              'back',       '["biceps"]',                    'pull',   'barbell'],
-        ['Dumbbell Row',             'back',       '["biceps"]',                    'pull',   'dumbbell'],
-        ['T-Bar Row',                'back',       '["biceps"]',                    'pull',   'barbell'],
-        ['Lat Pulldown',             'back',       '["biceps"]',                    'pull',   'cable'],
-        ['Seated Cable Row',         'back',       '["biceps"]',                    'pull',   'cable'],
-        ['Pull-up',                  'back',       '["biceps"]',                    'pull',   'bodyweight'],
-        ['Chin-up',                  'back',       '["biceps"]',                    'pull',   'bodyweight'],
-        ['Face Pull',                'shoulders',  '["back"]',                      'pull',   'cable'],
-        // Pull — Biceps
-        ['Barbell Curl',             'biceps',     '["forearms"]',                  'pull',   'barbell'],
-        ['Dumbbell Curl',            'biceps',     '["forearms"]',                  'pull',   'dumbbell'],
-        ['Hammer Curl',              'biceps',     '["forearms"]',                  'pull',   'dumbbell'],
-        ['Preacher Curl',            'biceps',     '[]',                            'pull',   'barbell'],
-        ['Cable Curl',               'biceps',     '[]',                            'pull',   'cable'],
-        // Legs — Quads
-        ['Barbell Back Squat',       'quads',      '["glutes","hamstrings"]',       'legs',   'barbell'],
-        ['Front Squat',              'quads',      '["glutes"]',                    'legs',   'barbell'],
-        ['Goblet Squat',             'quads',      '["glutes"]',                    'legs',   'dumbbell'],
-        ['Leg Press',                'quads',      '["glutes","hamstrings"]',       'legs',   'machine'],
-        ['Leg Extension',            'quads',      '[]',                            'legs',   'machine'],
-        ['Bulgarian Split Squat',    'quads',      '["glutes","hamstrings"]',       'legs',   'dumbbell'],
-        ['Walking Lunge',            'quads',      '["glutes"]',                    'legs',   'dumbbell'],
-        ['Step-up',                  'quads',      '["glutes"]',                    'legs',   'dumbbell'],
-        // Legs — Posterior chain
-        ['Romanian Deadlift',        'hamstrings', '["glutes","back"]',             'legs',   'barbell'],
-        ['Leg Curl',                 'hamstrings', '[]',                            'legs',   'machine'],
-        ['Hip Thrust',               'glutes',     '["hamstrings"]',                'legs',   'barbell'],
-        ['Good Morning',             'hamstrings', '["back","glutes"]',             'legs',   'barbell'],
-        // Legs — Calves
-        ['Standing Calf Raise',      'calves',     '[]',                            'legs',   'machine'],
-        ['Seated Calf Raise',        'calves',     '[]',                            'legs',   'machine'],
-        // Core
-        ['Plank',                    'core',       '[]',                            'core',   'bodyweight'],
-        ['Crunch',                   'core',       '[]',                            'core',   'bodyweight'],
-        ['Cable Crunch',             'core',       '[]',                            'core',   'cable'],
-        ['Russian Twist',            'core',       '[]',                            'core',   'bodyweight'],
-        ['Hanging Leg Raise',        'core',       '[]',                            'core',   'bodyweight'],
-        ['Ab Wheel Rollout',         'core',       '[]',                            'core',   'bodyweight'],
-        ['Dead Bug',                 'core',       '[]',                            'core',   'bodyweight'],
-        // Cardio
-        ['Treadmill Run',            'cardio',     '[]',                            'cardio', 'machine'],
-        ['Jump Rope',                'cardio',     '[]',                            'cardio', 'bodyweight'],
-        ['Rowing Machine',           'cardio',     '["back"]',                      'cardio', 'machine'],
-        ['Cycling',                  'cardio',     '[]',                            'cardio', 'machine'],
-      ];
-      for (const row of exercises) insertExercise.run(...row);
+      for (const row of GYM_EXERCISES) insertExercise.run(...row);
     });
     seedExercises();
+  }
+
+  const gymLibCount = db.prepare('SELECT COUNT(*) AS n FROM gym_exercises WHERE user_id = 0').get().n;
+  if (gymLibCount === 0) {
+    const insertGym = db.prepare(
+      `INSERT OR IGNORE INTO gym_exercises (user_id, name, primary_muscle, secondary_muscles, movement_type, equipment)
+       VALUES (0, ?, ?, ?, ?, ?)`
+    );
+    const seedGym = db.transaction(() => {
+      for (const row of GYM_EXERCISES) insertGym.run(...row);
+    });
+    seedGym();
   }
 
   const { migrateLegacyUserZero } = require('./authService');

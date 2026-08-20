@@ -11,6 +11,7 @@ const { createProfileRouter, createBodyWeightsRouter } = require('./routes/profi
 const { createTrainingRouter } = require('./routes/training');
 const { createLabelIngredientsRouter } = require('./routes/labelIngredients');
 const { createWorkoutsRouter } = require('./routes/workouts');
+const { createGymRouter } = require('./routes/gym');
 const { createSupplementsRouter } = require('./routes/supplements');
 const { createAiRouter } = require('./routes/ai');
 const { createBarcodeRouter } = require('./routes/barcode');
@@ -66,6 +67,7 @@ function createApp(db = createDb(process.env.DB_PATH || './nutrition.db'), opts 
   app.use('/api/body-weights', createBodyWeightsRouter(db));
   app.use('/api/training', createTrainingRouter(db));
   app.use('/api/workouts', createWorkoutsRouter(db));
+  app.use('/api/gym', createGymRouter(db));
   app.use('/api/supplements', createSupplementsRouter(db));
   app.use('/api/barcode', createBarcodeRouter(db));
   app.use('/api/coach', createCoachRouter(db));
