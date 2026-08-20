@@ -2465,15 +2465,12 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   border-color: var(--color-text-strong);
 }
 
-/* Gym dashboard shell: serif title + tab rhythm, same as Plan pills. */
+/* Gym dashboard shell: serif title + Nutrition hop in the toolbar. */
 .training-dash {
   padding-bottom: var(--space-24);
 }
 .training-dash .page-title {
-  margin: 0 0 4px;
-}
-.training-tabs {
-  margin-bottom: 24px;
+  margin: 0;
 }
 
 /* Library section: fade the page body when Recipes ↔ Ingredients swaps.

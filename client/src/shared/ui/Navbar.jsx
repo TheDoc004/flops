@@ -4,18 +4,26 @@ import styles from './Navbar.module.css';
 
 /* Flat top nav — every item is a direct link, no dropdowns.
 
-   Library is one section spanning three routes, and it lands on the recipe
-   library. Crossing to Ingredients is the segmented control at the top of
-   the page; Meal Builder is the button beside it. */
+   Nutrition and gym are two dashboards. The banner lists that workspace's
+   sections; you hop with the Training / Nutrition buttons, not a shared tab.
+
+   Library is one nutrition section spanning three routes, and it lands on
+   the recipe library. Crossing to Ingredients is the segmented control at
+   the top of the page; Meal Builder is the button beside it. */
 function pathMatches(pathname, to) {
   return pathname === to || pathname.startsWith(`${to}/`);
+}
+
+function isGymPath(pathname) {
+  return pathname === '/training' || pathname.startsWith('/training/');
 }
 
 export default function Navbar() {
   const { pathname } = useLocation();
   const { isCoach } = useAuth();
+  const gym = isGymPath(pathname);
 
-  const links = [
+  const nutritionLinks = [
     { label: 'Today', to: '/', end: true },
     {
       label: 'Library',
@@ -23,16 +31,24 @@ export default function Navbar() {
       matchPaths: ['/recipes', '/meal-builder', '/ingredients'],
     },
     { label: 'Review', to: '/history' },
-    { label: 'Training', to: '/training' },
     ...(isCoach ? [{ label: 'Coach', to: '/coach' }] : []),
     { label: 'Goals', to: '/plan' },
   ];
 
+  const gymLinks = [
+    { label: 'Today', to: '/training', end: true },
+    { label: 'Schedule', to: '/training/schedule' },
+    { label: 'Workouts', to: '/training/workouts' },
+    { label: 'Progress', to: '/training/progress' },
+  ];
+
+  const links = gym ? gymLinks : nutritionLinks;
+
   return (
     <nav className={styles.nav}>
       <div className={styles.inner}>
-        {/* Brand: cropped badge + wordmark */}
-        <NavLink to="/" className={styles.brand}>
+        {/* Brand: cropped badge + wordmark. Gym home stays in the gym. */}
+        <NavLink to={gym ? '/training' : '/'} className={styles.brand}>
           <div className={styles.badgeWrap}>
             <img src="/flops-badge.png" alt="Flops logo" className={styles.badge} />
           </div>
@@ -48,7 +64,7 @@ export default function Navbar() {
             const sectionActive = l.matchPaths?.some(p => pathMatches(pathname, p));
             return (
               <NavLink
-                key={l.label}
+                key={l.to}
                 to={l.to}
                 end={l.end}
                 className={({ isActive }) => ((sectionActive ?? isActive) ? styles.active : '')}
