@@ -131,7 +131,7 @@ export default function SupplementStrip({ date, onMacrosChange }) {
             .
           </p>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div className="supp-chip-grid">
             {rows.map(r => (
               <div
                 key={r.id}
@@ -146,19 +146,13 @@ export default function SupplementStrip({ date, onMacrosChange }) {
                   <span className="supp-chip__check" aria-hidden="true">
                     {r.taken ? '✓' : ''}
                   </span>
-                  {/* Name over dose: the dose is a detail, not a peer of the name. */}
-                  <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: r.taken ? 'var(--color-text-muted)' : 'var(--color-text-strong)' }}>
-                      {r.name}
-                    </span>
-                    {r.dose_display && (
-                      <span style={{ fontSize: 12, color: 'var(--color-text-faint)', fontVariantNumeric: 'tabular-nums' }}>
-                        {r.dose_display}
-                      </span>
-                    )}
+                  {/* Name over dose. Dose always occupies a line so tiles match. */}
+                  <span className="supp-chip__copy">
+                    <span className="supp-chip__name">{r.name}</span>
+                    <span className="supp-chip__dose">{r.dose_display || '\u00a0'}</span>
                   </span>
                 </button>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                <span className="supp-chip__steppers">
                   <button
                     type="button"
                     className="stepper-btn"
