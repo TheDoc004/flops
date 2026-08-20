@@ -613,7 +613,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                 disabled={estimateBusy || lookupBusy || busy}
                 style={{ marginTop: 10, minHeight: 40 }}
               >
-                {estimateBusy ? 'Estimating…' : '✨ Estimate from the name instead'}
+                {estimateBusy ? 'Estimating…' : 'Estimate from the name instead'}
               </button>
             )}
 

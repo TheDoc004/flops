@@ -8,14 +8,15 @@
    ============================================================ */
 :root {
   /* ── Color · brand ── */
-  --color-primary: #312e81;          /* primary actions */
-  --color-primary-hover: #1e1b6b;
-  --color-primary-ink: #1e1b4b;      /* darker indigo for headings */
+  --color-primary: #1d4ed8;          /* primary actions */
+  --color-primary-hover: #1e40af;
+  --color-primary-ink: #1e3a8a;      /* darker blue for headings */
+  --color-primary-subtle: #eff6ff;   /* selected rows, AI Estimate fill */
   --color-danger: #dc2626;
   --color-danger-hover: #b91c1c;
-  --color-secondary-bg: #ede9fe;     /* .btn-secondary */
-  --color-secondary-bg-hover: #ddd6fe;
-  --color-secondary-border: #c4b5fd;
+  --color-secondary-bg: #f3f4f6;     /* .btn-secondary — cool neutral */
+  --color-secondary-bg-hover: #e5e7eb;
+  --color-secondary-border: #e5e7eb;
   --color-link: #2563eb;             /* canonical link blue */
   --color-success: #059669;
 
@@ -128,7 +129,7 @@
   --bd-divider: #ece7dd;
 
   /* Macro ring track (the unfilled arc). */
-  --color-ring-track: #ede9fe;
+  --color-ring-track: #dbeafe;
 }
 
 /* ── Off-today notebook page ──
@@ -150,15 +151,16 @@ html[data-notebook-day="future"] {
   --color-text-body: #e4e4e7;
   --color-text-muted: #c4c4c8;
   --color-text-faint: #a1a1aa;
-  --color-primary: #6e6b96;
-  --color-primary-hover: #7f7cad;
-  --color-primary-ink: #eef0ff;
-  --color-link: #b4b0d4;
+  --color-primary: #60a5fa;
+  --color-primary-hover: #93c5fd;
+  --color-primary-ink: #dbeafe;
+  --color-primary-subtle: #1e3a5f;
+  --color-link: #93c5fd;
   --color-success: #8fbfa8;
-  --color-secondary-bg: #3f3b5c;
-  --color-secondary-bg-hover: #4c4668;
-  --color-secondary-border: #6d68a0;
-  --color-ring-track: #4c4668;
+  --color-secondary-bg: #3f4246;
+  --color-secondary-bg-hover: #4a4e52;
+  --color-secondary-border: #52525b;
+  --color-ring-track: #4a4e52;
   --status-hit-bg: #2f3d38;
   --status-hit-border: #4a6b5c;
   --status-hit-text: #8fbfa8;
@@ -335,7 +337,7 @@ html[data-notebook-day="future"] {
 .ghost-slot:focus-visible {
   border-color: var(--color-secondary-border);
   color: var(--color-primary);
-  background: rgba(49, 46, 129, 0.04);
+  background: rgba(29, 78, 216, 0.04);
 }
 @media (prefers-reduced-motion: reduce) {
   .ghost-slot { animation: none; }
@@ -586,26 +588,24 @@ button:not(:disabled):active,
   cursor: not-allowed;
 }
 
-/* AI accent action: soft lavender gradient — in the same button system as
-   primary/secondary, but distinct. Used for the "AI Estimate" entry point. */
+/* AI accent action: flat primary-subtle fill — same button system as
+   primary/secondary, distinct but no gradient, glow, or sparkle. */
 .btn-ai {
-  background: linear-gradient(135deg, #f4f1ff 0%, #e7e0ff 100%);
+  background: var(--color-primary-subtle);
   color: var(--color-primary);
-  border: 1px solid var(--color-secondary-border);
-  box-shadow: 0 1px 2px rgba(49, 46, 129, 0.10);
+  border: 1px solid var(--color-border);
+  box-shadow: none;
   font-weight: 600;
 }
 .btn-ai:hover {
-  background: linear-gradient(135deg, #ece6ff 0%, #ddd2ff 100%);
-  border-color: #a78bfa;
-  box-shadow: 0 3px 10px rgba(124, 58, 237, 0.18);
+  background: #dbeafe;
+  border-color: var(--color-border);
+  box-shadow: none;
 }
-.btn-ai .spark { font-size: 0.95em; line-height: 1; }
 
-/* Off-today: drop the pale-lavender island. Same charcoal-lilac family as
-   secondary, light type, no glow. */
+/* Off-today: cool charcoal secondary family, light type, no glow. */
 html[data-notebook-day] .btn-ai {
-  background: var(--color-secondary-bg);
+  background: var(--color-primary-subtle);
   color: var(--color-text-strong);
   border-color: var(--color-secondary-border);
   box-shadow: none;
@@ -627,7 +627,7 @@ html[data-notebook-day] .btn-secondary {
    Press sweep: a translucent wash fills the button left→right while pressed
    (::after overlay), then fades out on release; the scaleX reset is delayed
    behind the fade so the retreat is never visible. White wash on the solid
-   variants, indigo tint on the light ones. */
+   variants, primary-blue tint on the light ones. */
 .btn-primary, .btn-secondary, .btn-danger, .btn-ai {
   position: relative;
   overflow: hidden; /* clips the sweep to the rounded corners */
@@ -648,7 +648,7 @@ html[data-notebook-day] .btn-secondary {
 }
 .btn-secondary::after,
 .btn-ai::after {
-  background: linear-gradient(90deg, rgba(49, 46, 129, 0.14), rgba(49, 46, 129, 0.05));
+  background: linear-gradient(90deg, rgba(29, 78, 216, 0.14), rgba(29, 78, 216, 0.05));
 }
 .btn-primary:active:not(:disabled)::after,
 .btn-secondary:active:not(:disabled)::after,
@@ -667,10 +667,10 @@ html[data-notebook-day] .btn-secondary {
 }
 .btn-primary:hover:not(:disabled),
 .btn-danger:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(30, 27, 75, 0.22);
+  box-shadow: 0 4px 12px rgba(29, 78, 216, 0.22);
 }
 .btn-secondary:hover:not(:disabled) {
-  box-shadow: 0 3px 8px rgba(49, 46, 129, 0.12);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.10);
 }
 .btn-primary:active:not(:disabled),
 .btn-secondary:active:not(:disabled),
@@ -950,7 +950,7 @@ dialog[open]::backdrop {
 
 /* ── Popup menu ──
    In-page dropdown menus that share the navbar dropdowns' look: white panel,
-   soft border/shadow, lavender hover. Pair with .dropdown-in for the unroll
+   soft border/shadow, primary-subtle hover. Pair with .dropdown-in for the unroll
    and position the panel from the trigger inline. */
 .menu-pop {
   display: flex;
@@ -960,7 +960,7 @@ dialog[open]::backdrop {
   background: #fff;
   border: 1px solid var(--color-surface-border);
   border-radius: 12px;
-  box-shadow: 0 10px 28px rgba(30, 27, 75, 0.16);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
 }
 .menu-pop-item {
   display: block;
@@ -978,8 +978,8 @@ dialog[open]::backdrop {
   transition: background 0.12s, color 0.12s;
 }
 .menu-pop-item:hover {
-  background: #f0eeff;
-  color: #312e81;
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-ink);
 }
 .menu-pop-item.is-selected {
   background: var(--color-secondary-bg);
@@ -1133,7 +1133,7 @@ dialog[open]::backdrop {
 }
 .btn-secondary.btn-loading::after,
 .btn-ai.btn-loading::after {
-  background: linear-gradient(90deg, transparent, rgba(49, 46, 129, 0.10), transparent);
+  background: linear-gradient(90deg, transparent, rgba(29, 78, 216, 0.10), transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .btn-loading::after { animation: none; opacity: 0; }
@@ -1211,7 +1211,7 @@ dialog[open]::backdrop {
 }
 .prep-split:hover {
   border-color: var(--color-secondary-border);
-  box-shadow: 0 2px 8px rgba(49, 46, 129, 0.10);
+  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.10);
   transform: translateY(-1px);
 }
 .prep-split:active {
@@ -1222,7 +1222,7 @@ dialog[open]::backdrop {
 .prep-split.is-selected {
   border-color: var(--color-primary);
   box-shadow: inset 0 0 0 1px var(--color-primary);
-  background: #eef2ff;
+  background: var(--color-primary-subtle);
 }
 .prep-split__count { font-weight: 600; white-space: nowrap; }
 .prep-split.is-selected .prep-split__count { font-weight: 700; color: var(--color-primary); }
@@ -1237,7 +1237,7 @@ dialog[open]::backdrop {
   margin-top: 8px;
   padding: 6px 10px;
   background: #fff;
-  border: 1px solid #ddd6fe;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-size: 13px;
   color: var(--color-primary);
@@ -1248,7 +1248,7 @@ dialog[open]::backdrop {
   margin-top: 2px;
   font-weight: 400;
   font-size: 12px;
-  color: #6b21a8;
+  color: var(--color-primary-ink);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1406,8 +1406,8 @@ dialog[open]::backdrop {
 }
 
 .logging-style-option.is-selected {
-  border: 2px solid #7c3aed;
-  background: #f5f3ff;
+  border: 2px solid var(--color-primary);
+  background: var(--color-primary-subtle);
 }
 
 /* reset global input defaults on the radio button */
@@ -1418,7 +1418,7 @@ dialog[open]::backdrop {
   padding: 0;
   border: none;
   border-radius: 0;
-  accent-color: #7c3aed;
+  accent-color: var(--color-primary);
 }
 
 .logging-style-option input[type="radio"]:focus {
@@ -1439,7 +1439,7 @@ dialog[open]::backdrop {
 
 .logging-style-option.is-selected .logging-style-title {
   font-weight: 700;
-  color: #5b21b6;
+  color: var(--color-primary-ink);
 }
 
 .logging-style-description {
@@ -2040,9 +2040,9 @@ dialog[open]::backdrop {
     color var(--dur-open) var(--ease-out);
 }
 .day-off-banner--future {
-  background: #faf5ff;
-  border-color: #e9d5ff;
-  color: #581c87;
+  background: var(--color-primary-subtle);
+  border-color: #bfdbfe;
+  color: var(--color-primary-ink);
 }
 /* Charcoal page: drop the leftover pastel chips. */
 html[data-notebook-day] .day-off-banner {
@@ -2304,15 +2304,6 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   word-break: break-word;
-}
-
-/* Little food glyph before a meal title, matched from the title/ingredients
-   (see mealEmoji.js). Slightly smaller than the title so it decorates rather
-   than dominates. */
-.meal-emoji {
-  margin-right: 8px;
-  font-size: 0.9em;
-  line-height: 1;
 }
 
 /* Macro summary: one compact row that never wraps to a second (orphan) line */

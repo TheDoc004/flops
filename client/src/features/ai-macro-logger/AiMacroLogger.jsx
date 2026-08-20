@@ -16,7 +16,6 @@ import ConversationThread from './ConversationThread';
 import FollowUpComposer from './FollowUpComposer';
 import VoiceInput from './VoiceInput';
 import { reconcileMealPrep } from './mealPrep';
-import { ingredientEmoji } from './ingredientEmoji';
 import {
   enrichEstimate, strongMatchCount, basisFromLibrary, deriveBasis,
   scaleBasisToAmount, likelyLibraryMatches, searchLibrary,
@@ -90,7 +89,7 @@ const AI_BADGE = {
 
 // Where an ingredient's macros came from (review badges).
 const SOURCE_META = {
-  provided: { label: 'Provided in message', short: 'Yours', bg: '#eef2ff', border: '#c7d2fe', color: '#3730a3', kind: null },
+  provided: { label: 'Provided in message', short: 'Yours', bg: '#eff6ff', border: '#bfdbfe', color: '#1e40af', kind: null },
   library: { label: 'Ingredient library', short: 'Saved', bg: '#ecfdf5', border: '#6ee7b7', color: '#065f46', kind: 'saved ingredient' },
   common: { label: 'Common data', short: 'Common', bg: '#eff6ff', border: '#bfdbfe', color: '#1e40af', kind: 'common food' },
   ai: { label: 'Estimated', short: 'AI', bg: '#f3f4f6', border: '#e5e7eb', color: '#6b7280', kind: null },
@@ -799,9 +798,9 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
 
           <ConversationThread thread={thread} loading={loading} pendingLabel="Updating the recipe…" />
 
-          <div style={{ padding: 12, background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: 10, marginBottom: 14 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#312e81' }}>{recipeReview.recipe.name}</div>
-            <div style={{ marginTop: 4, fontSize: 12, color: '#6b21a8' }}>
+          <div style={{ padding: 12, background: 'var(--color-primary-subtle)', border: '1px solid var(--color-border)', borderRadius: 10, marginBottom: 14 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-primary-ink)' }}>{recipeReview.recipe.name}</div>
+            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-primary)' }}>
               Matched from your saved recipes{recipeReview.matchConfidence ? ` · ${recipeReview.matchConfidence} confidence` : ''}.
             </div>
             {recipeReview.recipe.recipe_kind === 'limited' && recipeReview.recipe.remaining_uses != null && (
@@ -823,7 +822,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
             <button
               type="button"
               onClick={() => useFreeformInstead(recipeReview.fallbackEstimate)}
-              style={{ marginTop: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: '#7c3aed', textDecoration: 'underline' }}
+              style={{ marginTop: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: 'var(--color-link)', textDecoration: 'underline' }}
             >
               Not this recipe? Use a freeform estimate instead
             </button>
@@ -897,7 +896,6 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
                 return (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '5px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13, alignItems: 'center' }}>
                     <span style={{ color: '#1f2937', fontWeight: 500, minWidth: 0 }}>
-                      <span aria-hidden="true" style={{ marginRight: 6 }}>{ingredientEmoji(r.name)}</span>
                       {r.name}
                       <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8 }}>
                         {r.amountText != null ? r.amountText : (r.amount != null ? `${+Number(r.amount).toFixed(2)}${r.unit ? ` ${r.unit}` : ''}` : '')}
@@ -998,7 +996,6 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
             )}
             {estimate.ingredients.map((ing, idx) => {
               const meta = SOURCE_META[rowSourceKey(ing)];
-              const emoji = ingredientEmoji(ing.name);
               const basis = ing.basis || deriveBasis(ing, library);
               // A big gap between a saved/common source and the AI's own estimate
               // for the SAME amount usually means a dry/raw ↔ cooked weight
@@ -1047,7 +1044,6 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
                     onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRowPanel(idx); } }}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer' }}
                   >
-                    <span aria-hidden="true" style={{ fontSize: 19, lineHeight: 1, flexShrink: 0 }}>{emoji}</span>
                     <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--color-text-strong)', overflowWrap: 'anywhere' }}>{ing.name}</span>
                       <span style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>

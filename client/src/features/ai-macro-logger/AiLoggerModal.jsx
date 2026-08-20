@@ -30,7 +30,7 @@ export default function AiLoggerModal({ initialDate, onLogged, onClose }) {
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
         <h2 style={{ margin: 0 }}>
-          <span className="spark" aria-hidden="true">✨</span> AI Estimate
+          AI Estimate
         </h2>
         <button type="button" className="modal-close-x" aria-label="Close" onClick={close}>✕</button>
       </div>

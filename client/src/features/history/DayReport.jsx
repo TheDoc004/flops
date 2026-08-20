@@ -89,7 +89,7 @@ export default function DayReport({ day, onAddMeal, onEditMeal, onDeleteMeal }) 
       {/* Nutrients needing attention — chips share the bar status colors. */}
       {attention.length > 0 && (
         <div style={{ marginBottom: 16, padding: '10px 12px', background: '#faf9f7', border: '1px solid #e8e4dc', borderRadius: 10 }}>
-          <strong style={{ fontSize: 13, color: '#1e1b4b' }}>Needs attention</strong>
+          <strong style={{ fontSize: 13, color: 'var(--color-primary-ink)' }}>Needs attention</strong>
           <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {attention.map(a => {
               const st = statusFor(a.key, a.value);

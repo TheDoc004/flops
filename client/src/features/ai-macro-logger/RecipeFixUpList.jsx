@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { likelyLibraryMatches, searchLibrary } from './ingredientSource';
 import { amountFor } from './recipeCommand';
-import { ingredientEmoji } from './ingredientEmoji';
 
 /**
  * The "couldn't apply" list in the recipe review — with a way out.
@@ -94,7 +93,6 @@ export default function RecipeFixUpList({ items, library, onResolve }) {
                             borderRadius: 999, padding: '5px 11px', fontSize: 13, cursor: 'pointer',
                           }}
                         >
-                          <span aria-hidden="true" style={{ marginRight: 5 }}>{ingredientEmoji(ing.name)}</span>
                           {ing.name}
                         </button>
                       ))}

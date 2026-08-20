@@ -10,7 +10,7 @@ import ChartReveal from '@shared/ui/ChartReveal';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
 import usePaginationAnchor from '@shared/hooks/usePaginationAnchor';
 
-/** Sort selector styled like the navbar dropdowns (unroll + lavender hover). */
+/** Sort selector styled like the navbar dropdowns (unroll + primary-subtle hover). */
 function SortMenu({ value, options, onChange }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
@@ -257,20 +257,20 @@ export default function RangeReport({ days, onAddMeal, onEditMeal, onDeleteMeal 
                   onClick={() => toggle(d.date)}
                   aria-expanded={isOpen}
                   style={{
-                    width: '100%', textAlign: 'left', background: isOpen ? '#f5f3ff' : '#faf9f7',
+                    width: '100%', textAlign: 'left', background: isOpen ? 'var(--color-primary-subtle)' : '#faf9f7',
                     border: 'none', borderRadius: 0, padding: '12px 14px', cursor: 'pointer',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', minHeight: 0,
                   }}
                 >
                   <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 10 }}>{isOpen ? '▲' : '▼'}</span>
-                    <strong style={{ fontSize: 14, color: '#1e1b4b' }}>{getWeekdayLongNameFromIsoDate(d.date)}</strong>
+                    <strong style={{ fontSize: 14, color: 'var(--color-primary-ink)' }}>{getWeekdayLongNameFromIsoDate(d.date)}</strong>
                     <span style={{ fontSize: 12, color: 'var(--color-text-faint)' }}>{d.date}</span>
                     <span style={{ fontSize: 12, color: 'var(--color-text-faint)' }}>{d.entries.length} meal{d.entries.length === 1 ? '' : 's'}</span>
                   </span>
                   <span style={{ fontSize: 13, color: '#374151', fontVariantNumeric: 'tabular-nums' }}>
                     <strong>{Math.round(d.totals.calories).toLocaleString('en-US')}</strong> cal
-                    {cov != null && <span style={{ marginLeft: 10, fontSize: 12, color: '#7c3aed' }}>{cov}% micro</span>}
+                    {cov != null && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--color-primary)' }}>{cov}% micro</span>}
                   </span>
                 </button>
                 {isOpen && (

@@ -23,9 +23,9 @@
   font-size: 1.25rem;
   letter-spacing: 0.12em;
   font-weight: 700;
-  color: #1e1b4b;
-  background: #f5f3ff;
-  border: 1px solid #c4b5fd;
+  color: var(--color-primary-ink);
+  background: var(--color-primary-subtle);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 10px 14px;
 }
@@ -54,7 +54,7 @@
 }
 
 .chevron {
-  color: #7c3aed;
+  color: var(--color-primary);
   font-size: 14px;
   line-height: 1.4;
 }
@@ -121,7 +121,7 @@
 .back {
   border: none;
   background: none;
-  color: #7c3aed;
+  color: var(--color-link);
   cursor: pointer;
   padding: 0;
   margin-bottom: 8px;

@@ -470,7 +470,7 @@ export default function Dashboard() {
             style={dashActionStyle}
             title="Speak or describe a meal in plain language"
           >
-            <span className="spark" aria-hidden="true">✨</span> AI Estimate
+            AI Estimate
           </button>
           <button
             className="btn-primary"

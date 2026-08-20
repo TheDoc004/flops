@@ -29,7 +29,7 @@ export default function NutritionReport({ days, loading, error, onAddMeal, onEdi
       {single ? (
         <>
           <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--color-text-faint)' }}>
-            <strong style={{ color: '#1e1b4b' }}>{getWeekdayLongNameFromIsoDate(days[0].date)}</strong> · {days[0].date}
+            <strong style={{ color: 'var(--color-primary-ink)' }}>{getWeekdayLongNameFromIsoDate(days[0].date)}</strong> · {days[0].date}
           </p>
           <DayReport
             day={days[0]}

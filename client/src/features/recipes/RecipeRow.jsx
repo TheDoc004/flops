@@ -64,7 +64,7 @@ export default function RecipeRow({ recipe, onLog, onEditInBuilder, onDelete, on
               const tint = archived
                 ? { color: 'var(--color-text-faint)', background: 'var(--color-divider)' }
                 : isPrep
-                  ? { color: '#5b21b6', background: '#f3efff' }
+                  ? { color: 'var(--color-primary-ink)', background: 'var(--color-primary-subtle)' }
                   : { color: '#b45309', background: '#fffbeb' };
               return (
                 <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999, ...tint }}>

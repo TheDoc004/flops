@@ -311,9 +311,9 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
               title={row.date}
               style={{
                 borderRadius: 10,
-                border: isSelected ? '2px solid #7c3aed' : `1px solid ${m.border}`,
-                background: isSelected ? '#f5f3ff' : (hasTarget ? m.bg : 'transparent'),
-                boxShadow: isSelected ? '0 0 0 2px rgba(124, 58, 237, 0.22)' : 'none',
+                border: isSelected ? '2px solid var(--color-primary)' : `1px solid ${m.border}`,
+                background: isSelected ? 'var(--color-primary-subtle)' : (hasTarget ? m.bg : 'transparent'),
+                boxShadow: isSelected ? '0 0 0 2px rgba(29, 78, 216, 0.22)' : 'none',
                 minHeight: dayMinHeight,
                 cursor: 'pointer',
                 overflow: 'hidden',

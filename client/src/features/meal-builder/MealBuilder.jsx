@@ -537,7 +537,7 @@ export default function MealBuilder() {
           {!recipeId && (
             <p style={{ margin: '0 0 12px', fontSize: 15, color: 'var(--color-text-muted)' }}>
               Only a rough idea? Use the{' '}
-              <Link to="/ai-logger" style={{ color: 'var(--color-link)' }}>✨ AI logger</Link>.
+              <Link to="/ai-logger" style={{ color: 'var(--color-link)' }}>AI logger</Link>.
             </p>
           )}
           {loadingRecipe && recipeId ? (

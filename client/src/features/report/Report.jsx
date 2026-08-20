@@ -80,8 +80,8 @@ export default function Report() {
                   display: 'inline-flex', alignItems: 'center', gap: 7,
                   cursor: 'pointer', padding: '9px 14px', borderRadius: 10,
                   whiteSpace: 'nowrap', fontSize: 14,
-                  border: `1px solid ${active ? '#c4b5fd' : 'var(--color-surface-border)'}`,
-                  background: active ? '#f5f3ff' : 'transparent',
+                  border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-surface-border)'}`,
+                  background: active ? 'var(--color-primary-subtle)' : 'transparent',
                   color: active ? 'var(--color-primary)' : '#4b5563',
                   fontWeight: active ? 500 : 400,
                   transition: 'border-color 0.12s, background 0.12s, color 0.12s',
@@ -105,7 +105,7 @@ export default function Report() {
         {preset === 'custom' && (
           <div className="form-grid-2" style={{
             padding: '12px 14px', marginBottom: 16,
-            borderRadius: 10, border: '1px solid #c4b5fd', background: '#faf7ff',
+            borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-primary-subtle)',
           }}>
             <div>
               <label style={{ marginBottom: 4 }}>Start</label>

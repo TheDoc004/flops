@@ -19,7 +19,7 @@
 .card h1 {
   margin: 0 0 10px;
   font-size: 1.4rem;
-  color: #1e1b4b;
+  color: var(--color-primary-ink);
 }
 
 .progress {
@@ -58,7 +58,7 @@
 
 .choice strong {
   font-size: 14px;
-  color: #1e1b4b;
+  color: var(--color-primary-ink);
 }
 
 .choice span {
@@ -67,8 +67,8 @@
 }
 
 .choiceOn {
-  border-color: #c4b5fd;
-  background: #f5f3ff;
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
 }
 
 .row {

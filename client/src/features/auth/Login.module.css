@@ -14,7 +14,7 @@
   border: 1px solid #e8e4dc;
   border-radius: 16px;
   padding: 28px 24px 24px;
-  box-shadow: 0 12px 40px rgba(30, 27, 75, 0.06);
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
 }
 
 .brand {
@@ -28,7 +28,7 @@
   margin: 0;
   font-size: 1.5rem;
   letter-spacing: -0.02em;
-  color: #1e1b4b;
+  color: var(--color-primary-ink);
 }
 
 .badge {
@@ -64,7 +64,7 @@
 }
 
 .dev {
-  color: #7c3aed;
+  color: var(--color-link);
 }
 
 .error {
@@ -92,8 +92,8 @@
 
 .apple {
   width: 100%;
-  border: 1px solid #1e1b4b;
-  background: #1e1b4b;
+  border: 1px solid var(--color-primary-ink);
+  background: var(--color-primary-ink);
   color: #fff;
   border-radius: 10px;
   padding: 11px 14px;
@@ -109,7 +109,7 @@
 .linkBtn {
   background: none;
   border: none;
-  color: #7c3aed;
+  color: var(--color-link);
   font-size: 13px;
   cursor: pointer;
   padding: 8px 0 0;

@@ -18,7 +18,7 @@ import { summarizeWeights, projectWeight, trendValueOn } from './weightStats';
 /**
  * Chart colors. Validated with the dataviz palette script against the card
  * surface (#faf9f7): both sit inside the lightness band, clear the chroma floor,
- * and separate under every CVD simulation. The app's --color-primary (#312e81)
+ * and separate under every CVD simulation. The app's --color-primary (#1d4ed8)
  * was the obvious pick but reads too dark for a data mark — it failed the band.
  */
 const SERIES = '#4f46e5';   // measured weigh-ins

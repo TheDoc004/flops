@@ -27,7 +27,15 @@ The palette is intentionally narrow. Add color only when it carries meaning.
 |---|---|---|
 | `--color-primary` | `#1d4ed8` | Primary actions only. One per view. |
 | `--color-primary-hover` | `#1e40af` | Hover/active state |
-| `--color-primary-subtle` | `#eff6ff` | Selected rows, active backgrounds |
+| `--color-primary-ink` | `#1e3a8a` | Headings, selected-label ink |
+| `--color-primary-subtle` | `#eff6ff` | Selected rows, active backgrounds, AI Estimate fill |
+
+### Secondary (cool neutrals — not lavender)
+| Token | Value | Use |
+|---|---|---|
+| `--color-secondary-bg` | `#f3f4f6` | Secondary button fill |
+| `--color-secondary-bg-hover` | `#e5e7eb` | Secondary hover |
+| `--color-secondary-border` | `#e5e7eb` | Secondary border |
 
 ### Semantic (data states)
 Color communicates status, not decoration. Use these and nothing else for state.
@@ -41,8 +49,8 @@ Color communicates status, not decoration. Use these and nothing else for state.
 ### Surfaces
 | Token | Value | Use |
 |---|---|---|
-| `--color-bg` | `#f9fafb` | Page background |
-| `--color-surface` | `#ffffff` | Cards, modals, inputs |
+| `--color-bg` | `#f3ede3` | Warm notebook page background (kept) |
+| `--color-surface` | `#faf9f7` | Cards, modals, inputs |
 | `--color-surface-muted` | `#f3f4f6` | Hover rows, subtle inset areas |
 | `--color-border` | `#e5e7eb` | Borders and dividers |
 
@@ -64,7 +72,11 @@ Fixed. Never change per-macro color mid-screen.
 | Fat | `#f97316` |
 | Fiber | `#8b5cf6` |
 
-**No gradients.** No color transitions on data elements. Flat color only.
+Fiber purple is a **data color only** — never use it (or other lavenders) for buttons, selection chrome, or AI accents.
+
+**No gradients** on chrome or data fills. No color transitions on data elements. Flat color only.
+
+**No sparkles / no lavender AI chrome.** AI Estimate (`.btn-ai`) is a flat `--color-primary-subtle` fill with primary ink — no gradient, purple glow, or ✨ glyphs.
 
 ---
 
@@ -153,9 +165,10 @@ This keeps surfaces feeling grounded without visual noise.
 ## Component Philosophy
 
 ### Buttons
-Three types. That's it.
+Four types in the button system:
 - **Primary** — filled, `--color-primary`. One per screen context. The clearest action.
-- **Secondary** — bordered, transparent fill. Supporting actions.
+- **Secondary** — cool neutral fill (`--color-secondary-bg`), primary ink. Supporting actions.
+- **AI Estimate** (`.btn-ai`) — flat `--color-primary-subtle`, no sparkle/gradient/glow.
 - **Danger** — filled, `--color-negative`. Irreversible actions only (delete, remove).
 
 Height: `40px` desktop, `44px` mobile minimum. Padding: `12px 20px`.

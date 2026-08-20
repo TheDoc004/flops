@@ -242,8 +242,8 @@ export default function Profile() {
     <label style={{
       display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
       padding: '8px 10px', borderRadius: 9,
-      border: `1px solid ${current === value ? '#c4b5fd' : '#e8e4dc'}`,
-      background: current === value ? '#f5f3ff' : 'transparent',
+      border: `1px solid ${current === value ? 'var(--color-primary)' : '#e8e4dc'}`,
+      background: current === value ? 'var(--color-primary-subtle)' : 'transparent',
       transition: 'border-color 0.12s, background 0.12s',
     }}>
       <input
@@ -254,7 +254,7 @@ export default function Profile() {
         style={{ flexShrink: 0, marginTop: 3, width: 'auto' }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: '#1e1b4b', lineHeight: 1.3 }}>{label}</div>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-primary-ink)', lineHeight: 1.3 }}>{label}</div>
         <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>{sub}</div>
       </div>
     </label>
@@ -286,8 +286,8 @@ export default function Profile() {
         <label style={{
           display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
           padding: '8px 10px', marginBottom: 10, borderRadius: 9,
-          border: `1px solid ${isCoach ? '#c4b5fd' : '#e8e4dc'}`,
-          background: isCoach ? '#f5f3ff' : 'transparent',
+          border: `1px solid ${isCoach ? 'var(--color-primary)' : '#e8e4dc'}`,
+          background: isCoach ? 'var(--color-primary-subtle)' : 'transparent',
         }}>
           <input
             type="checkbox"
@@ -403,8 +403,8 @@ export default function Profile() {
           <label style={{
             display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
             padding: '8px 10px', marginBottom: 10, borderRadius: 9,
-            border: `1px solid ${dashSupplementsEnabled ? '#c4b5fd' : '#e8e4dc'}`,
-            background: dashSupplementsEnabled ? '#f5f3ff' : 'transparent',
+            border: `1px solid ${dashSupplementsEnabled ? 'var(--color-primary)' : '#e8e4dc'}`,
+            background: dashSupplementsEnabled ? 'var(--color-primary-subtle)' : 'transparent',
             transition: 'border-color 0.12s, background 0.12s',
           }}>
             <input

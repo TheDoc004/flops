@@ -15,7 +15,6 @@ import useMediaQuery from '@shared/hooks/useMediaQuery';
 import IngredientBreakdown from './IngredientBreakdown';
 import MealMicrosPanel from './MealMicrosPanel';
 import ViewToggle from './ViewToggle';
-import { mealEmoji } from './mealEmoji';
 import { parseMicros } from '@shared/utils/microNutrients';
 
 const PIE_COLORS = { protein: MACRO_COLORS.protein, carbs: MACRO_COLORS.carbs, fat: MACRO_COLORS.fat };
@@ -152,7 +151,6 @@ export default function LogEntryRow({
   const { macroUnits } = useMacroUnits();
   const ingredientRows = parseLoggedIngredients(entry);
   const hasBreakdown = !!ingredientRows;
-  const emoji = mealEmoji(entry.recipe_name, ingredientRows ? ingredientRows.map(r => r.name) : []);
   const hasMicros = !!parseMicros(entry);
 
   if (variant === 'dashboard') {
@@ -161,7 +159,6 @@ export default function LogEntryRow({
         {/* Row 1: meal name (up to 2 lines) + actions */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div className="meal-name" style={{ flex: 1, minWidth: 0 }}>
-            <span className="meal-emoji" aria-hidden="true">{emoji}</span>
             {entry.recipe_name}
           </div>
 
@@ -289,7 +286,6 @@ export default function LogEntryRow({
     <div style={{ borderBottom: '1px solid var(--color-divider)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <span className="meal-emoji" aria-hidden="true">{emoji}</span>
           <strong>{entry.recipe_name}</strong>
           <span style={{ color: 'var(--color-text-muted)', fontSize: 13, marginLeft: 8 }}>
             {entry.servings}x {entry.serving_size}

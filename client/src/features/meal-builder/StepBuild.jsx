@@ -40,12 +40,12 @@ export default function StepBuild({
             style={{
               marginBottom: 16,
               padding: '14px 16px',
-              background: '#eef2ff',
-              border: '1px solid #c7d2fe',
+              background: 'var(--color-primary-subtle)',
+              border: '1px solid #bfdbfe',
               borderRadius: 10,
             }}
           >
-            <p style={{ margin: '0 0 10px', fontSize: 15, color: '#3730a3' }}>
+            <p style={{ margin: '0 0 10px', fontSize: 15, color: 'var(--color-primary-ink)' }}>
               Your ingredient library is empty.
             </p>
             <button type="button" className="btn-primary" onClick={onAddIngredient}>

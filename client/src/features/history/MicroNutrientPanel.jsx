@@ -64,8 +64,8 @@ export default function MicroNutrientPanel({ values, confidence = null, coverage
             )}
             {confidence && (
               <span style={{
-                fontSize: 11, fontWeight: 600, color: '#5b21b6',
-                background: '#ede9fe', border: '1px solid #c4b5fd',
+                fontSize: 11, fontWeight: 600, color: 'var(--color-primary-ink)',
+                background: 'var(--color-primary-subtle)', border: '1px solid #bfdbfe',
                 borderRadius: 999, padding: '3px 10px',
               }}>
                 {CONF_LABEL[confidence] || confidence}
@@ -125,7 +125,7 @@ export default function MicroNutrientPanel({ values, confidence = null, coverage
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                     <span aria-hidden="true" style={{ display: 'inline-block', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s', color: '#9ca3af', fontSize: 12 }}>▸</span>
                     <span style={{
-                      fontSize: 14, fontWeight: 600, color: '#1e1b4b',
+                      fontSize: 14, fontWeight: 600, color: 'var(--color-primary-ink)',
                       fontFamily: "'DM Serif Display', Georgia, serif",
                     }}>
                       {group.label}

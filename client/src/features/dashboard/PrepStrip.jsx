@@ -225,14 +225,14 @@ export default function PrepStrip({ date, onLogged }) {
             <div
               key={s.id}
               style={{
-                border: '1px solid #e9d5ff',
-                background: s.status === 'snoozed' ? '#fafafa' : '#faf5ff',
+                border: '1px solid #bfdbfe',
+                background: s.status === 'snoozed' ? '#fafafa' : 'var(--color-primary-subtle)',
                 borderRadius: 12,
                 padding: 12,
                 marginBottom: 8,
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#581c87' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-primary-ink)' }}>
                 {s.coach_name || 'Coach'}
                 {s.note ? ` · ${s.note}` : ''}
               </div>
