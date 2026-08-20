@@ -6,6 +6,7 @@ import {
   saveViewingDate,
   loadViewingDate,
   formatMealsSectionTitle,
+  formatDisplayDate,
   VIEW_DATE_KEY,
   VIEW_DATE_STAY_KEY,
 } from './dateLocal';
@@ -43,6 +44,16 @@ describe('notebook day-hold', () => {
     expect(localStorage.getItem(VIEW_DATE_KEY)).toBe('2026-08-17');
     expect(localStorage.getItem(VIEW_DATE_STAY_KEY)).toBeNull();
     expect(shouldOfferNewDay(next, '2026-08-17')).toBe(false);
+  });
+});
+
+describe('formatDisplayDate', () => {
+  it('formats as weekday, short month, day', () => {
+    expect(formatDisplayDate('2026-08-19')).toBe('Wed, Aug 19');
+  });
+
+  it('includes year when the date is not this calendar year', () => {
+    expect(formatDisplayDate('2025-12-31')).toBe('Wed, Dec 31, 2025');
   });
 });
 

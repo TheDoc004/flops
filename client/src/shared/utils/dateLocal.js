@@ -80,6 +80,18 @@ export function goToCalendarToday(calendarToday = getLocalDateISO()) {
 }
 
 /**
+ * Human chrome date: "Wed, Aug 19" (year only when it isn't the current year).
+ * ISO YYYY-MM-DD stays in data and APIs, not in the UI.
+ */
+export function formatDisplayDate(isoDate) {
+  if (!isIsoDate(isoDate)) return isoDate || '';
+  const d = parseLocalDateISO(isoDate);
+  const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString('en-US', opts);
+}
+
+/**
  * Dashboard meals H2 for the viewing calendar day relative to wall-clock today.
  * @param {string} viewingISO YYYY-MM-DD notebook day
  * @param {string} calendarISO YYYY-MM-DD local today

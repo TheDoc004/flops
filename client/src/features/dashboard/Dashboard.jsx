@@ -10,7 +10,7 @@ import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
 import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
-import { getLocalDateISO, parseLocalDateISO, loadViewingDate, saveViewingDate, shouldOfferNewDay, dismissNewDayOffer, goToCalendarToday, addDaysLocal, formatMealsSectionTitle } from '@shared/utils/dateLocal';
+import { getLocalDateISO, parseLocalDateISO, loadViewingDate, saveViewingDate, shouldOfferNewDay, dismissNewDayOffer, goToCalendarToday, addDaysLocal, formatMealsSectionTitle, formatDisplayDate } from '@shared/utils/dateLocal';
 import { goalsToTargets, hasAnyTarget, resolveGoalRowForDate } from '@features/adherence';
 import DashboardWeightRow from './DashboardWeightRow';
 import PrepStrip from './PrepStrip';
@@ -438,7 +438,7 @@ export default function Dashboard() {
           </button>
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'clamp(15px, 1vw, 17px)' }}>
-              <strong style={{ color: 'var(--color-primary-ink)', fontWeight: 600 }}>{today}</strong>
+              <strong style={{ color: 'var(--color-primary-ink)', fontWeight: 600 }}>{formatDisplayDate(today)}</strong>
               {goalsLoaded && !goalsError
                 ? (
                   <>
@@ -497,14 +497,14 @@ export default function Dashboard() {
                 <>
                   <strong>Planning ahead</strong>
                   <span>
-                    {' — '}{today} is ahead of today. Plan ahead here, or jump back to {calendarToday}.
+                    {' — '}{formatDisplayDate(today)} is ahead of today. Plan ahead here, or jump back to {formatDisplayDate(calendarToday)}.
                   </span>
                 </>
               ) : (
                 <>
-                  <strong>You’re looking at {today}</strong>
+                  <strong>You’re looking at {formatDisplayDate(today)}</strong>
                   <span>
-                    {' — '}go to today ({calendarToday})?
+                    {' — '}go to today ({formatDisplayDate(calendarToday)})?
                   </span>
                 </>
               )}
@@ -514,7 +514,7 @@ export default function Dashboard() {
                 Go to today
               </button>
               <button type="button" className="btn-secondary" onClick={handleStayOnDay} style={{ minHeight: 40, padding: '8px 16px' }}>
-                {isFutureDay ? 'Stay & plan' : `Stay on ${today}`}
+                {isFutureDay ? 'Stay & plan' : `Stay on ${formatDisplayDate(today)}`}
               </button>
               <button
                 type="button"

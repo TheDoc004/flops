@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { LogMealModal } from '@features/meal-logging';
 import { fetchLogRange, createLogEntry, createCustomLog, deleteLogEntry, updateLogEntry } from '@shared/api/log';
 import { sumMacros, sumSupplementMacros, addMacroTotals } from '@shared/utils/macros';
-import { getLocalDateISO, addDaysLocal } from '@shared/utils/dateLocal';
+import { getLocalDateISO, addDaysLocal, formatDisplayDate } from '@shared/utils/dateLocal';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import WeightTrendChart from './WeightTrendChart';
 import Reveal from '@shared/ui/Reveal';
@@ -208,7 +208,7 @@ export default function History() {
   const selectionLabel = useMemo(() => {
     if (selDates.length === 0) return 'No days selected.';
     if (presetN) return `Last ${presetN} days`;
-    if (selDates.length === 1) return `1 day · ${selDates[0]}`;
+    if (selDates.length === 1) return `1 day · ${formatDisplayDate(selDates[0])}`;
     return `${selDates.length} selected days`;
   }, [selDates, presetN]);
 

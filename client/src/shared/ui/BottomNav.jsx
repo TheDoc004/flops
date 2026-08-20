@@ -41,9 +41,8 @@ export default function BottomNav() {
         className={recipesActive ? `${styles.tab} ${styles.tabActive}` : styles.tab}
       >
         <IconRecipes />
-        {/* Two lines so the full name fits a fifth of the bar; the pages
-            themselves carry a sub-nav across Recipes / Ingredients. */}
-        <span className={styles.tabTwoLine}>Recipes &amp;<br />Ingredients</span>
+        {/* Two destinations share this tab: recipes, meal builder, ingredients. */}
+        <span>Library</span>
       </NavLink>
       <NavLink to="/history" className={tabClass}><IconHistory /><span>Review</span></NavLink>
       <NavLink to="/training" className={tabClass}><IconTraining /><span>Training</span></NavLink>

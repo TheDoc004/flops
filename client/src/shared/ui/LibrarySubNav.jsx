@@ -2,8 +2,8 @@ import { NavLink, Link, useLocation } from 'react-router-dom';
 import styles from './LibrarySubNav.module.css';
 
 /**
- * Header for the "Recipes & Ingredients" section: the crossing between its two
- * pages, plus the way into Meal Builder.
+ * Header for the Library section: the crossing between Recipes and Ingredients,
+ * plus the way into Meal Builder.
  *
  * The top nav points at one route and the bottom tab can only point at one, so
  * this is the only way across to Ingredients — it isn't decoration. "Build a

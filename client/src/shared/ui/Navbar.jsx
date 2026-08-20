@@ -4,11 +4,9 @@ import styles from './Navbar.module.css';
 
 /* Flat top nav — every item is a direct link, no dropdowns.
 
-   "Recipes & Ingredients" is one section spanning three routes, and it lands on
-   the recipe library. Crossing to Ingredients is the segmented control at the
-   top of the page; Meal Builder is the button beside it. A dropdown to reach
-   three destinations was a click spent on what a link reaches directly, and it
-   duplicated navigation the pages already carry. */
+   Library is one section spanning three routes, and it lands on the recipe
+   library. Crossing to Ingredients is the segmented control at the top of
+   the page; Meal Builder is the button beside it. */
 function pathMatches(pathname, to) {
   return pathname === to || pathname.startsWith(`${to}/`);
 }
@@ -20,14 +18,14 @@ export default function Navbar() {
   const links = [
     { label: 'Today', to: '/', end: true },
     {
-      label: 'Recipes & Ingredients',
+      label: 'Library',
       to: '/recipes',
       matchPaths: ['/recipes', '/meal-builder', '/ingredients'],
     },
     { label: 'Review', to: '/history' },
     { label: 'Training', to: '/training' },
     ...(isCoach ? [{ label: 'Coach', to: '/coach' }] : []),
-    { label: 'Goals & Profile', to: '/plan' },
+    { label: 'Goals', to: '/plan' },
   ];
 
   return (
