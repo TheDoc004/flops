@@ -734,7 +734,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
           />
           {/* Loading message floats over the box instead of pushing content down */}
           {loading && (
-            <div style={{
+            <div className="modal-loading-overlay" style={{
               position: 'absolute', inset: 0, borderRadius: 8,
               background: 'rgba(255,255,255,0.82)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,

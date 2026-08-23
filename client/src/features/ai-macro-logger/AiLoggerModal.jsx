@@ -29,7 +29,7 @@ export default function AiLoggerModal({ initialDate, onLogged, onClose }) {
       style={{ width: 'min(600px, 94vw)', maxHeight: '92vh', overflowY: 'auto' }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
-        <h2 style={{ margin: 0 }}>
+        <h2 className="section-title" style={{ margin: 0 }}>
           AI Estimate
         </h2>
         <button type="button" className="modal-close-x" aria-label="Close" onClick={close}>✕</button>

@@ -973,6 +973,38 @@ dialog {
 }
 dialog::backdrop { background: rgba(0,0,0,0.4); }
 
+/* Off-today: native <dialog> keeps the browser's white canvas while page
+   tokens flip to light type — labels and titles vanish. Match notebook chrome
+   inside modals and give nested cards/inputs a readable stack. */
+html[data-notebook-day] dialog {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-surface-border);
+}
+html[data-notebook-day] dialog .card {
+  background: var(--color-bg);
+  border-color: var(--color-surface-border);
+}
+html[data-notebook-day] dialog input,
+html[data-notebook-day] dialog select,
+html[data-notebook-day] dialog textarea {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-color: var(--color-input-border);
+}
+html[data-notebook-day] dialog .modal-subpanel {
+  background: var(--color-bg) !important;
+  border-color: var(--color-border) !important;
+}
+html[data-notebook-day] dialog .modal-highlight-panel {
+  background: var(--color-primary-subtle) !important;
+  border-color: var(--color-secondary-border) !important;
+  color: var(--color-primary-ink) !important;
+}
+html[data-notebook-day] dialog .modal-loading-overlay {
+  background: rgba(42, 44, 46, 0.88);
+}
+
 /* ── Dialog entrance ──
    Dialogs rise/fade in and the backdrop fades up behind them. Keyed off the
    [open] attribute, so it plays automatically on showModal() — no JS. The

@@ -438,7 +438,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           </div>
         )}
 
-        <div className="panel-in" style={{ padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
+        <div className="panel-in modal-subpanel" style={{ padding: 10, borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-secondary-bg)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 28, marginBottom: 8 }}>
             <div>
               <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>
@@ -605,14 +605,15 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
           {receiptTotals && (
             <div
+              className="modal-highlight-panel"
               style={{
                 marginTop: 8,
                 padding: '7px 10px',
                 borderRadius: 8,
-                background: '#eff6ff',
-                border: '1px solid #bfdbfe',
+                border: '1px solid var(--color-border)',
+                background: 'var(--color-primary-subtle)',
                 fontSize: 12,
-                color: '#1e3a8a',
+                color: 'var(--color-primary-ink)',
               }}
             >
               <strong>Receipt total:</strong>{' '}
