@@ -632,16 +632,28 @@ button:not(:disabled):active,
 .btn-danger-ghost { color: var(--color-danger); }
 .btn-danger-ghost:hover:not(:disabled) { background: #fef2f2; }
 
-/* Off-today: cool charcoal secondary family, light type, no glow. */
+/* Off-today: cool charcoal secondary family, light type, no glow.
+   --color-primary is a sky blue for links; white-on-sky fails on Log Meal /
+   AI Submit. Give those fills a darker blue (or ice type on navy) so they
+   stay readable on the charcoal page. */
+html[data-notebook-day] .btn-primary {
+  background: #1d4ed8;
+  color: #f8fafc;
+}
+html[data-notebook-day] .btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+  color: #f8fafc;
+}
 html[data-notebook-day] .btn-ai {
-  background: var(--color-primary-subtle);
-  color: var(--color-text-strong);
-  border-color: var(--color-secondary-border);
+  background: #1e3a5f;
+  color: #dbeafe;
+  border-color: #60a5fa;
   box-shadow: none;
 }
 html[data-notebook-day] .btn-ai:hover:not(:disabled) {
-  background: var(--color-secondary-bg-hover);
-  border-color: var(--color-secondary-border);
+  background: #1e40af;
+  color: #f8fafc;
+  border-color: #93c5fd;
   box-shadow: none;
 }
 html[data-notebook-day] .btn-secondary {
