@@ -78,6 +78,25 @@ Fiber purple is a **data color only** — never use it (or other lavenders) for 
 
 **No sparkles / no lavender AI chrome.** AI Estimate (`.btn-ai`) is a flat `--color-primary-subtle` fill with primary ink — no gradient, purple glow, or ✨ glyphs.
 
+### Notebook-day override (Dashboard off-today only)
+
+When the user views a past or future date on **`/`**, `Dashboard.jsx` sets
+`html[data-notebook-day="past"|"future"]`. Token overrides live in
+`client/src/styles/index.css` — charcoal surfaces, light text, sky-blue links
+(`--color-primary: #60a5fa`).
+
+**Rules for agents styling this surface:**
+
+1. **Never assume modals inherit the page theme.** Native `<dialog>` defaults to white;
+   add/use `html[data-notebook-day] dialog { … }` rules.
+2. **Override action buttons off-today.** `.btn-primary` and `.btn-ai` need notebook-day
+   fills (darker blue / navy) — sky blue on charcoal fails contrast.
+3. **Use tokens in modal JSX**, not hardcoded `#f9fafb` / `#eff6ff`. Utility classes:
+   `modal-subpanel`, `modal-highlight-panel`, `modal-loading-overlay`.
+4. **Only Dashboard sets the attribute** — other routes stay warm beige unless extended deliberately.
+
+See **`HANDOFF.md`** § Notebook-day UI for file pointers and recent fixes.
+
 ---
 
 ## Spacing

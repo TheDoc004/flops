@@ -1,25 +1,39 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-08-17_
+_Last updated: 2026-08-23_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
 >
 > **Auth / onboarding / coach** are live: Bearer sessions (email OTP + Apple/dev),
 > first-run onboarding, invite codes, consent scopes, Coach roster + soft suggestions.
-> **Deploy:** follow **`docs/deploy-checklist.md`** (Render + Vercel). App Store later:
-> **`docs/app-store-path.md`**.
+>
+> **Deploy:** **LIVE** — see [Deploy (live)](#deploy-live) below and **`docs/deploy-checklist.md`**.
 
-Snapshot of where the app stands so any session (human or Claude) can pick up quickly.
-For conventions, architecture, and the phase vision, see `CLAUDE.md` — this file is the
+Snapshot of where the app stands so any session (human or Claude Code) can pick up quickly.
+For conventions, architecture, and the phase vision, see **`CLAUDE.md`** — this file is the
 _current-state_ companion to it.
 
-> **⚠️ Repo location changed (2026-07-25):** the project now lives at **`~/dev/FLOPS`**.
-> It used to be under `~/Documents/FLOPS workspace/…`, which macOS was syncing to iCloud
-> with "Optimize Mac Storage" on. iCloud evicted files to placeholders, so `node_modules`
-> re-downloaded on demand and the API took ~60s to boot — the frontend timed out with
-> **"Failed to fetch."** Moving out of iCloud fixed it (cold boot is now instant; Vite
-> ~525ms). **Do not put this project back in `~/Documents` or any cloud-synced folder.**
+> **⚠️ Canonical repo:** **`~/dev/FLOPS`**. Do **not** work from
+> `~/Documents/FLOPS workspace/` — that folder is stale / iCloud-adjacent and may
+> not match what is deployed. Claude Code should `cd ~/dev/FLOPS`.
+
+---
+
+## Deploy (live)
+
+| What | Where |
+|---|---|
+| **App** | [https://www.useflops.com](https://www.useflops.com) |
+| **API** | `https://flops-c6ic.onrender.com` |
+| **Frontend host** | Vercel (`client/`, auto-deploy on push to `main`) |
+| **Backend host** | Render Web Service (`server/`, persistent disk at `/var/data/nutrition.db`) |
+| **Backup Vercel URL** | `https://flops-amber.vercel.app` |
+
+**Workflow:** commit + push to **`main`** → Vercel production deploy within ~1 min.
+Render redeploys on push if connected to the same repo (confirm in Render dashboard if API changes don't appear).
+
+**Verify a deploy:** `gh api repos/TheDoc004/flops/deployments --jq '.[0] | {env:.environment, sha:.sha[0:7], created:.created_at}'`
 
 ---
 
@@ -29,7 +43,7 @@ A personal nutrition + training tracker, built toward eventually connecting the 
 (the "bridge", Phase 3). Nutrition and Training are developed as **separate domains** —
 do not import one domain's business logic into the other.
 
-Phases: **1 Nutrition** (feature-complete), **2 Training** (frontend now built out — see below),
+Phases: **1 Nutrition** (feature-complete), **2 Training** (gym dashboard rebuilt — see below),
 **3 Bridge** (future, not started).
 
 ---
@@ -42,327 +56,161 @@ Repo root: **`~/dev/FLOPS`**. One-shot: `bash ~/dev/FLOPS/start-app.sh`. Or two 
 cd ~/dev/FLOPS
 
 # Terminal 1 — API (port 3001)
-cd server && npm run dev        # plain `node --watch index.js`; does NOT auto-restart if launched as `node index.js`
+cd server && npm run dev
 
 # Terminal 2 — client (Vite, port 5173, proxies /api → 3001)
 cd client && npm run dev
 ```
 
-SQLite DB: `server/nutrition.db` (a stale copy at repo root — ignore it). Multi-user with
-auth: Bearer session on `/api/*`; ownership via `req.user.id`. Legacy `user_id = 0` rows
-are migrated to the first account on boot (`migrateLegacyUserZero`). First email sign-in
-claims the legacy `owner@local.flops` row so existing meals/recipes stay yours. Schema +
-migrations are inline in `server/db.js` (`PRAGMA table_info` + conditional `ALTER TABLE`).
+SQLite DB: `server/nutrition.db` (ignore stale copy at repo root). Multi-user with auth:
+Bearer session on `/api/*`; ownership via `req.user.id`. Schema + migrations are inline in
+`server/db.js` (`PRAGMA table_info` + conditional `ALTER TABLE`).
 
 > If a running API server predates a schema/route change, **restart it** — a plain
 > `node index.js` will not pick up new code or run new migrations on its own.
+
+**Tests:** `npm test --prefix server` · `npm test --prefix client` · `npm run build --prefix client`
 
 ---
 
 ## 3. Current state by area
 
 ### Nutrition (Phase 1) — solid / feature-complete
-Dashboard, Recipe Library, Ingredient Library (OCR label scan + **barcode scan**), Meal Builder
-(wizard), History, Goals (versioned weekly min/max), Report (PDF), Profile, Adherence,
-and AI Estimate all work. Rough edges are **code-size/debt**, not missing features.
 
-**Log Meal vs AI Estimate (2026-08-17).** Log a Meal is a **receipt**: optionally
-seed from a saved recipe, then add/edit library foods. Recipes and ingredients
-are separate pickers — not one combined search. The modal no longer links out to
-AI Estimate or Meal Builder (Today has Hey Estimate; recipes are edited in Meal
-Builder). **AI Estimate** is speak / natural language (“I had three eggs…”)
-including matching a saved recipe by speech — not a second receipt builder.
-Logging a seeded recipe still keeps `recipe_id`; a custom receipt uses the
-custom path. Tap a receipt name for AI substitutes from the Ingredient Library.
+Dashboard, Recipe Library, Ingredient Library (OCR + barcode), Meal Builder, History/Review,
+Goals, Report, Profile, Adherence, supplements, prep strip, coach, and AI Estimate all work.
 
-**AI Macro Logger — recipe saving fixed (2026-07-26).** "Save as recipe" (and meal-prep
-save) now back each ingredient with an Ingredient Library entry and record the link in
-`meal_builder_meta.lines`, so the saved recipe's amounts are **editable at log time** (the
-same slot mechanism Meal Builder uses) instead of a frozen macro total. Rows logged "as
-estimated" stay as plain text lines. Relatedly, when you provide explicit macros that
-identically match a saved ingredient (name + macros), the resolver now reuses that saved
-item instead of spawning a duplicate on save. Files: `features/ai-macro-logger/AiMacroLogger.jsx`,
-`ingredientSource.js`.
+**Today dashboard actions:** `AI Estimate` (`btn-ai`) and `+ Log a Meal` (`btn-primary`) in
+`Dashboard.jsx` → `AiLoggerModal` / `LogMealModal`. **Training** hop (`Link` to `/training`)
+lives beside them — Training is **not** in the nutrition navbar tabs.
 
-### Training (Phase 2) — backend complete; frontend built out this session
-Backend was 100% done with client API wrappers already written. As of this session the
-frontend covers: workout logging (mobile grid fixed), **weekly Schedule tab**, **post-workout
-Feedback card**, **inline progressive-overload sparkline**, and **one-off day Overrides**.
-All under `client/src/features/training-workouts/` (new pieces in `components/`).
+**Log Meal vs AI Estimate:** Log a Meal is a **receipt** (optional recipe seed + library foods).
+AI Estimate is speak/type natural language. See `docs/log-once-vs-save-as-recipe.md`.
 
-### Supplements (Nutrition) — shipped, extended 2026-07-26
-Dashboard "Supplements today" checklist; each supplement can optionally **count its
-calories/macros toward the day's totals** (per-item flag). Server: `supplements` +
-`supplement_log` tables, `routes/supplements.js`. Client: `features/supplements/`.
-Profile has a show/hide toggle.
+### Notebook-day UI (off-today on Dashboard) — important for styling work
 
-**Micronutrients (2026-07-26).** Supplements can carry **label-exact micronutrients** (the
-canonical key set — 28 keys since the 2026-07-30 v2 expansion) in a new `supplements.micros_json` column, stored at HIGH confidence (unlike
-AI-estimated food micros). Auto-count rule: values present + supplement checked → they count.
-They fold into the **daily micronutrient totals in History** (micros stay a History-only
-feature) via `GET /api/supplements/range` (taken supplements' micros grouped by date) and the
-shared helper `sumDayTotalMicros({entries, supplements})` in `shared/utils/microNutrients.js`.
-`supplement_log` makes past days accurate retroactively. The micro panel shows a "+ N
-supplements" badge; the Dashboard has a "View micronutrients →" link to `/history#micronutrients`.
+When the user views a date other than calendar-today on **`/`**, `Dashboard.jsx` sets
+`html[data-notebook-day="past"|"future"]` on `<html>` and clears it on unmount.
 
-**Find by name (2026-07-26).** The primary way to add a supplement: type the product name in
-Manage Supplements → results from the **NIH Dietary Supplement Label Database** (`dsldService.js`,
-free, no API key) → pick one → name/dose/macros/micros prefill for review. Because DSLD holds
-transcribed label data, a match stores at **high** confidence, same as a photo scan. IU values are
-converted (vitamin A assumes retinol, which is why every conversion is flagged) and the note lists
-nutrients on the label the schema drops (few, since the v2 expansion). When DSLD has nothing,
-`POST /api/supplements/estimate` (`supplementEstimateService.js`) estimates from the name — capped
-at **medium** confidence in the service *and* the route, so a guess can never masquerade as label
-data. All three sources return the same shape, so they share one prefill path in the modal.
+**Theme:** `client/src/styles/index.css` (~lines 132–164) overrides design tokens to charcoal
+surfaces + light text. **Today** keeps warm beige tokens.
 
-**Micronutrients v2 (2026-07-30).** The key set went 12 → 28 (B-complex, E/K, selenium, copper,
-manganese, phosphorus, iodine, choline, and omega-3 ALA/EPA/DHA). One config drives it —
-`client/src/shared/config/microNutrients.js` + the server mirror — and AI prompt schemas are
-generated from `MICRO_KEYS`, but **DSLD `GROUP_TO_KEY` and OFF `MICRO_SOURCES` must be taught new
-nutrient names by hand**. DSLD parsing now walks `nestedRows`, without which fish-oil labels
-(EPA/DHA nested under Total Fat) imported nothing. Centrum Men Under 50 went from 10 to 23
-captured nutrients. Existing supplements gain the new nutrients only on a label refresh; old log
-entries keep their v1 blobs.
+**Gotchas discovered 2026-08-23:**
 
-**Per-meal micros (2026-07-30).** Meal rows have a **Macros | Micros** toggle instead of a
-chevron, with a directional page-flip between panels (`--dur-swipe`). The Micros panel
-(`features/meal-logging/MealMicrosPanel.jsx`) bars each nutrient as a share of the DAY's target
-— "this breakfast is 50% of your vitamin A" — using a neutral accent rather than the day panel's
-status palette, and hides contributions under 10% behind a "show smaller" toggle. The Review
-panel is sectioned: an attention chip strip, then collapsible categories with "n of m on track".
+1. **Native `<dialog>` stays browser-white** unless styled. Off-today tokens make labels/titles
+   light-on-white → invisible. Fix: `html[data-notebook-day] dialog { … }` block in `index.css`
+   (~979+) — dialog surface, nested `.card`, inputs, utility classes.
+2. **`--color-primary` becomes sky blue (`#60a5fa`)** on notebook days (for links). Default
+   `.btn-primary` (white on sky blue) and `.btn-ai` washes out on charcoal. Fix: notebook-day
+   overrides for `.btn-primary` / `.btn-ai` (~639+).
+3. **Hardcoded light inline colors in modals** (e.g. `#f9fafb`, `#eff6ff`) break on notebook days.
+   Prefer CSS variables or classes: `modal-subpanel`, `modal-highlight-panel`, `modal-loading-overlay`.
 
-**Dose vs label serving (2026-07-27).** Stored macros/micros describe ONE label serving, so a
-supplement now also records `label_serving_qty`/`label_serving_unit` and `dose_qty` (what you
-take), and everything scales by the ratio — day totals, History micros, the row display. Before
-this, taking 3 softgels of a 2-softgel serving silently counted 2. The modal states both amounts
-plainly; the dashboard checklist has −/+ steppers writing `supplement_log.dose_qty` for that day
-only (NULL = usual dose), so an unusual day never rewrites your default or past days. Existing
-rows were backfilled with dose = label serving, so every multiplier started at 1 and no total
-moved (asserted in `supplementDose.test.js`).
+**Files:** `Dashboard.jsx` (attribute toggle), `index.css` (tokens + notebook rules),
+`LogMealModal.jsx`, `AiLoggerModal.jsx`, `AiMacroLogger.jsx`.
 
-**Manage dialog (2026-07-27).** Converted from the app's last hand-rolled bottom sheet to the
-native `<dialog>` used by Log a Meal, then reorganised: serif section headings, the name lookup
-and photo scan framed as alternatives in one block (available while editing, to refresh an entry
-from a label), an explicit "Editing X" bar, and the house text scale.
+Only the **Dashboard** page sets notebook-day — Recipes/Review/Training stay beige unless you
+extend the pattern deliberately.
 
-**Label scanning (2026-07-26).** "📷 Scan Supplement Facts label" in Manage Supplements: photo →
-crop (reuses `LabelCropModal`) → `POST /api/supplements/scan-label` → AI **vision** transcribes
-the panel (per-serving, absolute amounts not %DV, IU→mcg) → prefills the form for review (never
-auto-saves). The image posts as a raw binary body (`express.raw`, like `/api/ai/transcribe`) to
-skip the 1 MB global JSON limit. Service: `server/supplementLabelService.js`. **Needs an AI
-provider key** (same one the AI Macro Logger uses).
+### Training / Gym (Phase 2) — rebuilt 2026-08-23
 
-### Cross-cutting foundation — healthy
-Mobile nav works (`Navbar` → `BottomNav` switch at 768px, 44px+ targets). **Both navs are now flat
-— every item is a direct link**; the desktop dropdowns and the mobile bottom sheets were both
-deleted once their groups were down to one or two destinations, so `Navbar.jsx` and `BottomNav.jsx`
-are plain link lists. Shared UI in
-`shared/ui`, hooks in `shared/hooks`, utils in `shared/utils` (well unit-tested). Server routes
-are all Jest-tested. **`server/aiClient.js` now supports vision** — `callProviderJson({imageDataUrl})`
-attaches a base64 image for OpenAI (`image_url`) or Anthropic (base64 `image` block); reusable
-by any future feature (e.g. barcode/label flows).
+Nutrition logging is **untouched**. Training is a separate **gym dashboard** at `/training`.
+
+| Route | Page | Role |
+|---|---|---|
+| `/training` | `GymToday` | Start/finish sessions, per-set logging, rest timer, activity sessions |
+| `/training/schedule` | `GymSchedule` | Assign workout templates to weekdays |
+| `/training/workouts` | `GymWorkouts` | Template list, muscle-grouped exercises, set/rep/weight targets |
+| `/training/progress` | `GymProgress` | Charts, filters, last-session comparison, 1RM estimates |
+
+**Shell:** `TrainingLayout.jsx` — gym title + **Nutrition** hop back. Gym tabs live in
+`Navbar` / `BottomNav` (Today / Schedule / Workouts / Progress) when on `/training/*`.
+Nutrition nav does **not** include Training as a tab.
+
+**Backend:** new `/api/gym/*` in `server/routes/gym.js` — exercises, templates, sessions, sets,
+schedule, 1RM helpers, duration-based activity sessions. Tests: `server/gym.test.js`.
+
+**Client:** `client/src/features/training-workouts/` — `GymApp.jsx` routes by pathname;
+`SetKeypad.jsx` for paper-style entry. Old monolithic `TrainingWorkouts.jsx` logger removed.
+
+**Setgraph parity goal:** live per-set logging, templates, schedule, progress, rest timer from
+template `rest_sec`, repeat-last-set, previous comparison, plate helper / XRM tables.
+
+Legacy `server/routes/training.js` + `workouts.js` still exist; new gym UI uses **`gym.js`**.
+
+### Supplements, barcode, AI logger, auth, coach
+
+Unchanged from prior handoff detail — still accurate. See sections in git history or ask;
+highlights: DSLD name lookup, label scan, dose vs serving, micronutrients v2, barcode via OFF,
+multi-user auth, coach invite codes.
 
 ---
 
 ## 4. Git state
 
-> **✅ Tree cleared 2026-08-09.** The several sessions of stacked work that sat uncommitted are
-> now six topic commits on branch **`feature/log-modal-compact`** (the branch name predates most
-> of them), on top of `a642f74`:
->
-> 1. `98f22b4` docs(strategy) — coach layer, platform and sponsorship decisions
-> 2. `ab45bfd` feat(recipes) — `GET /api/recipes/:id/nutrition`, micro cache, `mealMicros.js`
->    extracted out of `routes/log.js`
-> 3. `98e2a49` refactor(meals) — `ViewToggle` extracted from `LogEntryRow` for reuse
-> 4. `60a43b9` feat(recipes) — recipe cards expand to macros/micros/ingredients
-> 5. `fe30501` feat(nav) — Meal Builder folded into a "Recipes & Ingredients" section,
->    bottom-sheet groups removed, `LibrarySubNav` added
-> 6. `a370792` feat(ai-logger) — conversational corrections, off-list swaps, "Keep in recipe"
->
-> 7. `cbe251d` docs(handoff) — this section
->
-> Verified at that point: server **233** tests, client **248**, client build clean.
+**Branch:** `main` · **Remote:** `origin/main` (GitHub `TheDoc004/flops`) · **in sync**
 
-`origin/main` is still at `edb06ca` — all 8 commits from `a642f74` onward are local only, on
-`feature/log-modal-compact`. **Nothing is merged to `main` and nothing is pushed.**
+Recent production commits (newest first):
 
-> **Committed 2026-08-11 (`28981bd`, `57e071e`, `118e149`).** Two more features, green at
-> server **233** / client **254** / build clean. Working tree is empty; still nothing pushed:
->
-> **`28981bd` — Nav simplification.** The desktop `Recipes & Ingredients` dropdown became a direct link to
-> `/recipes` that stays lit across all three section routes. `+ Build a meal` moved out of the
-> Recipe Library title row into `LibrarySubNav`, so it sits beside the Recipes/Ingredients toggle
-> and is reachable from **both** pages — with the dropdown gone, the Ingredients page otherwise had
-> no route to Meal Builder at all. Since every top-nav item is now a direct link, the whole
-> dropdown mechanism was dead and came out: `openMenu` state, outside-click/Escape handlers, and
-> ~115 lines of menu CSS (`Navbar.module.css` 302 → 186). Same treatment `BottomNav`'s sheets got
-> in `fe30501`. Files: `Navbar.jsx`, `Navbar.module.css`, `LibrarySubNav.jsx(+css)`, `Recipes.jsx`.
->
-> **`57e071e` — Log an ingredient as a food.** The Log a Meal picker now searches recipes **and** library
-> ingredients together, grouped under headers, so almonds or a banana log without a recipe and
-> **without an AI call**. Picking an ingredient swaps Servings for Amount (g/oz for weight-tracked,
-> the ingredient's own unit for counted ones), pre-fills one label serving, and shows a live macro
-> preview. It logs through the existing `POST /api/log/custom` one-off path (`is_quick_food = 1`),
-> passing the ingredient row so the server reads its **stored label micros** instead of estimating
-> — barcode-scanned foods therefore log real measured micros. Offered only when creating, not when
-> editing an entry. **No server changes were needed**; `logLabelMicros.test.js` already covered the
-> payload shape. Files: `LogMealModal.jsx`, `RecipeCombobox.jsx` (+ new `RecipeCombobox.test.jsx`,
-> 6 tests), `Dashboard.jsx`, `History.jsx`.
->
-> Two decisions worth not re-deriving: the amount-seeding is a **selection handler, not a
-> `useEffect`**, because lint here bans `setState` in effect bodies; and the macro math reuses
-> **`macrosForLabelServingAmount`** from `@features/label-ocr` (already shared by Meal Builder, the
-> AI logger and `ingredientSource`) rather than adding a fourth copy — `recipeLogMacros.js` still
-> carries its own private duplicate of that math, which is pre-existing and left alone.
+```
+b933166 fix(dashboard): consistent modal colors on notebook days
+45e4580 fix(dashboard): readable Log Meal and AI buttons off today
+c333bea feat(gym): rebuild Training as a set logger
+9799104 feat(gym): store sets, sessions, and templates
+7337416 feat(training): swap chrome between nutrition and gym
+```
 
-Merged 2026-07-30: the **Today tab slimmed down** (adherence moved off it, weight raised under
-the supplement strip, supplements became a compact strip rather than a section), the **weight
-trend chart moved to History** (where its range follows the days selected there), and
-**micronutrients v2** — see below. Merged that day as `--no-ff` merge commits with their
-branches deleted:
-
-- **Barcode scanning** — section 7
-- **Supplement lookup by name** — NIH DSLD, above. A follow-up made the results tellable apart:
-  rows carry dose form / bottle size / nutrient count, repeat label versions of one product
-  collapse under the newest (with an "earlier labels" expander), and picking a product previews
-  its micros before anything fills the form.
-- **Supplement dose vs label serving**, plus the manage dialog rework — both above
-- plus a fix making logged unit-ingredients display their own unit ("3 eggs", not "3 g"), with a
-  boot-time repair of older entries
-
-Earlier the same day, three more features merged the same way:
-
-- **AI-logger editable recipes** — editable AI-saved recipe amounts + provided-macro dedup
-- **Supplement micronutrients** — supplements contribute exact micros to History
-- **Supplement label scan** — AI vision reads a Supplement Facts photo into the form
-
-Prior session (already in `main`): training Phase 2 UI, supplement tracker, ai-logger source
-consolidation. That tree passed server 112 / client 105.
-
-**Deploy:** paused. Only `server/.env.example` exists; no Render/Vercel/Docker config
-(the Render+Vercel plan was paused on ~$7/mo persistent-disk cost).
+Working tree should be clean before starting new work. **One topic per commit**; push to `main`
+for live deploy unless explicitly working on a feature branch.
 
 ---
 
 ## 5. Known issues & tech debt
 
-- **Oversized components** (refactor when next touched): `AiMacroLogger.jsx` (~1,360),
-  `TrainingWorkouts.jsx` (~900), `Ingredients.jsx` (~777, grew with the barcode entry point),
-  `MealBuilder.jsx` (~720), `LogMealModal.jsx` (~645). `ManageSupplementsModal.jsx` (~393) is
-  borderline after the micro + label-scan additions. `client/src/hooks/` is empty; extract
-  custom hooks here.
-- **Pre-existing lint errors** in `Profile.jsx` (`H3`/`UnitOption` components declared inside
-  render — `react-hooks/static-components`). Not from recent work; fix by hoisting them out.
-- **Barely any client component tests** — `BarcodeScannerModal.test.jsx` is the first one
-  (Testing Library was already installed, unused). Pages (Dashboard, Recipes, History) still
-  have none. Utils/server are well covered.
-- **Test/placeholder recipes** ("c", "c2", "c6") still in the DB — clean before polishing the
-  Recipe Library UI.
-- Two React pitfalls worth remembering: `{0 && <x>}` renders a stray `0` (use `n > 0 &&`);
-  ESLint here enforces `react-hooks/set-state-in-effect` (don't call setState synchronously in
-  an effect body).
-- **No backups and no data export.** 609 log entries + 284 recipes live in one SQLite file.
-  On the Mac, Time Machine/iCloud is the only safety net; there is nothing in the app itself.
-  This becomes urgent at deploy — see `docs/future/deployment-and-mcp.md` step 2.
-- **No rate limiting anywhere**, and `/api/ai/*` calls OpenAI/Anthropic on the server's own
-  key (`/transcribe` takes 25 MB uploads). Harmless on localhost; a billing risk the moment
-  the API is public.
-- **No `engines` pin** in either `package.json`, though `server/index.js` needs Node ≥ 20.12
-  for `process.loadEnvFile`. Fine locally; a coin-flip on a host that picks its own default.
-- Low-severity `body-parser` advisory — `npm audit fix` clears it.
-- **Meal Builder pushes a history entry per mode/step change.** `setSearchParams` is
-  called without `{ replace: true }` in `MealBuilder.jsx` (the `goToStep` callback and
-  the two mode buttons), so toggling "Build from ingredients" / "Known macros" a few
-  times stuffs browser history with builder states and hardware/gesture back gets
-  tedious. It also rules out `navigate(-1)` for "Exit edit" — that's why the exit target
-  is carried in router state instead (2026-08-02). Switching those three calls to
-  `replace` is the fix; it changes back-button behaviour, so it wants its own commit and
-  a check that nothing depends on stepping back through steps.
-- **Conditional inline styles can mix a shorthand with a longhand — sweep for it.**
-  React removes style properties that disappear between renders, and removing a
-  *longhand* does not restore what a *shorthand* originally set; it falls through to
-  `currentColor` / the initial value. Hit in `LogEntryRow`'s Macros/Micros toggle:
-  `base` set `border`, the active state set only `borderColor`, so collapsing left the
-  button outlined in text colour instead of grey (fixed 2026-08-02). Rule: **if two
-  style objects are merged conditionally, both must set the same property.** Same trap
-  applies to `background`/`backgroundColor`, `padding`/`padding*`, `font`/`fontSize`.
-  Not yet swept — this codebase styles almost everything with conditional inline
-  objects, so expect more instances. Grep for `borderColor`/`backgroundColor` inside
-  objects that are spread conditionally.
+- **Oversized components:** `AiMacroLogger.jsx`, `Ingredients.jsx`, `MealBuilder.jsx`,
+  `LogMealModal.jsx`, `ManageSupplementsModal.jsx`. Extract hooks to `client/src/shared/hooks/`.
+- **Pre-existing lint:** duplicate `fontWeight` in inline styles (`Ingredients.jsx`,
+  `ManageSupplementsModal.jsx`); `Profile.jsx` static-components warnings.
+- **Client component tests** — sparse except utils and a few modals. Server routes well tested.
+- **No in-app data export** — SQLite on Render disk; use `scripts/backup-sqlite.sh`.
+- **Meal Builder browser history** — mode/step changes push history entries (fix: `{ replace: true }`).
+- **Conditional inline style shorthand/longhand trap** — see old handoff note; grep when styling bugs appear.
+- **AiMacroLogger** still has many hardcoded light-theme inline colors in review/expand panels —
+  only the input card + loading overlay were fixed for notebook-day modals; deeper AI review UI
+  may need the same token/class treatment if opened off-today.
 
 ---
 
 ## 6. Parked / deliberately deferred
 
-- **Goals & Profile needs a restructure (raised 2026-08-02).** The section is three
-  sub-tabs (Goals / Report / Profile) that don't obviously belong together, and Profile
-  is now thinner after the weight trend chart and "Log body weight" card were removed
-  (both duplicated Review and Today). What's left is three settings tiles + a personal
-  stats form. Worth rethinking as a whole — what belongs in "Plan", whether Report is a
-  sub-tab or lives elsewhere, and whether unit toggles and dashboard prefs want to be
-  Settings rather than Profile. Not urgent; no behaviour is broken.
-
-- **AI Logger — per-unit "1 g" bug**: count foods (egg/slice) occasionally undercount to ~1
-  cal when the AI emits `1 g` and the per-unit library match is skipped. Intermittent; needs a
-  live repro to decide AI-prompt vs matcher fix.
-- **AI Logger — recipe "one-shot" invert**: make the AI estimate the primary result and the
-  matched saved recipe a one-tap suggestion (instead of the recipe hijacking the flow).
-  Discussed, not built.
-- **Training — Daily Training Context UI**: backend exists; fold into a future "Training Today"
-  view (low value before the bridge).
-- **Nutrition refactors** (the oversized files above) — do opportunistically.
+- Goals & Profile restructure (Plan shell organization).
+- AI Logger per-unit "1 g" bug — needs live repro.
+- AI Logger recipe "one-shot invert" (estimate primary, saved recipe as suggestion).
+- Phase 3 bridge — do not start until both domains feel solid independently.
+- Nutrition refactors — opportunistic when touching files.
 
 ---
 
-## 7. Barcode scanning — shipped (2026-07-26)
-
-Scan a product barcode in the **Ingredient Library** add form → the form prefills for review.
-Built as agreed: **no MCP, no self-hosted product database**.
-
-- **Server.** `GET /api/barcode/:code` (`routes/barcode.js` + `openFoodFactsService.js`)
-  proxies Open Food Facts (free, no key, Node's global `fetch`) and normalizes the very uneven
-  response. `basis` reports where the numbers came from — `serving` (listed per serving),
-  `serving_derived` (scaled from per-100 g), `100g` (no serving on record), `none` (no
-  nutrition data). Handles kJ→kcal and retries a 12-digit UPC as a 13-digit EAN.
-- **Client.** `features/barcode/` — `BarcodeScannerModal` (camera + always-available manual
-  number entry), `barcodeReader` (native `BarcodeDetector`, else lazily imported
-  `@zxing/browser` — iPhone Safari has no native API; the library sits in its own 444 KB chunk,
-  not the initial bundle), `gtin` (check-digit validation so a misread frame is ignored instead
-  of coming back as "not found"), and `mergeBarcodeProductIntoIngredientForm` (fills the form,
-  highlights what to check — never overwrites a typed name/brand, never auto-saves).
-- **Schema.** `label_ingredients.barcode` (+ index) and `source_type = 'barcode'`. Re-scanning a
-  saved product **opens that entry** instead of creating a near-duplicate. An edit that omits
-  the field keeps the stored code (`COALESCE`).
-
-Coverage is uneven — niche and store-brand products are often missing, so OCR and manual entry
-stay as fallbacks and the not-found message points at them. Open Food Facts is crowd-sourced,
-so the review box always says to check the numbers against the packaging.
-
-**Micronutrients from the label (2026-07-27).** Barcode import also captures OFF's
-micronutrients into `label_ingredients.micros_json` (per serving, high confidence). At log time
-`server/labelMicros.js` prefers those measured values over AI estimates, asking the AI only about
-ingredients with nothing stored and merging **per nutrient**. A meal built entirely from barcoded
-ingredients makes **no AI call at all**. Coverage varies by product and, since the v2 key
-expansion (28 keys incl. omega-3s, B-complex, E/K, trace minerals), fortified foods and
-supplements capture far more of their panel — Centrum went from 10 to 23 captured nutrients.
-
-> **Typing a barcode already works** (the scanner modal has a number box), which is what makes
-> this usable on desktop. But it only helps for *food*: supplement micros cannot be reached by
-> barcode — the NIH database isn't UPC-searchable (digit queries return 0 hits, there is no `upc`
-> parameter, and querying the stored formatted string returns unrelated products), and Open Food
-> Facts' supplement records carry no vitamins or minerals. Use the name lookup for supplements.
-
-**Known limits / next steps:** camera needs a secure context, so scanning from a phone over the
-LAN dev IP won't work (localhost and real HTTPS do). Supplements do not have barcode scanning
-yet — deliberately deferred, and OFF coverage is weakest there. Values are **as-sold**, which
-runs into the existing dry/cooked basis gap: a dry-basis product scanned and later logged by
-cooked weight still overcounts.
-
----
-
-## 8. How work happens here (quick reminders)
+## 7. How work happens here (quick reminders)
 
 - Beginner-friendly: explain non-obvious decisions; prefer the smallest change that works.
 - Mobile-first always (test mentally at 390px).
 - One topic per commit; don't bundle unrelated changes.
-- Feature Brief before building a new feature; verify changes by running the app, not just tests.
+- Feature Brief before building a new feature; verify in browser, not just tests.
+- **Do not put the repo back in iCloud-synced `~/Documents`.**
+- For UI/theming: read **`docs/design-system.md`** and the notebook-day section above before
+  touching `index.css` or modal components.
+
+---
+
+## 8. Moving to Claude Code (terminal)
+
+1. `cd ~/dev/FLOPS` — not the Documents workspace copy.
+2. Claude Code reads **`CLAUDE.md`** automatically; check **`HANDOFF.md`** (this file) for current state.
+3. **`AGENTS.md`** — UI/design agent guide (some dashboard order notes are stale; trust this file for state).
+4. Live changes: commit → `git push origin main` → confirm Vercel production deploy.
+5. Local dev: two terminals (server + client) or `start-app.sh`.
+
+**Session context (2026-08-23):** Fixed off-today readability for Log Meal / AI Estimate toolbar
+buttons and modal interiors (charcoal notebook theme). Gym/set-logger rebuild shipped earlier
+same week. User may continue gym UX polish (Setgraph-like live logging flow) or nutrition edges.

@@ -1,6 +1,8 @@
 # AGENTS.md — Flops AI Design Guide
 
-This file defines how AI agents (Claude, Cursor, Copilot, etc.) should think about this codebase.
+> **Current state & deploy:** read **`HANDOFF.md`** first. Canonical repo: **`~/dev/FLOPS`**. Live at **https://www.useflops.com** (push `main` → Vercel).
+
+This file defines how AI agents (Claude Code, Cursor, Copilot, etc.) should think about this codebase.
 Read it before making any UI or architectural decisions.
 
 ---
@@ -12,7 +14,8 @@ It has two sides — a nutrition tracker and a workout tracker — that will eve
 to surface insights automatically. Think: your nutritionist and personal trainer in one app,
 sharing the same client file.
 
-**Current focus:** Building the Training UI to match the quality of the Nutrition side.
+**Current focus:** Gym dashboard (`/training`) — set-by-set logging, templates, schedule, progress.
+Nutrition is feature-complete; polish and notebook-day UI consistency are ongoing.
 
 ---
 
@@ -38,9 +41,7 @@ Every screen should feel like it was designed for one job, not assembled from pa
 - Recharts for all charts, always inside `<ResponsiveContainer width="100%" height={N}>`.
 - SQLite is synchronous — no `.then()` on DB calls, no async/await on `better-sqlite3`.
 - Soft deletes only. Never hard-delete anything that log entries could reference.
-- No auth. `user_id = 0` is hardcoded everywhere. Do not add auth.
-
----
+- **Auth is live** — multi-user Bearer sessions; never assume `user_id = 0`. See `CLAUDE.md`.
 
 ## Reusable Components (check these before building new ones)
 
@@ -61,12 +62,13 @@ Every screen should feel like it was designed for one job, not assembled from pa
 ## What NOT to Do
 
 - Don't add Tailwind, Bootstrap, or any CSS framework.
-- Don't add auth.
 - Don't migrate the database — SQLite is intentional.
 - Don't rebuild working features to fix small bugs.
-- Don't start Phase 3 (bridge features) until Phase 2 (Training UI) is complete.
+- Don't start Phase 3 (bridge features) until Phase 2 gym UX feels solid.
 - Don't leave `console.log` in finished code.
 - Don't write comments that describe what the code does — only write them when the WHY is non-obvious.
+- **Notebook-day UI:** when touching Dashboard modals or `index.css` buttons, test a **past day** —
+  native `<dialog>` and `.btn-primary` / `.btn-ai` need explicit off-today rules (see `HANDOFF.md`).
 
 ---
 
@@ -106,17 +108,17 @@ within a feature use relative paths. Import cross-cutting modules via their barr
 
 ---
 
-## Dashboard Section Order
+## Dashboard Section Order (nutrition `/`)
 
-The dashboard renders in this sequence — maintain this order:
-1. Header (title + date + Log a Meal button)
-2. Macro totals card
-3. **TODAY'S MEALS** section label + grouped meals list
-4. Training context banner (if enabled)
-5. Fuel readiness card + saved fuel shortcuts (conditional)
-6. **TRENDS** section label + weight/calorie chart
-7. Weight entry row
-8. 7-day adherence panel
+Order evolves — verify in `Dashboard.jsx` before changing. Roughly:
+1. Date toolbar + **AI Estimate** / **Log a Meal** / **Training** hop
+2. Off-today banner (when not calendar-today)
+3. Macro rings + supplements strip + weight row
+4. Today's meals list
+
+Charts, adherence, and micronutrient review live on **`/history`**, not Today.
+
+**Gym `/training`:** separate shell — `TrainingLayout` + gym tabs in nav (Today / Schedule / Workouts / Progress).
 
 ---
 

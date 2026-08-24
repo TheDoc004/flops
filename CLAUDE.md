@@ -1,4 +1,6 @@
-# NutriLog — Project Context for Claude
+# FLOPS — Project Context for Claude / Claude Code
+
+> **Current state snapshot:** see **`HANDOFF.md`** (updated each session). Canonical repo: **`~/dev/FLOPS`**. Live: **https://www.useflops.com** (Vercel + Render, push `main` to deploy).
 
 ## What This App Is
 
@@ -8,7 +10,9 @@ a deliberate integration layer (the "bridge") — training history informing nut
 recommendations, and food logs informing training readiness.
 
 **Current state:** Nutrition and Training are developed as two FULLY SEPARATED domains
-(decision: July 2026). Nutrition is feature-complete; Training is being rebuilt (Phase 2).
+(decision: July 2026). Nutrition is feature-complete. Training is a **gym dashboard** at
+`/training` with its own nav chrome (Today / Schedule / Workouts / Progress) and `/api/gym`
+backend — rebuilt Aug 2026 as a set-by-set logger (templates, schedule, progress, 1RM).
 The earlier cross-domain fuel/readiness features were removed from the active app and are
 preserved on the branch `archive/nutrition-training-integration` — see
 `docs/future/nutrition-training-bridge.md`. Do not add new cross-domain features:
@@ -46,6 +50,13 @@ Vite proxies `/api` → `localhost:3001` in dev. The SQLite DB lives at
 
 - **Notebook philosophy.** FLOPS is a notebook — see `docs/philosophy-notebook.md`. Do not
   auto-advance the viewing day, nag, or invent work the user did not ask for. AI is opt-in.
+- **Notebook-day theming (Dashboard only).** When viewing a non-today date on `/`,
+  `Dashboard.jsx` sets `html[data-notebook-day="past"|"future"]`. Tokens in `index.css`
+  invert to charcoal + light type. Native `<dialog>` elements do **not** inherit this unless
+  explicitly styled — modals need `html[data-notebook-day] dialog { … }` rules. Button variants
+  `.btn-primary` / `.btn-ai` need notebook-day overrides (sky-blue `--color-primary` fails on
+  charcoal). Prefer CSS variables over hardcoded `#f9fafb` / `#eff6ff` in modal JSX. See
+  `HANDOFF.md` § Notebook-day UI.
 - **Multi-user with auth.** Each request resolves `req.user.id`. Legacy local data was migrated
   onto the first account. Isolation tests must keep user A off user B’s rows. Rate limiting and
   `ai_usage` caps protect paid AI routes — see `docs/future/deployment-and-mcp.md`.
@@ -100,7 +111,10 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 | `/ingredients` | Ingredient Library | Label ingredients (OCR + barcode); also logged directly as one-off foods |
 | `/meal-builder` | Meal Builder | The recipe EDITOR. Reached from the Recipes & Ingredients section, not from logging |
 | `/history` | History ("Review") | Charts, weight trend, micronutrients, adherence, past-day drill-down |
-| `/training` | TrainingWorkouts | Workout presets, logging, progress (being rebuilt) |
+| `/training` | GymToday | Live session logger (default gym tab) |
+| `/training/schedule` | GymSchedule | Weekly template assignments |
+| `/training/workouts` | GymWorkouts | Template builder, exercise library |
+| `/training/progress` | GymProgress | Charts, 1RM, filters |
 | `/plan` | Plan shell | Sub-nav for Goals / Report / Profile |
 | `/plan/goals` | Goals | Weekly macro targets with min/max ranges |
 | `/plan/report` | Report | PDF export of intake for a date range |
@@ -235,31 +249,24 @@ Recipes built via Meal Builder have a variable slot system. Each ingredient in a
 ingredient for any option. This is handled by `server/recipeIngredients.js` and the
 `slot_selections_json` column on `log_entries`.
 
-## Training Section — Build Status (Phase 2)
+## Training / Gym (Phase 2) — current architecture
 
-Phase 2a (complete): exercise_library table + seeding, preset_id on training_schedule,
-exercise_library_id on workout_preset_exercises, exercise library API endpoint, schedule and
-today endpoints updated to carry preset linkage.
+**UI:** `client/src/features/training-workouts/` — `GymApp.jsx`, pages under `pages/`,
+`TrainingLayout.jsx` (Nutrition hop). Gym tabs in `Navbar` / `BottomNav` when on `/training/*`.
 
-Phase 2b (next): Today view + weekly schedule UI with preset linking. Distinct visual treatment
-for Training section.
+**API:** `server/routes/gym.js` — exercises, templates, sessions, sets, schedule, progress,
+1RM helpers, duration activity sessions. Client wrappers in `client/src/shared/api/gym.js` (if present).
 
-Phase 2c (planned): Active workout logger (set-by-set, previous session reference), post-workout
-feedback UI, progress view as standalone tab.
+**Legacy:** `server/routes/training.js` and `workouts.js` remain from the old preset logger;
+new gym UI uses **`gym.js`**. Do not wire nutrition to training data yet (Phase 3).
 
-Phase 3 (future): Cross-app intelligence via a dedicated bridge layer — training muscle group
-data informs nutrition protein timing / recovery recommendations. exercise_library.primary_muscle
-and secondary_muscles are the bridge columns. The earlier fuel/readiness implementation is
-preserved on `archive/nutrition-training-integration`; see
-`docs/future/nutrition-training-bridge.md` for what exists and the prerequisites for rebuilding.
-Do not build bridge features until both domains are solid, and never by importing one domain's
-internals into the other.
+Phase 3 (future): Cross-app intelligence via a dedicated bridge layer. See
+`docs/future/nutrition-training-bridge.md`. Never import one domain's internals into the other.
 
 ## Important Notes for Future Sessions
 
-- The `training_schedule.workout_type` free-text field predates the exercise library. It still exists but `preset_id` is the canonical link going forward.
-- `training_feedback` (energy/stomach/performance) has a complete backend + client API but no UI yet.
-- `fetchTrainingSchedule()` and `saveTrainingSchedule()` in `client/src/api/training.js` are implemented but not yet called from any page.
-- The two-column grid layout in `TrainingWorkouts.jsx` breaks on mobile — the page redesign in Phase 2b will replace it entirely.
+- **Deploy:** push to `main` → Vercel production. API on Render (`docs/deploy-checklist.md`).
+- **HANDOFF.md** is the living current-state doc; update it when finishing a session with meaningful changes.
 - Do not add a CSS framework. Push the existing plain CSS system harder instead.
 - Recharts charts must always be wrapped in `<ResponsiveContainer width="100%" height={N}>`.
+- When styling modals or off-today Dashboard, test **past day + Log Meal + AI Estimate** — common contrast trap.
