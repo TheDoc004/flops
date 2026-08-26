@@ -5,6 +5,8 @@
 
 import { macrosForLabelServingAmount } from '@features/label-ocr';
 import { convertForIngredient, loggableUnitsFor, roundAmount, canonicalUnit } from '@shared/utils/unitConvert';
+import { formatAmountWithUnit } from '@shared/utils/servingBasis';
+import { parseLoggedIngredients } from '@shared/utils/macros';
 
 function tryParseLineAmount(lineItem) {
   const s = String(lineItem?.amount ?? '').trim();
@@ -247,6 +249,97 @@ export function sumReceiptMacros(lines) {
   return any ? tot : null;
 }
 
+const r2 = n => Math.round(Number(n) * 100) / 100;
+
+/**
+ * Turn the receipt the user just assembled into a POST /api/recipes body, so a
+ * meal worked out in the log modal can be kept without retyping it in the Meal
+ * Builder. Returns null when there is no name or nothing usable to save.
+ *
+ * Library-backed rows become `kind: 'ingredient'` lines carrying their
+ * label_ingredient_id, which is what keeps the saved recipe editable and
+ * substitutable later rather than a frozen block of numbers. Anything without a
+ * library link is kept as a free-text `kind: 'line'` so it stays visible in the
+ * recipe instead of silently vanishing from the total.
+ */
+export function buildRecipeFromReceipt(receipt, name) {
+  const recipeName = String(name ?? '').trim();
+  if (!recipeName) return null;
+
+  const lines = Array.isArray(receipt) ? receipt : [];
+  const ingredients = [];
+  for (const l of lines) {
+    if (!l) continue;
+    const lineName = String(l.name ?? '').trim();
+    if (!lineName) continue;
+    const amount = Number(l.amount);
+    const lid = Number(l.label_ingredient_id);
+    const usable = Number.isFinite(amount) && amount > 0;
+
+    if (Number.isInteger(lid) && lid > 0 && usable && l.calories != null) {
+      ingredients.push({
+        kind: 'ingredient',
+        name: lineName,
+        amount: String(amount),
+        unit: canonicalUnit(l.unit) || 'g',
+        label_ingredient_id: lid,
+      });
+    } else {
+      ingredients.push({
+        kind: 'line',
+        name: lineName,
+        amount: usable ? formatAmountWithUnit(amount, l.unit) : 'as logged',
+      });
+    }
+  }
+  if (ingredients.length === 0) return null;
+
+  const t = sumReceiptMacros(lines) || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
+  return {
+    name: recipeName,
+    serving_size: '1 meal',
+    calories: r2(t.calories),
+    protein_g: r2(t.protein_g),
+    carbs_g: r2(t.carbs_g),
+    fat_g: r2(t.fat_g),
+    fiber_g: r2(t.fiber_g),
+    ingredients,
+    meal_builder_meta: { source: 'log_receipt' },
+  };
+}
+
+/**
+ * Save an already-logged meal as a recipe, straight from its row in the day.
+ *
+ * A logged entry stores its ingredient rows PER SERVING, which is the same
+ * basis a recipe wants, so the servings count is deliberately not applied —
+ * logging two servings of something still saves the recipe for one.
+ *
+ * Meals with no ingredient breakdown (a plain recipe log, a quick food) keep
+ * their own macros so they are still re-loggable, just without lines.
+ */
+export function buildRecipeFromLogEntry(entry, name) {
+  const recipeName = String(name ?? '').trim();
+  if (!entry || !recipeName) return null;
+
+  const rows = parseLoggedIngredients(entry);
+  if (rows && rows.length) return buildRecipeFromReceipt(rows, recipeName);
+
+  const macros = [entry.recipe_calories, entry.recipe_protein_g, entry.recipe_carbs_g, entry.recipe_fat_g];
+  if (!macros.every(v => Number.isFinite(Number(v)))) return null;
+  return {
+    name: recipeName,
+    serving_size: entry.serving_size || '1 meal',
+    calories: r2(entry.recipe_calories),
+    protein_g: r2(entry.recipe_protein_g),
+    carbs_g: r2(entry.recipe_carbs_g),
+    fat_g: r2(entry.recipe_fat_g),
+    ...(Number.isFinite(Number(entry.recipe_fiber_g)) ? { fiber_g: r2(entry.recipe_fiber_g) } : {}),
+    ingredients: [],
+    meal_builder_meta: { source: 'log_entry' },
+  };
+}
+
 /** Payload rows for POST /api/log ingredients. */
 export function receiptToApiIngredients(lines) {
   return (lines || [])
@@ -280,10 +373,15 @@ export function seedReceiptFromRecipe(recipe, labelById, remembered = {}) {
     let unit = t.unit;
     if (mem && Number(mem.amount) > 0) {
       amount = String(mem.amount);
-      if (ing.tracking_type === 'unit') {
+      // Restore the remembered unit whenever the ingredient can still be
+      // measured in it, so a meal last logged in ml comes back in ml. Only
+      // g/oz used to survive, which re-seeded every other unit's number
+      // against a different unit entirely.
+      const memUnit = canonicalUnit(mem.unit);
+      if (memUnit && loggableUnitsFor(ing).includes(memUnit)) {
+        unit = memUnit;
+      } else if (ing.tracking_type === 'unit') {
         unit = ing.unit_name || unit;
-      } else if (mem.unit === 'oz' || mem.unit === 'g') {
-        unit = mem.unit;
       }
     } else if (ing.tracking_type === 'unit') {
       unit = ing.unit_name || unit;

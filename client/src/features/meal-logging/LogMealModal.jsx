@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchRecipe, fetchRecipes } from '@shared/api/recipes';
+import { createRecipe, fetchRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import { suggestSubstitutes } from '@shared/api/ai';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
@@ -8,6 +8,7 @@ import { canonicalUnit, loggableUnitsFor } from '@shared/utils/unitConvert';
 import { pluralizeUnit } from '@shared/utils/servingBasis';
 import {
   buildReceiptLine,
+  buildRecipeFromReceipt,
   changeLineUnit,
   defaultAmountForIngredient,
   getSuggestedSubstitutes,
@@ -56,6 +57,13 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Saving the assembled receipt as a reusable recipe — a separate action from
+  // logging it, so tweaking a meal and keeping the version that worked doesn't
+  // mean rebuilding it in the Meal Builder.
+  const [saveRecipeOpen, setSaveRecipeOpen] = useState(false);
+  const [recipeName, setRecipeName] = useState('');
+  const [savingRecipe, setSavingRecipe] = useState(false);
+  const [savedRecipeName, setSavedRecipeName] = useState('');
   const [labelIngredients, setLabelIngredients] = useState([]);
   const [receipt, setReceipt] = useState([]);
   const [addIngredientId, setAddIngredientId] = useState('');
@@ -321,6 +329,35 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     setSubSuggestions([]);
   }
 
+  // Save the receipt as a reusable recipe. Deliberately separate from logging:
+  // saving a version you want to keep and eating it are different decisions.
+  async function handleSaveRecipe() {
+    if (savingRecipe) return;
+    setError('');
+    const body = buildRecipeFromReceipt(receipt, recipeName);
+    if (!body) {
+      setError(
+        receipt.length === 0
+          ? 'Add at least one ingredient before saving this as a recipe.'
+          : 'Give the recipe a name.'
+      );
+      return;
+    }
+    setSavingRecipe(true);
+    try {
+      const created = await createRecipe(body);
+      // Make it selectable straight away instead of after a reload.
+      setRecipes(prev => [created, ...prev.filter(r => Number(r.id) !== Number(created.id))]);
+      setSavedRecipeName(body.name);
+      setSaveRecipeOpen(false);
+      setRecipeName('');
+    } catch (err) {
+      setError(err.message || 'Could not save the recipe.');
+    } finally {
+      setSavingRecipe(false);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (submitting) return;
@@ -351,10 +388,10 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
         for (const l of receipt) {
           const n = Number(l.amount);
           if (l.label_ingredient_id && Number.isFinite(n) && n > 0) {
-            amounts[String(l.label_ingredient_id)] = {
-              amount: String(n),
-              unit: l.tracking_type === 'unit' ? 'g' : (l.unit === 'oz' ? 'oz' : 'g'),
-            };
+            // Remember the unit actually used. Collapsing it to g/oz here meant
+            // reopening a meal logged in ml re-seeded the amount against a
+            // different unit entirely.
+            amounts[String(l.label_ingredient_id)] = { amount: String(n), unit: l.unit };
           }
         }
         if (Object.keys(amounts).length) saveLastReceiptAmounts(Number(recipeId), amounts);
@@ -669,7 +706,66 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
         </div>
 
         {error && <p className="error">{error}</p>}
-        <div style={{ marginTop: 4 }}>
+
+        {savedRecipeName && !saveRecipeOpen && (
+          <p
+            aria-live="polite"
+            style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-success)', fontWeight: 600 }}
+          >
+            Saved “{savedRecipeName}” to your recipes.
+          </p>
+        )}
+
+        {saveRecipeOpen && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: 12,
+              border: '1px solid var(--color-border)',
+              borderRadius: 10,
+              background: 'var(--color-surface-subtle, var(--color-primary-subtle))',
+            }}
+          >
+            <label htmlFor="log-recipe-name" style={{ fontSize: 15, fontWeight: 600 }}>
+              Name this recipe
+            </label>
+            <input
+              id="log-recipe-name"
+              value={recipeName}
+              onChange={e => setRecipeName(e.target.value)}
+              placeholder="e.g. Morning oats v2"
+              autoFocus
+              onKeyDown={e => {
+                // Enter inside the form would submit the log instead of saving.
+                if (e.key === 'Enter') { e.preventDefault(); void handleSaveRecipe(); }
+              }}
+            />
+            <p style={{ margin: '6px 0 10px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+              Saves the {receipt.length} ingredient{receipt.length === 1 ? '' : 's'} above as a recipe you
+              can log again and edit later. This does not log the meal.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                className={savingRecipe ? 'btn-primary btn-loading' : 'btn-primary'}
+                disabled={savingRecipe}
+                onClick={() => void handleSaveRecipe()}
+              >
+                {savingRecipe ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>) : 'Save recipe'}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={savingRecipe}
+                onClick={() => { setSaveRecipeOpen(false); setRecipeName(''); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button
             type="submit"
             className={submitting ? 'btn-primary btn-loading' : 'btn-primary'}
@@ -678,6 +774,20 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           >
             {submitting ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>) : (submitLabel || 'Log Meal')}
           </button>
+          {/* Keeping a tweaked meal shouldn't mean rebuilding it in the Meal
+              Builder — but it stays secondary to logging, which is why you
+              opened this modal. */}
+          {!saveRecipeOpen && receipt.length > 0 && (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={submitting}
+              onClick={() => { setSavedRecipeName(''); setSaveRecipeOpen(true); }}
+              style={{ width: '100%', minHeight: 44, fontWeight: 600, borderRadius: 12 }}
+            >
+              Save as Recipe
+            </button>
+          )}
         </div>
       </form>
     </dialog>

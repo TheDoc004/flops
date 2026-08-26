@@ -24,3 +24,19 @@ if (typeof globalThis.localStorage === 'undefined' || !globalThis.localStorage) 
     },
   };
 }
+
+// jsdom ships no matchMedia, which any component behind useMediaQuery — or the
+// meal row's menu placement — calls on render. Defaults to "does not match", so
+// tests see the desktop layout unless a test overrides this itself.
+if (typeof globalThis.matchMedia !== 'function') {
+  globalThis.matchMedia = query => ({
+    matches: false,
+    media: String(query),
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent() { return false; },
+  });
+}

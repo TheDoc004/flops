@@ -37,10 +37,13 @@ function tryParseLineAmountForVirtual(lineItem) {
   return { amount: String(n), unit: u === 'oz' ? 'oz' : 'g' };
 }
 
+/**
+ * Recipe-line units keep whatever unit was chosen — a recipe can hold "200 ml"
+ * or "1 filet" — but fold to the canonical spelling so "Cups" and "cup" are not
+ * two different units to the conversion layer.
+ */
 function normalizeUnit(raw) {
-  const u = String(raw ?? 'g').toLowerCase();
-  if (u === 'oz' || u === 'ounce' || u === 'ounces') return 'oz';
-  return u === 'g' || u === 'gram' || u === 'grams' ? 'g' : String(raw || 'g');
+  return canonicalUnit(raw) || 'g';
 }
 
 /** Convert a legacy slot (or virtual slot) into a named ingredient line. */

@@ -5,3 +5,4 @@ export { default as LogEntryRow } from './LogEntryRow';
 export { default as ViewToggle } from './ViewToggle';
 export { default as MealMicrosPanel } from './MealMicrosPanel';
 export { default as IngredientBreakdown } from './IngredientBreakdown';
+export { default as SaveMealAsRecipeDialog } from './SaveMealAsRecipeDialog';

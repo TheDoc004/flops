@@ -9,6 +9,8 @@ import {
   persistAmountUnit,
   changeLineUnit,
   retargetLineToIngredient,
+  buildRecipeFromReceipt,
+  buildRecipeFromLogEntry,
 } from './recipeReceipt';
 
 const oats = {
@@ -167,5 +169,108 @@ describe('retargetLineToIngredient', () => {
   it('carries a weight across to an ingredient that knows what one weighs', () => {
     const line = buildReceiptLine(oats, '245', 'g');
     expect(retargetLineToIngredient(line, milk)).toEqual({ amount: '245', unit: 'g' });
+  });
+});
+
+describe('buildRecipeFromReceipt', () => {
+  const receipt = [
+    buildReceiptLine(oats, '90', 'g'),
+    buildReceiptLine(egg, '2', 'egg'),
+  ];
+
+  it('keeps library rows linked so the saved recipe stays editable', () => {
+    const body = buildRecipeFromReceipt(receipt, 'Morning bowl');
+    expect(body.name).toBe('Morning bowl');
+    expect(body.serving_size).toBe('1 meal');
+    expect(body.ingredients).toEqual([
+      { kind: 'ingredient', name: 'Oats', amount: '90', unit: 'g', label_ingredient_id: 1 },
+      { kind: 'ingredient', name: 'Egg', amount: '2', unit: 'egg', label_ingredient_id: 3 },
+    ]);
+    expect(body.meal_builder_meta).toEqual({ source: 'log_receipt' });
+  });
+
+  it('totals the receipt', () => {
+    const body = buildRecipeFromReceipt(receipt, 'Morning bowl');
+    // 90 g of oats (150 cal per 40 g) + 2 eggs at 72.
+    expect(body.calories).toBeCloseTo(150 * (90 / 40) + 144, 1);
+    expect(body.protein_g).toBeCloseTo(5 * (90 / 40) + 12, 1);
+  });
+
+  it('carries the unit the line was actually measured in', () => {
+    const body = buildRecipeFromReceipt([buildReceiptLine(milk, '200', 'ml')], 'Milk');
+    expect(body.ingredients[0]).toMatchObject({ unit: 'ml', amount: '200' });
+  });
+
+  it('keeps a row with no library link visible instead of dropping it', () => {
+    const legacy = { id: 'x', name: 'Everything seasoning', amount: '', unit: '', calories: null };
+    const body = buildRecipeFromReceipt([...receipt, legacy], 'Bowl');
+    expect(body.ingredients).toHaveLength(3);
+    expect(body.ingredients[2]).toEqual({ kind: 'line', name: 'Everything seasoning', amount: 'as logged' });
+  });
+
+  it('refuses to build without a name or without lines', () => {
+    expect(buildRecipeFromReceipt(receipt, '   ')).toBeNull();
+    expect(buildRecipeFromReceipt(receipt, null)).toBeNull();
+    expect(buildRecipeFromReceipt([], 'Empty')).toBeNull();
+    expect(buildRecipeFromReceipt(null, 'Empty')).toBeNull();
+  });
+
+  it('trims the name', () => {
+    expect(buildRecipeFromReceipt(receipt, '  Morning bowl  ').name).toBe('Morning bowl');
+  });
+});
+
+describe('remembered amounts round-trip their unit', () => {
+  const recipe = {
+    id: 10,
+    ingredients: [{ kind: 'ingredient', name: 'Milk', amount: '1', unit: 'cup', label_ingredient_id: 7 }],
+  };
+  const byId = { 7: milk };
+
+  it('comes back in the unit it was last logged in', () => {
+    const lines = seedReceiptFromRecipe(recipe, byId, { 7: { amount: '200', unit: 'ml' } });
+    expect(lines[0]).toMatchObject({ amount: '200', unit: 'ml' });
+    expect(lines[0].calories).toBeCloseTo(90 * (200 / 236.5882365), 1);
+  });
+
+  it('falls back to the ingredient own unit when the remembered one no longer fits', () => {
+    const lines = seedReceiptFromRecipe(recipe, byId, { 7: { amount: '2', unit: 'slice' } });
+    expect(lines[0].unit).toBe('cup');
+  });
+});
+
+describe('buildRecipeFromLogEntry', () => {
+  const entry = {
+    id: 5,
+    servings: 2,
+    recipe_calories: 400, recipe_protein_g: 30, recipe_carbs_g: 40, recipe_fat_g: 10,
+    ingredients_json: JSON.stringify([
+      { name: 'Oats', amount: 90, unit: 'g', calories: 337.5, protein_g: 11.25, carbs_g: 60.75, fat_g: 6.75, label_ingredient_id: 1 },
+      { name: 'Egg', amount: 2, unit: 'egg', calories: 144, protein_g: 12, carbs_g: 0.8, fat_g: 10, label_ingredient_id: 3 },
+    ]),
+  };
+
+  it('saves the per-serving lines, not the whole log', () => {
+    // The entry is two servings; the recipe is still for one.
+    const body = buildRecipeFromLogEntry(entry, 'Oat bowl');
+    expect(body.ingredients).toEqual([
+      { kind: 'ingredient', name: 'Oats', amount: '90', unit: 'g', label_ingredient_id: 1 },
+      { kind: 'ingredient', name: 'Egg', amount: '2', unit: 'egg', label_ingredient_id: 3 },
+    ]);
+    expect(body.calories).toBeCloseTo(481.5, 1);
+  });
+
+  it('falls back to the meal own macros when it has no breakdown', () => {
+    const plain = { ...entry, ingredients_json: null };
+    const body = buildRecipeFromLogEntry(plain, 'Just macros');
+    expect(body.ingredients).toEqual([]);
+    expect(body.calories).toBe(400);
+    expect(body.meal_builder_meta).toEqual({ source: 'log_entry' });
+  });
+
+  it('needs a name and a meal', () => {
+    expect(buildRecipeFromLogEntry(entry, '  ')).toBeNull();
+    expect(buildRecipeFromLogEntry(null, 'x')).toBeNull();
+    expect(buildRecipeFromLogEntry({ ingredients_json: null }, 'x')).toBeNull();
   });
 });

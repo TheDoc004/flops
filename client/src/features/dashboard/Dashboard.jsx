@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
+import { SaveMealAsRecipeDialog } from '@features/meal-logging';
 import { AiLoggerModal } from '@features/ai-macro-logger';
 import MacroTotals from '@shared/ui/MacroTotals';
 import Reveal from '@shared/ui/Reveal';
@@ -336,6 +337,8 @@ export default function Dashboard() {
     catch (e) { setError(e.message); }
   }
 
+  const [saveRecipeEntry, setSaveRecipeEntry] = useState(null);
+
   function flashCopyStatus(msg) {
     if (copyStatusTimerRef.current != null) {
       clearTimeout(copyStatusTimerRef.current);
@@ -354,6 +357,12 @@ export default function Dashboard() {
   }, []);
 
   /** Stash a meal snapshot for paste onto any viewing day. */
+  // The meal a "Save as Recipe" was opened for, or null. Kept as the whole entry
+  // so the dialog can prefill the name and read the ingredient rows.
+  function handleSaveMealAsRecipe(entry) {
+    setSaveRecipeEntry(entry);
+  }
+
   function handleCopyMeal(entry) {
     const snapshot = mealClipboardSnapshot(entry);
     if (!snapshot) return;
@@ -694,6 +703,7 @@ export default function Dashboard() {
                     entry={entry}
                     onDelete={handleDelete}
                     onCopyMeal={handleCopyMeal}
+                    onSaveAsRecipe={handleSaveMealAsRecipe}
                     variant="dashboard"
                   />
                 </Reveal>
@@ -716,6 +726,14 @@ export default function Dashboard() {
           initialDate={today}
           onLogged={load}
           onClose={() => setShowAiModal(false)}
+        />
+      )}
+
+      {saveRecipeEntry && (
+        <SaveMealAsRecipeDialog
+          entry={saveRecipeEntry}
+          onClose={() => setSaveRecipeEntry(null)}
+          onSaved={(_recipe, name) => flashCopyStatus(`Saved “${name}” to your recipes`)}
         />
       )}
     </div>

@@ -22,7 +22,7 @@ const PIE_COLORS = { protein: MACRO_COLORS.protein, carbs: MACRO_COLORS.carbs, f
 
 /** Meal-row ⋯ menu. Fixed to the trigger so a parent card can't clip it,
  *  and flips up when there isn't room below (last meal, bottom of the page). */
-function MealRowMenu({ onMacros, onMicros, onCopyMeal, onDelete }) {
+function MealRowMenu({ onMacros, onMicros, onCopyMeal, onSaveAsRecipe, onDelete }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef(null);
   const menuRef = useRef(null);
@@ -74,7 +74,7 @@ function MealRowMenu({ onMacros, onMicros, onCopyMeal, onDelete }) {
     return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, [open]);
 
-  const hasActions = onMacros || onMicros || onCopyMeal || onDelete;
+  const hasActions = onMacros || onMicros || onCopyMeal || onSaveAsRecipe || onDelete;
   if (!hasActions) return null;
 
   const menu = open ? (
@@ -119,6 +119,16 @@ function MealRowMenu({ onMacros, onMicros, onCopyMeal, onDelete }) {
           onClick={() => { onCopyMeal(); setOpen(false); }}
         >
           Copy Meal
+        </button>
+      )}
+      {onSaveAsRecipe && (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-pop-item"
+          onClick={() => { onSaveAsRecipe(); setOpen(false); }}
+        >
+          Save as Recipe
         </button>
       )}
       {onDelete && (
@@ -172,6 +182,7 @@ export default function LogEntryRow({
   onDelete,
   onEdit,
   onCopyMeal,
+  onSaveAsRecipe,
   variant = 'inline',
 }) {
   const m = computeEntryMacros(entry);
@@ -246,6 +257,7 @@ export default function LogEntryRow({
               onMacros={() => openView('macros')}
               onMicros={hasMicros ? () => openView('micros') : null}
               onCopyMeal={onCopyMeal ? () => onCopyMeal(entry) : null}
+              onSaveAsRecipe={onSaveAsRecipe ? () => onSaveAsRecipe(entry) : null}
               onDelete={onDelete ? () => onDelete(entry) : null}
             />
           </div>
