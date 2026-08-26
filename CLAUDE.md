@@ -63,6 +63,24 @@ Vite proxies `/api` → `localhost:3001` in dev. The SQLite DB lives at
 - **SQLite is synchronous.** `better-sqlite3` uses sync calls — no `.then()` on DB queries.
 - **Soft deletes.** Recipes use `is_deleted = 1`. Workout presets use `is_deleted = 1`. Never hard-delete things that log entries reference.
 - **Schema migrations** are inline in `server/db.js` using `PRAGMA table_info()` + conditional `ALTER TABLE`. Follow this pattern when adding columns to existing tables.
+- **Unit conversion lives in one place.** `client/src/shared/utils/unitConvert.js` and its
+  CommonJS twin `server/unitConvert.js` decide what a unit means. Units belong to three
+  families (mass / volume / count); within a family conversion is exact, and the only bridge
+  across them is `grams_per_unit` — the weight of one serving unit. Because that bridge is a
+  weight it only spans mass, so a grams-per-serving ingredient can never take a volume.
+  Every scaling path goes through `amountInBasisUnit` (via `servingsForAmount` on the client,
+  `servingsForIngredientAmount` on the server) rather than reading the unit itself.
+  - **The two files must stay identical in body** — `server/__tests__/unitConvert.test.js` has
+    a parity test that fails if they drift. Change both together.
+  - **`null` means refuse to scale, never zero.** These functions return null when a conversion
+    is not knowable; callers must surface an error rather than guess. Guessing is what let
+    "2 slices" silently scale a per-filet ingredient.
+- **`tracking_type` is derived, not defaulted.** `resolveTrackingType()` in
+  `routes/labelIngredients.js` infers it when a client omits it — grams present means `weight`,
+  a unit-shaped serving without grams means `unit`. Defaulting to `weight` produced rows that
+  carried macros but could never be logged; `repairHybridIngredientTracking()` in `db.js` heals
+  those at boot. Watch for rows whose `tracking_type` disagrees with which of
+  `grams_per_serving` / `unit_name`+`serving_quantity` is populated.
 - **Log entry denormalization.** When a meal is logged, recipe macros are copied into `log_entries` columns (`recipe_calories`, `recipe_protein_g`, etc.) so historical records survive recipe edits.
 - **No CSS framework.** Use the existing `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.card`, `.error`, `.empty-state` classes from `client/src/styles/index.css`. Extend with inline styles.
 - **MacroUnitsContext** is the only React Context — it exposes `macroUnits` ('metric'|'us') and `bodyUnits` ('metric'|'us') from the user profile. Consume it in any component that displays macro values or weights.
@@ -89,7 +107,8 @@ nutrition-tracker/
 │   ├── styles/               # index.css (design-system tokens), App.css
 │   ├── shared/               # cross-feature foundation
 │   │   ├── api/              # thin fetch wrappers, one file per route group
-│   │   ├── utils/            # pure JS utilities (no side effects)
+│   │   ├── utils/            # pure JS utilities (no side effects). unitConvert.js is
+│   │   │                     # twinned with server/unitConvert.js — change both
 │   │   ├── hooks/            # custom hooks (useMediaQuery, usePaginationAnchor, useDropdownPlacement)
 │   │   ├── context/          # MacroUnitsContext
 │   │   └── ui/               # shared UI (Navbar, BottomNav, MacroTotals, RangeSelector, RecipeCombobox)

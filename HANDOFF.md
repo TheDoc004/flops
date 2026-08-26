@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-08-23_
+_Last updated: 2026-08-25_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -86,6 +86,8 @@ lives beside them — Training is **not** in the nutrition navbar tabs.
 
 **Log Meal vs AI Estimate:** Log a Meal is a **receipt** (optional recipe seed + library foods).
 AI Estimate is speak/type natural language. See `docs/log-once-vs-save-as-recipe.md`.
+A receipt — or an already-logged meal — can be **captured as a recipe**; see
+*Units & recipes from a receipt* below.
 
 ### Notebook-day UI (off-today on Dashboard) — important for styling work
 
@@ -144,6 +146,86 @@ Unchanged from prior handoff detail — still accurate. See sections in git hist
 highlights: DSLD name lookup, label scan, dose vs serving, micronutrients v2, barcode via OFF,
 multi-user auth, coach invite codes.
 
+### Units & recipes from a receipt — added 2026-08-25
+
+Two things shipped together: a **unit conversion layer**, and the ability to **save a receipt
+or a logged meal as a recipe**.
+
+**Conversion.** A saved ingredient can now be logged in any unit it can actually be measured
+in — a milk saved as "1 cup" takes 200 ml, 7 fl oz, or 245 g. Rules live in
+`client/src/shared/utils/unitConvert.js` + its CommonJS twin `server/unitConvert.js`; see
+CLAUDE.md § Critical Conventions for the family model and the twin-file rule. The bridge across
+families is `grams_per_unit`, a column that had been on `label_ingredients` all along and was
+read by nothing until now. The log modal's unit dropdown offers only units that resolve, and
+switching it *restates* the amount (1 cup → 236.59 ml) rather than reinterpreting the number.
+
+**The AI logger sees the ingredient library.** `buildUserContent()` in `aiMacroService.js` now
+sends each saved ingredient with the unit it is measured in, forbids converting the unit the
+user said, and asks the model to name the ingredient it matched (`savedIngredient`). That name
+is resolved against the real library and ignored when it isn't genuinely there, so a
+hallucinated match yields nothing rather than wrong macros. This is what stopped
+"1 filet of salmon" coming back as 100 g.
+
+**Save as Recipe** has two entry points, both producing library-backed lines so the saved
+recipe stays editable in the Meal Builder:
+
+| Where | Behaviour |
+|---|---|
+| Under `Log Meal` in `LogMealModal` | Saves the assembled receipt without logging it; inline name field |
+| `⋯` menu on a logged meal (`LogEntryRow`) | `SaveMealAsRecipeDialog` asks for a name, prefilled from the meal |
+
+A logged entry stores its ingredient rows **per serving**, so servings are deliberately not
+applied — saving a two-serving log produces a recipe for one.
+
+**Traps worth remembering:**
+
+- **Hybrid ingredient rows.** Both write handlers used to default `tracking_type` to `'weight'`,
+  so a unit-shaped serving with no grams became permanently unloggable while looking complete
+  in the library list — the symptom was *"needs grams per serving"* on an ingredient whose
+  macros were saved. Fixed at the write path and repaired at boot.
+- **The remembered-amounts memo** (last-used amounts per recipe, in localStorage) must
+  round-trip the real unit. It briefly collapsed to g/oz on write, which re-seeded a meal logged
+  as "200 ml" as "200 cup".
+- **Placeholder units.** `unit`, `serving`, `portion`, `each` are interchangeable *only* when
+  the ingredient's own unit is also a placeholder. A real unit never absorbs a vague one — one
+  serving of a spray may be ten sprays.
+
+**Not visually verified.** The unit dropdown, the ingredient-form hint, the Save as Recipe
+button and its dialog are covered by tests and a clean build, but were never seen rendered —
+the agent had no signed-in session. Worth an eyeball pass.
+
+### Site chrome & link previews — added 2026-08-25
+
+Sharing a Flops link (iMessage, Slack, WhatsApp) shows a navy wordmark card instead of a bare
+blue link. Everything lives in `client/index.html`'s `<head>` plus two files in `client/public/`:
+
+| File | What | Notes |
+|---|---|---|
+| `og-image.png` | 1200x630 link-preview card | Navy `#1e3a8a`, "Flops" in DM Serif Display, paper `#f3ede3` |
+| `apple-touch-icon.png` | 180x180 home-screen icon | Navy tile + serif F, matches `favicon.svg` |
+
+**Rules that are easy to get wrong:**
+
+- `og:image` must be an **absolute** `https://` URL. A relative `/og-image.png` silently fails
+  in iMessage.
+- Must be a real bitmap. **SVG does not render** in link previews.
+- Keep it under ~300KB (currently 208KB). iMessage abandons slow fetches and falls back to
+  the plain text bubble with no error.
+- **Bump `?v=` in the `og:image` URL whenever the artwork changes.** iMessage caches previews
+  per-device essentially forever; without a new query string, nobody who already saw the old
+  card will ever see the new one. To test, send yourself `useflops.com/?v=2`.
+
+**Debugging trap:** `vercel.json` rewrites `/(.*)` to `/index.html`. Vercel checks the
+filesystem first, so real assets serve correctly — but a **missing** asset returns
+`200 text/html`, not a 404. A typo'd filename therefore hands iMessage an HTML page where it
+expects a PNG, and the preview just silently goes blank. If a preview breaks, `curl -I` the
+image URL and check the content-type before anything else.
+
+**Regenerating the card:** it was rendered by headless Chrome from an HTML file (so DM Serif
+Display loads from Google Fonts), screenshotted at `--force-device-scale-factor=2`, then
+downsampled with `sips --resampleHeightWidth 630 1200`. Rendering at 2x and halving is what
+keeps the serif edges clean.
+
 ---
 
 ## 4. Git state
@@ -153,11 +235,11 @@ multi-user auth, coach invite codes.
 Recent production commits (newest first):
 
 ```
-b933166 fix(dashboard): consistent modal colors on notebook days
-45e4580 fix(dashboard): readable Log Meal and AI buttons off today
-c333bea feat(gym): rebuild Training as a set logger
-9799104 feat(gym): store sets, sessions, and templates
-7337416 feat(training): swap chrome between nutrition and gym
+e24bc27 feat(recipes): save a receipt or a logged meal as a recipe
+a4fbfde test(dashboard): match the weigh-in tests to the settled card
+772a7cd fix(ingredients): repair saved ingredients that could never be logged
+4c9dee9 feat(nutrition): log a saved ingredient in any unit it can reach
+f4750a8 Add link preview card and Apple touch icon
 ```
 
 Working tree should be clean before starting new work. **One topic per commit**; push to `main`
@@ -171,10 +253,20 @@ for live deploy unless explicitly working on a feature branch.
   `LogMealModal.jsx`, `ManageSupplementsModal.jsx`. Extract hooks to `client/src/shared/hooks/`.
 - **Pre-existing lint:** duplicate `fontWeight` in inline styles (`Ingredients.jsx`,
   `ManageSupplementsModal.jsx`); `Profile.jsx` static-components warnings.
-- **Client component tests** — sparse except utils and a few modals. Server routes well tested.
+- **Client component tests** — still thin, but no longer bare: `test-setup.js` now stubs
+  `matchMedia` (jsdom ships none), which was silently blocking any test that rendered
+  `LogEntryRow` or anything else behind `useMediaQuery`. Suite is green: 332 client, 296 server.
+- **Stale tab after a units deploy** — a cached bundle can send `g` for a count-tracked
+  ingredient that has a gram equivalent, and the server will now read that as grams. Hard-refresh
+  after deploying anything touching `unitConvert`. Narrow window; only affects ingredients with a
+  gram equivalent recorded.
 - **No in-app data export** — SQLite on Render disk; use `scripts/backup-sqlite.sh`.
 - **Meal Builder browser history** — mode/step changes push history entries (fix: `{ replace: true }`).
 - **Conditional inline style shorthand/longhand trap** — see old handoff note; grep when styling bugs appear.
+- **Stale brand asset:** `flops-badge.png` (Navbar, Login, Landing) is still the old amber
+  "Fuel your day" lightbulb from before the nutrition/training split, and clashes with the
+  navy/paper identity in `styles/index.css`. It is also a 2MB 1536x1024 file rendered at badge
+  size. Replacing it is its own pass — the 2026-08-25 link-preview work deliberately left it alone.
 - **AiMacroLogger** still has many hardcoded light-theme inline colors in review/expand panels —
   only the input card + loading overlay were fixed for notebook-day modals; deeper AI review UI
   may need the same token/class treatment if opened off-today.
@@ -184,7 +276,9 @@ for live deploy unless explicitly working on a feature branch.
 ## 6. Parked / deliberately deferred
 
 - Goals & Profile restructure (Plan shell organization).
-- AI Logger per-unit "1 g" bug — needs live repro.
+- AI Logger per-unit "1 g" bug — **probably closed** by the 2026-08-25 units work (the model
+  now keeps the unit you said, and the matcher converts instead of refusing). Re-check against
+  a real library before deleting this line.
 - AI Logger recipe "one-shot invert" (estimate primary, saved recipe as suggestion).
 - Phase 3 bridge — do not start until both domains feel solid independently.
 - Nutrition refactors — opportunistic when touching files.
@@ -197,7 +291,14 @@ for live deploy unless explicitly working on a feature branch.
 - Mobile-first always (test mentally at 390px).
 - One topic per commit; don't bundle unrelated changes.
 - Feature Brief before building a new feature; verify in browser, not just tests.
-- **Do not put the repo back in iCloud-synced `~/Documents`.**
+- **Do not put the repo back in iCloud-synced `~/Documents`.** Related: **launch Claude Code
+  from `~/dev/FLOPS`**, not the workspace folder — project hooks and settings only load for the
+  directory the session started in.
+- **This file is enforced, not suggested.** `.claude/hooks/check-handoff.sh` runs on the `Stop`
+  event: it diffs everything since the session's starting commit (commits *and* working tree)
+  and blocks once if source changed while `HANDOFF.md` did not. `.claude/hooks/session-base.sh`
+  records that baseline at `SessionStart` — which is why a working-tree-only check is not enough,
+  since work that has already been committed leaves a clean tree.
 - For UI/theming: read **`docs/design-system.md`** and the notebook-day section above before
   touching `index.css` or modal components.
 
