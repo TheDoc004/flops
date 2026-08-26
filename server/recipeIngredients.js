@@ -3,6 +3,8 @@
  * Legacy `kind: 'slot'` rows migrate to `kind: 'ingredient'` (default option only).
  */
 
+const { amountInBasisUnit, canonicalUnit, loggableUnitsFor } = require('./unitConvert');
+
 const OZ_TO_G = 28.349523125;
 
 function gramsFromAmount(amountStr, unit) {
@@ -247,7 +249,10 @@ function normalizeLogSlotCustomization(raw) {
   if (raw.amount != null && String(raw.amount).trim() !== '') {
     amount = String(raw.amount).trim();
   }
-  const unit = String(raw.unit ?? 'g').toLowerCase() === 'oz' ? 'oz' : 'g';
+  // Keep whatever unit was chosen — the ingredient decides whether it is usable
+  // (see ingredientMacrosForAmount). Collapsing everything to g/oz here is what
+  // made a per-cup or per-filet ingredient impossible to log in another unit.
+  const unit = canonicalUnit(raw.unit) || 'g';
   return { label_ingredient_id, amount, unit };
 }
 
@@ -267,7 +272,7 @@ function slotDetailFromExisting(existingSlotJson, slot_id, templateAmount, templ
   return {
     label_ingredient_id: mergedId,
     amount: String(templateAmount),
-    unit: templateUnit === 'oz' ? 'oz' : 'g',
+    unit: canonicalUnit(templateUnit) || 'g',
   };
 }
 
@@ -284,7 +289,7 @@ function resolveSlotsForLog(db, recipeRow, slot_selections, log_slot_customizati
   for (const s of slots) {
     let label_ingredient_id = mergedIds[s.slot_id];
     let amountStr = String(s.amount);
-    let unit = s.unit === 'oz' ? 'oz' : 'g';
+    let unit = canonicalUnit(s.unit) || 'g';
 
     if (custom && Object.prototype.hasOwnProperty.call(custom, s.slot_id)) {
       const norm = normalizeLogSlotCustomization(custom[s.slot_id]);
@@ -308,7 +313,9 @@ function resolveSlotsForLog(db, recipeRow, slot_selections, log_slot_customizati
       err.code = 'LABEL_INGREDIENT_NOT_FOUND';
       throw err;
     }
-    if (gramsFromAmount(amountStr, unit) == null) {
+    // Only the number is checked here — whether the UNIT works is a question
+    // about the ingredient, answered in ingredientMacrosForAmount below.
+    if (!Number.isFinite(Number(String(amountStr ?? '').trim())) || Number(amountStr) < 0) {
       const err = new Error('INVALID_SLOT_AMOUNT');
       err.code = 'INVALID_SLOT_AMOUNT';
       throw err;
@@ -318,33 +325,44 @@ function resolveSlotsForLog(db, recipeRow, slot_selections, log_slot_customizati
   return resolved;
 }
 
+/**
+ * The unit a logged row is shown in. Whatever unit the amount was actually
+ * entered in wins — log a per-cup milk in millilitres and the receipt says
+ * "200 ml", not "0.85 cup" — as long as the ingredient can be measured that
+ * way. Anything else falls back to the ingredient's own unit.
+ */
 function displayUnitForIngredient(ingRow, amountUnit) {
+  const chosen = canonicalUnit(amountUnit);
+  if (chosen && loggableUnitsFor(ingRow).includes(chosen)) return chosen;
   if (ingRow?.tracking_type === 'unit') {
     return String(ingRow.unit_name || '').trim() || 'unit';
   }
-  return amountUnit === 'oz' ? 'oz' : 'g';
+  return chosen === 'oz' ? 'oz' : 'g';
+}
+
+/**
+ * How many of the ingredient's stored servings an amount comes to, or null when
+ * the ingredient cannot be measured in that unit. The amount is restated in the
+ * ingredient's OWN serving unit first, so a per-cup item accepts ml, fl oz,
+ * tbsp — and grams once its gram equivalent is recorded.
+ *
+ * Mirrors servingsForAmount in client/src/features/label-ocr/labelMacro.js.
+ */
+function servingsForIngredientAmount(ingRow, amountValue, unit) {
+  if (!ingRow) return null;
+  const inBasis = amountInBasisUnit(ingRow, amountValue, unit);
+  if (inBasis == null) return null;
+  const perServing = ingRow.tracking_type === 'unit'
+    ? Number(ingRow.serving_quantity)
+    : Number(ingRow.grams_per_serving);
+  if (Number.isFinite(perServing) && perServing > 0) return inBasis / perServing;
+  // A count defaults to one per serving; a grams-per-serving item never guesses.
+  return ingRow.tracking_type === 'unit' ? inBasis : null;
 }
 
 function ingredientMacrosForAmount(ingRow, amountValue, unit) {
-  if (!ingRow) return null;
-  if (ingRow.tracking_type === 'unit') {
-    const count = Number(amountValue);
-    if (!Number.isFinite(count) || count < 0) return null;
-    const sq = Number(ingRow.serving_quantity);
-    const mult = count / (Number.isFinite(sq) && sq > 0 ? sq : 1);
-    return {
-      calories: Number(ingRow.calories) * mult,
-      protein_g: Number(ingRow.protein_g) * mult,
-      carbs_g: Number(ingRow.carbs_g) * mult,
-      fat_g: Number(ingRow.fat_g) * mult,
-      fiber_g: ingRow.fiber_g != null && ingRow.fiber_g !== '' ? Number(ingRow.fiber_g) * mult : 0,
-    };
-  }
-  const gps = Number(ingRow.grams_per_serving);
-  if (!Number.isFinite(gps) || gps <= 0) return null;
-  const grams = gramsFromAmount(amountValue, unit);
-  if (grams == null) return null;
-  const mult = grams / gps;
+  const mult = servingsForIngredientAmount(ingRow, amountValue, unit);
+  if (mult == null) return null;
   return {
     calories: Number(ingRow.calories) * mult,
     protein_g: Number(ingRow.protein_g) * mult,
@@ -352,6 +370,18 @@ function ingredientMacrosForAmount(ingRow, amountValue, unit) {
     fat_g: Number(ingRow.fat_g) * mult,
     fiber_g: ingRow.fiber_g != null && ingRow.fiber_g !== '' ? Number(ingRow.fiber_g) * mult : 0,
   };
+}
+
+/**
+ * Why ingredientMacrosForAmount refused, so the caller can say something the
+ * user can act on: record a gram equivalent, or pick a different unit.
+ */
+function amountFailureCode(ingRow, unit) {
+  const units = loggableUnitsFor(ingRow);
+  if (units.length === 0) return 'LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING';
+  return units.includes(canonicalUnit(unit))
+    ? 'LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING'
+    : 'LABEL_INGREDIENT_UNIT_NOT_CONVERTIBLE';
 }
 
 function r2(n) {
@@ -421,14 +451,18 @@ function resolveReceiptForLog(db, rawRows, userId) {
         err.code = 'LABEL_INGREDIENT_NOT_FOUND';
         throw err;
       }
-      const unitRaw = r.unit != null ? String(r.unit) : 'g';
-      const amountUnit = unitRaw.toLowerCase() === 'oz' ? 'oz' : (ing.tracking_type === 'unit' ? unitRaw : 'g');
+      // The unit is taken as given. Forcing a weight-tracked row to 'g' used to
+      // silently read "200 ml" as 200 grams.
+      const amountUnit = canonicalUnit(r.unit) || 'g';
       const amountVal = amount != null ? amount : Number(r.amount);
       if (!Number.isFinite(amountVal) || amountVal <= 0) continue;
       const m = ingredientMacrosForAmount(ing, amountVal, amountUnit);
       if (!m) {
-        const err = new Error('LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING');
-        err.code = 'LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING';
+        const code = amountFailureCode(ing, amountUnit);
+        const err = new Error(code);
+        err.code = code;
+        err.ingredientName = ing.name;
+        err.unit = amountUnit;
         throw err;
       }
       rows.push({
@@ -514,8 +548,12 @@ function adjustPerServingMacrosForResolvedSlots(db, recipeRow, resolvedBySlot, u
     const mDef = ingredientMacrosForAmount(defIng, slot.amount, slot.unit);
     const mSel = ingredientMacrosForAmount(selIng, res.amount, res.unit);
     if (!mDef || !mSel) {
-      const err = new Error('LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING');
-      err.code = 'LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING';
+      const bad = !mDef ? { ing: defIng, unit: slot.unit } : { ing: selIng, unit: res.unit };
+      const code = amountFailureCode(bad.ing, bad.unit);
+      const err = new Error(code);
+      err.code = code;
+      err.ingredientName = bad.ing && bad.ing.name;
+      err.unit = canonicalUnit(bad.unit);
       throw err;
     }
     adj.calories += -mDef.calories + mSel.calories;
@@ -538,7 +576,7 @@ function resolvedIngredientRows(db, recipeRow, resolvedBySlot, userId) {
       (resolvedBySlot && resolvedBySlot[slot.slot_id]) || {
         label_ingredient_id: slot.option_label_ingredient_ids[0],
         amount: slot.amount,
-        unit: slot.unit === 'oz' ? 'oz' : 'g',
+        unit: canonicalUnit(slot.unit) || 'g',
       };
     const amount = Number(res.amount);
     if (!Number.isFinite(amount) || amount <= 0) continue;
@@ -601,6 +639,8 @@ module.exports = {
   gramsFromAmount,
   displayUnitForIngredient,
   ingredientMacrosForAmount,
+  servingsForIngredientAmount,
+  amountFailureCode,
   macrosFromReceiptRows,
   resolveReceiptForLog,
 };

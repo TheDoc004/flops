@@ -14,6 +14,8 @@
  * The macro-scaling formulas already branch on tracking_type, so weight units
  * scale by grams and everything else scales by count — no formula changes.
  */
+import { loggableUnitsFor } from './unitConvert';
+
 const OZ_TO_G = 28.349523125;
 
 // Dropdown order (label-style units, weight first).
@@ -118,4 +120,18 @@ export function formatAmountWithUnit(amount, unit) {
 /** Label for the chosen unit (resolves "custom"). */
 export function unitLabel({ serving_unit, serving_unit_custom }) {
   return serving_unit === 'custom' ? (String(serving_unit_custom || '').trim() || 'unit') : serving_unit;
+}
+
+/**
+ * Which units an ingredient described by these form fields could be LOGGED in,
+ * split into what works now and what recording the gram equivalent would add.
+ * Drives the hint under that field, so it can say what it is actually for.
+ */
+export function loggableUnitsForServing(serving) {
+  const stored = servingToStored(serving);
+  const now = loggableUnitsFor(stored);
+  // The same ingredient as if a weight had been recorded — the difference is
+  // exactly what the gram-equivalent field unlocks.
+  const withGrams = loggableUnitsFor({ ...stored, grams_per_unit: stored.grams_per_unit || 1 });
+  return { now, unlocked: withGrams.filter(u => !now.includes(u)) };
 }

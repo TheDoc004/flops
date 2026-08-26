@@ -1,11 +1,13 @@
 import { macrosForLabelServingAmount, gramsFromAmount } from '@features/label-ocr';
 import { QUICK_FOODS, macrosForQuickFoodAmount } from '@features/meal-logging/quickFoods';
+import { isMassUnit, basisUnitFor } from '@shared/utils/unitConvert';
 
 /**
  * Macro source hierarchy for AI-detected ingredients (highest priority first):
  *   1. Explicit macros in the CURRENT message (macroSource 'provided')
  *                                                          -> source 'provided' ("Provided in message")
- *   2. Ingredient Library  (exact, then fuzzy name match)  -> source 'library' ("Saved data")
+ *   2. Ingredient Library  (the saved ingredient the AI named, then exact,
+ *                          then fuzzy name match)          -> source 'library' ("Saved data")
  *   3. Built-in common food (fuzzy, weight-based)          -> source 'common'  ("Common data")
  *   4. AI estimate (unchanged)                              -> source 'ai'      ("Estimated")
  *
@@ -15,8 +17,9 @@ import { QUICK_FOODS, macrosForQuickFoodAmount } from '@features/meal-logging/qu
  * borrow macros for the review; the user can still revise every value.
  */
 
-const MASS_UNIT = /^(g|gram|grams|oz|ounce|ounces)$/;
-export const isMassUnit = u => MASS_UNIT.test(String(u || '').toLowerCase());
+// Unit classification is shared with the conversion layer so 'lb', 'kg' and
+// 'fl oz' are read the same way here as they are at log time.
+export { isMassUnit };
 
 // Preparation / quality words that shouldn't block a match.
 const FILLER = new Set([
@@ -116,6 +119,47 @@ export function likelyLibraryMatches(name, library, limit = 8) {
     .slice(0, limit);
 }
 
+/**
+ * The user's library as the AI prompt needs it: a name, the unit that
+ * ingredient is measured in, and what one of those weighs when known. Most-used
+ * first, so a library truncated by the server's cap keeps its best entries.
+ *
+ * Showing the model these units is what stops "1 filet of salmon" coming back
+ * as 100 g — it can see that salmon is a thing this user counts in filets.
+ */
+export function libraryForPrompt(library, limit = 150) {
+  return (Array.isArray(library) ? library : [])
+    .filter(ing => ing && String(ing.name || '').trim())
+    .slice()
+    .sort((a, b) => {
+      const use = (Number(b.use_count) || 0) - (Number(a.use_count) || 0);
+      if (use !== 0) return use;
+      return new Date(b.last_used_at || 0) - new Date(a.last_used_at || 0);
+    })
+    .slice(0, limit)
+    .map(ing => {
+      const basis = basisUnitFor(ing);
+      return {
+        name: String(ing.name).trim(),
+        unit: basis ? basis.unit : 'serving',
+        ...(basis && basis.gramsPerUnit && basis.unit !== 'g'
+          ? { gramsPerUnit: basis.gramsPerUnit }
+          : {}),
+      };
+    });
+}
+
+/**
+ * The saved ingredient the AI named, resolved against the real library by exact
+ * (normalized) name. The model only ever returns a name; anything that is not
+ * genuinely in the library is ignored rather than trusted.
+ */
+export function libraryFromSavedName(savedName, library) {
+  const target = norm(savedName);
+  if (!target) return null;
+  return (Array.isArray(library) ? library : []).find(ing => norm(ing.name) === target) || null;
+}
+
 /** Substring search across the full library (for the "search the full library" field). */
 export function searchLibrary(query, library) {
   const q = String(query || '').toLowerCase().trim();
@@ -128,16 +172,20 @@ export function searchLibrary(query, library) {
 
 /**
  * The per-serving "nutrition basis" of a saved ingredient, in the editable shape
- * { amount, unit, calories, protein, carbs, fat, perKind }. Mirrors how the saved
- * row stores macros (per grams_per_serving for weight, per serving_quantity for unit).
+ * { amount, unit, calories, protein, carbs, fat, gramsPerUnit, perKind }. Mirrors how
+ * the saved row stores macros (per grams_per_serving for weight, per serving_quantity
+ * for unit), plus the gram equivalent that lets a unit basis be logged by weight.
  */
 export function basisFromLibrary(lib) {
   if (!lib) return null;
   if (lib.tracking_type === 'unit') {
     const amount = Number(lib.serving_quantity) > 0 ? Number(lib.serving_quantity) : 1;
+    const gpu = Number(lib.grams_per_unit);
     return {
       amount, unit: String(lib.unit_name || 'serving'),
       calories: nn(lib.calories), protein: nn(lib.protein_g), carbs: nn(lib.carbs_g), fat: nn(lib.fat_g),
+      // Carried so the row can still be logged by weight — see pseudoIngredientFromBasis.
+      gramsPerUnit: Number.isFinite(gpu) && gpu > 0 ? gpu : null,
       perKind: 'serving',
     };
   }
@@ -151,20 +199,37 @@ export function basisFromLibrary(lib) {
 
 /**
  * Scale a basis { amount, unit, cal, p, c, f } to a logged amount/unit. Returns
- * the AI-row macro shape, or null if the basis unit and logged unit are
- * incompatible (weight ↔ count) — same guard used for saved ingredients.
+ * the AI-row macro shape, or null when the logged unit is not one the basis can
+ * be measured in — the conversion layer, not a weight-vs-count guess, decides.
  */
 export function scaleBasisToAmount(basis, quantity, unit) {
   if (!basis) return null;
-  const weightBasis = isMassUnit(basis.unit);
-  const massLogged = isMassUnit(unit);
-  if (weightBasis !== massLogged) return null;
-  const pseudo = weightBasis
-    ? { tracking_type: 'weight', grams_per_serving: gramsFromAmount(basis.amount, basis.unit), calories: basis.calories, protein_g: basis.protein, carbs_g: basis.carbs, fat_g: basis.fat }
-    : { tracking_type: 'unit', serving_quantity: basis.amount, calories: basis.calories, protein_g: basis.protein, carbs_g: basis.carbs, fat_g: basis.fat };
-  const m = macrosForLabelServingAmount(pseudo, quantity, massLogged ? unit : 'unit');
+  const m = macrosForLabelServingAmount(pseudoIngredientFromBasis(basis), quantity, unit);
   if (!m || !Number.isFinite(m.calories)) return null;
   return { calories: r1m(m.calories), protein: r1m(m.protein_g), carbs: r1m(m.carbs_g), fat: r1m(m.fat_g) };
+}
+
+/**
+ * A basis reshaped as a saved-ingredient row, so the single scaling function —
+ * and with it the whole unit-conversion layer — applies to AI rows too. A
+ * non-mass basis carries the gram equivalent its library row had, which is what
+ * lets a "1 filet" basis take an amount in grams.
+ */
+function pseudoIngredientFromBasis(basis) {
+  const macros = {
+    calories: basis.calories, protein_g: basis.protein,
+    carbs_g: basis.carbs, fat_g: basis.fat,
+  };
+  if (isMassUnit(basis.unit)) {
+    return { tracking_type: 'weight', grams_per_serving: gramsFromAmount(basis.amount, basis.unit), ...macros };
+  }
+  return {
+    tracking_type: 'unit',
+    unit_name: basis.unit,
+    serving_quantity: basis.amount,
+    grams_per_unit: basis.gramsPerUnit != null ? basis.gramsPerUnit : null,
+    ...macros,
+  };
 }
 
 /**
@@ -212,16 +277,14 @@ function bestMatch(name, candidates, getName) {
 }
 
 /**
- * Library macros for an AI amount, ONLY when the unit is compatible with the
- * saved ingredient's tracking type (else null — we won't mis-scale "1 tbsp" onto
- * a grams-per-serving item or "170 g" onto a per-unit item).
+ * Library macros for an AI amount, or null when the saved ingredient cannot be
+ * measured in that unit. The scaling function is the whole gate now: it accepts
+ * every unit the ingredient converts to ("170 g" onto a per-filet item once a
+ * gram equivalent is recorded) and refuses the rest outright, instead of
+ * silently reading "2 slices" as two of whatever the item is counted in.
  */
 export function libraryMacrosFor(ing, quantity, unit) {
-  const unitTracked = ing.tracking_type === 'unit';
-  const mass = isMassUnit(unit);
-  if (unitTracked && mass) return null;
-  if (!unitTracked && !mass) return null;
-  const m = macrosForLabelServingAmount(ing, quantity, mass ? unit : 'unit');
+  const m = macrosForLabelServingAmount(ing, quantity, unit);
   return m && Number.isFinite(m.calories) ? m : null;
 }
 
@@ -256,7 +319,8 @@ export function resolveIngredientSource(ing, library, quickFoods = QUICK_FOODS) 
   //    of the same name: then prefer the saved one so we reuse it (and its id)
   //    instead of spawning a duplicate when the meal is saved as a recipe.
   if (ing.macroSource === 'provided') {
-    const lib = bestMatch(ing.name, library, x => x.name);
+    const named = libraryFromSavedName(ing.savedIngredient, library);
+    const lib = named ? { best: named, score: 1 } : bestMatch(ing.name, library, x => x.name);
     if (lib.best && lib.score >= MATCH_THRESHOLD) {
       const m = libraryMacrosFor(lib.best, ing.quantity, ing.unit);
       if (m && macrosMatchProvided(ing, m)) {
@@ -272,7 +336,20 @@ export function resolveIngredientSource(ing, library, quickFoods = QUICK_FOODS) 
       source: 'provided', label_ingredient_id: undefined, matchedName: null,
     };
   }
-  // 2. Ingredient Library (exact, then fuzzy) — preferred over generic estimates.
+  // 2a. The saved ingredient the model itself named. It saw the user's library
+  //     and the units in it, so this beats scoring names after the fact.
+  const named = libraryFromSavedName(ing.savedIngredient, library);
+  if (named) {
+    const m = libraryMacrosFor(named, ing.quantity, ing.unit);
+    if (m) {
+      const exact = norm(ing.name) === norm(named.name);
+      return {
+        calories: r1(m.calories), protein: r1(m.protein_g), carbs: r1(m.carbs_g), fat: r1(m.fat_g),
+        source: 'library', label_ingredient_id: named.id, matchedName: exact ? null : named.name,
+      };
+    }
+  }
+  // 2b. Ingredient Library by name (exact, then fuzzy) — preferred over generic estimates.
   const lib = bestMatch(ing.name, library, x => x.name);
   if (lib.best && lib.score >= MATCH_THRESHOLD) {
     const m = libraryMacrosFor(lib.best, ing.quantity, ing.unit);

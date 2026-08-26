@@ -4,6 +4,7 @@
  */
 
 import { macrosForLabelServingAmount } from '@features/label-ocr';
+import { convertForIngredient, loggableUnitsFor, roundAmount, canonicalUnit } from '@shared/utils/unitConvert';
 
 function tryParseLineAmount(lineItem) {
   const s = String(lineItem?.amount ?? '').trim();
@@ -15,12 +16,13 @@ function tryParseLineAmount(lineItem) {
   return { amount: String(n), unit: u === 'oz' ? 'oz' : 'g' };
 }
 
-/** Keep count units (egg, slice) — only normalize mass units to g/oz. */
+/**
+ * Normalize a stored unit for persistence. Measurement units fold to their
+ * canonical spelling ("Ounces" -> "oz", "fl. oz." -> "fl oz"); count units keep
+ * their own name. An absent unit means grams, as it always has.
+ */
 export function persistAmountUnit(unit) {
-  const u = String(unit || '').trim();
-  if (/^(oz|ounce|ounces)$/i.test(u)) return 'oz';
-  if (/^(g|gram|grams)$/i.test(u) || !u) return 'g';
-  return u;
+  return canonicalUnit(unit) || 'g';
 }
 
 /**
@@ -142,7 +144,9 @@ export function defaultAmountForIngredient(ing) {
 export function buildReceiptLine(ing, amount, unit, { id, source = 'library' } = {}) {
   if (!ing) return null;
   const amt = amount != null ? String(amount) : '';
-  const u = unit != null ? String(unit) : 'g';
+  // Always canonical, so the unit a line is computed in is the unit the picker
+  // shows as selected — "Cups" and "cup" must not be two different things.
+  const u = canonicalUnit(unit) || 'g';
   const macros = macrosForLabelServingAmount(ing, amt, u);
   if (!macros) return null;
   return {
@@ -195,6 +199,37 @@ export function refreshReceiptLine(line, ing) {
     fat_g: macros.fat_g,
     fiber_g: macros.fiber_g,
   };
+}
+
+/**
+ * Change a receipt line's unit, restating the amount so the food stays the
+ * same: 1 cup of milk switched to ml becomes 236.59 ml, not 1 ml. Returns the
+ * patch to apply, or null when the ingredient can't take that unit.
+ */
+export function changeLineUnit(line, ing, nextUnit) {
+  const unit = canonicalUnit(nextUnit);
+  if (!line || !ing || !unit) return null;
+  if (!loggableUnitsFor(ing).includes(unit)) return null;
+  const converted = convertForIngredient(ing, line.amount, line.unit, unit);
+  // A blank or not-yet-valid amount just carries over with the new unit.
+  const amount = converted == null ? line.amount : String(roundAmount(converted));
+  return { amount, unit };
+}
+
+/**
+ * Point a receipt line at a different ingredient (a substitution), keeping the
+ * amount where that is meaningful. The unit is only carried over when the new
+ * ingredient can actually be measured in it — otherwise the line resets to that
+ * ingredient's own default, rather than relabelling "150 g" as "150 eggs".
+ */
+export function retargetLineToIngredient(line, ing) {
+  if (!line || !ing) return null;
+  const unit = canonicalUnit(line.unit);
+  if (unit && loggableUnitsFor(ing).includes(unit)) {
+    return { amount: line.amount, unit };
+  }
+  const def = defaultAmountForIngredient(ing);
+  return { amount: def.amount, unit: canonicalUnit(def.unit) || 'g' };
 }
 
 export function sumReceiptMacros(lines) {

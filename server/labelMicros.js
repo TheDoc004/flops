@@ -9,25 +9,20 @@
  */
 
 const { MICRO_KEYS } = require('./microNutrients');
+const { servingsForIngredientAmount } = require('./recipeIngredients');
 
 /**
  * How many of an ingredient's stored servings a logged row represents.
- * Mirrors the macro math in recipeIngredients.ingredientMacrosForAmount:
- * unit-tracked rows count servings, weight-tracked rows divide grams.
+ *
+ * Micros must scale by exactly the multiplier the macros used, or a meal's
+ * label micros would disagree with its calories, so this is the same function
+ * rather than a copy of it — including the unit conversion, so a per-cup
+ * ingredient logged in millilitres carries the right micros too.
+ *
  * @returns {number|null} null when the row can't be resolved
  */
 function servingsMultiplier(ingRow, amount, unit) {
-  const value = Number(amount);
-  if (!Number.isFinite(value) || value < 0) return null;
-
-  if (ingRow?.tracking_type === 'unit') {
-    const per = Number(ingRow.serving_quantity);
-    return value / (Number.isFinite(per) && per > 0 ? per : 1);
-  }
-  const grams = String(unit || '').toLowerCase() === 'oz' ? value * 28.349523125 : value;
-  const perServing = Number(ingRow?.grams_per_serving);
-  if (!Number.isFinite(perServing) || perServing <= 0) return null;
-  return grams / perServing;
+  return servingsForIngredientAmount(ingRow, amount, unit);
 }
 
 /** Stored blob -> flat { key: amount }, or null when absent/unusable. */
@@ -66,7 +61,7 @@ function labelMicrosForRows(db, rows, userId) {
   if (list.length === 0) return { micros, covered, uncovered };
 
   const get = db.prepare(
-    'SELECT id, micros_json, tracking_type, serving_quantity, grams_per_serving FROM label_ingredients WHERE id = ? AND user_id = ?'
+    'SELECT id, micros_json, tracking_type, serving_quantity, grams_per_serving, unit_name, grams_per_unit FROM label_ingredients WHERE id = ? AND user_id = ?'
   );
   const cache = new Map();
 

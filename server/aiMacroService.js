@@ -27,7 +27,8 @@ const SCHEMA_HINT = `{
     {
       "name": "string",
       "quantity": number,
-      "unit": "string (e.g. g, oz, cup, slice, can, piece)",
+      "unit": "string — the unit the USER used, verbatim (g, oz, ml, cup, tbsp, slice, filet, scoop, bagel, can, piece…)",
+      "savedIngredient": "string or null — the EXACT name from the user's saved ingredient list when this item IS one of them; null otherwise",
       "state": "raw | cooked | unknown | not_applicable",
       "calories": number,
       "protein": number,
@@ -85,6 +86,19 @@ Explicit user-provided macros are AUTHORITATIVE — this is the single most impo
 - "totals" must be the sum of the ingredient macros.
 - Keep "summary" and notes short. Do not include any prose outside the JSON.
 
+Units — keep the user's own measurement:
+- "unit" must be the unit the USER actually used, verbatim. NEVER convert it to grams. "1 filet of salmon" is quantity 1, unit "filet" — not 170 g. "2 scoops", "a bagel", "3 slices", "200 ml", "7 oz" all stay in the unit they were said in.
+- This is not cosmetic: the app does its own unit conversion and matches against the user's saved data, and it can only do either when it can see the unit they said. Silently rewriting "1 filet" as "100 g" throws that away and produces a wrong log.
+- Only when the user names NO unit at all do you choose one: use the matching saved ingredient's unit if there is one (see below), otherwise the most natural unit for that food.
+- Estimate the macros for the amount as stated. If you are unsure what one filet/scoop/bagel weighs, say so in "notes" and set "confidence" lower — do not switch to grams to feel more precise.
+
+Saved-ingredient awareness — how the app reuses the user's own measured data:
+- The user's SAVED INGREDIENTS are listed below (may be empty), each with the unit it is measured in. These carry macros the user recorded themselves.
+- When a food in the description IS one of them, set that ingredient's "savedIngredient" to the EXACT name from the list. The app then uses their saved macros instead of your estimate.
+- Only use a name that appears EXACTLY in that list, and only when it is genuinely the same food — do not match "chicken breast" to "chicken thigh", or a plain item to one whose name says frozen/dried/canned. Set "savedIngredient" to null when unsure; a wrong match is worse than none.
+- Matching a saved ingredient does NOT change the unit rule above: keep the unit the user said. The app converts between units itself.
+- Still fill in your own calories/protein/carbs/fat for every ingredient. The app swaps in the saved values where it can and falls back to yours where it cannot.
+
 Meal prep awareness:
 - If the description is a BATCH being cooked to eat across multiple sittings — meal prep, batch cooking, "making my lunches for the week", "this should last me a few days", "split into N containers" — set "mealPrep" to an object with "servings" = the stated number of servings/portions (integer), or null when no count was given.
 - Always estimate the WHOLE batch in "ingredients" and "totals" — never divide macros by servings yourself; the app does per-serving math.
@@ -119,13 +133,15 @@ function describeCurrentEstimate(est) {
     const qty = Number.isFinite(Number(i.quantity)) && Number(i.quantity) > 0 ? `${Number(i.quantity)} ${str(i.unit).trim()}`.trim() : str(i.unit).trim();
     const state = STATES.has(i.state) && i.state !== 'unknown' && i.state !== 'not_applicable' ? `, ${i.state}` : '';
     const src = i.macroSource === 'provided' ? ' [user-provided macros — authoritative]' : '';
-    return `- ${str(i.name, 'Item').trim()}${qty ? ` (${qty}${state})` : ''}: ${num(i.calories)} cal, ${num(i.protein)}g protein, ${num(i.carbs)}g carbs, ${num(i.fat)}g fat${src}`;
+    // Carried so a revision keeps the match instead of re-deciding it.
+    const saved = str(i.savedIngredient).trim() ? ` [saved ingredient: ${str(i.savedIngredient).trim()}]` : '';
+    return `- ${str(i.name, 'Item').trim()}${qty ? ` (${qty}${state})` : ''}: ${num(i.calories)} cal, ${num(i.protein)}g protein, ${num(i.carbs)}g carbs, ${num(i.fat)}g fat${src}${saved}`;
   });
   const name = str(est.mealName).trim();
   return `${name ? `${name}\n` : ''}${lines.join('\n')}`;
 }
 
-function buildUserContent(description, corrections, currentEstimate, recipes) {
+function buildUserContent(description, corrections, currentEstimate, recipes, savedIngredients) {
   let content = `Meal description:\n${description}`;
   const history = (Array.isArray(corrections) ? corrections : [])
     .map(c => str(c).trim())
@@ -164,6 +180,21 @@ function buildUserContent(description, corrections, currentEstimate, recipes) {
     content += `\n\nThe user's saved recipes — match recipeLog.recipeName ONLY against these exact names, and set each modification "target" to the EXACT ingredient name listed for that recipe:\n${lines.join('\n')}`;
   } else {
     content += `\n\n(The user has no saved recipes — set recipeLog to null.)`;
+  }
+
+  const saved = Array.isArray(savedIngredients)
+    ? savedIngredients.filter(i => i && typeof i.name === 'string' && i.name.trim())
+    : [];
+  if (saved.length) {
+    const lines = saved.map(i => {
+      const unit = str(i.unit).trim() || 'serving';
+      const g = Number(i.gramsPerUnit);
+      const weight = Number.isFinite(g) && g > 0 && unit !== 'g' ? `; 1 ${unit} = ${+g.toFixed(2)} g` : '';
+      return `- ${i.name.trim()} (measured in: ${unit}${weight})`;
+    });
+    content += `\n\nThe user's SAVED INGREDIENTS — set "savedIngredient" to one of these EXACT names when an item in the meal is that ingredient, and keep the unit the user said:\n${lines.join('\n')}`;
+  } else {
+    content += `\n\n(The user has no saved ingredients — set every "savedIngredient" to null.)`;
   }
   return content;
 }
@@ -253,6 +284,13 @@ function validateEstimate(raw) {
     carbs: num(i?.carbs),
     fat: num(i?.fat),
     macroSource: i?.macroSource === 'provided' ? 'provided' : 'estimated',
+    // The saved ingredient the model says this is. Strictly a string — str()
+    // would turn a stray object into "[object Object]" and feed that back into
+    // the next revision's prompt. Only a name: the client still resolves it
+    // against the real library and ignores anything unknown.
+    savedIngredient: typeof i?.savedIngredient === 'string'
+      ? i.savedIngredient.trim().slice(0, 120) || null
+      : null,
     notes: str(i?.notes).trim(),
   }));
 
@@ -304,13 +342,13 @@ function validateEstimate(raw) {
  * @returns {Promise<object>} validated estimate matching the frontend schema.
  * @throws {AiConfigError|AiProviderError|AiQuotaError|AiResponseError}
  */
-async function estimateMacros({ description, corrections, currentEstimate, recipes } = {}) {
+async function estimateMacros({ description, corrections, currentEstimate, recipes, savedIngredients } = {}) {
   const desc = str(description).trim();
   if (!desc) throw new AiResponseError('A meal description is required.');
 
   const text = await callProviderJson({
     system: SYSTEM_PROMPT,
-    user: buildUserContent(desc, corrections, currentEstimate, recipes),
+    user: buildUserContent(desc, corrections, currentEstimate, recipes, savedIngredients),
     maxTokens: 1500,
   });
 

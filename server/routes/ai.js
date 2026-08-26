@@ -13,6 +13,9 @@ const MAX_DESCRIPTION = 2000;
 const MAX_CORRECTION = 1000;
 const MAX_CORRECTIONS = 15;
 const MAX_ESTIMATE_INGREDIENTS = 40;
+// The saved-ingredient list is one short line each, so a generous cap still
+// costs little; most-used first, so a truncated library keeps its best entries.
+const MAX_SAVED_INGREDIENTS = 150;
 
 function createAiRouter() {
   const router = express.Router();
@@ -48,6 +51,7 @@ function createAiRouter() {
               carbs: Number(i.carbs) || 0,
               fat: Number(i.fat) || 0,
               macroSource: i.macroSource === 'provided' ? 'provided' : 'estimated',
+              savedIngredient: typeof i.savedIngredient === 'string' ? i.savedIngredient.slice(0, 120) : null,
             }))
             .slice(0, MAX_ESTIMATE_INGREDIENTS),
         }
@@ -80,6 +84,23 @@ function createAiRouter() {
           .slice(0, 80)
       : [];
 
+    // The user's saved ingredients (name + the unit each is measured in), so the
+    // model can match a food to one and keep the unit they said instead of
+    // normalizing "1 filet" to grams. Best-effort; capped.
+    const savedIngredients = Array.isArray(req.body?.savedIngredients)
+      ? req.body.savedIngredients
+          .filter(i => i && typeof i.name === 'string' && i.name.trim())
+          .map(i => {
+            const g = Number(i.gramsPerUnit);
+            return {
+              name: i.name.trim().slice(0, 120),
+              unit: typeof i.unit === 'string' ? i.unit.trim().slice(0, 30) : '',
+              ...(Number.isFinite(g) && g > 0 ? { gramsPerUnit: g } : {}),
+            };
+          })
+          .slice(0, MAX_SAVED_INGREDIENTS)
+      : [];
+
     if (!description) {
       return res.status(400).json({ error: 'Please describe the meal you want to estimate.' });
     }
@@ -91,7 +112,7 @@ function createAiRouter() {
     }
 
     try {
-      const estimate = await estimateMacros({ description, corrections, currentEstimate, recipes });
+      const estimate = await estimateMacros({ description, corrections, currentEstimate, recipes, savedIngredients });
       return res.json(estimate);
     } catch (e) {
       if (e instanceof AiConfigError) {

@@ -18,7 +18,7 @@ import VoiceInput from './VoiceInput';
 import { reconcileMealPrep } from './mealPrep';
 import {
   enrichEstimate, strongMatchCount, basisFromLibrary, deriveBasis,
-  scaleBasisToAmount, likelyLibraryMatches, searchLibrary,
+  scaleBasisToAmount, likelyLibraryMatches, searchLibrary, libraryForPrompt,
 } from './ingredientSource';
 
 const PLACEHOLDER =
@@ -68,6 +68,11 @@ function normalizeEstimate(raw) {
     notes: typeof i?.notes === 'string' ? i.notes : '',
     // Whether the user gave explicit macros for this item in the message (tier 1).
     macroSource: i?.macroSource === 'provided' ? 'provided' : 'estimated',
+    // The saved ingredient the AI says this is; resolveIngredientSource checks
+    // it against the real library before trusting it.
+    savedIngredient: typeof i?.savedIngredient === 'string' && i.savedIngredient.trim()
+      ? i.savedIngredient.trim()
+      : null,
     source: i?.macroSource === 'provided' ? 'provided' : 'ai',
     // Preserve the original AI/provided macros so we can revert after a library swap.
     aiMacros: { calories: n(i?.calories), protein: n(i?.protein), carbs: n(i?.carbs), fat: n(i?.fat) },
@@ -209,7 +214,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
               ingredients: estimate.ingredients.map(i => ({
                 name: i.name, quantity: i.quantity, unit: i.unit, state: i.state,
                 calories: i.calories, protein: i.protein, carbs: i.carbs, fat: i.fat,
-                macroSource: i.macroSource,
+                macroSource: i.macroSource, savedIngredient: i.savedIngredient,
               })),
             }
           : undefined,
@@ -229,6 +234,9 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
           }
           return entry;
         }),
+        // The user's own ingredients, with the unit each is measured in, so the
+        // model can name a match and keep the unit they actually said.
+        savedIngredients: libraryForPrompt(libraryRef.current),
       });
       const normalized = normalizeEstimate(raw);
       if (!normalized) throw new Error('The estimate came back in an unexpected format. Please try again.');

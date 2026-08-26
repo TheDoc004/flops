@@ -30,10 +30,10 @@ export async function transcribeAudio(blob) {
   return typeof data?.text === 'string' ? data.text : '';
 }
 
-export async function estimateMacros({ description, corrections, currentEstimate, recipes } = {}) {
+export async function estimateMacros({ description, corrections, currentEstimate, recipes, savedIngredients } = {}) {
   const res = await apiFetch('/api/ai/macro-estimate', {
     method: 'POST',
-    body: JSON.stringify({ description, corrections, currentEstimate, recipes }),
+    body: JSON.stringify({ description, corrections, currentEstimate, recipes, savedIngredients }),
   });
   if (!res.ok) {
     const e = await res.json().catch(() => null);

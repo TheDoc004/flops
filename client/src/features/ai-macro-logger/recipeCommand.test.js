@@ -187,6 +187,22 @@ describe('applyModifications — amounts, removals, scale', () => {
   it('reads the scale factor from quantity when the model misplaces it', () => {
     expect(apply([{ type: 'scale', quantity: 0.5 }]).servingsScale).toBe(0.5);
   });
+
+  it('accepts any unit the ingredient can be measured in', () => {
+    // Bread is stored per 45 g, so ounces are reachable and 2 oz is 56.7 g.
+    const r = apply([{ type: 'set_amount', target: 'Toast', quantity: 2, unit: 'oz' }]);
+    expect(toastLine(r)).toMatchObject({ amount: '2', unit: 'oz' });
+    // Macros are computed from the line when the review rows are built.
+    const toastRow = resolvedReviewRows(RECIPE, byId, r.resolvedLines).find(x => x.unit === 'oz');
+    expect(toastRow.calories).toBeCloseTo(110 * ((2 * 28.349523125) / 45), 1);
+  });
+
+  it('keeps the line unit when the ingredient cannot take the requested one', () => {
+    // Grams-per-serving bread has no density, so "200 ml" must not be applied
+    // as though it were 200 of anything.
+    const r = apply([{ type: 'set_amount', target: 'Toast', quantity: 200, unit: 'ml' }]);
+    expect(toastLine(r).unit).toBe('g');
+  });
 });
 
 describe('mergeRecipeModifications', () => {

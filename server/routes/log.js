@@ -141,6 +141,11 @@ function mapSlotAdjustError(e) {
   if (e.code === 'LABEL_INGREDIENT_NEEDS_GRAMS_PER_SERVING') {
     return 'An ingredient needs grams per serving to calculate macros. Edit it in Ingredient Library.';
   }
+  if (e.code === 'LABEL_INGREDIENT_UNIT_NOT_CONVERTIBLE') {
+    const name = e.ingredientName ? `“${e.ingredientName}”` : 'An ingredient';
+    const unit = e.unit ? ` in ${e.unit}` : '';
+    return `${name} can’t be measured${unit}. Add its gram equivalent in Ingredient Library, or log it in its own unit.`;
+  }
   return e.message || 'Could not calculate meal macros.';
 }
 

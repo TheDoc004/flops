@@ -15,6 +15,7 @@ import {
 } from '@features/label-ocr';
 import { BarcodeScannerModal, mergeBarcodeProductIntoIngredientForm } from '@features/barcode';
 import { SERVING_UNITS, isWeightUnit, servingToStored, servingFromRow, emptyServing, unitLabel } from '@shared/utils/servingBasis';
+import ServingUnitsHint from '@shared/ui/ServingUnitsHint';
 import Reveal from '@shared/ui/Reveal';
 import GrowStack from '@shared/ui/GrowStack';
 
@@ -524,7 +525,7 @@ export default function Ingredients() {
               {!isWeightUnit(form.serving_unit) && (
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label htmlFor="ing-gram-equiv">
-                    1 {unitLabel(form)} = grams <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(optional)</span>
+                    1 {unitLabel(form)} = grams <span style={{ color: 'var(--color-text-muted)', fontSize: 13, fontWeight: 400 }}>(optional)</span>
                   </label>
                   <input
                     id="ing-gram-equiv"
@@ -533,9 +534,7 @@ export default function Ingredients() {
                     onChange={e => setForm(f => ({ ...f, gram_equivalent: e.target.value }))}
                     placeholder="e.g. 31"
                   />
-                  <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
-                    Optional. The weight of one {unitLabel(form)} for more precise scaling (e.g. 1 scoop = 31&nbsp;g).
-                  </p>
+                  <ServingUnitsHint serving={form} unitName={unitLabel(form)} />
                 </div>
               )}
             </div>

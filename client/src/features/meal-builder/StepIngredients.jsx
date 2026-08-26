@@ -1,5 +1,6 @@
 import { scanFieldClass } from '@features/label-ocr';
 import { SERVING_UNITS, isWeightUnit, unitLabel } from '@shared/utils/servingBasis';
+import ServingUnitsHint from '@shared/ui/ServingUnitsHint';
 
 /**
  * Optional detour off the build step — add a missing ingredient to the
@@ -120,7 +121,7 @@ export default function StepIngredients({
           {!isWeightUnit(labelDraft.serving_unit) && (
             <div style={{ gridColumn: '1 / -1' }}>
               <label htmlFor="mb-gram-equiv">
-                1 {unitLabel(labelDraft)} = grams <span style={{ fontSize: 12, color: 'var(--color-text-faint)', fontWeight: 400 }}>(optional)</span>
+                1 {unitLabel(labelDraft)} = grams <span style={{ fontSize: 13, color: 'var(--color-text-muted)', fontWeight: 400 }}>(optional)</span>
               </label>
               <input
                 id="mb-gram-equiv"
@@ -129,6 +130,7 @@ export default function StepIngredients({
                 onChange={e => setLabelDraft(d => ({ ...d, gram_equivalent: e.target.value }))}
                 placeholder="e.g. 31"
               />
+              <ServingUnitsHint serving={labelDraft} unitName={unitLabel(labelDraft)} />
             </div>
           )}
 

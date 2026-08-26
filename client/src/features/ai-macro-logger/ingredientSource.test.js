@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { resolveIngredientSource, enrichEstimate } from './ingredientSource';
+import {
+  resolveIngredientSource, enrichEstimate, libraryForPrompt, libraryFromSavedName,
+} from './ingredientSource';
 
 // A weight-tracked saved ingredient: macros are per `grams_per_serving` grams.
 const lib = (name, calories, opts = {}) => ({
@@ -175,5 +177,120 @@ describe('enrichEstimate — wires the resolver across a whole estimate', () => 
     expect(out.ingredients[0].calories).toBe(269);
     expect(out.ingredients[1].source).toBe('library');
     expect(out.ingredients[1].calories).toBe(41);
+  });
+});
+
+// The salmon case: a saved ingredient measured in a unit the AI would otherwise
+// normalize away.
+const salmon = {
+  id: 90, name: 'Salmon', tracking_type: 'unit', unit_name: 'filet',
+  serving_quantity: 1, grams_per_unit: 170,
+  calories: 350, protein_g: 34, carbs_g: 0, fat_g: 22, use_count: 5,
+};
+const milk = {
+  id: 91, name: 'Nonfat milk', tracking_type: 'unit', unit_name: 'cup',
+  serving_quantity: 1, grams_per_unit: 245,
+  calories: 90, protein_g: 9, carbs_g: 13, fat_g: 0.5, use_count: 9,
+};
+const scoop = {
+  id: 92, name: 'Whey', tracking_type: 'unit', unit_name: 'scoop',
+  serving_quantity: 1, calories: 120, protein_g: 24, carbs_g: 3, fat_g: 1.5, use_count: 1,
+};
+
+describe('libraryForPrompt', () => {
+  it('gives each ingredient a name, its unit, and what one weighs', () => {
+    expect(libraryForPrompt([salmon])).toEqual([
+      { name: 'Salmon', unit: 'filet', gramsPerUnit: 170 },
+    ]);
+  });
+
+  it('omits a weight it does not have', () => {
+    expect(libraryForPrompt([scoop])).toEqual([{ name: 'Whey', unit: 'scoop' }]);
+  });
+
+  it('describes a grams-per-serving ingredient in grams, with no redundant weight', () => {
+    expect(libraryForPrompt([lib('Oats', 150)])).toEqual([{ name: 'Oats', unit: 'g' }]);
+  });
+
+  it('puts the most-used first so a truncated list keeps the best entries', () => {
+    const names = libraryForPrompt([scoop, milk, salmon]).map(x => x.name);
+    expect(names).toEqual(['Nonfat milk', 'Salmon', 'Whey']);
+  });
+
+  it('honours the cap and skips nameless rows', () => {
+    expect(libraryForPrompt([salmon, milk, scoop], 2)).toHaveLength(2);
+    expect(libraryForPrompt([{ id: 1, name: '  ' }, salmon])).toHaveLength(1);
+  });
+});
+
+describe('libraryFromSavedName', () => {
+  it('resolves the exact name the model returned', () => {
+    expect(libraryFromSavedName('Salmon', [salmon, milk])).toBe(salmon);
+    expect(libraryFromSavedName('  salmon ', [salmon, milk])).toBe(salmon);
+  });
+
+  it('ignores a name that is not really in the library', () => {
+    // The model must not be able to invent a match.
+    expect(libraryFromSavedName('Salmon fillet', [salmon])).toBeNull();
+    expect(libraryFromSavedName('', [salmon])).toBeNull();
+    expect(libraryFromSavedName(null, [salmon])).toBeNull();
+  });
+});
+
+describe('resolveIngredientSource — the saved ingredient the model named', () => {
+  it('uses the saved macros for "1 filet of salmon"', () => {
+    const r = resolveIngredientSource(
+      row({ name: 'salmon', quantity: 1, unit: 'filet', calories: 210, protein: 20, carbs: 0, fat: 13, savedIngredient: 'Salmon' }),
+      [salmon]
+    );
+    expect(r.source).toBe('library');
+    expect(r.label_ingredient_id).toBe(90);
+    expect(r.calories).toBe(350); // the user's own number, not the estimate's 210
+  });
+
+  it('converts when the user said a different unit', () => {
+    const r = resolveIngredientSource(
+      row({ name: 'salmon', quantity: 340, unit: 'g', savedIngredient: 'Salmon' }),
+      [salmon]
+    );
+    expect(r.source).toBe('library');
+    expect(r.calories).toBe(700);
+  });
+
+  it('beats a fuzzy name match on a different ingredient', () => {
+    const wrong = { ...lib('Salmon patty', 180, { id: 93 }), use_count: 99 };
+    const r = resolveIngredientSource(
+      row({ name: 'salmon', quantity: 1, unit: 'filet', savedIngredient: 'Salmon' }),
+      [wrong, salmon]
+    );
+    expect(r.label_ingredient_id).toBe(90);
+  });
+
+  it('ignores a name the library does not have', () => {
+    const r = resolveIngredientSource(
+      row({ name: 'sablefish', quantity: 1, unit: 'filet', calories: 210, savedIngredient: 'Black cod' }),
+      [salmon]
+    );
+    expect(r.source).toBe('ai');
+    expect(r.calories).toBe(210);
+  });
+
+  it('falls back to the estimate when the unit cannot be converted', () => {
+    // "2 slices" of a per-filet item: refused rather than read as 2 filets.
+    const r = resolveIngredientSource(
+      row({ name: 'salmon', quantity: 2, unit: 'slice', calories: 210, savedIngredient: 'Salmon' }),
+      [salmon]
+    );
+    expect(r.source).toBe('ai');
+    expect(r.calories).toBe(210);
+  });
+
+  it('still lets explicit user-provided macros win', () => {
+    const r = resolveIngredientSource(
+      row({ name: 'salmon', quantity: 1, unit: 'filet', calories: 400, macroSource: 'provided', savedIngredient: 'Salmon' }),
+      [salmon]
+    );
+    expect(r.source).toBe('provided');
+    expect(r.calories).toBe(400);
   });
 });

@@ -7,6 +7,8 @@ import {
   receiptToApiIngredients,
   buildReceiptLine,
   persistAmountUnit,
+  changeLineUnit,
+  retargetLineToIngredient,
 } from './recipeReceipt';
 
 const oats = {
@@ -111,5 +113,59 @@ describe('sumReceiptMacros + receiptToApiIngredients', () => {
     const empty = { name: 'Skip', amount: 0, calories: 10, protein_g: 0, carbs_g: 0, fat_g: 0 };
     const noCal = { name: 'Notes', amount: 1, calories: null };
     expect(receiptToApiIngredients([empty, noCal])).toEqual([]);
+  });
+});
+
+// Nonfat milk recorded as "1 cup", one cup weighed at 245 g.
+const milk = {
+  id: 7, name: 'Nonfat milk', tracking_type: 'unit', unit_name: 'cup',
+  serving_quantity: 1, grams_per_unit: 245,
+  calories: 90, protein_g: 9, carbs_g: 13, fat_g: 0.5,
+};
+
+describe('changeLineUnit', () => {
+  const line = buildReceiptLine(milk, '1', 'cup');
+
+  it('restates the amount so the food stays the same', () => {
+    expect(changeLineUnit(line, milk, 'ml')).toEqual({ amount: '236.59', unit: 'ml' });
+    expect(changeLineUnit(line, milk, 'g')).toEqual({ amount: '245', unit: 'g' });
+    expect(changeLineUnit(line, milk, 'fl oz')).toEqual({ amount: '8', unit: 'fl oz' });
+  });
+
+  it('round-trips back to the original unit', () => {
+    const inMl = { ...line, ...changeLineUnit(line, milk, 'ml') };
+    expect(Number(changeLineUnit(inMl, milk, 'cup').amount)).toBeCloseTo(1, 4);
+  });
+
+  it('keeps the macros right after the switch', () => {
+    const patch = changeLineUnit(line, milk, 'ml');
+    const converted = buildReceiptLine(milk, patch.amount, patch.unit);
+    expect(converted.calories).toBeCloseTo(90, 1);
+    // Half a cup is half the macros, whatever unit says so.
+    const half = buildReceiptLine(milk, '118.29', 'ml');
+    expect(half.calories).toBeCloseTo(45, 1);
+  });
+
+  it('refuses a unit the ingredient cannot be measured in', () => {
+    expect(changeLineUnit(line, milk, 'slice')).toBeNull();
+    expect(changeLineUnit(line, oats, 'ml')).toBeNull(); // grams-per-serving: no density
+  });
+});
+
+describe('retargetLineToIngredient', () => {
+  it('keeps the amount when the new ingredient takes the same unit', () => {
+    const line = buildReceiptLine(oats, '150', 'g');
+    expect(retargetLineToIngredient(line, { ...oats, id: 2 })).toEqual({ amount: '150', unit: 'g' });
+  });
+
+  it('resets rather than relabelling an amount onto a foreign unit', () => {
+    // "150 g" must not become "150 eggs" just because the swap was accepted.
+    const line = buildReceiptLine(oats, '150', 'g');
+    expect(retargetLineToIngredient(line, egg)).toEqual({ amount: '1', unit: 'egg' });
+  });
+
+  it('carries a weight across to an ingredient that knows what one weighs', () => {
+    const line = buildReceiptLine(oats, '245', 'g');
+    expect(retargetLineToIngredient(line, milk)).toEqual({ amount: '245', unit: 'g' });
   });
 });

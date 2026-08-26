@@ -4,13 +4,17 @@ import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import { suggestSubstitutes } from '@shared/api/ai';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
 import IngredientCombobox from '@features/meal-builder/IngredientCombobox';
+import { canonicalUnit, loggableUnitsFor } from '@shared/utils/unitConvert';
+import { pluralizeUnit } from '@shared/utils/servingBasis';
 import {
   buildReceiptLine,
+  changeLineUnit,
   defaultAmountForIngredient,
   getSuggestedSubstitutes,
   loadLastReceiptAmounts,
   receiptToApiIngredients,
   refreshReceiptLine,
+  retargetLineToIngredient,
   saveLastReceiptAmounts,
   seedReceiptFromRecipe,
   seedReceiptFromLoggedSelections,
@@ -202,11 +206,32 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     const def = defaultAmountForIngredient(ing);
     const line = buildReceiptLine(ing, def.amount, def.unit, { source: 'library' });
     if (!line) {
-      setError(`${ing.name} needs grams per serving before it can be logged. Edit it in the Ingredient Library.`);
+      // Say which piece is actually missing. Blaming grams per serving for
+      // every failure sends the user to edit a field that is already filled in.
+      const units = loggableUnitsFor(ing);
+      setError(
+        units.length === 0
+          ? `${ing.name} needs a serving size before it can be logged. Edit it in the Ingredient Library.`
+          : `${ing.name} has no amount saved for one serving. Edit it in the Ingredient Library.`
+      );
       return;
     }
     setError('');
     setReceipt(prev => [...prev, line]);
+  }
+
+  // Switching a line's unit restates the amount instead of reinterpreting it:
+  // 1 cup of milk becomes 236.59 ml, never 1 ml.
+  function updateLineUnit(id, nextUnit) {
+    setReceipt(prev =>
+      prev.map(line => {
+        if (line.id !== id) return line;
+        const ing = labelById[String(line.label_ingredient_id)];
+        const patch = ing ? changeLineUnit(line, ing, nextUnit) : null;
+        if (!patch) return line;
+        return refreshReceiptLine({ ...line, ...patch }, ing);
+      })
+    );
   }
 
   function updateLine(id, patch) {
@@ -285,17 +310,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     setReceipt(prev =>
       prev.map(line => {
         if (line.id !== lineId) return line;
-        const sameTracking =
-          (line.tracking_type === 'unit') === (ing.tracking_type === 'unit');
-        let amount = line.amount;
-        let unit = line.unit;
-        if (!sameTracking) {
-          const def = defaultAmountForIngredient(ing);
-          amount = def.amount;
-          unit = def.unit;
-        } else if (ing.tracking_type === 'unit') {
-          unit = ing.unit_name || unit;
-        }
+        const { amount, unit } = retargetLineToIngredient(line, ing);
         return refreshReceiptLine(
           { ...line, amount, unit, label_ingredient_id: Number(ing.id), source: 'library' },
           ing
@@ -475,8 +490,15 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                 <span />
               </div>
               {receipt.map(line => {
-                const isUnit = line.tracking_type === 'unit';
-                const unitLabel = line.unit_name || line.unit || 'unit';
+                const lineIng = labelById[String(line.label_ingredient_id)];
+                // Only units this ingredient can actually be measured in are
+                // offered — see loggableUnitsFor. A line whose unit is not among
+                // them (stale data) shows that unit as plain text rather than a
+                // dropdown claiming some other unit is selected.
+                const lineUnit = canonicalUnit(line.unit);
+                const options = lineIng ? loggableUnitsFor(lineIng) : [];
+                const unitOptions = options.includes(lineUnit) ? options : [];
+                const unitLabel = line.unit || line.unit_name || 'unit';
                 const open = subLineId === line.id;
                 return (
                   <div key={line.id} className="slot-list__line">
@@ -518,17 +540,20 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                         value={line.amount}
                         onChange={e => updateLine(line.id, { amount: e.target.value })}
                       />
-                      {isUnit ? (
-                        <div className="slot-row__unit-static">{unitLabel}</div>
-                      ) : (
+                      {unitOptions.length > 1 ? (
                         <select
                           aria-label={`Unit for ${line.name}`}
-                          value={line.unit === 'oz' ? 'oz' : 'g'}
-                          onChange={e => updateLine(line.id, { unit: e.target.value === 'oz' ? 'oz' : 'g' })}
+                          value={lineUnit}
+                          onChange={e => updateLineUnit(line.id, e.target.value)}
                         >
-                          <option value="g">g</option>
-                          <option value="oz">oz</option>
+                          {unitOptions.map(u => (
+                            <option key={u} value={u}>
+                              {pluralizeUnit(u, line.amount)}
+                            </option>
+                          ))}
                         </select>
+                      ) : (
+                        <div className="slot-row__unit-static">{unitLabel}</div>
                       )}
                       <button
                         type="button"

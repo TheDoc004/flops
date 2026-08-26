@@ -1,6 +1,7 @@
 import { listRecipeIngredientLines, listNonEditableTemplateLines } from '@features/meal-logging/recipeReceipt';
 import { macrosForLabelServingAmount } from '@features/label-ocr';
 import { bestLibraryMatch, libraryMacrosFor, MATCH_THRESHOLD } from './ingredientSource';
+import { canonicalUnit, loggableUnitsFor } from '@shared/utils/unitConvert';
 
 export const normName = s => String(s || '').toLowerCase().trim().replace(/\s+/g, ' ');
 const macroNum = v => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v) * 10) / 10 : 0);
@@ -84,7 +85,10 @@ function findLibraryIngredient(name, labelByName, library) {
  */
 export function amountFor(ing, quantity, unit) {
   const q = Number(quantity);
-  if (Number.isFinite(q) && q > 0 && unit) return [q, unit];
+  // Only take the AI's unit when this ingredient can actually be measured in
+  // it; otherwise fall through to one serving rather than producing a row that
+  // cannot be scaled at all.
+  if (Number.isFinite(q) && q > 0 && unit && usableUnit(ing, unit)) return [q, canonicalUnit(unit)];
   if (ing.tracking_type === 'unit') {
     const sq = Number(ing.serving_quantity);
     return [Number.isFinite(sq) && sq > 0 ? sq : 1, String(ing.unit_name || 'unit')];
@@ -110,9 +114,20 @@ function libraryRow(ing, amount, unit) {
   };
 }
 
-function pickUnit(requested, fallback) {
-  if (requested === 'oz') return 'oz';
-  if (requested === 'g') return 'g';
+/** True when `ing` can be measured in `unit` at all. */
+function usableUnit(ing, unit) {
+  const u = canonicalUnit(unit);
+  return !!u && loggableUnitsFor(ing).includes(u);
+}
+
+/**
+ * The unit to apply for a modification: whatever the AI asked for, as long as
+ * the ingredient can be measured in it — so "use 200 ml of milk" works on a
+ * per-cup ingredient. Anything else keeps the unit the line already had, rather
+ * than relabelling the amount with a unit that means something different.
+ */
+function pickUnit(requested, fallback, ing) {
+  if (ing && usableUnit(ing, requested)) return canonicalUnit(requested);
   return fallback;
 }
 
@@ -242,14 +257,17 @@ export function applyModifications(recipe, modifications, labelById, labelByName
       line.amount = '0';
       applied.push(`Removed ${name}`);
     } else if (m.type === 'set_amount') {
-      const unit = pickUnit(m.unit, line.unit);
+      const lineIng = line.label_ingredient_id != null && labelById
+        ? labelById.get(Number(line.label_ingredient_id))
+        : null;
+      const unit = pickUnit(m.unit, line.unit, lineIng);
       line.amount = String(m.quantity);
       line.unit = unit;
       applied.push(`Set ${name} to ${line.amount} ${unit}`);
     } else if (m.type === 'substitute') {
       const sub = findLibraryIngredient(m.newName, labelByName, library);
       if (sub) {
-        const unit = pickUnit(m.unit, line.unit);
+        const unit = pickUnit(m.unit, line.unit, sub);
         const amount = m.quantity != null && Number(m.quantity) > 0 ? String(m.quantity) : line.amount;
         if (libraryMacrosFor(sub, amount, unit)) {
           line.label_ingredient_id = Number(sub.id);
