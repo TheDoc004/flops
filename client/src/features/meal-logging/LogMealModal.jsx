@@ -9,10 +9,12 @@ import { pluralizeUnit } from '@shared/utils/servingBasis';
 import {
   buildReceiptLine,
   buildRecipeFromReceipt,
+  buildUnequalMealPrepRecipes,
   changeLineUnit,
   defaultAmountForIngredient,
   getSuggestedSubstitutes,
   loadLastReceiptAmounts,
+  normalizeMealPrepFractions,
   receiptToApiIngredients,
   refreshReceiptLine,
   retargetLineToIngredient,
@@ -21,6 +23,16 @@ import {
   seedReceiptFromLoggedSelections,
   sumReceiptMacros,
 } from './recipeReceipt';
+
+function equalPercents(n) {
+  const count = Math.max(2, Math.min(50, Math.floor(Number(n)) || 2));
+  const base = Math.floor((100 / count) * 10) / 10;
+  const percents = Array.from({ length: count }, () => base);
+  // Fix rounding so the row always sums to 100.
+  const drift = Math.round((100 - percents.reduce((a, b) => a + b, 0)) * 10) / 10;
+  percents[percents.length - 1] = Math.round((percents[percents.length - 1] + drift) * 10) / 10;
+  return percents;
+}
 
 function parseHHMMToTimeMin(hhmm) {
   if (!hhmm || typeof hhmm !== 'string') return null;
@@ -59,8 +71,13 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const [submitting, setSubmitting] = useState(false);
   // Saving the assembled receipt as a reusable recipe — a separate action from
   // logging it, so tweaking a meal and keeping the version that worked doesn't
-  // mean rebuilding it in the Meal Builder.
+  // mean rebuilding it in the Meal Builder. Meal prep reuses that panel with a
+  // limited-use split (equal by default; optional custom % per container).
   const [saveRecipeOpen, setSaveRecipeOpen] = useState(false);
+  const [saveAsMealPrep, setSaveAsMealPrep] = useState(false);
+  const [prepServings, setPrepServings] = useState(4);
+  const [prepAdvancedOpen, setPrepAdvancedOpen] = useState(false);
+  const [prepPercents, setPrepPercents] = useState(() => equalPercents(4));
   const [recipeName, setRecipeName] = useState('');
   const [savingRecipe, setSavingRecipe] = useState(false);
   const [savedRecipeName, setSavedRecipeName] = useState('');
@@ -329,28 +346,106 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     setSubSuggestions([]);
   }
 
-  // Save the receipt as a reusable recipe. Deliberately separate from logging:
-  // saving a version you want to keep and eating it are different decisions.
+  function openSavePanel({ mealPrep }) {
+    setError('');
+    setSavedRecipeName('');
+    setSaveAsMealPrep(Boolean(mealPrep));
+    setPrepAdvancedOpen(false);
+    const n = 4;
+    setPrepServings(n);
+    setPrepPercents(equalPercents(n));
+    if (!recipeName.trim()) {
+      const hint = selectedRecipe?.name || receipt[0]?.name || '';
+      setRecipeName(hint ? String(hint) : '');
+    }
+    setSaveRecipeOpen(true);
+  }
+
+  function closeSavePanel() {
+    setSaveRecipeOpen(false);
+    setSaveAsMealPrep(false);
+    setPrepAdvancedOpen(false);
+    setRecipeName('');
+  }
+
+  function setPrepServingCount(n) {
+    const v = Math.floor(Number(n));
+    if (!Number.isInteger(v) || v < 2 || v > 50) return;
+    setPrepServings(v);
+    setPrepPercents(equalPercents(v));
+  }
+
+  // Save the receipt as a reusable recipe (or limited meal-prep pack).
+  // Deliberately separate from logging: keeping a version and eating it are
+  // different decisions.
   async function handleSaveRecipe() {
     if (savingRecipe) return;
     setError('');
-    const body = buildRecipeFromReceipt(receipt, recipeName);
-    if (!body) {
-      setError(
-        receipt.length === 0
-          ? 'Add at least one ingredient before saving this as a recipe.'
-          : 'Give the recipe a name.'
-      );
+    if (receipt.length === 0) {
+      setError('Add at least one ingredient before saving.');
       return;
     }
+    if (!String(recipeName ?? '').trim()) {
+      setError('Give the recipe a name.');
+      return;
+    }
+
     setSavingRecipe(true);
     try {
-      const created = await createRecipe(body);
-      // Make it selectable straight away instead of after a reload.
-      setRecipes(prev => [created, ...prev.filter(r => Number(r.id) !== Number(created.id))]);
-      setSavedRecipeName(body.name);
-      setSaveRecipeOpen(false);
-      setRecipeName('');
+      if (saveAsMealPrep && prepAdvancedOpen) {
+        const fractions = normalizeMealPrepFractions(prepPercents);
+        if (!fractions) {
+          setError('Custom split needs at least two positive percentages.');
+          setSavingRecipe(false);
+          return;
+        }
+        const sumPct = prepPercents.reduce((a, b) => a + Number(b || 0), 0);
+        if (Math.abs(sumPct - 100) > 0.6) {
+          setError(`Custom split should add up to 100% (currently ${sumPct.toFixed(1)}%).`);
+          setSavingRecipe(false);
+          return;
+        }
+        const bodies = buildUnequalMealPrepRecipes(receipt, recipeName, prepPercents);
+        if (!bodies?.length) {
+          setError('Could not build the meal-prep containers.');
+          setSavingRecipe(false);
+          return;
+        }
+        const createdList = [];
+        for (const body of bodies) {
+          createdList.push(await createRecipe(body));
+        }
+        setRecipes(prev => {
+          const ids = new Set(createdList.map(c => Number(c.id)));
+          return [...createdList, ...prev.filter(r => !ids.has(Number(r.id)))];
+        });
+        setSavedRecipeName(
+          `${bodies[0].name.replace(/ \(\d+\/\d+\)$/, '')} — ${bodies.length} containers`
+        );
+      } else {
+        const body = buildRecipeFromReceipt(
+          receipt,
+          recipeName,
+          saveAsMealPrep ? { mealPrepServings: prepServings } : undefined
+        );
+        if (!body) {
+          setError(
+            saveAsMealPrep
+              ? 'Pick how many servings to split into (2–50).'
+              : 'Could not save this receipt as a recipe.'
+          );
+          setSavingRecipe(false);
+          return;
+        }
+        const created = await createRecipe(body);
+        setRecipes(prev => [created, ...prev.filter(r => Number(r.id) !== Number(created.id))]);
+        setSavedRecipeName(
+          saveAsMealPrep
+            ? `${body.name} (${prepServings} servings)`
+            : body.name
+        );
+      }
+      closeSavePanel();
     } catch (err) {
       setError(err.message || 'Could not save the recipe.');
     } finally {
@@ -727,22 +822,184 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
             }}
           >
             <label htmlFor="log-recipe-name" style={{ fontSize: 15, fontWeight: 600 }}>
-              Name this recipe
+              {saveAsMealPrep ? 'Name this meal prep' : 'Name this recipe'}
             </label>
             <input
               id="log-recipe-name"
               value={recipeName}
               onChange={e => setRecipeName(e.target.value)}
-              placeholder="e.g. Morning oats v2"
+              placeholder={saveAsMealPrep ? 'e.g. Chicken rice prep' : 'e.g. Morning oats v2'}
               autoFocus
               onKeyDown={e => {
                 // Enter inside the form would submit the log instead of saving.
                 if (e.key === 'Enter') { e.preventDefault(); void handleSaveRecipe(); }
               }}
             />
-            <p style={{ margin: '6px 0 10px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-              Saves the {receipt.length} ingredient{receipt.length === 1 ? '' : 's'} above as a recipe you
-              can log again and edit later. This does not log the meal.
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 12,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={saveAsMealPrep}
+                onChange={e => {
+                  const on = e.target.checked;
+                  setSaveAsMealPrep(on);
+                  if (on) {
+                    setPrepServingCount(prepServings >= 2 ? prepServings : 4);
+                    setPrepAdvancedOpen(false);
+                  }
+                }}
+              />
+              This is a meal prep
+            </label>
+
+            {saveAsMealPrep && (
+              <div className="prep-panel" style={{ marginTop: 10 }}>
+                <h4 className="prep-panel__title">Split the batch</h4>
+                <p style={{ margin: '6px 0 10px', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  {prepAdvancedOpen
+                    ? 'Custom % per container — each container becomes its own 1-serving prep.'
+                    : `Equal split into ${prepServings} — each logged serving counts down until the batch is gone.`}
+                </p>
+
+                {!prepAdvancedOpen && (
+                  <>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {(prepServings != null && ![2, 3, 4, 5, 6].includes(prepServings)
+                        ? [2, 3, 4, 5, 6, prepServings].sort((a, b) => a - b)
+                        : [2, 3, 4, 5, 6]
+                      ).map(nS => {
+                        const cal = receiptTotals ? Math.round(receiptTotals.calories / nS) : null;
+                        const p = receiptTotals ? (receiptTotals.protein_g / nS).toFixed(1) : null;
+                        const c = receiptTotals ? (receiptTotals.carbs_g / nS).toFixed(1) : null;
+                        const f = receiptTotals ? (receiptTotals.fat_g / nS).toFixed(1) : null;
+                        return (
+                          <button
+                            key={nS}
+                            type="button"
+                            className={prepServings === nS ? 'prep-split is-selected' : 'prep-split'}
+                            onClick={() => setPrepServingCount(nS)}
+                          >
+                            <span className="prep-split__count">÷ {nS} servings</span>
+                            {cal != null && (
+                              <span className="prep-split__macros">
+                                {cal} cal · P {p}g · C {c}g · F {f}g
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                      <label htmlFor="log-prep-servings" style={{ margin: 0, fontSize: 13 }}>Custom count:</label>
+                      <input
+                        id="log-prep-servings"
+                        type="number"
+                        min="2"
+                        max="50"
+                        step="1"
+                        value={prepServings}
+                        onChange={e => setPrepServingCount(e.target.value)}
+                        style={{ width: 90 }}
+                      />
+                    </div>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    if (!prepAdvancedOpen) {
+                      setPrepPercents(equalPercents(prepServings));
+                    }
+                    setPrepAdvancedOpen(o => !o);
+                  }}
+                  style={{ marginTop: 12, minHeight: 40, width: '100%', fontSize: 13 }}
+                >
+                  {prepAdvancedOpen ? 'Use equal split instead' : 'Advanced: custom % per container'}
+                </button>
+
+                {prepAdvancedOpen && (
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <label htmlFor="log-prep-containers" style={{ margin: 0, fontSize: 13 }}>Containers:</label>
+                      <input
+                        id="log-prep-containers"
+                        type="number"
+                        min="2"
+                        max="12"
+                        step="1"
+                        value={prepPercents.length}
+                        onChange={e => {
+                          const v = Math.floor(Number(e.target.value));
+                          if (!Number.isInteger(v) || v < 2 || v > 12) return;
+                          setPrepServings(v);
+                          setPrepPercents(equalPercents(v));
+                        }}
+                        style={{ width: 90 }}
+                      />
+                    </div>
+                    {prepPercents.map((pct, i) => {
+                      const frac = Number(pct) / 100;
+                      const cal = receiptTotals && Number.isFinite(frac)
+                        ? Math.round(receiptTotals.calories * frac)
+                        : null;
+                      return (
+                        <div
+                          key={`pct-${i}`}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
+                        >
+                          <label htmlFor={`log-prep-pct-${i}`} style={{ margin: 0, fontSize: 13, minWidth: 88 }}>
+                            Container {i + 1}
+                          </label>
+                          <input
+                            id={`log-prep-pct-${i}`}
+                            type="number"
+                            min="0.1"
+                            max="99.9"
+                            step="0.1"
+                            value={pct}
+                            onChange={e => {
+                              const v = Number(e.target.value);
+                              setPrepPercents(prev => prev.map((x, j) => (j === i ? v : x)));
+                            }}
+                            style={{ width: 88 }}
+                          />
+                          <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>%</span>
+                          {cal != null && (
+                            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                              ~{cal} cal
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                      Total:{' '}
+                      {prepPercents.reduce((a, b) => a + Number(b || 0), 0).toFixed(1)}%
+                      {' '}(should be 100%)
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <p style={{ margin: '10px 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+              {saveAsMealPrep
+                ? prepAdvancedOpen
+                  ? `Saves ${prepPercents.length} limited prep recipes (1 use each) from the ${receipt.length} ingredient${receipt.length === 1 ? '' : 's'} above. Does not log the meal.`
+                  : `Saves a limited-use template with ${prepServings} uses from the ${receipt.length} ingredient${receipt.length === 1 ? '' : 's'} above. Does not log the meal.`
+                : `Saves the ${receipt.length} ingredient${receipt.length === 1 ? '' : 's'} above as a recipe you can log again and edit later. This does not log the meal.`}
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
@@ -751,13 +1008,17 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                 disabled={savingRecipe}
                 onClick={() => void handleSaveRecipe()}
               >
-                {savingRecipe ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>) : 'Save recipe'}
+                {savingRecipe
+                  ? (<><span className="btn-spinner" aria-hidden="true" />Saving…</>)
+                  : saveAsMealPrep
+                    ? 'Save meal prep'
+                    : 'Save recipe'}
               </button>
               <button
                 type="button"
                 className="btn-secondary"
                 disabled={savingRecipe}
-                onClick={() => { setSaveRecipeOpen(false); setRecipeName(''); }}
+                onClick={closeSavePanel}
               >
                 Cancel
               </button>
@@ -778,15 +1039,26 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               Builder — but it stays secondary to logging, which is why you
               opened this modal. */}
           {!saveRecipeOpen && receipt.length > 0 && (
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={submitting}
-              onClick={() => { setSavedRecipeName(''); setSaveRecipeOpen(true); }}
-              style={{ width: '100%', minHeight: 44, fontWeight: 600, borderRadius: 12 }}
-            >
-              Save as Recipe
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={submitting}
+                onClick={() => openSavePanel({ mealPrep: false })}
+                style={{ width: '100%', minHeight: 44, fontWeight: 600, borderRadius: 12 }}
+              >
+                Save as Recipe
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={submitting}
+                onClick={() => openSavePanel({ mealPrep: true })}
+                style={{ width: '100%', minHeight: 44, fontWeight: 600, borderRadius: 12 }}
+              >
+                Save as Meal Prep
+              </button>
+            </>
           )}
         </div>
       </form>

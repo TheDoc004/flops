@@ -178,16 +178,18 @@ is resolved against the real library and ignored when it isn't genuinely there, 
 hallucinated match yields nothing rather than wrong macros. This is what stopped
 "1 filet of salmon" coming back as 100 g.
 
-**Save as Recipe** has two entry points, both producing library-backed lines so the saved
-recipe stays editable in the Meal Builder:
+**Save as Recipe / Meal Prep** has two entry points, both producing library-backed lines so the
+saved recipe stays editable in the Meal Builder:
 
 | Where | Behaviour |
 |---|---|
-| Under `Log Meal` in `LogMealModal` | Saves the assembled receipt without logging it; inline name field |
-| `⋯` menu on a logged meal (`LogEntryRow`) | `SaveMealAsRecipeDialog` asks for a name, prefilled from the meal |
+| Under `Log Meal` in `LogMealModal` | **Save as Recipe** or **Save as Meal Prep**; checkbox + equal N-way split; advanced custom % per container (creates one 1-use limited recipe per container) |
+| `⋯` menu on a logged meal (`LogEntryRow`) | `SaveMealAsRecipeDialog` — name + optional equal meal-prep split |
+
+Meal prep saves a **limited-use** template (`recipe_kind: 'limited'`, `meal_builder_meta.source: 'log_meal_prep'`), same accounting as AI logger meal prep: logging a serving decrements uses. Equal split = one recipe with N uses; custom % = N separate 1-use recipes.
 
 A logged entry stores its ingredient rows **per serving**, so servings are deliberately not
-applied — saving a two-serving log produces a recipe for one.
+applied when saving a normal recipe — saving a two-serving log produces a recipe for one.
 
 **Traps worth remembering:**
 

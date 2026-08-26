@@ -57,6 +57,7 @@ export default function RecipeRow({ recipe, onLog, onEditInBuilder, onDelete, on
               // Meal preps saved from the AI logger carry a meta marker; the
               // serving_size check catches preps saved before the marker existed.
               const isPrep = recipe.meal_builder_meta?.source === 'ai_meal_prep'
+                || recipe.meal_builder_meta?.source === 'log_meal_prep'
                 || /meal-prep/i.test(recipe.serving_size || '');
               const label = isPrep
                 ? (archived ? 'Meal prep · finished' : `Meal prep · ${recipe.remaining_uses ?? '–'} left`)

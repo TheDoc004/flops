@@ -252,6 +252,72 @@ export function sumReceiptMacros(lines) {
 const r2 = n => Math.round(Number(n) * 100) / 100;
 
 /**
+ * Scale a receipt into recipe ingredient rows by a factor (1 = whole batch,
+ * 1/N = one equal meal-prep serving, 0.3 = 30% of a custom container split).
+ */
+function ingredientsFromReceiptScaled(lines, factor) {
+  const ingredients = [];
+  const f = Number(factor);
+  const scale = Number.isFinite(f) && f > 0 ? f : 1;
+  for (const l of lines) {
+    if (!l) continue;
+    const lineName = String(l.name ?? '').trim();
+    if (!lineName) continue;
+    const amount = Number(l.amount);
+    const lid = Number(l.label_ingredient_id);
+    const usable = Number.isFinite(amount) && amount > 0;
+    const scaledAmt = usable ? roundAmount(amount * scale) : null;
+
+    if (Number.isInteger(lid) && lid > 0 && usable && l.calories != null && scaledAmt != null && scaledAmt > 0) {
+      ingredients.push({
+        kind: 'ingredient',
+        name: lineName,
+        amount: String(scaledAmt),
+        unit: canonicalUnit(l.unit) || 'g',
+        label_ingredient_id: lid,
+      });
+    } else {
+      ingredients.push({
+        kind: 'line',
+        name: lineName,
+        amount:
+          usable && scaledAmt != null && scaledAmt > 0
+            ? formatAmountWithUnit(scaledAmt, l.unit)
+            : 'as logged',
+      });
+    }
+  }
+  return ingredients;
+}
+
+function macrosScaled(totals, factor) {
+  const f = Number(factor);
+  const scale = Number.isFinite(f) && f > 0 ? f : 1;
+  const t = totals || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
+  return {
+    calories: r2(t.calories * scale),
+    protein_g: r2(t.protein_g * scale),
+    carbs_g: r2(t.carbs_g * scale),
+    fat_g: r2(t.fat_g * scale),
+    fiber_g: r2(t.fiber_g * scale),
+  };
+}
+
+/**
+ * Normalize custom container weights into fractions that sum to 1.
+ * Accepts percents (sum ~100) or raw weights (any positive sum).
+ * @returns {number[]|null}
+ */
+export function normalizeMealPrepFractions(weights) {
+  if (!Array.isArray(weights) || weights.length < 2) return null;
+  const nums = weights.map(w => Number(w));
+  if (nums.some(n => !Number.isFinite(n) || n <= 0)) return null;
+  const sum = nums.reduce((a, b) => a + b, 0);
+  if (!(sum > 0)) return null;
+  return nums.map(n => n / sum);
+}
+
+/**
  * Turn the receipt the user just assembled into a POST /api/recipes body, so a
  * meal worked out in the log modal can be kept without retyping it in the Meal
  * Builder. Returns null when there is no name or nothing usable to save.
@@ -261,51 +327,88 @@ const r2 = n => Math.round(Number(n) * 100) / 100;
  * substitutable later rather than a frozen block of numbers. Anything without a
  * library link is kept as a free-text `kind: 'line'` so it stays visible in the
  * recipe instead of silently vanishing from the total.
+ *
+ * Pass `{ mealPrepServings: N }` (N ≥ 2) to save an equal N-way meal prep:
+ * per-serving macros/amounts and a limited-use template with N uses — same
+ * model as the AI logger meal-prep path.
  */
-export function buildRecipeFromReceipt(receipt, name) {
+export function buildRecipeFromReceipt(receipt, name, options = {}) {
   const recipeName = String(name ?? '').trim();
   if (!recipeName) return null;
 
   const lines = Array.isArray(receipt) ? receipt : [];
-  const ingredients = [];
-  for (const l of lines) {
-    if (!l) continue;
-    const lineName = String(l.name ?? '').trim();
-    if (!lineName) continue;
-    const amount = Number(l.amount);
-    const lid = Number(l.label_ingredient_id);
-    const usable = Number.isFinite(amount) && amount > 0;
+  const mealPrepServings = Number(options?.mealPrepServings);
+  const isPrep = Number.isInteger(mealPrepServings) && mealPrepServings >= 2 && mealPrepServings <= 50;
+  const factor = isPrep ? 1 / mealPrepServings : 1;
 
-    if (Number.isInteger(lid) && lid > 0 && usable && l.calories != null) {
-      ingredients.push({
-        kind: 'ingredient',
-        name: lineName,
-        amount: String(amount),
-        unit: canonicalUnit(l.unit) || 'g',
-        label_ingredient_id: lid,
-      });
-    } else {
-      ingredients.push({
-        kind: 'line',
-        name: lineName,
-        amount: usable ? formatAmountWithUnit(amount, l.unit) : 'as logged',
-      });
-    }
-  }
+  const ingredients = ingredientsFromReceiptScaled(lines, factor);
   if (ingredients.length === 0) return null;
 
   const t = sumReceiptMacros(lines) || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
+  const macros = macrosScaled(t, factor);
+
+  if (isPrep) {
+    return {
+      name: recipeName,
+      serving_size: `1 of ${mealPrepServings} meal-prep servings`,
+      ...macros,
+      ingredients,
+      recipe_kind: 'limited',
+      remaining_uses: mealPrepServings,
+      max_uses: mealPrepServings,
+      meal_builder_meta: { source: 'log_meal_prep', containers: mealPrepServings, split: 'equal' },
+    };
+  }
+
   return {
     name: recipeName,
     serving_size: '1 meal',
-    calories: r2(t.calories),
-    protein_g: r2(t.protein_g),
-    carbs_g: r2(t.carbs_g),
-    fat_g: r2(t.fat_g),
-    fiber_g: r2(t.fiber_g),
+    ...macros,
     ingredients,
     meal_builder_meta: { source: 'log_receipt' },
   };
+}
+
+/**
+ * Unequal meal-prep split: one limited recipe per container (1 use each),
+ * scaled by the given weights/percents. Use when containers are not equal.
+ * @returns {object[]|null}
+ */
+export function buildUnequalMealPrepRecipes(receipt, name, weights) {
+  const recipeName = String(name ?? '').trim();
+  if (!recipeName) return null;
+  const fractions = normalizeMealPrepFractions(weights);
+  if (!fractions) return null;
+
+  const lines = Array.isArray(receipt) ? receipt : [];
+  const t = sumReceiptMacros(lines) || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
+  const n = fractions.length;
+  const bodies = [];
+
+  for (let i = 0; i < n; i++) {
+    const frac = fractions[i];
+    const ingredients = ingredientsFromReceiptScaled(lines, frac);
+    if (ingredients.length === 0) return null;
+    const macros = macrosScaled(t, frac);
+    const pct = Math.round(frac * 1000) / 10;
+    bodies.push({
+      name: n === 1 ? recipeName : `${recipeName} (${i + 1}/${n})`,
+      serving_size: `1 of ${n} meal-prep servings · ${pct}%`,
+      ...macros,
+      ingredients,
+      recipe_kind: 'limited',
+      remaining_uses: 1,
+      max_uses: 1,
+      meal_builder_meta: {
+        source: 'log_meal_prep',
+        containers: n,
+        split: 'custom',
+        container_index: i + 1,
+        fraction: frac,
+      },
+    });
+  }
+  return bodies;
 }
 
 /**
@@ -317,25 +420,49 @@ export function buildRecipeFromReceipt(receipt, name) {
  *
  * Meals with no ingredient breakdown (a plain recipe log, a quick food) keep
  * their own macros so they are still re-loggable, just without lines.
+ *
+ * Pass `{ mealPrepServings: N }` to turn the saved meal into an equal N-way
+ * limited meal-prep template (same as saving from the Log Meal receipt).
  */
-export function buildRecipeFromLogEntry(entry, name) {
+export function buildRecipeFromLogEntry(entry, name, options = {}) {
   const recipeName = String(name ?? '').trim();
   if (!entry || !recipeName) return null;
 
   const rows = parseLoggedIngredients(entry);
-  if (rows && rows.length) return buildRecipeFromReceipt(rows, recipeName);
+  if (rows && rows.length) return buildRecipeFromReceipt(rows, recipeName, options);
 
   const macros = [entry.recipe_calories, entry.recipe_protein_g, entry.recipe_carbs_g, entry.recipe_fat_g];
   if (!macros.every(v => Number.isFinite(Number(v)))) return null;
-  return {
+
+  const mealPrepServings = Number(options?.mealPrepServings);
+  const isPrep = Number.isInteger(mealPrepServings) && mealPrepServings >= 2 && mealPrepServings <= 50;
+  const factor = isPrep ? 1 / mealPrepServings : 1;
+  const base = {
     name: recipeName,
-    serving_size: entry.serving_size || '1 meal',
-    calories: r2(entry.recipe_calories),
-    protein_g: r2(entry.recipe_protein_g),
-    carbs_g: r2(entry.recipe_carbs_g),
-    fat_g: r2(entry.recipe_fat_g),
-    ...(Number.isFinite(Number(entry.recipe_fiber_g)) ? { fiber_g: r2(entry.recipe_fiber_g) } : {}),
+    calories: r2(Number(entry.recipe_calories) * factor),
+    protein_g: r2(Number(entry.recipe_protein_g) * factor),
+    carbs_g: r2(Number(entry.recipe_carbs_g) * factor),
+    fat_g: r2(Number(entry.recipe_fat_g) * factor),
+    ...(Number.isFinite(Number(entry.recipe_fiber_g))
+      ? { fiber_g: r2(Number(entry.recipe_fiber_g) * factor) }
+      : {}),
     ingredients: [],
+  };
+
+  if (isPrep) {
+    return {
+      ...base,
+      serving_size: `1 of ${mealPrepServings} meal-prep servings`,
+      recipe_kind: 'limited',
+      remaining_uses: mealPrepServings,
+      max_uses: mealPrepServings,
+      meal_builder_meta: { source: 'log_meal_prep', containers: mealPrepServings, split: 'equal' },
+    };
+  }
+
+  return {
+    ...base,
+    serving_size: entry.serving_size || '1 meal',
     meal_builder_meta: { source: 'log_entry' },
   };
 }

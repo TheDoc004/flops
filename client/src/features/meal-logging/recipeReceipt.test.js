@@ -10,7 +10,9 @@ import {
   changeLineUnit,
   retargetLineToIngredient,
   buildRecipeFromReceipt,
+  buildUnequalMealPrepRecipes,
   buildRecipeFromLogEntry,
+  normalizeMealPrepFractions,
 } from './recipeReceipt';
 
 const oats = {
@@ -217,6 +219,54 @@ describe('buildRecipeFromReceipt', () => {
 
   it('trims the name', () => {
     expect(buildRecipeFromReceipt(receipt, '  Morning bowl  ').name).toBe('Morning bowl');
+  });
+
+  it('splits an equal meal prep into a limited per-serving recipe', () => {
+    const body = buildRecipeFromReceipt(receipt, 'Chicken prep', { mealPrepServings: 4 });
+    expect(body.recipe_kind).toBe('limited');
+    expect(body.remaining_uses).toBe(4);
+    expect(body.max_uses).toBe(4);
+    expect(body.serving_size).toBe('1 of 4 meal-prep servings');
+    expect(body.meal_builder_meta).toMatchObject({ source: 'log_meal_prep', split: 'equal' });
+    expect(body.ingredients[0].amount).toBe('22.5'); // 90 / 4
+    expect(body.ingredients[1].amount).toBe('0.5'); // 2 / 4
+    const full = buildRecipeFromReceipt(receipt, 'Chicken prep');
+    expect(body.calories).toBeCloseTo(full.calories / 4, 1);
+  });
+});
+
+describe('buildUnequalMealPrepRecipes', () => {
+  const receipt = [
+    buildReceiptLine(oats, '100', 'g'),
+    buildReceiptLine(egg, '2', 'egg'),
+  ];
+
+  it('builds one limited recipe per container from percentages', () => {
+    const bodies = buildUnequalMealPrepRecipes(receipt, 'Batch', [50, 30, 20]);
+    expect(bodies).toHaveLength(3);
+    expect(bodies[0]).toMatchObject({
+      name: 'Batch (1/3)',
+      recipe_kind: 'limited',
+      remaining_uses: 1,
+      max_uses: 1,
+    });
+    expect(bodies[0].ingredients[0].amount).toBe('50');
+    expect(bodies[1].ingredients[0].amount).toBe('30');
+    expect(bodies[2].ingredients[0].amount).toBe('20');
+    expect(bodies[0].meal_builder_meta).toMatchObject({ source: 'log_meal_prep', split: 'custom' });
+  });
+
+  it('rejects invalid weights', () => {
+    expect(buildUnequalMealPrepRecipes(receipt, 'Batch', [50])).toBeNull();
+    expect(buildUnequalMealPrepRecipes(receipt, 'Batch', [50, -10])).toBeNull();
+    expect(buildUnequalMealPrepRecipes(receipt, '  ', [50, 50])).toBeNull();
+  });
+});
+
+describe('normalizeMealPrepFractions', () => {
+  it('normalizes percents to fractions that sum to 1', () => {
+    const f = normalizeMealPrepFractions([50, 50]);
+    expect(f).toEqual([0.5, 0.5]);
   });
 });
 
