@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import DashboardWeightRow from './DashboardWeightRow';
@@ -41,8 +41,12 @@ describe('DashboardWeightRow', () => {
     fireEvent.change(screen.getByLabelText(/Today's weight in lb/), { target: { value: '165.3' } });
     await user.click(button);
 
-    await waitFor(() => expect(screen.getByRole('button')).toHaveTextContent('Weight saved'));
-    expect(screen.getByRole('button')).toBeDisabled();
+    // Settling means the button goes away entirely: with the weight logged and
+    // the field untouched there is no action left to offer. The status line
+    // carries the confirmation instead of a disabled button.
+    const status = await screen.findByText(/Logged for today · \+0.4 lb since Jul 29/);
+    expect(status).toHaveClass('is-saved');
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(saveBodyWeight).toHaveBeenCalledWith(TODAY, expect.closeTo(74.98, 2));
   });
 
@@ -53,8 +57,8 @@ describe('DashboardWeightRow', () => {
     ]);
     renderRow();
 
-    await waitFor(() => expect(screen.getByRole('button')).toHaveTextContent('Weight saved'));
-    expect(screen.getByText(/Logged for today · \+0.4 lb since Jul 29/)).toBeInTheDocument();
+    expect(await screen.findByText(/Logged for today · \+0.4 lb since Jul 29/)).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('turns back into an update once a different weight is entered', async () => {
@@ -62,20 +66,25 @@ describe('DashboardWeightRow', () => {
     saveBodyWeight.mockResolvedValue({ date: TODAY, weight_kg: 74.5 });
     renderRow();
 
-    await waitFor(() => expect(screen.getByRole('button')).toHaveTextContent('Weight saved'));
+    // Already logged today, so it opens settled: no button, no first weigh-in
+    // to compare against.
+    await screen.findByText(/Logged for today · your first weigh-in/);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
 
     // Set the field in one shot: typing "165.35" into a number input goes
     // through the invalid intermediate "165.", which jsdom reports as empty.
     const field = screen.getByLabelText(/Today's weight in lb/);
     fireEvent.change(field, { target: { value: '164.2' } });
 
+    // A different number is the only thing that turns the card back into an
+    // action — this is the sole route to correcting a mis-typed weight.
     const button = screen.getByRole('button');
     expect(button).toHaveTextContent('Update weight');
     expect(button).toBeEnabled();
 
     // Putting the original value back is not a change — no action to offer.
     fireEvent.change(field, { target: { value: '165.35' } });
-    expect(screen.getByRole('button')).toHaveTextContent('Weight saved');
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('sends Full history to the weight trend in Review', async () => {

@@ -25,13 +25,15 @@ function formatDelta(kgDelta, bodyUnits) {
 }
 
 /**
- * Today's weigh-in — a daily action, so the card is one field and one button.
+ * Today's weigh-in — a daily action, so the card is one field and, when there
+ * is something to do, one button.
  *
- * The button carries the state: it saves, then settles into a green "Weight
- * saved" that isn't asking for anything. Typing a different number turns it
- * back into a live "Update weight", which is the only way a mis-typed weight
- * gets corrected. The trend itself lives in Review; this card only shows the
- * previous weigh-in, as a sanity check against what you're typing.
+ * Once the weight is logged and the field is untouched the card is SETTLED: the
+ * button disappears rather than sitting there disabled, because nothing is being
+ * asked for. The status line carries the confirmation instead. Typing a
+ * different number brings back a live "Update weight", which is the only way a
+ * mis-typed weight gets corrected. The trend itself lives in Review; this card
+ * only shows the previous weigh-in, as a sanity check against what you're typing.
  */
 export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, noCard = false }) {
   const [storedKg, setStoredKg] = useState(null);
