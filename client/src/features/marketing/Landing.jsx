@@ -1,211 +1,241 @@
-import { Link } from 'react-router-dom';
-import MacroTotals from '@shared/ui/MacroTotals';
+import { useEffect, useRef } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import {
+  SHOW_SOCIAL_PROOF,
+  copy,
+  langFromPath,
+  pathForLang,
+} from './landingCopy';
 import styles from './Landing.module.css';
 
-const DEMO_TOTALS = { calories: 1842, protein_g: 141, carbs_g: 168, fat_g: 58 };
-const DEMO_TARGETS = {
-  calories: { min: 2200, max: 2500 },
-  protein_g: { min: 150, max: 180 },
-  carbs_g: { min: 200, max: 260 },
-  fat_g: { min: 55, max: 75 },
-};
+/**
+ * Direction contract (persuade · notebook world)
+ * THESIS: Free personal nutrition notebook — logging as easy as flip-flops; not a paywalled tracker.
+ * OWN-WORLD: Warm paper ground, navy brand ink, primary blue CTA, DM Serif wordmark, hairline sections.
+ * STORY: Visitor believes free-for-individuals, meets Diego honestly, starts with email OTP.
+ * FIRST VIEWPORT: Atmosphere + Flops brand + signature line + Start free (CTA in first fold).
+ * FORM: Morning notebook page (established FLOPS materials, elevated for marketing).
+ */
+
+function useReveal() {
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const nodes = root.querySelectorAll('[data-reveal]');
+    if (reduce) {
+      nodes.forEach((el) => el.setAttribute('data-in', '1'));
+      return undefined;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.setAttribute('data-in', '1');
+            io.unobserve(entry.target);
+          }
+        });
+      },
+      { rootMargin: '0px 0px -8% 0px', threshold: 0.12 },
+    );
+    nodes.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+
+  return rootRef;
+}
 
 export default function Landing() {
+  const { pathname } = useLocation();
+  const lang = langFromPath(pathname);
+  const t = copy[lang];
+  const otherLang = lang === 'en' ? 'es' : 'en';
+  const rootRef = useReveal();
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    const prevTitle = document.title;
+    document.title = t.metaTitle;
+    const meta = document.querySelector('meta[name="description"]');
+    const prevDesc = meta?.getAttribute('content') || '';
+    if (meta) meta.setAttribute('content', t.metaDescription);
+    return () => {
+      document.documentElement.lang = 'en';
+      document.title = prevTitle;
+      if (meta) meta.setAttribute('content', prevDesc);
+    };
+  }, [lang, t.metaTitle, t.metaDescription]);
+
   return (
-    <div className={styles.page}>
+    <div className={styles.page} ref={rootRef}>
+      <div className={styles.atmosphere} aria-hidden="true">
+        <div className={styles.blobA} />
+        <div className={styles.blobB} />
+      </div>
+
       <header className={styles.top}>
         <div className={styles.topInner}>
-          <Link to="/" className={styles.brand} aria-label="Flops home">
+          <Link to={pathForLang(lang)} className={styles.brand} aria-label={t.brandAria}>
             <span className={styles.badgeWrap}>
               <img src="/flops-badge.png" alt="" className={styles.badge} />
             </span>
             <span className={styles.brandName}>Flops</span>
           </Link>
-          <Link to="/login" className="btn-primary">
-            Sign in
-          </Link>
+          <div className={styles.topActions}>
+            <Link
+              to={pathForLang(otherLang)}
+              className={styles.langToggle}
+              aria-label={t.langSwitchAria}
+              hrefLang={otherLang}
+            >
+              {t.langSwitch}
+            </Link>
+            <Link to="/login" className={styles.signIn}>
+              {t.signIn}
+            </Link>
+          </div>
         </div>
       </header>
 
       <main>
         <section className={styles.hero} aria-labelledby="landing-hero-title">
-          <div className={styles.heroCopy}>
-            <h1 id="landing-hero-title" className={styles.headline}>
-              A nutrition notebook you actually keep.
-            </h1>
-            <p className={styles.lede}>
-              You write meals, lifts, and supplements. AI helps when you ask.
-              The day stays until you flip it.
+          <p className={`${styles.heroBrand} ${styles.enter}`} data-delay="0">
+            {t.heroBrand}
+          </p>
+          <h1 id="landing-hero-title" className={`${styles.headline} ${styles.enter}`} data-delay="1">
+            {t.heroLine}
+          </h1>
+          <p className={`${styles.lede} ${styles.enter}`} data-delay="2">
+            {t.heroSupport}
+          </p>
+          <div className={`${styles.heroActions} ${styles.enter}`} data-delay="3">
+            <Link to="/login" className={`btn-primary ${styles.cta}`}>
+              {t.startFree}
+            </Link>
+            <a href="#how-it-works" className={`btn-secondary ${styles.ctaSecondary}`}>
+              {t.howItWorksCta}
+            </a>
+          </div>
+        </section>
+
+        <section className={styles.section} aria-labelledby="mission-title" data-reveal>
+          <h2 id="mission-title" className={styles.sectionTitle}>
+            {t.missionTitle}
+          </h2>
+          {t.missionBody.map((para) => (
+            <p key={para.slice(0, 24)} className={styles.prose}>
+              {para}
             </p>
-            <div className={styles.heroActions}>
-              <Link to="/login" className="btn-primary">
-                Open your notebook
-              </Link>
-              <a href="#how-it-works" className="btn-secondary">
-                How it works
-              </a>
-            </div>
-          </div>
-
-          <div className={styles.preview} aria-hidden="true">
-            <p className={styles.previewGreeting}>Good morning!</p>
-            <p className={styles.previewDate}>Thursday, Aug 20</p>
-            <MacroTotals totals={DEMO_TOTALS} targets={DEMO_TARGETS} />
-            <div className={styles.logCard}>
-              <div className={styles.logHead}>
-                <span className={styles.logTitle}>Today’s meals</span>
-                <span className={styles.logMeta}>1 meal · 632 kcal</span>
-              </div>
-              <div className={styles.mealRow}>
-                <span className={styles.mealName}>Chicken rice bowl</span>
-                <span className={styles.mealMacros}>
-                  632 cal · P 41 g · C 76 g · F 19 g
-                </span>
-              </div>
-              <p className={styles.weightLine}>Today’s weight · 151.6 lb</p>
-            </div>
-          </div>
+          ))}
         </section>
 
-        <section className={styles.section} aria-labelledby="what-title">
-          <h2 id="what-title" className={styles.sectionTitle}>What Flops is</h2>
-          <p className={styles.sectionLede}>
-            A personal nutrition and training notebook for the web. Not a streak
-            app. Not a coach that talks over you.
-          </p>
-          <div className={styles.grid3}>
-            <div>
-              <h3 className={styles.blockTitle}>Log meals</h3>
-              <p className={styles.blockBody}>
-                Build a receipt from a recipe or ingredients. Or describe the
-                plate and let AI estimate, only when you ask.
-              </p>
-            </div>
-            <div>
-              <h3 className={styles.blockTitle}>See the day</h3>
-              <p className={styles.blockBody}>
-                Macros, today’s weight, and supplements on one page. The numbers
-                sit still so you can actually read them.
-              </p>
-            </div>
-            <div>
-              <h3 className={styles.blockTitle}>Look back</h3>
-              <p className={styles.blockBody}>
-                History and adherence show how the week went. Missed a day? Flip
-                back and write it in.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className={styles.section} aria-labelledby="diff-title">
-          <h2 id="diff-title" className={styles.sectionTitle}>How it’s different</h2>
-          <div className={styles.grid3}>
-            <div>
-              <h3 className={styles.blockTitle}>You hold the day</h3>
-              <p className={styles.blockBody}>
-                Midnight does not jump you into tomorrow. The page you are
-                writing on stays until you turn it.
-              </p>
-            </div>
-            <div>
-              <h3 className={styles.blockTitle}>AI is opt-in</h3>
-              <p className={styles.blockBody}>
-                Saved recipes and library foods never need a model. Speak or
-                type a meal only when that is faster.
-              </p>
-            </div>
-            <div>
-              <h3 className={styles.blockTitle}>The log is private</h3>
-              <p className={styles.blockBody}>
-                Sign in with an email code. No ads. We do not sell your meals.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className={styles.section} aria-labelledby="in-it-title">
-          <h2 id="in-it-title" className={styles.sectionTitle}>What’s in it</h2>
-          <dl className={styles.surfaces}>
-            <div>
-              <dt>Today</dt>
-              <dd>The page you write on: meals, macros, weight, supplements.</dd>
-            </div>
-            <div>
-              <dt>Library</dt>
-              <dd>Recipes and ingredients you reuse, instead of searching a crowd-sourced database.</dd>
-            </div>
-            <div>
-              <dt>Review</dt>
-              <dd>A calendar of how closely the week matched your goals.</dd>
-            </div>
-            <div>
-              <dt>Training</dt>
-              <dd>Workouts next to the food log, in the same notebook.</dd>
-            </div>
-            <div>
-              <dt>Goals</dt>
-              <dd>Calorie and macro targets for the day you are looking at.</dd>
-            </div>
-          </dl>
-          <p className={styles.aside}>
-            Coaches can be invited later. They see what you already logged. They
-            do not rewrite your page.
-          </p>
-        </section>
-
-        <section className={styles.section} id="how-it-works" aria-labelledby="how-title">
-          <h2 id="how-title" className={styles.sectionTitle}>How it works</h2>
+        <section
+          className={styles.section}
+          id="how-it-works"
+          aria-labelledby="how-title"
+          data-reveal
+        >
+          <h2 id="how-title" className={styles.sectionTitle}>
+            {t.howTitle}
+          </h2>
           <ol className={styles.steps}>
-            <li>
-              <span className={styles.stepNum}>1</span>
-              <div>
-                <h3 className={styles.blockTitle}>Email a code</h3>
-                <p className={styles.blockBody}>
-                  No password to forget. We send a six-digit code and open your notebook.
-                </p>
-              </div>
-            </li>
-            <li>
-              <span className={styles.stepNum}>2</span>
-              <div>
-                <h3 className={styles.blockTitle}>Write today’s meals</h3>
-                <p className={styles.blockBody}>
-                  Log a recipe, build a receipt, or ask AI to estimate. Tick off
-                  supplements as you take them.
-                </p>
-              </div>
-            </li>
-            <li>
-              <span className={styles.stepNum}>3</span>
-              <div>
-                <h3 className={styles.blockTitle}>Flip the day when you’re done</h3>
-                <p className={styles.blockBody}>
-                  Stay on today until you mean to leave it. Then look back, or
-                  start the next page.
-                </p>
-              </div>
-            </li>
+            {t.howSteps.map((step, i) => (
+              <li key={step.title} style={{ '--i': i }}>
+                <span className={styles.stepNum} aria-hidden="true">
+                  {i + 1}
+                </span>
+                <div>
+                  <h3 className={styles.blockTitle}>{step.title}</h3>
+                  <p className={styles.blockBody}>{step.body}</p>
+                </div>
+              </li>
+            ))}
           </ol>
         </section>
 
-        <section className={styles.close} aria-labelledby="close-title">
-          <h2 id="close-title" className={styles.headline}>
-            Open the notebook.
+        <section className={styles.section} aria-labelledby="today-title" data-reveal>
+          <div className={styles.split}>
+            <div>
+              <h2 id="today-title" className={styles.sectionTitle}>
+                {t.todayTitle}
+              </h2>
+              <p className={styles.prose}>{t.todayBody}</p>
+            </div>
+            <div>
+              <h2 id="vision-title" className={styles.sectionTitle}>
+                {t.visionTitle}
+              </h2>
+              <p className={styles.prose}>{t.visionBody}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.section} aria-labelledby="about-title" data-reveal>
+          <h2 id="about-title" className={styles.sectionTitle}>
+            {t.aboutTitle}
           </h2>
-          <p className={styles.lede}>
-            Your log stays on your account. Sign in when you are ready to write.
-          </p>
-          <Link to="/login" className="btn-primary">
-            Open your notebook
+          {t.aboutBody.map((para) => (
+            <p key={para.slice(0, 24)} className={styles.prose}>
+              {para}
+            </p>
+          ))}
+        </section>
+
+        {/* Template for real testimonials later. SHOW_SOCIAL_PROOF stays false until quotes exist. */}
+        {SHOW_SOCIAL_PROOF ? (
+          <section className={styles.section} aria-labelledby="social-title" data-reveal>
+            <h2 id="social-title" className={styles.sectionTitle}>
+              {t.socialTitle}
+            </h2>
+            <ul className={styles.quotes}>
+              <li>
+                <blockquote>
+                  <p>{/* Real quote */}</p>
+                  <footer>{/* Name · context */}</footer>
+                </blockquote>
+              </li>
+            </ul>
+          </section>
+        ) : (
+          <section className={styles.socialPlaceholder} aria-hidden="true" data-social-template>
+            {/*
+              Enable later: set SHOW_SOCIAL_PROOF = true in landingCopy.js
+              and fill quotes with real names. Never invent reviews.
+            */}
+            <p className={styles.socialNoteHidden}>{t.socialNote}</p>
+          </section>
+        )}
+
+        <section className={styles.close} aria-labelledby="close-title" data-reveal>
+          <h2 id="close-title" className={styles.closeTitle}>
+            {t.closeTitle}
+          </h2>
+          <p className={styles.lede}>{t.closeBody}</p>
+          <Link to="/login" className={`btn-primary ${styles.cta}`}>
+            {t.closeCta}
           </Link>
         </section>
       </main>
 
       <footer className={styles.foot}>
-        <span>© {new Date().getFullYear()} Flops</span>
-        <Link to="/login">Sign in</Link>
-        <span>Your log stays on your account. We don’t sell it.</span>
+        <div className={styles.footRow}>
+          <span>
+            © {new Date().getFullYear()} {t.footerRights}
+          </span>
+          <span className={styles.footSoon}>
+            {t.footerTerms} · {t.footerPrivacy} ({t.footerComingSoon})
+          </span>
+        </div>
+        <div className={styles.footRow}>
+          <span>
+            {t.footerContact}:{' '}
+            <a href={`tel:+1${t.footerPhone.replace(/\D/g, '')}`}>{t.footerPhone}</a>
+          </span>
+          <Link to="/login">{t.signIn}</Link>
+        </div>
+        <p className={styles.footPromise}>{t.footerPromise}</p>
       </footer>
     </div>
   );

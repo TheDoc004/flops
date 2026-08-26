@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-08-25_
+_Last updated: 2026-08-26_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -74,6 +74,18 @@ Bearer session on `/api/*`; ownership via `req.user.id`. Schema + migrations are
 ---
 
 ## 3. Current state by area
+
+### Marketing landing (unauthenticated) — refreshed 2026-08-26
+
+When signed out, `/` shows the English landing and `/es` the Spanish one
+(`client/src/features/marketing/`). Copy lives in `landingCopy.js` (flip-flops line,
+mission, how it works, today vs Phase 3 vision, About Diego). Footer: Terms/Privacy
+“Coming soon”, phone `925-286-6097` (no email on page). Social proof gated by
+`SHOW_SOCIAL_PROOF` (false until real quotes). Primary CTA → `/login`.
+
+**Auth UX:** web Login is email OTP only (Apple button removed; it 503’d in prod).
+OTP send failures use clearer “email delivery may still be setting up” copy. Live OTP
+still needs Resend domain verification on Diego’s side.
 
 ### Nutrition (Phase 1) — solid / feature-complete
 
@@ -249,6 +261,9 @@ for live deploy unless explicitly working on a feature branch.
 
 ## 5. Known issues & tech debt
 
+- **Email OTP / Resend** — codes fail in production until the Resend sending domain is
+  verified (and `RESEND_API_KEY` / `MAIL_FROM` are set on Render). Login UI copy now
+  hints at setup; do not treat a code change as fixing delivery.
 - **Oversized components:** `AiMacroLogger.jsx`, `Ingredients.jsx`, `MealBuilder.jsx`,
   `LogMealModal.jsx`, `ManageSupplementsModal.jsx`. Extract hooks to `client/src/shared/hooks/`.
 - **Pre-existing lint:** duplicate `fontWeight` in inline styles (`Ingredients.jsx`,

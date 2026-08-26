@@ -76,6 +76,7 @@ function AuthGate() {
   }
   if (!isAuthenticated) {
     if (pathname === '/login') return <Login />;
+    // Marketing: `/` (EN) and `/es` (ES). Any other public path still shows the landing.
     return <Landing />;
   }
   if (needsOnboarding) return <Onboarding />;
