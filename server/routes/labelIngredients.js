@@ -33,6 +33,23 @@ function normalizeRequiredNumber(v, { min = 0 } = {}) {
   return n;
 }
 
+/**
+ * The tracking type to store. An explicit, valid choice from the client always
+ * wins. Otherwise it is DERIVED rather than defaulted: a body describing a
+ * serving by unit ("1 scoop") with no grams per serving is unit-tracked, and
+ * defaulting it to 'weight' produced rows that carried macros but could never
+ * be logged, because weight scaling has nothing to divide by.
+ */
+function resolveTrackingType(body) {
+  if (['weight', 'unit'].includes(body?.tracking_type)) return body.tracking_type;
+  const grams = Number(body?.grams_per_serving);
+  if (Number.isFinite(grams) && grams > 0) return 'weight';
+  const hasUnitShape =
+    (typeof body?.unit_name === 'string' && body.unit_name.trim()) ||
+    Number(body?.serving_quantity) > 0;
+  return hasUnitShape ? 'unit' : 'weight';
+}
+
 function createLabelIngredientsRouter(db) {
   const router = express.Router();
 
@@ -100,7 +117,7 @@ function createLabelIngredientsRouter(db) {
       }
       if (photo_data_uri.trim() === '') photo_data_uri = null;
     }
-    const tracking_type = ['weight', 'unit'].includes(req.body?.tracking_type) ? req.body.tracking_type : 'weight';
+    const tracking_type = resolveTrackingType(req.body);
     const unit_name = normalizeOptionalString(req.body?.unit_name, { maxLen: 64 });
     const serving_quantity = normalizeOptionalNumber(req.body?.serving_quantity, { min: 0.0001 });
     const grams_per_unit = normalizeOptionalNumber(req.body?.grams_per_unit, { min: 0.0001 });
@@ -169,7 +186,7 @@ function createLabelIngredientsRouter(db) {
       return res.status(400).json({ error: 'calories, protein_g, carbs_g, fat_g must be valid non-negative numbers' });
     }
     const fiber_g = normalizeOptionalNumber(req.body?.fiber_g);
-    const tracking_type = ['weight', 'unit'].includes(req.body?.tracking_type) ? req.body.tracking_type : 'weight';
+    const tracking_type = resolveTrackingType(req.body);
     const unit_name = normalizeOptionalString(req.body?.unit_name, { maxLen: 64 });
     const serving_quantity = normalizeOptionalNumber(req.body?.serving_quantity, { min: 0.0001 });
     const grams_per_unit = normalizeOptionalNumber(req.body?.grams_per_unit, { min: 0.0001 });

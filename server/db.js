@@ -2,6 +2,46 @@ const Database = require('better-sqlite3');
 const { parseServingText } = require('./supplementDose');
 
 /**
+ * Repairs ingredients that say they are measured by weight but carry no grams
+ * per serving, while their unit fields describe a perfectly good serving
+ * ("1 serving", "1 scoop"). Those rows are HYBRIDS: the write path defaults
+ * tracking_type to 'weight' whenever a client omits it, so an ingredient saved
+ * with a unit-shaped serving lands as weight-tracked with nothing to scale by,
+ * and then cannot be logged at all — "needs grams per serving before it can be
+ * logged", on an ingredient whose serving is right there in the row.
+ *
+ * Flipping them to 'unit' is safe because such a row is currently unloggable:
+ * every scaling path returns null for it, so there is no working behaviour to
+ * preserve, and the unit fields are the only description of a serving it has.
+ * Rows with no unit information are genuinely incomplete and are left alone for
+ * the user to fix. Idempotent.
+ */
+function repairHybridIngredientTracking(db) {
+  const rows = db
+    .prepare(
+      `SELECT id, unit_name, serving_quantity FROM label_ingredients
+       WHERE tracking_type = 'weight'
+         AND (grams_per_serving IS NULL OR grams_per_serving <= 0)
+         AND (unit_name IS NOT NULL OR serving_quantity > 0)`
+    )
+    .all();
+  if (rows.length === 0) return 0;
+
+  const upd = db.prepare(
+    `UPDATE label_ingredients SET tracking_type = 'unit', unit_name = ?, serving_quantity = ? WHERE id = ?`
+  );
+  const run = db.transaction(list => {
+    for (const r of list) {
+      const unit = String(r.unit_name || '').trim() || 'serving';
+      const qty = Number(r.serving_quantity) > 0 ? Number(r.serving_quantity) : 1;
+      upd.run(unit, qty, r.id);
+    }
+  });
+  run(rows);
+  return rows.length;
+}
+
+/**
  * Logged ingredient rows used to store a hardcoded "g" even for unit-tracked
  * ingredients, so old breakdowns read "3 g" where they meant "3 eggs". Repairs
  * the display unit in place; amounts and macros were always correct and are
@@ -583,6 +623,7 @@ function createDb(dbPath) {
   if (labelCols.length && !labelCols.includes('micros_json')) {
     db.exec(`ALTER TABLE label_ingredients ADD COLUMN micros_json TEXT`);
   }
+  repairHybridIngredientTracking(db);
   repairLoggedIngredientUnits(db);
 
   // Supplements: separate the label's serving from the amount actually taken.
@@ -703,4 +744,4 @@ function createDb(dbPath) {
   return db;
 }
 
-module.exports = { createDb, repairLoggedIngredientUnits };
+module.exports = { createDb, repairLoggedIngredientUnits, repairHybridIngredientTracking };
