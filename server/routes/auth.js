@@ -50,7 +50,8 @@ function createAuthRouter(db) {
     } catch (e) {
       console.error('[auth] OTP email failed:', e.message);
       return res.status(e.status || 502).json({
-        error: 'Could not send login email. Try again in a moment.',
+        error:
+          'Could not send your login code yet. Email delivery may still be setting up. Try again in a few minutes.',
       });
     }
   });

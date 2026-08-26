@@ -90,23 +90,6 @@
   margin: 0 0 12px;
 }
 
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 18px 0;
-  color: var(--color-text-muted);
-  font-size: var(--text-caption);
-}
-
-.divider::before,
-.divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--color-surface-border);
-}
-
 .linkBtn {
   background: none;
   border: none;
@@ -115,11 +98,4 @@
   cursor: pointer;
   padding: 8px 0 0;
   text-align: left;
-}
-
-.footnote {
-  margin: 12px 0 0;
-  font-size: 11px;
-  color: var(--color-text-muted);
-  line-height: 1.4;
 }

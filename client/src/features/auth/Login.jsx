@@ -1,8 +1,19 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { requestOtp, verifyOtp, appleSignIn } from '@shared/api/auth';
+import { requestOtp, verifyOtp } from '@shared/api/auth';
 import { useAuth } from '@shared/context/AuthContext';
 import styles from './Login.module.css';
+
+function friendlyAuthError(raw) {
+  const msg = String(raw || '');
+  if (/not configured|RESEND|SMTP|Could not send login email|Could not send your login/i.test(msg)) {
+    return 'Could not send your login code yet. Email delivery may still be setting up. Try again in a few minutes.';
+  }
+  if (/Apple/i.test(msg)) {
+    return 'Use email on the web for now. Apple Sign In is for the iOS app.';
+  }
+  return msg || 'Something went wrong. Try again.';
+}
 
 export default function Login() {
   const { refresh } = useAuth();
@@ -22,7 +33,7 @@ export default function Login() {
       if (data.dev_code) setDevCode(data.dev_code);
       setStep('code');
     } catch (err) {
-      setError(err.message);
+      setError(friendlyAuthError(err.message));
     } finally {
       setBusy(false);
     }
@@ -36,25 +47,7 @@ export default function Login() {
       await verifyOtp(email.trim(), code.trim());
       await refresh();
     } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function signInAppleDev() {
-    setError('');
-    setBusy(true);
-    try {
-      const sub = `dev.apple.${Date.now()}`;
-      await appleSignIn({
-        apple_sub: sub,
-        email: email.trim() || undefined,
-        display_name: 'Apple user',
-      });
-      await refresh();
-    } catch (err) {
-      setError(err.message);
+      setError(friendlyAuthError(err.message));
     } finally {
       setBusy(false);
     }
@@ -71,10 +64,10 @@ export default function Login() {
           <h1>Flops</h1>
         </div>
         <p className={styles.lede}>
-          Your nutrition notebook. You write it; AI helps when you ask. Sign in to keep your log private.
+          Your nutrition notebook. Free to start. We email you a six-digit code. No password.
         </p>
 
-        {error && <p className={styles.error}>{error}</p>}
+        {error && <p className={styles.error} role="alert">{error}</p>}
 
         {step === 'email' ? (
           <form onSubmit={sendCode} className={styles.form}>
@@ -84,7 +77,7 @@ export default function Login() {
               type="email"
               autoComplete="email"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               required
             />
@@ -111,7 +104,7 @@ export default function Login() {
               inputMode="numeric"
               autoComplete="one-time-code"
               value={code}
-              onChange={e => setCode(e.target.value)}
+              onChange={(e) => setCode(e.target.value)}
               placeholder="123456"
               required
             />
@@ -131,17 +124,6 @@ export default function Login() {
             </button>
           </form>
         )}
-
-        <div className={styles.divider}>
-          <span>or</span>
-        </div>
-
-        <button type="button" className="btn-primary" style={{ width: '100%' }} onClick={signInAppleDev} disabled={busy}>
-          Sign in with Apple
-        </button>
-        <p className={styles.footnote}>
-          On the web, Apple Sign In uses a local test flow. Native App Store builds will use the real Apple button.
-        </p>
       </div>
     </div>
   );
