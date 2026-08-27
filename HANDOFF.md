@@ -93,7 +93,9 @@ Dashboard, Recipe Library, Ingredient Library (OCR + barcode), Meal Builder, His
 Goals, Report, Profile, Adherence, supplements, prep strip, coach, and AI Estimate all work.
 
 **Today dashboard actions:** `AI Estimate` (`btn-ai`) and `+ Log a Meal` (`btn-primary`) in
-`Dashboard.jsx` → `AiLoggerModal` / `LogMealModal`. **Training** hop (`Link` to `/training`)
+`Dashboard.jsx` → `AiLoggerModal` / `LogMealModal`. Meal rows’ ⋯ menu includes **Edit meal**
+(opens the receipt editor on the existing entry — tweak amounts / drop a sauce after
+copy-paste), plus Copy / Save as Recipe / Remove. **Training** hop (`Link` to `/training`)
 lives beside them — Training is **not** in the nutrition navbar tabs.
 
 **Log Meal vs AI Estimate:** Log a Meal is a **receipt** (optional recipe seed + library foods).
