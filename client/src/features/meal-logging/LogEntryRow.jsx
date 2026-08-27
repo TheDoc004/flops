@@ -22,7 +22,7 @@ const PIE_COLORS = { protein: MACRO_COLORS.protein, carbs: MACRO_COLORS.carbs, f
 
 /** Meal-row ⋯ menu. Fixed to the trigger so a parent card can't clip it,
  *  and flips up when there isn't room below (last meal, bottom of the page). */
-function MealRowMenu({ onMacros, onMicros, onCopyMeal, onSaveAsRecipe, onDelete }) {
+function MealRowMenu({ onMacros, onMicros, onEdit, onCopyMeal, onSaveAsRecipe, onDelete }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef(null);
   const menuRef = useRef(null);
@@ -37,7 +37,7 @@ function MealRowMenu({ onMacros, onMicros, onCopyMeal, onSaveAsRecipe, onDelete 
       const btn = btnRef.current;
       if (!btn) return;
       const r = btn.getBoundingClientRect();
-      const menuH = menuRef.current?.offsetHeight || 196;
+      const menuH = menuRef.current?.offsetHeight || 232;
       const menuW = Math.max(168, menuRef.current?.offsetWidth || 168);
       const gap = 6;
       const pad = 8;
@@ -74,7 +74,7 @@ function MealRowMenu({ onMacros, onMicros, onCopyMeal, onSaveAsRecipe, onDelete 
     return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, [open]);
 
-  const hasActions = onMacros || onMicros || onCopyMeal || onSaveAsRecipe || onDelete;
+  const hasActions = onMacros || onMicros || onEdit || onCopyMeal || onSaveAsRecipe || onDelete;
   if (!hasActions) return null;
 
   const menu = open ? (
@@ -109,6 +109,16 @@ function MealRowMenu({ onMacros, onMicros, onCopyMeal, onSaveAsRecipe, onDelete 
           onClick={() => { onMicros(); setOpen(false); }}
         >
           Micros
+        </button>
+      )}
+      {onEdit && (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-pop-item"
+          onClick={() => { onEdit(); setOpen(false); }}
+        >
+          Edit meal
         </button>
       )}
       {onCopyMeal && (
@@ -256,6 +266,7 @@ export default function LogEntryRow({
             <MealRowMenu
               onMacros={() => openView('macros')}
               onMicros={hasMicros ? () => openView('micros') : null}
+              onEdit={onEdit ? () => onEdit(entry) : null}
               onCopyMeal={onCopyMeal ? () => onCopyMeal(entry) : null}
               onSaveAsRecipe={onSaveAsRecipe ? () => onSaveAsRecipe(entry) : null}
               onDelete={onDelete ? () => onDelete(entry) : null}

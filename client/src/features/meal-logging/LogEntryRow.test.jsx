@@ -54,3 +54,22 @@ describe('LogEntryRow — Save as Recipe', () => {
     expect(screen.getByRole('menuitem', { name: 'Save as Recipe' })).toBeInTheDocument();
   });
 });
+
+describe('LogEntryRow — Edit meal', () => {
+  it('offers Edit meal in the meal menu', async () => {
+    const user = userEvent.setup();
+    const onEdit = vi.fn();
+    renderRow({ onEdit });
+    await openMenu(user);
+
+    await user.click(screen.getByRole('menuitem', { name: 'Edit meal' }));
+    expect(onEdit).toHaveBeenCalledWith(entry);
+  });
+
+  it('leaves Edit meal out when no handler is supplied', async () => {
+    const user = userEvent.setup();
+    renderRow({ onDelete: vi.fn() });
+    await openMenu(user);
+    expect(screen.queryByRole('menuitem', { name: 'Edit meal' })).not.toBeInTheDocument();
+  });
+});

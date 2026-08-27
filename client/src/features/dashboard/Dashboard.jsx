@@ -6,7 +6,7 @@ import { SaveMealAsRecipeDialog } from '@features/meal-logging';
 import { AiLoggerModal } from '@features/ai-macro-logger';
 import MacroTotals from '@shared/ui/MacroTotals';
 import Reveal from '@shared/ui/Reveal';
-import { fetchLogRange, createLogEntry, createCustomLog, deleteLogEntry } from '@shared/api/log';
+import { fetchLogRange, createLogEntry, createCustomLog, updateLogEntry, deleteLogEntry } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile } from '@shared/api/profile';
 import { sumMacros } from '@shared/utils/macros';
@@ -148,6 +148,7 @@ export default function Dashboard() {
   const [goalsLoaded, setGoalsLoaded] = useState(false);
   const [goalsError, setGoalsError] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [editEntry, setEditEntry] = useState(null);
   const [showAiModal, setShowAiModal] = useState(false);
   const [error, setError] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
@@ -330,6 +331,29 @@ export default function Dashboard() {
     if (data?.custom) await createCustomLog({ ...data.custom, date: today });
     else await createLogEntry({ ...data, date: today });
     await load();
+  }
+
+  async function handleEditMeal(data) {
+    if (!editEntry) return;
+    try {
+      if (data?.custom) {
+        // Edited into a freeform receipt without keeping the recipe link —
+        // same PUT shape History uses so ingredients/macros refresh in place.
+        await updateLogEntry(editEntry.id, {
+          recipe_id: editEntry.recipe_id,
+          servings: data.custom.servings ?? 1,
+          notes: data.custom.notes,
+          time_min: data.custom.time_min,
+          ingredients: data.custom.ingredients,
+        });
+      } else {
+        await updateLogEntry(editEntry.id, data);
+      }
+      setEditEntry(null);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function handleDelete(entry) {
@@ -702,6 +726,7 @@ export default function Dashboard() {
                   <LogEntryRow
                     entry={entry}
                     onDelete={handleDelete}
+                    onEdit={setEditEntry}
                     onCopyMeal={handleCopyMeal}
                     onSaveAsRecipe={handleSaveMealAsRecipe}
                     variant="dashboard"
@@ -718,6 +743,16 @@ export default function Dashboard() {
         <LogMealModal
           onLog={handleLog}
           onClose={() => setShowModal(false)}
+        />
+      )}
+
+      {editEntry && (
+        <LogMealModal
+          title={`Edit meal · ${formatDisplayDate(editEntry.date || today)}`}
+          submitLabel="Save Changes"
+          initialEntry={editEntry}
+          onLog={handleEditMeal}
+          onClose={() => setEditEntry(null)}
         />
       )}
 
