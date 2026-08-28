@@ -22,6 +22,19 @@ describe('mergeDashLayout', () => {
     expect(result.cards.find(c => c.id === 'meals')).toBeTruthy();
   });
 
+  it('merges { version, cards } shape from profile persistence', () => {
+    const saved = {
+      version: 1,
+      cards: [{ id: 'weight', x: 2, y: 9, w: 8, h: 4, visible: true }],
+    };
+    const result = mergeDashLayout(saved);
+    const weight = result.cards.find(c => c.id === 'weight');
+    expect(weight.x).toBe(2);
+    expect(weight.y).toBe(9);
+    expect(weight.w).toBe(8);
+    expect(weight.h).toBe(4);
+  });
+
   it('respects profile show/hide flags', () => {
     const result = mergeDashLayout(null, { dash_weight_enabled: 0, dash_meals_enabled: 0 });
     expect(result.cards.find(c => c.id === 'weight').visible).toBe(false);

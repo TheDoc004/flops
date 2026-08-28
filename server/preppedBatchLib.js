@@ -49,8 +49,11 @@ function extractPreppedUsageFromRows(rows) {
 function applyBatchDelta(db, userId, batchId, gramsDelta) {
   const delta = Number(gramsDelta);
   if (!Number.isFinite(delta) || delta === 0) return;
+  const restoring = delta < 0;
   const batch = db.prepare(
-    'SELECT * FROM prepped_batches WHERE id = ? AND user_id = ? AND is_depleted = 0'
+    restoring
+      ? 'SELECT * FROM prepped_batches WHERE id = ? AND user_id = ?'
+      : 'SELECT * FROM prepped_batches WHERE id = ? AND user_id = ? AND is_depleted = 0'
   ).get(batchId, userId);
   if (!batch) {
     const err = new Error('PREPPED_BATCH_NOT_FOUND');

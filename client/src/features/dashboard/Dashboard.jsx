@@ -10,7 +10,7 @@ import { fetchLogRange, createLogEntry, createCustomLog, updateLogEntry, deleteL
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile, saveProfile } from '@shared/api/profile';
 import DashboardCanvas from './DashboardCanvas';
-import { DEFAULT_DASH_LAYOUT, mergeDashLayout } from './dashboardLayout';
+import { mergeDashLayout } from './dashboardLayout';
 import WeightTrendMini from '@features/history/WeightTrendMini';
 import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';

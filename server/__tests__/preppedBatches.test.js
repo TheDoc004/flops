@@ -79,4 +79,46 @@ describe('prepped batches', () => {
     const restored = await request(app).get(`/api/prepped-batches/${batch.body.id}`);
     expect(restored.body.remaining_weight_g).toBe(500);
   });
+
+  it('depletes on custom log and restores after full exhaustion', async () => {
+    const { app } = buildApp();
+    const batch = await request(app).post('/api/prepped-batches').send({
+      name: 'Rice',
+      total_weight_g: 200,
+      total_calories: 260,
+      total_protein_g: 5,
+      total_carbs_g: 55,
+      total_fat_g: 1,
+    });
+    const logRes = await request(app).post('/api/log/custom').send({
+      date: '2026-08-28',
+      name: 'Rice bowl',
+      calories: 260,
+      protein_g: 5,
+      carbs_g: 55,
+      fat_g: 1,
+      servings: 1,
+      ingredients: [{
+        name: 'Rice',
+        amount: 200,
+        unit: 'g',
+        prepped_batch_id: batch.body.id,
+        calories: 260,
+        protein_g: 5,
+        carbs_g: 55,
+        fat_g: 1,
+        source: 'library',
+      }],
+    });
+    expect(logRes.status).toBe(201);
+    const depleted = await request(app).get(`/api/prepped-batches/${batch.body.id}?include_depleted=1`);
+    expect(depleted.body.remaining_weight_g).toBe(0);
+    expect(depleted.body.is_depleted).toBe(true);
+
+    const del = await request(app).delete(`/api/log/${logRes.body.id}`);
+    expect(del.status).toBe(204);
+    const restored = await request(app).get(`/api/prepped-batches/${batch.body.id}`);
+    expect(restored.body.remaining_weight_g).toBe(200);
+    expect(restored.body.is_depleted).toBe(false);
+  });
 });

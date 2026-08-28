@@ -324,6 +324,8 @@ function createLogRouter(db) {
 
     const t = normalizeTimeMin(req.body?.time_min);
     const notes = req.body?.notes != null ? String(req.body.notes).trim() : null;
+    const ingredientsJson = ingredientsJsonFromClientRows(req.body?.ingredients);
+    const batchUsage = usageFromIngredientsJson(ingredientsJson);
 
     const findExisting = db.prepare(
       `SELECT id FROM recipes
@@ -375,18 +377,23 @@ function createLogRouter(db) {
           fiber_g,
           1
         );
-        return ins.lastInsertRowid;
+        const newId = ins.lastInsertRowid;
+        if (ingredientsJson) {
+          db.prepare('UPDATE log_entries SET ingredients_json = ? WHERE id = ? AND user_id = ?').run(
+            ingredientsJson,
+            newId,
+            userId
+          );
+        }
+        if (batchUsage.size) applyUsageMap(db, userId, batchUsage, 1);
+        return newId;
       });
       entryId = run();
     } catch (e) {
+      if (e.code === 'PREPPED_BATCH_EXHAUSTED' || e.code === 'PREPPED_BATCH_NOT_FOUND') {
+        return res.status(409).json({ error: mapSlotAdjustError(e) });
+      }
       return res.status(500).json({ error: 'Failed to log custom meal' });
-    }
-
-    // Persist the per-ingredient breakdown the client reviewed (AI Logger /
-    // Meal Builder rows with macros). Best-effort; old/empty stays null.
-    const ingredientsJson = ingredientsJsonFromClientRows(req.body?.ingredients);
-    if (ingredientsJson) {
-      db.prepare('UPDATE log_entries SET ingredients_json = ? WHERE id = ? AND user_id = ?').run(ingredientsJson, entryId, userId);
     }
 
     // Optional micronutrient estimate — ingredients (AI Logger / Meal Builder)

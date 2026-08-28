@@ -17,6 +17,12 @@ function boolFlag(v, defaultOn = true) {
   return false;
 }
 
+function savedCardList(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && Array.isArray(parsed.cards)) return parsed.cards;
+  return null;
+}
+
 /** Merge saved layout with defaults when new cards ship. */
 export function mergeDashLayout(saved, profile = {}) {
   let parsed = saved;
@@ -24,8 +30,9 @@ export function mergeDashLayout(saved, profile = {}) {
     try { parsed = JSON.parse(saved); } catch { parsed = null; }
   }
   const byId = new Map();
-  if (Array.isArray(parsed)) {
-    for (const item of parsed) {
+  const savedCards = savedCardList(parsed);
+  if (savedCards) {
+    for (const item of savedCards) {
       if (item && DASH_CARD_IDS.includes(item.id)) byId.set(item.id, { ...item });
     }
   }
