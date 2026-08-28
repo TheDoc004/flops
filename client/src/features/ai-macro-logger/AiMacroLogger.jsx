@@ -845,7 +845,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
             </div>
           )}
           {recipeReview.keepable?.length > 0 && (
-            <div style={{ padding: 12, background: 'var(--color-surface-muted, #f9fafb)', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 12 }}>
+            <div className="modal-subpanel" style={{ padding: 12, borderRadius: 10, marginBottom: 12 }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-body)' }}>Keep this in the recipe?</div>
               <p style={{ margin: '2px 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
                 One-off by default. Keeping this adds the ingredient to the saved recipe.
@@ -888,24 +888,24 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
           )}
 
           {recipeReview.hasAi && (
-            <p style={{ margin: '0 0 10px', fontSize: 12.5, color: '#6b7280' }}>
+            <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--color-text-muted)' }}>
               Items badged <span style={{ ...AI_BADGE }}>AI est.</span> are AI estimates (not from your library) — review before logging.
             </p>
           )}
 
           {/* Final ingredient rows (after applied changes) */}
           <div style={{ marginBottom: 14 }}>
-            <p style={{ margin: '0 0 6px', fontSize: 13, color: '#6b7280', fontWeight: 600 }}>Final ingredients</p>
+            <p style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--color-text-muted)', fontWeight: 600 }}>Final ingredients</p>
             {recipeReview.rows.length === 0 ? (
               <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>This recipe has no itemized ingredients.</p>
             ) : (
               recipeReview.rows.map((r, i) => {
                 const s = recipeReview.requiresCustomPath ? 1 : (Number(recipeServings) > 0 ? Number(recipeServings) : 1);
                 return (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '5px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13, alignItems: 'center' }}>
-                    <span style={{ color: '#1f2937', fontWeight: 500, minWidth: 0 }}>
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '5px 0', borderBottom: '1px solid var(--color-divider)', fontSize: 13, alignItems: 'center' }}>
+                    <span style={{ color: 'var(--color-text-strong)', fontWeight: 500, minWidth: 0 }}>
                       {r.name}
-                      <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8 }}>
+                      <span style={{ color: 'var(--color-text-muted)', fontWeight: 400, marginLeft: 8 }}>
                         {r.amountText != null ? r.amountText : (r.amount != null ? `${+Number(r.amount).toFixed(2)}${r.unit ? ` ${r.unit}` : ''}` : '')}
                       </span>
                       {r.source === 'ai' && <span style={{ ...AI_BADGE, marginLeft: 8 }}>AI est.</span>}
@@ -1076,10 +1076,9 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
 
                   {/* --- Expanded basis editor --- */}
                   {ing.expanded && (
-                    <div style={{ padding: 10, background: '#fff', borderTop: `1px solid ${meta.border}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {/* Ingredient source — one control: the AI estimate, a saved ingredient, or manual macros */}
-                      <div style={{ background: '#f9fafb', border: '1px solid #eef0f3', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <label htmlFor={`ai-source-${idx}`} style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: 0 }}>Ingredient source</label>
+                    <div style={{ padding: 10, background: 'var(--color-surface)', borderTop: `1px solid ${meta.border}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div className="modal-subpanel" style={{ borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <label htmlFor={`ai-source-${idx}`} style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-body)', margin: 0 }}>Ingredient source</label>
                         <select
                           id={`ai-source-${idx}`}
                           value={srcValue}
@@ -1151,8 +1150,8 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
                       </div>
 
                       {/* Nutrition basis */}
-                      <div style={{ background: '#f9fafb', border: '1px solid #eef0f3', borderRadius: 8, padding: 10 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                      <div className="modal-subpanel" style={{ borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-body)', marginBottom: 6 }}>
                           Nutrition basis <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}>· {basisLabel}</span>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(64px, 1fr))', gap: 8 }}>
