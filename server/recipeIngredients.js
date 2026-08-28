@@ -4,6 +4,7 @@
  */
 
 const { amountInBasisUnit, canonicalUnit, loggableUnitsFor } = require('./unitConvert');
+const { macrosForBatchGrams } = require('./preppedBatchLib');
 
 const OZ_TO_G = 28.349523125;
 
@@ -437,15 +438,54 @@ function resolveReceiptForLog(db, rawRows, userId) {
   }
   const getIng = id =>
     db.prepare('SELECT * FROM label_ingredients WHERE id = ? AND user_id = ?').get(id, userId);
+  const getBatch = id =>
+    db.prepare('SELECT * FROM prepped_batches WHERE id = ? AND user_id = ? AND is_depleted = 0').get(id, userId);
   const rows = [];
   for (const r of rawRows) {
     if (!r || typeof r !== 'object') continue;
     const name = String(r.name ?? '').trim();
     if (!name) continue;
+    const batchId = Number(r.prepped_batch_id);
+    const hasBatch = Number.isInteger(batchId) && batchId > 0;
     const lid = Number(r.label_ingredient_id);
     const hasLid = Number.isInteger(lid) && lid > 0;
     const amount = r.amount != null && r.amount !== '' && Number.isFinite(Number(r.amount)) ? Number(r.amount) : null;
     if (amount != null && amount <= 0) continue;
+
+    if (hasBatch) {
+      const batch = getBatch(batchId);
+      if (!batch) {
+        const err = new Error('PREPPED_BATCH_NOT_FOUND');
+        err.code = 'PREPPED_BATCH_NOT_FOUND';
+        throw err;
+      }
+      const amountUnit = canonicalUnit(r.unit) || 'g';
+      if (amountUnit !== 'g') {
+        const err = new Error('PREPPED_BATCH_GRAMS_ONLY');
+        err.code = 'PREPPED_BATCH_GRAMS_ONLY';
+        throw err;
+      }
+      const m = macrosForBatchGrams(batch, amount);
+      if (!m) {
+        const err = new Error('PREPPED_BATCH_EXHAUSTED');
+        err.code = 'PREPPED_BATCH_EXHAUSTED';
+        err.batchName = batch.name;
+        throw err;
+      }
+      rows.push({
+        name: batch.name || name,
+        amount,
+        unit: 'g',
+        calories: r2(m.calories),
+        protein_g: r2(m.protein_g),
+        carbs_g: r2(m.carbs_g),
+        fat_g: r2(m.fat_g),
+        fiber_g: r2(m.fiber_g),
+        source: 'library',
+        prepped_batch_id: batchId,
+      });
+      continue;
+    }
 
     if (hasLid) {
       const ing = getIng(lid);

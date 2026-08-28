@@ -14,6 +14,7 @@ const {
   microsJsonPreferringLabels,
   normalizedIngredientsFromRecipe,
 } = require('../mealMicros');
+const { applyUsageMap, usageFromIngredientsJson, extractPreppedUsageFromRows } = require('../preppedBatchLib');
 
 /** Client-sent micros object (back-compat) -> micros_json string, or null. */
 function microsJsonFromClientMicros(body) {
@@ -48,6 +49,9 @@ function ingredientsJsonFromClientRows(rows) {
     if (r.fiber_g != null) row.fiber_g = num(r.fiber_g);
     if (Number.isInteger(Number(r.label_ingredient_id)) && Number(r.label_ingredient_id) > 0) {
       row.label_ingredient_id = Number(r.label_ingredient_id);
+    }
+    if (Number.isInteger(Number(r.prepped_batch_id)) && Number(r.prepped_batch_id) > 0) {
+      row.prepped_batch_id = Number(r.prepped_batch_id);
     }
     out.push(row);
     if (out.length >= 60) break;
@@ -146,7 +150,31 @@ function mapSlotAdjustError(e) {
     const unit = e.unit ? ` in ${e.unit}` : '';
     return `${name} can’t be measured${unit}. Add its gram equivalent in Ingredient Library, or log it in its own unit.`;
   }
+  if (e.code === 'PREPPED_BATCH_NOT_FOUND') return 'A prepped batch was not found or is depleted.';
+  if (e.code === 'PREPPED_BATCH_EXHAUSTED') {
+    const name = e.batchName ? `“${e.batchName}”` : 'That prepped batch';
+    return `${name} does not have enough left.`;
+  }
+  if (e.code === 'PREPPED_BATCH_GRAMS_ONLY') return 'Prepped batches must be logged in grams.';
   return e.message || 'Could not calculate meal macros.';
+}
+
+function usageFromResolvedRows(rows, servings = 1) {
+  const mult = Math.max(1, Number(servings) || 1);
+  if (!Array.isArray(rows)) return new Map();
+  const scaled = rows
+    .filter(r => r && r.prepped_batch_id)
+    .map(r => ({ ...r, amount: Number(r.amount) * mult }));
+  return extractPreppedUsageFromRows(scaled);
+}
+
+function usageFromEntry(entry) {
+  const base = usageFromIngredientsJson(entry?.ingredients_json);
+  const mult = Math.max(1, Number(entry?.servings) || 1);
+  if (mult === 1) return base;
+  const scaled = new Map();
+  for (const [id, g] of base.entries()) scaled.set(id, g * mult);
+  return scaled;
 }
 
 function normalizeTimeMin(raw) {
@@ -553,6 +581,11 @@ function createLogRouter(db) {
           throw new Error('LIMIT_USES');
         }
       }
+      const batchUsage = usageFromResolvedRows(
+        ingredientsJson ? JSON.parse(ingredientsJson) : [],
+        servings
+      );
+      if (batchUsage.size) applyUsageMap(db, userId, batchUsage, 1);
       return result.lastInsertRowid;
     });
 
@@ -562,6 +595,9 @@ function createLogRouter(db) {
     } catch (e) {
       if (e.message === 'LIMIT_USES') {
         return res.status(409).json({ error: 'No remaining uses for this meal template.' });
+      }
+      if (e.code === 'PREPPED_BATCH_EXHAUSTED' || e.code === 'PREPPED_BATCH_NOT_FOUND') {
+        return res.status(409).json({ error: mapSlotAdjustError(e) });
       }
       throw e;
     }
@@ -724,6 +760,7 @@ function createLogRouter(db) {
       try {
         db.transaction(() => {
           adjustLimitedUses();
+          applyUsageMap(db, userId, usageFromEntry(existing), -1);
           db.prepare(
             `UPDATE log_entries
              SET recipe_id = ?, time_min = ?, servings = ?, notes = ?,
@@ -748,10 +785,19 @@ function createLogRouter(db) {
             id,
             userId
           );
+          applyUsageMap(
+            db,
+            userId,
+            usageFromResolvedRows(recipeRows, servings),
+            1
+          );
         })();
       } catch (e) {
         if (e.message === 'LIMIT_USES') {
           return res.status(409).json({ error: 'No remaining uses for this meal template.' });
+        }
+        if (e.code === 'PREPPED_BATCH_EXHAUSTED' || e.code === 'PREPPED_BATCH_NOT_FOUND') {
+          return res.status(409).json({ error: mapSlotAdjustError(e) });
         }
         throw e;
       }
@@ -766,6 +812,13 @@ function createLogRouter(db) {
       try {
         db.transaction(() => {
           adjustLimitedUses();
+          const servingsChanged = Number(servings) !== Number(existing.servings);
+          if (servingsChanged && existing.ingredients_json) {
+            let rows;
+            try { rows = JSON.parse(existing.ingredients_json); } catch { rows = []; }
+            applyUsageMap(db, userId, usageFromResolvedRows(rows, existing.servings), -1);
+            applyUsageMap(db, userId, usageFromResolvedRows(rows, servings), 1);
+          }
           db.prepare('UPDATE log_entries SET recipe_id = ?, time_min = ?, servings = ?, notes = ? WHERE id = ? AND user_id = ?').run(
             recipe_id,
             t,
@@ -778,6 +831,9 @@ function createLogRouter(db) {
       } catch (e) {
         if (e.message === 'LIMIT_USES') {
           return res.status(409).json({ error: 'No remaining uses for this meal template.' });
+        }
+        if (e.code === 'PREPPED_BATCH_EXHAUSTED' || e.code === 'PREPPED_BATCH_NOT_FOUND') {
+          return res.status(409).json({ error: mapSlotAdjustError(e) });
         }
         throw e;
       }
@@ -809,6 +865,7 @@ function createLogRouter(db) {
     );
 
     db.transaction(() => {
+      applyUsageMap(db, userId, usageFromEntry(entry), -1);
       db.prepare('DELETE FROM log_entries WHERE id = ? AND user_id = ?').run(entry.id, userId);
       if (entry.recipe_id != null) {
         const uses = Math.max(1, Math.ceil(Number(entry.servings) || 1));

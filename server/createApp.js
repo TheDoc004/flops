@@ -16,6 +16,7 @@ const { createSupplementsRouter } = require('./routes/supplements');
 const { createAiRouter } = require('./routes/ai');
 const { createBarcodeRouter } = require('./routes/barcode');
 const { createPrepRouter } = require('./routes/prep');
+const { createPreppedBatchesRouter } = require('./routes/preppedBatches');
 
 /**
  * Build the Express app (used by index.js and tests).
@@ -72,6 +73,7 @@ function createApp(db = createDb(process.env.DB_PATH || './nutrition.db'), opts 
   app.use('/api/barcode', createBarcodeRouter(db));
   app.use('/api/coach', createCoachRouter(db));
   app.use('/api/prep', createPrepRouter(db));
+  app.use('/api/prepped-batches', createPreppedBatchesRouter(db));
 
   const ai = createAiRouter();
   app.use('/api/ai', rateLimit({ windowMs: 60_000, max: 40 }), aiGuard, ai);

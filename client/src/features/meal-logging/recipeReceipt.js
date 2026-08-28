@@ -169,6 +169,36 @@ export function buildReceiptLine(ing, amount, unit, { id, source = 'library' } =
   };
 }
 
+/** Build a receipt line from a prepped batch (grams only). */
+export function buildReceiptLineFromPreppedBatch(batch, amountG, { id } = {}) {
+  if (!batch) return null;
+  const g = Number(amountG);
+  const rem = Number(batch.remaining_weight_g);
+  if (!Number.isFinite(g) || g <= 0 || !Number.isFinite(rem) || rem <= 0) return null;
+  const ratio = g / rem;
+  return {
+    id: id || newReceiptLineId(),
+    prepped_batch_id: Number(batch.id),
+    name: batch.name,
+    amount: String(g),
+    unit: 'g',
+    tracking_type: 'weight',
+    calories: r2(batch.remaining_calories * ratio),
+    protein_g: r2(batch.remaining_protein_g * ratio),
+    carbs_g: r2(batch.remaining_carbs_g * ratio),
+    fat_g: r2(batch.remaining_fat_g * ratio),
+    fiber_g: r2(Number(batch.remaining_fiber_g || 0) * ratio),
+    source: 'library',
+  };
+}
+
+/** Recompute macros on a prepped-batch line after amount change. */
+export function refreshPreppedBatchLine(line, batch) {
+  if (!line || !batch) return line;
+  const rebuilt = buildReceiptLineFromPreppedBatch(batch, line.amount, { id: line.id });
+  return rebuilt || line;
+}
+
 /** Recompute macros on a receipt line after amount/unit or ingredient swap. */
 export function refreshReceiptLine(line, ing) {
   if (!line || !ing) return line;
@@ -482,6 +512,7 @@ export function receiptToApiIngredients(lines) {
       fiber_g: l.fiber_g,
       source: l.source || 'library',
       label_ingredient_id: l.label_ingredient_id,
+      prepped_batch_id: l.prepped_batch_id,
     }));
 }
 
@@ -586,6 +617,102 @@ export function saveLastReceiptAmounts(recipeId, amountsByLid) {
   } catch {
     /* storage may be unavailable */
   }
+}
+
+/** Equal-split meal prep (single limited recipe, not custom % siblings). */
+export function isEqualSplitMealPrep(recipe) {
+  if (!recipe || (recipe.recipe_kind || 'permanent') !== 'limited') return false;
+  const meta = recipe.meal_builder_meta && typeof recipe.meal_builder_meta === 'object'
+    ? recipe.meal_builder_meta
+    : null;
+  if (meta?.split === 'custom') return false;
+  if (meta?.split === 'equal') return true;
+  const src = meta?.source;
+  if (src === 'log_meal_prep' || src === 'ai_meal_prep') return true;
+  return /meal-prep/i.test(recipe.serving_size || '');
+}
+
+export function mealPrepContainerCount(recipe) {
+  const meta = recipe?.meal_builder_meta;
+  const fromMeta = meta && typeof meta === 'object' ? Number(meta.containers) : NaN;
+  if (Number.isInteger(fromMeta) && fromMeta >= 2) return fromMeta;
+  const max = Number(recipe?.max_uses);
+  if (Number.isInteger(max) && max >= 2) return max;
+  return null;
+}
+
+/**
+ * Add ingredients to an equal-split meal prep, dividing batch amounts evenly
+ * across original containers. Preserves remaining_uses — caller PUTs macros +
+ * ingredients only.
+ */
+export function augmentMealPrepRecipe(existingRecipe, addedReceiptLines, { splitBy } = {}) {
+  if (!existingRecipe || !isEqualSplitMealPrep(existingRecipe)) return null;
+  const n = Number(splitBy ?? mealPrepContainerCount(existingRecipe));
+  if (!Number.isInteger(n) || n < 2 || n > 50) return null;
+
+  const added = Array.isArray(addedReceiptLines) ? addedReceiptLines : [];
+  if (added.length === 0) return null;
+
+  const invalid = added.some(l => !l || !Number(l.amount) || Number(l.amount) <= 0 || l.calories == null);
+  if (invalid) return null;
+
+  const factor = 1 / n;
+  const perServingAdds = ingredientsFromReceiptScaled(added, factor);
+  const addMacros = macrosScaled(sumReceiptMacros(added), factor);
+
+  const existingLines = listRecipeIngredientLines(existingRecipe);
+  const merged = new Map();
+  for (const line of existingLines) {
+    merged.set(Number(line.label_ingredient_id), { ...line });
+  }
+  for (const row of perServingAdds) {
+    if (row.kind !== 'ingredient' || !row.label_ingredient_id) continue;
+    const lid = Number(row.label_ingredient_id);
+    const prev = merged.get(lid);
+    if (prev) {
+      const amt = roundAmount(Number(prev.amount) + Number(row.amount));
+      merged.set(lid, { ...prev, amount: String(amt), unit: row.unit || prev.unit });
+    } else {
+      merged.set(lid, {
+        label_ingredient_id: lid,
+        name: row.name,
+        amount: row.amount,
+        unit: row.unit,
+      });
+    }
+  }
+
+  const ingredients = [...merged.values()].map(line => ({
+    kind: 'ingredient',
+    name: line.name,
+    amount: line.amount,
+    unit: persistAmountUnit(line.unit),
+    label_ingredient_id: line.label_ingredient_id,
+  }));
+  if (ingredients.length === 0) return null;
+
+  const base = {
+    calories: Number(existingRecipe.calories) || 0,
+    protein_g: Number(existingRecipe.protein_g) || 0,
+    carbs_g: Number(existingRecipe.carbs_g) || 0,
+    fat_g: Number(existingRecipe.fat_g) || 0,
+    fiber_g: Number(existingRecipe.fiber_g) || 0,
+  };
+  const macros = {
+    calories: r2(base.calories + addMacros.calories),
+    protein_g: r2(base.protein_g + addMacros.protein_g),
+    carbs_g: r2(base.carbs_g + addMacros.carbs_g),
+    fat_g: r2(base.fat_g + addMacros.fat_g),
+    fiber_g: r2((base.fiber_g || 0) + (addMacros.fiber_g || 0)),
+  };
+
+  return {
+    name: existingRecipe.name,
+    serving_size: existingRecipe.serving_size,
+    ...macros,
+    ingredients,
+  };
 }
 
 /** Heuristic substitute suggestions (fallback when AI is unavailable). */
