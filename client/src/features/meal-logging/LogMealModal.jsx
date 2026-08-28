@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createRecipe, fetchRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
+import { fetchPreppedBatches } from '@shared/api/preppedBatches';
 import { suggestSubstitutes } from '@shared/api/ai';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
 import IngredientCombobox from '@features/meal-builder/IngredientCombobox';
@@ -8,6 +9,8 @@ import { canonicalUnit, loggableUnitsFor } from '@shared/utils/unitConvert';
 import { pluralizeUnit } from '@shared/utils/servingBasis';
 import {
   buildReceiptLine,
+  buildReceiptLineFromPreppedBatch,
+  refreshPreppedBatchLine,
   buildRecipeFromReceipt,
   buildUnequalMealPrepRecipes,
   changeLineUnit,
@@ -82,6 +85,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const [savingRecipe, setSavingRecipe] = useState(false);
   const [savedRecipeName, setSavedRecipeName] = useState('');
   const [labelIngredients, setLabelIngredients] = useState([]);
+  const [preppedBatches, setPreppedBatches] = useState([]);
   const [receipt, setReceipt] = useState([]);
   const [addIngredientId, setAddIngredientId] = useState('');
   const [seededFromRecipeId, setSeededFromRecipeId] = useState(null);
@@ -102,6 +106,22 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     [labelIngredients]
   );
 
+  const batchById = useMemo(
+    () => Object.fromEntries(preppedBatches.map(x => [String(x.id), x])),
+    [preppedBatches]
+  );
+
+  const comboboxItems = useMemo(() => {
+    const batchItems = preppedBatches.map(b => ({
+      id: `pb:${b.id}`,
+      name: b.name,
+      serving_size_text: `${Math.round(Number(b.remaining_weight_g) || 0)}g left`,
+      grams_per_serving: 1,
+      is_prepped_batch: true,
+    }));
+    return [...batchItems, ...labelIngredients];
+  }, [labelIngredients, preppedBatches]);
+
   const receiptTotals = useMemo(() => sumReceiptMacros(receipt), [receipt]);
 
   useEffect(() => {
@@ -112,8 +132,10 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     (async () => {
       try {
         setLabelIngredients(await fetchLabelIngredients());
+        setPreppedBatches(await fetchPreppedBatches());
       } catch {
         setLabelIngredients([]);
+        setPreppedBatches([]);
       }
     })();
   }, []);
@@ -226,7 +248,21 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
   function handleAddIngredient(nextId) {
     setAddIngredientId('');
-    const ing = labelById[String(nextId)];
+    const idStr = String(nextId);
+    if (idStr.startsWith('pb:')) {
+      const batchId = idStr.slice(3);
+      const batch = batchById[batchId];
+      if (!batch) return;
+      const line = buildReceiptLineFromPreppedBatch(batch, '100', { source: 'library' });
+      if (!line) {
+        setError(`${batch.name} has no weight left.`);
+        return;
+      }
+      setError('');
+      setReceipt(prev => [...prev, line]);
+      return;
+    }
+    const ing = labelById[idStr];
     if (!ing) return;
     const def = defaultAmountForIngredient(ing);
     const line = buildReceiptLine(ing, def.amount, def.unit, { source: 'library' });
@@ -264,6 +300,10 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       prev.map(line => {
         if (line.id !== id) return line;
         const next = { ...line, ...patch };
+        if (next.prepped_batch_id) {
+          const batch = batchById[String(next.prepped_batch_id)];
+          return batch ? refreshPreppedBatchLine(next, batch) : next;
+        }
         const ing = labelById[String(next.label_ingredient_id)];
         if (ing) return refreshReceiptLine(next, ing);
         return next;
@@ -611,7 +651,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
           {receipt.length === 0 ? (
             <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-              Pick a recipe to preload, or add foods below.
+              Building a meal from scratch? Add foods below — or pick a saved recipe to start from.
             </p>
           ) : (
             <div className="slot-list">
@@ -752,10 +792,10 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           <div style={{ marginTop: 10 }}>
             <IngredientCombobox
               label="Add ingredient"
-              items={labelIngredients}
+              items={comboboxItems}
               value={addIngredientId}
               onChange={handleAddIngredient}
-              placeholder="Type to add from your library…"
+              placeholder="Type to add from your library or prepped batches…"
               allowCreate={false}
             />
           </div>

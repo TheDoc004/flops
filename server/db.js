@@ -464,6 +464,28 @@ function createDb(dbPath) {
       created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       responded_at    TEXT
     );
+
+    /* Cooked ingredient batches — fixed total weight + macros, depletes on log */
+    CREATE TABLE IF NOT EXISTS prepped_batches (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id              INTEGER NOT NULL,
+      name                 TEXT NOT NULL,
+      total_weight_g       REAL NOT NULL,
+      remaining_weight_g   REAL NOT NULL,
+      total_calories       REAL NOT NULL,
+      total_protein_g      REAL NOT NULL,
+      total_carbs_g        REAL NOT NULL,
+      total_fat_g          REAL NOT NULL,
+      total_fiber_g        REAL DEFAULT 0,
+      remaining_calories   REAL NOT NULL,
+      remaining_protein_g  REAL NOT NULL,
+      remaining_carbs_g    REAL NOT NULL,
+      remaining_fat_g      REAL NOT NULL,
+      remaining_fiber_g    REAL DEFAULT 0,
+      label_ingredient_id  INTEGER,
+      is_depleted          INTEGER NOT NULL DEFAULT 0,
+      created_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
   `);
   const recipeCols = db.prepare('PRAGMA table_info(recipes)').all().map(c => c.name);
   if (!recipeCols.includes('ingredients')) {
@@ -686,6 +708,18 @@ function createDb(dbPath) {
   }
   if (profileCols.length && !profileCols.includes('dash_supplements_enabled')) {
     db.exec(`ALTER TABLE user_profile ADD COLUMN dash_supplements_enabled INTEGER DEFAULT 1`);
+  }
+  if (profileCols.length && !profileCols.includes('dash_layout_json')) {
+    db.exec(`ALTER TABLE user_profile ADD COLUMN dash_layout_json TEXT`);
+  }
+  if (profileCols.length && !profileCols.includes('dash_weight_enabled')) {
+    db.exec(`ALTER TABLE user_profile ADD COLUMN dash_weight_enabled INTEGER DEFAULT 1`);
+  }
+  if (profileCols.length && !profileCols.includes('dash_meals_enabled')) {
+    db.exec(`ALTER TABLE user_profile ADD COLUMN dash_meals_enabled INTEGER DEFAULT 1`);
+  }
+  if (profileCols.length && !profileCols.includes('dash_weight_chart_card_enabled')) {
+    db.exec(`ALTER TABLE user_profile ADD COLUMN dash_weight_chart_card_enabled INTEGER DEFAULT 0`);
   }
 
   // Supplements may predate micronutrient tracking — add the exact-micros column.

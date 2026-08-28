@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { fetchRecipeNutrition } from '@shared/api/recipes';
 import { ViewToggle, MealMicrosPanel, IngredientBreakdown } from '@features/meal-logging';
+import { isEqualSplitMealPrep } from '@features/meal-logging/recipeReceipt';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
 import { formatMacroMass } from '@shared/utils/macroUnits';
 
@@ -12,9 +13,10 @@ import { formatMacroMass } from '@shared/utils/macroUnits';
  * difference is what the numbers describe — a recipe's default amounts rather
  * than something you actually ate — which the panels say in their captions.
  */
-export default function RecipeRow({ recipe, onLog, onEditInBuilder, onDelete, onReactivate }) {
+export default function RecipeRow({ recipe, onLog, onEditInBuilder, onAugmentPrep, onDelete, onReactivate }) {
   const limited = (recipe.recipe_kind || 'permanent') === 'limited';
   const archived = recipe.is_archived === 1 || recipe.is_archived === true;
+  const canAugment = limited && !archived && (recipe.remaining_uses ?? 0) > 0 && isEqualSplitMealPrep(recipe);
   const hasMealBuilderMeta = recipe.meal_builder_meta && typeof recipe.meal_builder_meta === 'object';
   const { macroUnits } = useMacroUnits();
 
@@ -99,6 +101,16 @@ export default function RecipeRow({ recipe, onLog, onEditInBuilder, onDelete, on
             <button type="button" className="btn-secondary" onClick={() => onReactivate(recipe)}>Reactivate</button>
           )}
           {onLog && <button className="btn-ai" onClick={() => onLog(recipe)}>Log</button>}
+          {canAugment && onAugmentPrep && (
+            <button
+              type="button"
+              className="btn-ghost"
+              title="Prep missing something? Add it and split evenly."
+              onClick={() => onAugmentPrep(recipe)}
+            >
+              Add to prep
+            </button>
+          )}
           {onEditInBuilder && (
             <button className="btn-ghost" onClick={() => onEditInBuilder(recipe)}>
               Edit

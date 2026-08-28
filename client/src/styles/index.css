@@ -1005,6 +1005,38 @@ html[data-notebook-day] dialog .modal-loading-overlay {
   background: rgba(42, 44, 46, 0.88);
 }
 
+/* Receipt editor + meal-prep split panels inside off-today modals */
+html[data-notebook-day] dialog .slot-list {
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+html[data-notebook-day] dialog .slot-list__head {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border-bottom-color: var(--color-border);
+}
+html[data-notebook-day] dialog .slot-row:hover,
+html[data-notebook-day] dialog .slot-row:focus-within {
+  background: var(--color-surface);
+}
+html[data-notebook-day] dialog .slot-list__subs {
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+html[data-notebook-day] dialog .prep-split {
+  background: var(--color-bg);
+}
+html[data-notebook-day] dialog .prep-split.is-selected {
+  background: var(--color-primary-subtle);
+}
+html[data-notebook-day] dialog .prep-badge {
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+html[data-notebook-day] .btn-danger-ghost:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.15);
+}
+
 /* ── Dialog entrance ──
    Dialogs rise/fade in and the backdrop fades up behind them. Keyed off the
    [open] attribute, so it plays automatically on showModal() — no JS. The
@@ -1453,6 +1485,44 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
   .prep-split:active {
     transform: none;
   }
+}
+
+/* AI conversation bubbles (notebook-day safe via tokens) */
+.ai-chat-thread { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.ai-chat-bubble {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.ai-chat-bubble--user {
+  align-self: flex-end;
+  background: var(--color-primary);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.ai-chat-bubble--assistant {
+  align-self: flex-start;
+  background: var(--color-divider);
+  color: var(--color-text-strong);
+  border-bottom-left-radius: 4px;
+}
+.ai-chat-bubble--pending {
+  align-self: flex-start;
+  background: var(--color-divider);
+  color: var(--color-text-muted);
+  border-bottom-left-radius: 4px;
+  font-style: italic;
+}
+.ai-followup-panel {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg);
 }
 
 /* ── Receipt list: the editable ingredients inside Log Meal ──
@@ -2296,6 +2366,54 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   from { opacity: 0; transform: translateX(-18px); }
   to { opacity: 1; transform: none; }
 }
+/* ── Dashboard canvas (react-grid-layout on desktop, stack on mobile) ── */
+.dashboard-canvas {
+  margin-top: var(--space-28);
+}
+.dashboard-canvas--edit .react-grid-item {
+  transition: box-shadow 0.12s ease;
+}
+.dashboard-card {
+  height: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-16) var(--space-20);
+  overflow: auto;
+}
+/* Macro strip brings its own surface — avoid a card inside a card */
+.dashboard-card:has(> .macro-strip) {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  overflow: visible;
+}
+.dashboard-card--edit {
+  border-style: dashed;
+  border-color: var(--color-border, var(--color-surface-border));
+  cursor: grab;
+}
+.dashboard-card--edit:active {
+  cursor: grabbing;
+}
+.dashboard-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-28);
+  margin-top: var(--space-28);
+}
+.dashboard-canvas .react-resizable-handle {
+  opacity: 0.35;
+}
+.dashboard-canvas--edit .react-resizable-handle {
+  opacity: 1;
+}
+html[data-notebook-day] .dashboard-card--edit {
+  border-color: var(--color-surface-border);
+}
+
 .dashboard-day-body--fwd {
   animation: day-slide-fwd var(--dur-open) var(--ease-out);
 }

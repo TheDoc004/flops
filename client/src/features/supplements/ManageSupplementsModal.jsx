@@ -412,7 +412,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                 key={s.id}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-                  background: editingId === s.id ? '#eff6ff' : '#f9fafb', borderRadius: 8, minHeight: 44,
+                  background: editingId === s.id ? 'var(--color-primary-subtle)' : 'var(--color-bg)', borderRadius: 8, minHeight: 44,
                 }}
               >
                 <div style={{ flex: '1 1 auto', minWidth: 0 }}>
@@ -439,7 +439,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
           {/* Editing is easy to miss when the form sits below the list, so say
               plainly which supplement is being changed. */}
           {editingId ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8 }}>
+            <div className="modal-highlight-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '8px 12px', borderRadius: 8 }}>
               <span style={{ fontSize: 14 }}>
                 Editing <strong>{form.name || 'supplement'}</strong>
               </span>
@@ -455,7 +455,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
               you pick based on whether the product is in the database. Available
               while editing too, so an existing entry can be refreshed from a
               label rather than retyped. */}
-          <div style={{ padding: '12px 14px', background: '#f9fafb', border: '1px solid #f0ede8', borderRadius: 10 }}>
+          <div className="modal-subpanel" style={{ padding: '12px 14px', borderRadius: 10 }}>
             <strong style={{ display: 'block', fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
               {editingId ? 'Refresh from a label:' : 'Fill it in for me:'}
             </strong>
@@ -579,7 +579,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                                     onClick={() => void previewFromDatabase(v.id)}
                                     disabled={lookupBusy}
                                     style={{
-                                      width: '100%', textAlign: 'left', background: '#f9fafb', border: '1px solid #e5e7eb',
+                                      width: '100%', textAlign: 'left', background: 'var(--color-bg)', border: '1px solid var(--color-border)',
                                       borderRadius: 6, padding: '6px 10px', minHeight: 36, cursor: 'pointer', font: 'inherit', fontSize: 12, color: '#4b5563',
                                     }}
                                   >
@@ -658,7 +658,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
               {/* The whole point: the label's serving and YOUR dose are
                   different things. Everything captured describes one label
                   serving, so saying you take more must scale it. */}
-              <div style={{ padding: '10px 12px', background: '#f9fafb', border: '1px solid #f0ede8', borderRadius: 8 }}>
+              <div className="modal-subpanel" style={{ padding: '10px 12px', borderRadius: 8 }}>
                 <strong style={{ display: 'block', fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
                   How much you take
                 </strong>

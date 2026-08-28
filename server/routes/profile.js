@@ -16,6 +16,10 @@ const PROFILE_FIELDS = [
   'dash_adherence_view',
   'dash_supplements_enabled',
   'dash_training_fuel_enabled',
+  'dash_layout_json',
+  'dash_weight_enabled',
+  'dash_meals_enabled',
+  'dash_weight_chart_card_enabled',
   'digestion_pref',
   'training_goal',
 ];
@@ -99,6 +103,23 @@ function normalizeField(key, raw) {
       if (raw === null || raw === undefined || raw === '') return 1;
       if (raw === true || raw === 1 || raw === '1') return 1;
       return 0;
+    case 'dash_weight_enabled':
+    case 'dash_meals_enabled':
+      if (raw === null || raw === undefined || raw === '') return 1;
+      if (raw === true || raw === 1 || raw === '1') return 1;
+      return 0;
+    case 'dash_weight_chart_card_enabled':
+      if (raw === null || raw === undefined || raw === '') return 0;
+      if (raw === true || raw === 1 || raw === '1') return 1;
+      return 0;
+    case 'dash_layout_json':
+      if (raw === null || raw === undefined || raw === '') return null;
+      if (typeof raw === 'string') return raw;
+      try {
+        return JSON.stringify(raw);
+      } catch {
+        return null;
+      }
     case 'digestion_pref':
       return normalizeDigestionPref(raw);
     case 'training_goal':
@@ -131,6 +152,10 @@ function createProfileRouter(db) {
         dash_adherence_view: '7d',
         dash_supplements_enabled: 1,
         dash_training_fuel_enabled: 1,
+        dash_layout_json: null,
+        dash_weight_enabled: 1,
+        dash_meals_enabled: 1,
+        dash_weight_chart_card_enabled: 0,
         digestion_pref: 'none',
         training_goal: 'performance',
       };
@@ -140,6 +165,9 @@ function createProfileRouter(db) {
       if (!row.dash_adherence_view) row.dash_adherence_view = '7d';
       if (row.dash_supplements_enabled == null) row.dash_supplements_enabled = 1;
       if (row.dash_training_fuel_enabled == null) row.dash_training_fuel_enabled = 1;
+      if (row.dash_weight_enabled == null) row.dash_weight_enabled = 1;
+      if (row.dash_meals_enabled == null) row.dash_meals_enabled = 1;
+      if (row.dash_weight_chart_card_enabled == null) row.dash_weight_chart_card_enabled = 0;
       if (!row.digestion_pref) row.digestion_pref = 'none';
       if (!row.training_goal) row.training_goal = 'performance';
     }
@@ -178,8 +206,9 @@ function createProfileRouter(db) {
       INSERT INTO user_profile (
         user_id, height_cm, weight_kg, age, sex, goal_weight_kg, activity_level, maintenance_calories, macro_units, body_units,
         dash_weight_chart_enabled, dash_weight_days, dash_adherence_view, dash_supplements_enabled,
-        dash_training_fuel_enabled, digestion_pref, training_goal
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        dash_training_fuel_enabled, dash_layout_json, dash_weight_enabled, dash_meals_enabled,
+        dash_weight_chart_card_enabled, digestion_pref, training_goal
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
         height_cm = excluded.height_cm,
         weight_kg = excluded.weight_kg,
@@ -195,6 +224,10 @@ function createProfileRouter(db) {
         dash_adherence_view = excluded.dash_adherence_view,
         dash_supplements_enabled = excluded.dash_supplements_enabled,
         dash_training_fuel_enabled = excluded.dash_training_fuel_enabled,
+        dash_layout_json = excluded.dash_layout_json,
+        dash_weight_enabled = excluded.dash_weight_enabled,
+        dash_meals_enabled = excluded.dash_meals_enabled,
+        dash_weight_chart_card_enabled = excluded.dash_weight_chart_card_enabled,
         digestion_pref = excluded.digestion_pref,
         training_goal = excluded.training_goal
     `).run(
@@ -216,6 +249,10 @@ function createProfileRouter(db) {
       normalizeAdherenceView(merged.dash_adherence_view),
       merged.dash_supplements_enabled === 0 || merged.dash_supplements_enabled === false ? 0 : 1,
       merged.dash_training_fuel_enabled === 0 || merged.dash_training_fuel_enabled === false ? 0 : 1,
+      merged.dash_layout_json ?? null,
+      merged.dash_weight_enabled === 0 || merged.dash_weight_enabled === false ? 0 : 1,
+      merged.dash_meals_enabled === 0 || merged.dash_meals_enabled === false ? 0 : 1,
+      merged.dash_weight_chart_card_enabled === 0 || merged.dash_weight_chart_card_enabled === false ? 0 : 1,
       normalizeDigestionPref(merged.digestion_pref),
       normalizeTrainingGoal(merged.training_goal)
     );

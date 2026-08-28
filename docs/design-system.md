@@ -94,6 +94,8 @@ When the user views a past or future date on **`/`**, `Dashboard.jsx` sets
 3. **Use tokens in modal JSX**, not hardcoded `#f9fafb` / `#eff6ff`. Utility classes:
    `modal-subpanel`, `modal-highlight-panel`, `modal-loading-overlay`.
 4. **Only Dashboard sets the attribute** — other routes stay warm beige unless extended deliberately.
+5. **Receipt editor panels** (`.slot-list`, `.prep-split`) and expanded meal rows must have notebook-day dialog rules — never hardcoded `#fff` / `#f9fafb` without overrides.
+6. **Component checklist for new modal work:** use `modal-subpanel`, `modal-highlight-panel`, and CSS variables (`var(--color-text-muted)`, `var(--color-divider)`) — never inline `#6b7280` / `#f3f4f6`.
 
 See **`HANDOFF.md`** § Notebook-day UI for file pointers and recent fixes.
 
@@ -279,17 +281,15 @@ Recharts is the standard. Don't introduce other charting libraries.
 
 The Dashboard has one job: answer *"How am I doing today?"* in under three seconds.
 
-**Section order (fixed — do not reorder):**
-1. **Macro totals** — always first, always visible
-2. **Supplements** — daily tick-off, sits under the macros it feeds
-3. **Today's weight** — daily action; the trend chart lives on Review
-4. **Today's meals** — grouped list card
-5. **Training context** — compact, when enabled
-6. **Adherence** — weekly context, lowest priority on Today
+**Layout model (customizable canvas):**
+- **Macros** are always visible and pinned — they cannot be hidden or dragged.
+- **Optional cards:** supplements strip, today's weight, weight trend sparkline, today's meals.
+- **Desktop (≥768px):** free-form `react-grid-layout` canvas — drag and resize cards; layout persists in `user_profile.dash_layout_json`.
+- **Mobile:** vertical stack using saved card order + visibility only (full width; no pixel positioning).
+- **Edit mode:** `Customize` on Today or **Open layout editor** in Profile (`/?editLayout=1`). Dashed borders while editing; changes auto-save.
+- **Show/hide:** Profile → Dashboard checkboxes (question-led copy). Reset layout restores defaults.
 
 Chrome dates use a human format (`Wed, Aug 19`). ISO `YYYY-MM-DD` stays in data and APIs, not in the UI.
-
-Section labels (`TODAY'S MEALS`, `TRENDS`) appear before their section group. They are the mechanism for creating visual progression — without them, sections blur together into one undifferentiated scroll.
 
 **Rules:**
 - No widget that requires explanation. If it needs a tooltip to be understood, redesign it.

@@ -12,6 +12,9 @@ import {
   buildRecipeFromReceipt,
   buildUnequalMealPrepRecipes,
   buildRecipeFromLogEntry,
+  augmentMealPrepRecipe,
+  isEqualSplitMealPrep,
+  mealPrepContainerCount,
   normalizeMealPrepFractions,
 } from './recipeReceipt';
 
@@ -322,5 +325,60 @@ describe('buildRecipeFromLogEntry', () => {
     expect(buildRecipeFromLogEntry(entry, '  ')).toBeNull();
     expect(buildRecipeFromLogEntry(null, 'x')).toBeNull();
     expect(buildRecipeFromLogEntry({ ingredients_json: null }, 'x')).toBeNull();
+  });
+});
+
+describe('augmentMealPrepRecipe', () => {
+  const potato = {
+    id: 10, name: 'Potato', tracking_type: 'weight', grams_per_serving: 150,
+    calories: 200, protein_g: 5, carbs_g: 30, fat_g: 8, fiber_g: 2,
+  };
+  const prepRecipe = {
+    name: 'Potato salad',
+    serving_size: '1 of 4 meal-prep servings',
+    calories: 200,
+    protein_g: 5,
+    carbs_g: 30,
+    fat_g: 8,
+    fiber_g: 2,
+    recipe_kind: 'limited',
+    remaining_uses: 3,
+    max_uses: 4,
+    meal_builder_meta: { source: 'log_meal_prep', containers: 4, split: 'equal' },
+    ingredients: [
+      { kind: 'ingredient', name: 'Potato', amount: '150', unit: 'g', label_ingredient_id: 10 },
+    ],
+  };
+
+  it('detects equal-split meal preps', () => {
+    expect(isEqualSplitMealPrep(prepRecipe)).toBe(true);
+    expect(mealPrepContainerCount(prepRecipe)).toBe(4);
+    expect(isEqualSplitMealPrep({ ...prepRecipe, meal_builder_meta: { split: 'custom' } })).toBe(false);
+  });
+
+  it('splits added ingredients across containers', () => {
+    const added = [
+      buildReceiptLine(oats, '400', 'g', { id: 'a1' }),
+    ];
+    const body = augmentMealPrepRecipe(prepRecipe, added, { splitBy: 4 });
+    expect(body).not.toBeNull();
+    expect(body.ingredients).toHaveLength(2);
+    expect(body.ingredients).toEqual(expect.arrayContaining([
+      { kind: 'ingredient', name: 'Oats', amount: '100', unit: 'g', label_ingredient_id: 1 },
+      { kind: 'ingredient', name: 'Potato', amount: '150', unit: 'g', label_ingredient_id: 10 },
+    ]));
+    expect(body.calories).toBeCloseTo(200 + 375, 0);
+    expect(body.protein_g).toBeCloseTo(5 + 12.5, 0);
+  });
+
+  it('merges when the same ingredient is added again', () => {
+    const added = [buildReceiptLine(potato, '300', 'g', { id: 'a1' })];
+    const body = augmentMealPrepRecipe(prepRecipe, added, { splitBy: 4 });
+    expect(body.ingredients).toHaveLength(1);
+    expect(body.ingredients[0].amount).toBe('225');
+  });
+
+  it('rejects empty additions', () => {
+    expect(augmentMealPrepRecipe(prepRecipe, [], { splitBy: 4 })).toBeNull();
   });
 });

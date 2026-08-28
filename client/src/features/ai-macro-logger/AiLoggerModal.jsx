@@ -35,7 +35,7 @@ export default function AiLoggerModal({ initialDate, onLogged, onClose }) {
         <button type="button" className="modal-close-x" aria-label="Close" onClick={close}>✕</button>
       </div>
       <p style={{ margin: '0 0 16px', fontSize: 14, color: 'var(--color-text-muted)' }}>
-        Speak or type what you ate — “I had three eggs, toast, yogurt” — or name a saved recipe to pull it up.
+        Had a meal you didn&apos;t weigh? Describe what you ate — or name a saved recipe to pull it up.
       </p>
       <AiMacroLogger inModal initialDate={initialDate} onLogged={onLogged} onClose={close} />
     </dialog>

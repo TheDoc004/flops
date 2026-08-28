@@ -96,7 +96,25 @@ Goals, Report, Profile, Adherence, supplements, prep strip, coach, and AI Estima
 `Dashboard.jsx` → `AiLoggerModal` / `LogMealModal`. Meal rows’ ⋯ menu includes **Edit meal**
 (opens the receipt editor on the existing entry — tweak amounts / drop a sauce after
 copy-paste), plus Copy / Save as Recipe / Remove. **Training** hop (`Link` to `/training`)
-lives beside them — Training is **not** in the nutrition navbar tabs.
+lives beside them — Training is **not** in the nutrition navbar tabs. **Customize** toggles
+layout edit mode (`?editLayout=1`) — drag/resize cards on desktop; mobile stacks by order.
+
+**Dashboard canvas (Pass 2, 2026-08):** Today is a card canvas, not a fixed section order.
+Registry cards: macros (pinned), supplements, weight, weight trend mini-chart, meals.
+Layout in `user_profile.dash_layout_json`; show/hide via Profile toggles
+(`dash_weight_enabled`, `dash_meals_enabled`, `dash_weight_chart_card_enabled`,
+`dash_supplements_enabled`). Full weight history stays on Review; the mini-chart is optional
+on Today. Implementation: `DashboardCanvas.jsx`, `dashboardLayout.js`, `WeightTrendMini.jsx`.
+
+**Prepped ingredient batches (Pass 1, 2026-08):** Cooked batches with known total weight +
+macros (`prepped_batches` table). Log by grams in Log a Meal; pool depletes on POST/PUT/DELETE
+and hides when empty. Separate from limited-use **meal prep recipes** (`remaining_uses`) and
+from **Augment meal prep** (add ingredients to an equal-split prep template in Recipe Library).
+Entry: Ingredients → "Prep a batch". API: `/api/prepped-batches`.
+
+**Augment meal prep:** Recipe Library → **Add to prep** on equal-split limited recipes with
+`remaining_uses > 0`. Adds batch-level ingredients split across containers; does not change
+`remaining_uses` or past log entries.
 
 **Log Meal vs AI Estimate:** Log a Meal is a **receipt** (optional recipe seed + library foods).
 AI Estimate is speak/type natural language. See `docs/log-once-vs-save-as-recipe.md`.

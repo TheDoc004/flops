@@ -6,7 +6,7 @@
 export default function FollowUpComposer({ id, value, onChange, onSend, loading, placeholder }) {
   const text = String(value || '').trim();
   return (
-    <div style={{ marginTop: 16, padding: 12, border: '1px solid #e5e7eb', borderRadius: 12, background: '#f9fafb' }}>
+    <div className="ai-followup-panel modal-subpanel">
       <label htmlFor={id} style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-body)' }}>
         Anything to adjust?
       </label>
