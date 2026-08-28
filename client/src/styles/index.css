@@ -50,12 +50,14 @@
   --status-none-bg: #f3f4f6;      --status-none-border: #e5e7eb;     --status-none-text: #6b7280;
   --status-upcoming-bg: #eff6ff;  --status-upcoming-border: #bfdbfe; --status-upcoming-text: #1d4ed8;
 
-  /* ── Typography · families ── */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-serif: 'DM Serif Display', Georgia, serif;
+  /* ── Typography · families ──
+     Warm & Friendly pairing: Nunito (headings / wordmark), Open Sans (UI + body). */
+  --font-sans: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Nunito', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: var(--font-display);
 
   /* ── Typography · scale (28 / 16 / 15 / 13 / 12) ──
-     Page titles may use DM Serif at 28px. Everything else is system sans. */
+     Page titles use Nunito at 28px. Everything else is Open Sans. */
   --text-page-title: 28px;
   --text-section: 16px;
   --text-subsection: 16px;
@@ -485,14 +487,15 @@ html[data-notebook-day="future"] {
 }
 
 /* ── Typography ── */
-/* DM Serif Display is loaded via index.html for the wordmark and page titles. */
+/* Nunito (display) + Open Sans (UI) loaded via index.html. */
 .font-display {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
 }
 
 body {
   margin: 0;
   font-family: var(--font-sans);
+  line-height: 1.6;
   background: var(--color-bg);
   color: var(--color-text);
   /* Never let stray content widen the page. `clip` (not `hidden`) avoids
@@ -518,9 +521,9 @@ a { color: inherit; text-decoration: none; }
 }
 .boot-wordmark {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 28px;
-  font-weight: 400;
+  font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--color-primary-ink);
 }
@@ -752,9 +755,9 @@ label {
    ============================================================ */
 .page-title {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: var(--text-page-title);
-  font-weight: 400;
+  font-weight: 700;
   color: var(--color-primary-ink);
   letter-spacing: -0.02em;
   line-height: 1.1;

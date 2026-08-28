@@ -94,7 +94,7 @@
 .brandName {
   font-family: var(--font-serif);
   font-size: 20px;
-  font-weight: 400;
+  font-weight: 700;
   color: var(--landing-ink);
   letter-spacing: -0.02em;
   line-height: 1;
@@ -173,7 +173,7 @@
   margin: 0 0 20px;
   font-family: var(--font-serif);
   font-size: clamp(2.75rem, 11vw, 5.5rem);
-  font-weight: 400;
+  font-weight: 700;
   letter-spacing: -0.035em;
   line-height: 0.95;
   color: var(--landing-ink);
@@ -183,7 +183,7 @@
   margin: 0;
   font-family: var(--font-serif);
   font-size: clamp(1.35rem, 3.8vw, 1.85rem);
-  font-weight: 400;
+  font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.25;
   color: var(--color-text-strong);
@@ -229,7 +229,7 @@
   margin: 0 0 14px;
   font-family: var(--font-serif);
   font-size: clamp(1.35rem, 3vw, 1.65rem);
-  font-weight: 400;
+  font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--landing-ink);
   line-height: 1.2;
@@ -323,7 +323,7 @@
   margin: 0;
   font-family: var(--font-serif);
   font-size: clamp(1.75rem, 4vw, 2.25rem);
-  font-weight: 400;
+  font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.15;
   color: var(--landing-ink);

@@ -48,9 +48,9 @@
 }
 
 .brandName {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 22px;
-  font-weight: 400;
+  font-weight: 700;
   color: var(--color-primary-ink);
   letter-spacing: -0.02em;
   line-height: 1;

@@ -11,7 +11,7 @@ import styles from './Landing.module.css';
 /**
  * Direction contract (persuade · notebook world)
  * THESIS: Free personal nutrition notebook — logging as easy as flip-flops; not a paywalled tracker.
- * OWN-WORLD: Warm paper ground, navy brand ink, primary blue CTA, DM Serif wordmark, hairline sections.
+ * OWN-WORLD: Warm paper ground, navy brand ink, primary blue CTA, Nunito wordmark, hairline sections.
  * STORY: Visitor believes free-for-individuals, meets Diego honestly, starts with email OTP.
  * FIRST VIEWPORT: Atmosphere + Flops brand + signature line + Start free (CTA in first fold).
  * FORM: Morning notebook page (established FLOPS materials, elevated for marketing).

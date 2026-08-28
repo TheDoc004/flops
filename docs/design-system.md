@@ -126,21 +126,21 @@ Generous internal spacing is what makes content feel premium, not the design its
 
 ## Typography
 
-System sans (`-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`) for all UI: labels, nav, buttons, data, body.
+**Open Sans** for all UI: labels, nav links, buttons, data, body copy.
 
-**DM Serif Display is wordmark-only** (the “Flops” brand in the header). Page titles may use it at a fixed `28px`. Never use it on nav, buttons, labels, meal names, or data.
+**Nunito** for display only — the “Flops” wordmark and page titles (`28px` / `22px` mobile). Never use Nunito on buttons, labels, meal names, or stat numbers.
 
 | Role | Size | Weight | Line height | Family |
 |---|---|---|---|---|
-| Wordmark | `28px` desktop / `22px` mobile | `400` | `1` | DM Serif |
-| Page title | `28px` | `400` serif or `700` sans | `1.1` | Wordmark-adjacent only |
-| Section heading | `16px` | `600` | `1.3` | Sans |
-| Section label | `11px` | `600` | `1` | Sans, uppercase |
-| Body | `15px` | `400` | `1.6` | Sans |
-| Label | `13px` | `500` | `1.4` | Sans |
-| Caption | `12px` | `400` | `1.4` | Sans |
-| Stat — primary | `36px` | `700` | `1` | Sans, tabular-nums |
-| Stat — secondary | `24px` | `600` | `1` | Sans, tabular-nums |
+| Wordmark | `28px` desktop / `22px` mobile | `700` | `1` | Nunito |
+| Page title | `28px` | `700` | `1.1` | Nunito |
+| Section heading | `16px` | `600` | `1.3` | Open Sans |
+| Section label | `11px` | `600` | `1` | Open Sans, uppercase |
+| Body | `15px` | `400` | `1.6` | Open Sans |
+| Label | `13px` | `500` | `1.4` | Open Sans |
+| Caption | `12px` | `400` | `1.4` | Open Sans |
+| Stat — primary | `36px` | `700` | `1` | Open Sans, tabular-nums |
+| Stat — secondary | `24px` | `600` | `1` | Open Sans, tabular-nums |
 
 **Rules:**
 - Stats and numbers use `font-variant-numeric: tabular-nums` so digits don't shift as values change.
