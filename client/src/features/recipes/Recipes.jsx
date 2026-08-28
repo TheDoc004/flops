@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import RecipeRow from './RecipeRow';
+import AugmentMealPrepModal from './AugmentMealPrepModal';
 import { LogMealModal } from '@features/meal-logging';
 import { fetchRecipes, deleteRecipe, reactivateLimitedRecipe } from '@shared/api/recipes';
 import { createLogEntry } from '@shared/api/log';
@@ -21,6 +22,7 @@ export default function Recipes() {
   const [error, setError] = useState('');
   const [includeArchived, setIncludeArchived] = useState(false);
   const [logRecipe, setLogRecipe] = useState(null);
+  const [augmentRecipe, setAugmentRecipe] = useState(null);
   const [logSaved, setLogSaved] = useState('');
 
   // Pagination — fewer per page on mobile (recipe cards are tall), more on desktop.
@@ -106,7 +108,7 @@ export default function Recipes() {
       )}
 
       <Reveal delay={60} style={{ marginBottom: 12, fontSize: 13, color: 'var(--color-text-muted)' }}>
-        Building and editing happen in Meal Builder. Use “Build a meal” to start, or Edit on a recipe below.
+        Portioned ahead? Meal-prep recipes log one container at a time — we track what&apos;s left. Edit any recipe in Meal Builder, or use &ldquo;Add to prep&rdquo; on equal-split preps.
       </Reveal>
 
       <Reveal delay={120} className="card">
@@ -146,6 +148,7 @@ export default function Recipes() {
                     key={recipe.id}
                     recipe={recipe}
                     onLog={setLogRecipe}
+                    onAugmentPrep={setAugmentRecipe}
                     onEditInBuilder={() => navigate(
                       `/meal-builder?mode=${isIngredientBuilt(recipe) ? 'labels' : 'manual'}&recipe_id=${recipe.id}`,
                       // Tell the builder where to send you on "Exit edit" —
@@ -186,6 +189,18 @@ export default function Recipes() {
           </>
         )}
       </Reveal>
+
+      {augmentRecipe && (
+        <AugmentMealPrepModal
+          recipe={augmentRecipe}
+          onClose={() => setAugmentRecipe(null)}
+          onSaved={() => {
+            setAugmentRecipe(null);
+            void load();
+            setLogSaved('Meal prep updated.');
+          }}
+        />
+      )}
 
       {logRecipe && (
         <LogMealModal

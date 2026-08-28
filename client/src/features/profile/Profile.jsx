@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { fetchProfile, saveProfile } from '@shared/api/profile';
+import { DEFAULT_DASH_LAYOUT, DASH_LAYOUT_VERSION } from '../dashboard/dashboardLayout';
 import { getInviteCode, linkCoach, myCoaches, revokeCoach } from '@shared/api/coach';
 import { useAuth } from '@shared/context/AuthContext';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
@@ -27,15 +29,14 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
-  // RETAINED-UNUSED: the weight trend chart moved to History, where its range
-  // follows the selected days. These are still round-tripped so the stored
-  // values survive, but nothing reads them and there is no UI for them.
-  const [dashChartEnabled] = useState(true);
-  const [dashChartDays] = useState(30);
   const [dashAdherenceView, setDashAdherenceView] = useState('7d');
   const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
+  const [dashWeightEnabled, setDashWeightEnabled] = useState(true);
+  const [dashMealsEnabled, setDashMealsEnabled] = useState(true);
+  const [dashWeightChartCardEnabled, setDashWeightChartCardEnabled] = useState(false);
   const [dashPrefsSaved, setDashPrefsSaved] = useState(false);
   const [dashPrefsError, setDashPrefsError] = useState('');
+  const [dashResetBusy, setDashResetBusy] = useState(false);
   // Tracks whether the user has interacted with dash prefs yet.
   // Prevents auto-save from firing during the initial data load.
   const dashInteracted = useRef(false);
@@ -64,6 +65,14 @@ export default function Profile() {
         });
         setDashAdherenceView(['7d', '2w', '3w', 'calendar'].includes(p.dash_adherence_view) ? p.dash_adherence_view : '7d');
         setDashSupplementsEnabled(p.dash_supplements_enabled !== 0 && p.dash_supplements_enabled !== false);
+        setDashWeightEnabled(p.dash_weight_enabled !== 0 && p.dash_weight_enabled !== false);
+        setDashMealsEnabled(p.dash_meals_enabled !== 0 && p.dash_meals_enabled !== false);
+        setDashWeightChartCardEnabled(
+          p.dash_weight_chart_card_enabled === 1
+          || p.dash_weight_chart_card_enabled === true
+          || p.dash_weight_chart_enabled === 1
+          || p.dash_weight_chart_enabled === true,
+        );
         const linked = await myCoaches();
         if (!cancelled) setCoaches(linked);
         if (user?.is_coach) {
@@ -209,10 +218,11 @@ export default function Profile() {
     setDashPrefsError('');
     setDashPrefsSaved(false);
     saveProfile({
-      dash_weight_chart_enabled: dashChartEnabled ? 1 : 0,
-      dash_weight_days: dashChartDays,
       dash_adherence_view: dashAdherenceView,
       dash_supplements_enabled: dashSupplementsEnabled ? 1 : 0,
+      dash_weight_enabled: dashWeightEnabled ? 1 : 0,
+      dash_meals_enabled: dashMealsEnabled ? 1 : 0,
+      dash_weight_chart_card_enabled: dashWeightChartCardEnabled ? 1 : 0,
     }).then(() => {
       if (!cancelled) {
         setDashPrefsSaved(true);
@@ -222,7 +232,38 @@ export default function Profile() {
       if (!cancelled) setDashPrefsError(err.message);
     });
     return () => { cancelled = true; };
-  }, [dashChartEnabled, dashChartDays, dashAdherenceView, dashSupplementsEnabled]);
+  }, [
+    dashAdherenceView,
+    dashSupplementsEnabled,
+    dashWeightEnabled,
+    dashMealsEnabled,
+    dashWeightChartCardEnabled,
+  ]);
+
+  async function handleResetDashboardLayout() {
+    dashInteracted.current = true;
+    setDashResetBusy(true);
+    setDashPrefsError('');
+    setDashSupplementsEnabled(true);
+    setDashWeightEnabled(true);
+    setDashMealsEnabled(true);
+    setDashWeightChartCardEnabled(false);
+    try {
+      await saveProfile({
+        dash_layout_json: { version: DASH_LAYOUT_VERSION, cards: DEFAULT_DASH_LAYOUT },
+        dash_supplements_enabled: 1,
+        dash_weight_enabled: 1,
+        dash_meals_enabled: 1,
+        dash_weight_chart_card_enabled: 0,
+      });
+      setDashPrefsSaved(true);
+      setTimeout(() => setDashPrefsSaved(false), 2000);
+    } catch (err) {
+      setDashPrefsError(err.message);
+    } finally {
+      setDashResetBusy(false);
+    }
+  }
 
   if (loading) {
     return <p style={{ color: 'var(--color-text-muted)' }}>Loading</p>;
@@ -400,31 +441,62 @@ export default function Profile() {
         </div>
         <div className="card">
           <H3>Dashboard</H3>
-          <label style={{
-            display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
-            padding: '8px 10px', marginBottom: 10, borderRadius: 9,
-            border: `1px solid ${dashSupplementsEnabled ? 'var(--color-primary)' : '#e8e4dc'}`,
-            background: dashSupplementsEnabled ? 'var(--color-primary-subtle)' : 'transparent',
-            transition: 'border-color 0.12s, background 0.12s',
-          }}>
-            <input
-              type="checkbox"
-              checked={dashSupplementsEnabled}
-              onChange={e => {
-                dashInteracted.current = true;
-                setDashSupplementsEnabled(e.target.checked);
+          <p style={{ margin: '0 0 10px', color: 'var(--color-text-muted)', fontSize: 13 }}>
+            Choose which cards appear on Today. On desktop you can also drag and resize them.
+          </p>
+          {[
+            {
+              checked: dashSupplementsEnabled,
+              onChange: setDashSupplementsEnabled,
+              title: 'Take the same stack daily?',
+              sub: 'Show a check-off strip under your macros',
+            },
+            {
+              checked: dashWeightEnabled,
+              onChange: setDashWeightEnabled,
+              title: 'Weigh in on Today?',
+              sub: 'Show today\'s weight field on the dashboard',
+            },
+            {
+              checked: dashWeightChartCardEnabled,
+              onChange: setDashWeightChartCardEnabled,
+              title: 'Want a quick weight trend?',
+              sub: 'Add a 14-day sparkline card (desktop layout)',
+            },
+            {
+              checked: dashMealsEnabled,
+              onChange: setDashMealsEnabled,
+              title: 'Log meals from Today?',
+              sub: 'Show today\'s meal list on the dashboard',
+            },
+          ].map(opt => (
+            <label
+              key={opt.title}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
+                padding: '8px 10px', marginBottom: 8, borderRadius: 9,
+                border: `1px solid ${opt.checked ? 'var(--color-primary)' : '#e8e4dc'}`,
+                background: opt.checked ? 'var(--color-primary-subtle)' : 'transparent',
+                transition: 'border-color 0.12s, background 0.12s',
               }}
-              style={{ flexShrink: 0, marginTop: 3, width: 'auto' }}
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#374151', lineHeight: 1.3 }}>
-                Show supplements checklist
+            >
+              <input
+                type="checkbox"
+                checked={opt.checked}
+                onChange={e => {
+                  dashInteracted.current = true;
+                  opt.onChange(e.target.checked);
+                }}
+                style={{ flexShrink: 0, marginTop: 3, width: 'auto' }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-body)', lineHeight: 1.3 }}>
+                  {opt.title}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>{opt.sub}</div>
               </div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>
-                Check-off strip under today&apos;s macros
-              </div>
-            </div>
-          </label>
+            </label>
+          ))}
           <div style={{ marginTop: 10 }}>
             <label style={{ marginBottom: 4 }}>Goal adherence view</label>
             <select
@@ -439,6 +511,24 @@ export default function Profile() {
               <option value="3w">Last 3 weeks</option>
               <option value="calendar">Month calendar</option>
             </select>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+            <Link
+              to="/?editLayout=1"
+              className="btn-secondary"
+              style={{ textDecoration: 'none', fontSize: 13 }}
+            >
+              Open layout editor
+            </Link>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ fontSize: 13 }}
+              disabled={dashResetBusy}
+              onClick={() => { void handleResetDashboardLayout(); }}
+            >
+              {dashResetBusy ? 'Resetting…' : 'Reset layout'}
+            </button>
           </div>
           {dashPrefsError && <p className="error" style={{ marginTop: 8 }}>{dashPrefsError}</p>}
           {dashPrefsSaved && (

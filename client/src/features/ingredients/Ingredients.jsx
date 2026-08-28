@@ -6,6 +6,8 @@ import {
   fetchLabelIngredients,
   updateLabelIngredient,
 } from '@shared/api/labelIngredients';
+import { fetchPreppedBatches } from '@shared/api/preppedBatches';
+import PreppedBatchModal from './PreppedBatchModal';
 import {
   LabelCropModal,
   extractTextFromLabelImage,
@@ -16,6 +18,7 @@ import {
 import { BarcodeScannerModal, mergeBarcodeProductIntoIngredientForm } from '@features/barcode';
 import { SERVING_UNITS, isWeightUnit, servingToStored, servingFromRow, emptyServing, unitLabel } from '@shared/utils/servingBasis';
 import ServingUnitsHint from '@shared/ui/ServingUnitsHint';
+import FeaturePrompt from '@shared/ui/FeaturePrompt';
 import Reveal from '@shared/ui/Reveal';
 import GrowStack from '@shared/ui/GrowStack';
 
@@ -50,6 +53,8 @@ function emptyForm() {
 
 export default function Ingredients() {
   const [items, setItems] = useState([]);
+  const [preppedBatches, setPreppedBatches] = useState([]);
+  const [prepModalOpen, setPrepModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('alpha_asc');
   const { page, setPage, paginationRef, handlePageChange } = usePaginationAnchor();
@@ -92,7 +97,12 @@ export default function Ingredients() {
   async function load() {
     setError('');
     try {
-      setItems(await fetchLabelIngredients());
+      const [ingredients, batches] = await Promise.all([
+        fetchLabelIngredients(),
+        fetchPreppedBatches(),
+      ]);
+      setItems(ingredients);
+      setPreppedBatches(batches);
     } catch (e) {
       setError(e.message);
     }
@@ -482,8 +492,8 @@ export default function Ingredients() {
           {/* ── Serving & scaling ── */}
           <div style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid #f0ede8' }}>
             <h4 style={{
-              margin: '0 0 6px', fontSize: 15, fontWeight: 400,
-              color: 'var(--color-primary-ink)', fontFamily: 'var(--font-sans)', fontWeight: 600,
+              margin: '0 0 6px', fontSize: 15, fontWeight: 600,
+              color: 'var(--color-primary-ink)', fontFamily: 'var(--font-sans)',
             }}>Serving &amp; scaling</h4>
             <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--color-text-faint)' }}>
               Enter the serving size from the label. Use whatever it says: 170 g, 1 cup, 1 slice, 1 scoop, 1 egg.
@@ -543,8 +553,8 @@ export default function Ingredients() {
           {/* ── Nutrition per serving ── */}
           <div style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid #f0ede8' }}>
             <h4 style={{
-              margin: '0 0 12px', fontSize: 15, fontWeight: 400,
-              color: 'var(--color-primary-ink)', fontFamily: 'var(--font-sans)', fontWeight: 600,
+              margin: '0 0 12px', fontSize: 15, fontWeight: 600,
+              color: 'var(--color-primary-ink)', fontFamily: 'var(--font-sans)',
             }}>Nutrition per serving</h4>
             <div className="form-grid-2">
               <div>
@@ -651,12 +661,40 @@ export default function Ingredients() {
       )}
 
       <Reveal className="card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <h3 className="section-title">Your ingredients</h3>
-          <button type="button" className="btn-primary" style={{ flexShrink: 0 }} onClick={() => setFormOpen(true)}>
-            + Add ingredient
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button type="button" className="btn-secondary" onClick={() => setPrepModalOpen(true)}>
+              Prep a batch
+            </button>
+            <button type="button" className="btn-primary" onClick={() => setFormOpen(true)}>
+              + Add ingredient
+            </button>
+          </div>
         </div>
+
+        {preppedBatches.length > 0 && (
+          <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-bg)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Active prepped batches
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {preppedBatches.map(b => {
+                const pct = b.total_weight_g > 0
+                  ? Math.round((Number(b.remaining_weight_g) / Number(b.total_weight_g)) * 100)
+                  : 0;
+                return (
+                  <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+                    <strong>{b.name}</strong>
+                    <span style={{ color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                      {Math.round(Number(b.remaining_weight_g))}g left ({pct}%)
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
           <div style={{ flex: 1, minWidth: 180 }}>
@@ -687,7 +725,14 @@ export default function Ingredients() {
         </div>
 
         {filtered.length === 0 ? (
-          <p className="empty-state">{items.length === 0 ? 'No ingredients yet.' : 'No ingredients match your search.'}</p>
+          items.length === 0 ? (
+            <FeaturePrompt
+              question="Cook the same protein every week?"
+              answer="Save it once in your library and log by weight — or prep a cooked batch with fixed macros."
+            />
+          ) : (
+            <p className="empty-state">No ingredients match your search.</p>
+          )
         ) : (
           <>
             <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--color-text-faint)' }}>
@@ -774,6 +819,13 @@ export default function Ingredients() {
           setLabelScanFieldStatus(null);
         }}
       />
+
+      {prepModalOpen && (
+        <PreppedBatchModal
+          onClose={() => setPrepModalOpen(false)}
+          onSaved={() => void load()}
+        />
+      )}
 
       {/* Mounted only while open so the camera starts and stops with it. */}
       {barcodeOpen && (
