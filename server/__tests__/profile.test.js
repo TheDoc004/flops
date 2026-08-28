@@ -70,6 +70,33 @@ describe('PUT /api/profile', () => {
     expect(get.body.dash_weight_days).toBe(14);
   });
 
+  it('round-trips dash_layout_json', async () => {
+    const app = buildApp();
+    const layout = {
+      version: 1,
+      cards: [{ id: 'macros', x: 0, y: 0, w: 12, h: 4, visible: true }],
+    };
+    const res = await request(app).put('/api/profile').send({ user_id: 0, dash_layout_json: layout });
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body.dash_layout_json)).toEqual(layout);
+    const get = await request(app).get('/api/profile');
+    expect(JSON.parse(get.body.dash_layout_json)).toEqual(layout);
+  });
+
+  it('stores dashboard card visibility flags', async () => {
+    const app = buildApp();
+    const res = await request(app).put('/api/profile').send({
+      user_id: 0,
+      dash_weight_enabled: 0,
+      dash_meals_enabled: 0,
+      dash_weight_chart_card_enabled: 1,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.dash_weight_enabled).toBe(0);
+    expect(res.body.dash_meals_enabled).toBe(0);
+    expect(res.body.dash_weight_chart_card_enabled).toBe(1);
+  });
+
   it('stores body_units independently', async () => {
     const app = buildApp();
     let res = await request(app).put('/api/profile').send({ user_id: 0, macro_units: 'metric', body_units: 'us' });

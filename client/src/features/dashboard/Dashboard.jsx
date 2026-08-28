@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
 import { SaveMealAsRecipeDialog } from '@features/meal-logging';
@@ -8,7 +8,10 @@ import MacroTotals from '@shared/ui/MacroTotals';
 import Reveal from '@shared/ui/Reveal';
 import { fetchLogRange, createLogEntry, createCustomLog, updateLogEntry, deleteLogEntry } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
-import { fetchProfile } from '@shared/api/profile';
+import { fetchProfile, saveProfile } from '@shared/api/profile';
+import DashboardCanvas from './DashboardCanvas';
+import { DEFAULT_DASH_LAYOUT, mergeDashLayout } from './dashboardLayout';
+import WeightTrendMini from '@features/history/WeightTrendMini';
 import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
 import { getLocalDateISO, parseLocalDateISO, loadViewingDate, saveViewingDate, shouldOfferNewDay, dismissNewDayOffer, goToCalendarToday, addDaysLocal, formatMealsSectionTitle, formatDisplayDate } from '@shared/utils/dateLocal';
@@ -129,6 +132,8 @@ function initialBannerDismissed(viewing, cal) {
 export default function Dashboard() {
   const { bodyUnits } = useMacroUnits();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editLayout = searchParams.get('editLayout') === '1';
 
   useEffect(() => {
     if (location.state?.scrollToTop) {
@@ -158,6 +163,7 @@ export default function Dashboard() {
   const pasteDoneTimerRef = useRef(null);
   const [pasteUi, setPasteUi] = useState('idle'); // idle | pasting | done
   const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
+  const [dashLayout, setDashLayout] = useState(() => mergeDashLayout(null));
   const [supplementMacros, setSupplementMacros] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 
   const greeting = useMemo(() => getGreeting(), []);
@@ -289,6 +295,7 @@ export default function Dashboard() {
       // selected there.
       const se = p.dash_supplements_enabled;
       setDashSupplementsEnabled(se !== 0 && se !== false && se !== '0');
+      setDashLayout(mergeDashLayout(p.dash_layout_json, p));
     }
 
     if (logResult.status === 'fulfilled') {
@@ -479,6 +486,112 @@ export default function Dashboard() {
     minHeight: '44px',
   };
 
+  const handleLayoutChange = useCallback(async (nextLayout) => {
+    setDashLayout(nextLayout);
+    try {
+      await saveProfile({ dash_layout_json: nextLayout });
+    } catch {
+      /* layout still applied locally */
+    }
+  }, []);
+
+  const dashboardCards = useMemo(() => ({
+    macros: <MacroTotals totals={combinedTotals} targets={targets} />,
+    supplements: dashSupplementsEnabled ? (
+      <SupplementStrip date={today} onMacrosChange={setSupplementMacros} />
+    ) : null,
+    weight: <DashboardWeightRow today={today} bodyUnits={bodyUnits} noCard />,
+    weight_chart: (
+      <div>
+        <h3 className="section-title" style={{ margin: '0 0 12px' }}>Weight trend</h3>
+        <WeightTrendMini today={today} bodyUnits={bodyUnits} />
+      </div>
+    ),
+    meals: (
+      <div>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 'clamp(14px, 1.4vw, 18px)',
+          gap: 8,
+        }}>
+          <div>
+            <h2 className="section-title" style={{ margin: 0 }}>
+              {formatMealsSectionTitle(today, calendarToday)}
+            </h2>
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-secondary)', color: 'var(--color-text-muted)' }}>
+              {entries.length === 0
+                ? 'Nothing logged yet'
+                : `${entries.length} meal${entries.length !== 1 ? 's' : ''} · ${totalLoggedCal.toLocaleString()} kcal`}
+            </p>
+          </div>
+          {mealClipboard && (
+            <button
+              type="button"
+              className={`btn-secondary paste-meal-btn${pasteUi === 'pasting' ? ' btn-loading' : ''}${pasteUi === 'done' ? ' is-pasted' : ''}`}
+              onClick={() => { void handlePasteMeal(); }}
+              disabled={pasteUi !== 'idle'}
+              aria-busy={pasteUi === 'pasting'}
+              aria-live="polite"
+              title="Paste the copied meal onto this day"
+            >
+              {pasteUi === 'pasting' ? (
+                <><span className="btn-spinner" aria-hidden="true" />Pasting…</>
+              ) : pasteUi === 'done' ? (
+                'Pasted'
+              ) : (
+                'Paste meal'
+              )}
+            </button>
+          )}
+        </div>
+        {entries.length === 0 ? (
+          <div style={{
+            background: 'var(--color-surface)',
+            borderRadius: 14,
+            border: '1px dashed var(--color-secondary-border)',
+            padding: 'clamp(24px, 2.4vw, 32px) 16px',
+            textAlign: 'center',
+          }}>
+            <p style={{ margin: '0 0 14px', color: 'var(--color-text-muted)', fontSize: 'clamp(14px, 1vw, 15.5px)' }}>No meals logged yet.</p>
+            <button className="btn-primary" onClick={() => setShowModal(true)}>
+              Log a meal
+            </button>
+          </div>
+        ) : (
+          <div style={{
+            background: 'var(--color-surface)',
+            borderRadius: 14,
+            border: '1px solid var(--color-surface-border)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            overflow: 'visible',
+          }}>
+            {entries.map((entry, idx) => (
+              <Reveal
+                key={entry.id}
+                delay={Math.min(idx, 6) * 60}
+                style={{ borderBottom: idx < entries.length - 1 ? '1px solid var(--color-divider-warm)' : 'none' }}
+              >
+                <LogEntryRow
+                  entry={entry}
+                  onDelete={handleDelete}
+                  onEdit={setEditEntry}
+                  onCopyMeal={handleCopyMeal}
+                  onSaveAsRecipe={handleSaveMealAsRecipe}
+                  variant="dashboard"
+                />
+              </Reveal>
+            ))}
+          </div>
+        )}
+      </div>
+    ),
+  }), [
+    combinedTotals, targets, dashSupplementsEnabled, today, bodyUnits, entries, totalLoggedCal,
+    mealClipboard, pasteUi, calendarToday, handlePasteMeal, handleDelete, handleCopyMeal, handleSaveMealAsRecipe,
+  ]);
+
   const dayBodyAnim = skipDayAnim.current
     ? ''
     : ` dashboard-day-body--${dayShiftDir.current}`;
@@ -553,6 +666,18 @@ export default function Dashboard() {
           >
             Training
           </Link>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={dashActionStyle}
+            title={editLayout ? 'Finish customizing your dashboard' : 'Drag and resize dashboard cards'}
+            onClick={() => {
+              if (editLayout) setSearchParams({});
+              else setSearchParams({ editLayout: '1' });
+            }}
+          >
+            {editLayout ? 'Done' : 'Customize'}
+          </button>
         </div>
       </Reveal>
 
@@ -622,121 +747,18 @@ export default function Dashboard() {
         </p>
       )}
 
-      {/* ── Macro totals (meals + any macro-counting supplements taken today) ── */}
-      <Reveal>
-        <MacroTotals totals={combinedTotals} targets={targets} />
-      </Reveal>
-
-      {/* Supplements ride right under the macros they feed — a compact strip
-          you tick off in place, not a section to scroll to. */}
-      {dashSupplementsEnabled && (
-        <SupplementStrip date={today} onMacrosChange={setSupplementMacros} />
+      {editLayout && (
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+          Drag and resize cards. Macros stay pinned. Changes save automatically.
+        </p>
       )}
 
-      {/* ── Today's weight ──
-          High on the page on purpose: weighing in is a daily action, so it sits
-          with the other daily actions rather than below the meal list. The
-          trend chart lives in History (WeightTrendChart) — Today is for doing,
-          Review is for looking. */}
-      <Reveal className="dash-section">
-        <DashboardWeightRow today={today} bodyUnits={bodyUnits} />
-      </Reveal>
-
-      {SHOW_PREP_PLAN && (
-        <Reveal>
-          <PrepStrip date={today} onLogged={load} />
-        </Reveal>
-      )}
-
-      {/* ── Meals for the viewing day ── */}
-      <Reveal className="dash-section" style={{ marginBottom: 24 }}>
-        {/* Card header */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 'clamp(14px, 1.4vw, 18px)',
-          gap: 8,
-        }}>
-          <div>
-            <h2 className="section-title" style={{ margin: 0 }}>
-              {formatMealsSectionTitle(today, calendarToday)}
-            </h2>
-            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-secondary)', color: 'var(--color-text-muted)' }}>
-              {entries.length === 0
-                ? 'Nothing logged yet'
-                : `${entries.length} meal${entries.length !== 1 ? 's' : ''} · ${totalLoggedCal.toLocaleString()} kcal`}
-            </p>
-          </div>
-          {mealClipboard && (
-            <button
-              type="button"
-              className={`btn-secondary paste-meal-btn${pasteUi === 'pasting' ? ' btn-loading' : ''}${pasteUi === 'done' ? ' is-pasted' : ''}`}
-              onClick={() => { void handlePasteMeal(); }}
-              disabled={pasteUi !== 'idle'}
-              aria-busy={pasteUi === 'pasting'}
-              aria-live="polite"
-              title="Paste the copied meal onto this day"
-            >
-              {pasteUi === 'pasting' ? (
-                <><span className="btn-spinner" aria-hidden="true" />Pasting…</>
-              ) : pasteUi === 'done' ? (
-                <>
-                  <svg className="paste-meal-check" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M5 12.5 9.5 17 19 7" />
-                  </svg>
-                  Pasted
-                </>
-              ) : (
-                'Paste meal'
-              )}
-            </button>
-          )}
-        </div>
-
-        {entries.length === 0
-          ? (
-            <div style={{
-              background: 'var(--color-surface)',
-              borderRadius: 14,
-              border: '1px dashed var(--color-secondary-border)',
-              padding: 'clamp(24px, 2.4vw, 32px) 16px',
-              textAlign: 'center',
-            }}>
-              <p style={{ margin: '0 0 14px', color: 'var(--color-text-muted)', fontSize: 'clamp(14px, 1vw, 15.5px)' }}>No meals logged yet.</p>
-              <button className="btn-primary" onClick={() => setShowModal(true)}>
-                Log a meal
-              </button>
-            </div>
-          )
-          : (
-            <div style={{
-              background: 'var(--color-surface)',
-              borderRadius: 14,
-              border: '1px solid var(--color-surface-border)',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-              overflow: 'visible',
-            }}>
-              {entries.map((entry, idx) => (
-                <Reveal
-                  key={entry.id}
-                  delay={Math.min(idx, 6) * 60}
-                  style={{ borderBottom: idx < entries.length - 1 ? '1px solid var(--color-divider-warm)' : 'none' }}
-                >
-                  <LogEntryRow
-                    entry={entry}
-                    onDelete={handleDelete}
-                    onEdit={setEditEntry}
-                    onCopyMeal={handleCopyMeal}
-                    onSaveAsRecipe={handleSaveMealAsRecipe}
-                    variant="dashboard"
-                  />
-                </Reveal>
-              ))}
-            </div>
-          )
-        }
-      </Reveal>
+      <DashboardCanvas
+        layout={dashLayout}
+        editMode={editLayout}
+        onLayoutChange={handleLayoutChange}
+        cards={dashboardCards}
+      />
       </div>
 
       {showModal && (
