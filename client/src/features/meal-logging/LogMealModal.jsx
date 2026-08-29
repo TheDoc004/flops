@@ -615,9 +615,8 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           <div>
             <label>Servings</label>
             <input
-              type="number"
-              min="0.25"
-              step="0.25"
+              type="text"
+              inputMode="decimal"
               value={servings}
               onChange={e => setServings(e.target.value)}
               required
@@ -705,9 +704,8 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                         )}
                       </div>
                       <input
-                        type="number"
-                        min="0"
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
                         aria-label={`Amount for ${line.name}`}
                         value={line.amount}
                         onChange={e => updateLine(line.id, { amount: e.target.value })}

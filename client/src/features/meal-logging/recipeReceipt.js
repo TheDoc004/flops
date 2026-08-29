@@ -196,7 +196,15 @@ export function buildReceiptLineFromPreppedBatch(batch, amountG, { id } = {}) {
 export function refreshPreppedBatchLine(line, batch) {
   if (!line || !batch) return line;
   const rebuilt = buildReceiptLineFromPreppedBatch(batch, line.amount, { id: line.id });
-  return rebuilt || line;
+  if (rebuilt) return rebuilt;
+  return {
+    ...line,
+    calories: null,
+    protein_g: null,
+    carbs_g: null,
+    fat_g: null,
+    fiber_g: null,
+  };
 }
 
 /** Recompute macros on a receipt line after amount/unit or ingredient swap. */

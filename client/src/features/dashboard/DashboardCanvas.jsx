@@ -18,16 +18,26 @@ export default function DashboardCanvas({
 }) {
   const isMobile = useMediaQuery('(max-width: 767px)');
   const rglLayout = useMemo(() => layoutToRgl(layout), [layout]);
+  const order = mobileStackOrder(layout);
 
-  if (isMobile) {
-    const order = mobileStackOrder(layout);
+  // View mode: natural-height stack so cards grow with content (no inner scroll).
+  if (!editMode) {
     return (
       <div className="dashboard-stack">
         {order.map(id => (
-          <div
-            key={id}
-            className={editMode ? 'dashboard-card dashboard-card--edit' : 'dashboard-card'}
-          >
+          <div key={id} className="dashboard-card">
+            {cards[id]}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <div className="dashboard-stack">
+        {order.map(id => (
+          <div key={id} className="dashboard-card dashboard-card--edit">
             {cards[id]}
           </div>
         ))}
@@ -36,7 +46,7 @@ export default function DashboardCanvas({
   }
 
   return (
-    <div className={editMode ? 'dashboard-canvas dashboard-canvas--edit' : 'dashboard-canvas'}>
+    <div className="dashboard-canvas dashboard-canvas--edit">
       <Grid
         className="layout"
         layouts={{ lg: rglLayout }}
@@ -55,7 +65,7 @@ export default function DashboardCanvas({
         }}
       >
         {rglLayout.map(item => (
-          <div key={item.i} className={editMode ? 'dashboard-card dashboard-card--edit' : 'dashboard-card'}>
+          <div key={item.i} className="dashboard-card dashboard-card--edit">
             {cards[item.i]}
           </div>
         ))}

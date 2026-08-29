@@ -15,7 +15,7 @@ import WeightTrendMini from '@features/history/WeightTrendMini';
 import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
 import { getLocalDateISO, parseLocalDateISO, loadViewingDate, saveViewingDate, shouldOfferNewDay, dismissNewDayOffer, goToCalendarToday, addDaysLocal, formatMealsSectionTitle, formatDisplayDate } from '@shared/utils/dateLocal';
-import { goalsToTargets, hasAnyTarget, resolveGoalRowForDate } from '@features/adherence';
+import { goalsToTargets, resolveGoalRowForDate } from '@features/adherence';
 import DashboardWeightRow from './DashboardWeightRow';
 import PrepStrip from './PrepStrip';
 import { SupplementStrip } from '@features/supplements';
@@ -620,8 +620,8 @@ export default function Dashboard() {
                     {' · '}
                     {goalsLabel}
                     {' · '}
-                    <Link to="/goals" style={{ color: 'var(--color-text-muted)', textDecoration: 'underline', textUnderlineOffset: 3 }}>
-                      {hasAnyTarget(targets) ? 'Edit goals' : 'Set goals'}
+                    <Link to="/plan/profile" style={{ color: 'var(--color-text-muted)', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                      Profile
                     </Link>
                   </>
                 )
@@ -666,18 +666,6 @@ export default function Dashboard() {
           >
             Training
           </Link>
-          <button
-            type="button"
-            className="btn-secondary"
-            style={dashActionStyle}
-            title={editLayout ? 'Finish customizing your dashboard' : 'Drag and resize dashboard cards'}
-            onClick={() => {
-              if (editLayout) setSearchParams({});
-              else setSearchParams({ editLayout: '1' });
-            }}
-          >
-            {editLayout ? 'Done' : 'Customize'}
-          </button>
         </div>
       </Reveal>
 
@@ -749,7 +737,15 @@ export default function Dashboard() {
 
       {editLayout && (
         <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-          Drag and resize cards. Macros stay pinned. Changes save automatically.
+          Drag and resize cards. Macros stay pinned. Changes save automatically.{' '}
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ minHeight: 32, padding: '4px 12px', fontSize: 13, marginLeft: 4 }}
+            onClick={() => setSearchParams({})}
+          >
+            Done
+          </button>
         </p>
       )}
 

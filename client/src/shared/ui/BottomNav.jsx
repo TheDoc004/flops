@@ -61,7 +61,17 @@ export default function BottomNav() {
       {isCoach ? (
         <NavLink to="/coach" className={tabClass}><IconCoach /><span>Coach</span></NavLink>
       ) : null}
-      <NavLink to="/plan" className={tabClass}><IconPlan /><span>Goals</span></NavLink>
+      <NavLink
+        to="/plan/profile"
+        className={({ isActive }) => (
+          pathname === '/plan' || pathname.startsWith('/plan/')
+            ? `${styles.tab} ${styles.tabActive}`
+            : isActive ? `${styles.tab} ${styles.tabActive}` : styles.tab
+        )}
+      >
+        <IconPlan />
+        <span>Profile</span>
+      </NavLink>
     </nav>
   );
 }

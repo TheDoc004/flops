@@ -32,7 +32,7 @@ export default function Navbar() {
     },
     { label: 'Review', to: '/history' },
     ...(isCoach ? [{ label: 'Coach', to: '/coach' }] : []),
-    { label: 'Goals', to: '/plan' },
+    { label: 'Profile', to: '/plan/profile', matchPaths: ['/plan'] },
   ];
 
   const gymLinks = [

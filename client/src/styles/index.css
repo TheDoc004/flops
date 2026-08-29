@@ -2377,12 +2377,18 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   transition: box-shadow 0.12s ease;
 }
 .dashboard-card {
-  height: 100%;
   background: var(--color-surface);
   border: 1px solid var(--color-surface-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
   padding: var(--space-16) var(--space-20);
+  overflow: visible;
+}
+.dashboard-stack .dashboard-card {
+  height: auto;
+}
+.dashboard-canvas .dashboard-card {
+  height: 100%;
   overflow: auto;
 }
 /* Macro strip brings its own surface — avoid a card inside a card */
