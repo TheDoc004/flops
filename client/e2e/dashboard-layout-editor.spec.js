@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { openAuthed } from './helpers/auth.js';
+import { cfg } from './helpers/config.js';
 
-const EDIT_URL = '/?editLayout=1';
-const MAX_MACROS_HEIGHT_PX = 280;
+const EDIT_URL = cfg.editPath;
+const MAX_MACROS_HEIGHT_PX = cfg.thresholds.macrosMaxHeightPx;
 
 test.describe('Dashboard layout editor', () => {
   test.beforeEach(async ({ page, request }) => {
@@ -42,7 +43,7 @@ test.describe('Dashboard layout editor', () => {
 
     const after = await weight.boundingBox();
     expect(after).toBeTruthy();
-    expect(Math.abs(after.y - before.y)).toBeGreaterThan(20);
+    expect(Math.abs(after.y - before.y)).toBeGreaterThan(cfg.thresholds.minDragDeltaPx);
   });
 
   test('exposes corner resize handles on visible cards', async ({ page }) => {

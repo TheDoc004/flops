@@ -12,7 +12,10 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "verify:layout-editor": "node scripts/verify-layout-editor.mjs",
+    "verify:layout-editor:headed": "node scripts/verify-layout-editor.mjs --headed",
+    "verify:layout-editor:production": "node scripts/verify-layout-editor.mjs --production"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",

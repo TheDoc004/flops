@@ -8,3 +8,4 @@ dist/
 client/test-results/
 client/playwright-report/
 client/blob-report/
+client/e2e/reports/
