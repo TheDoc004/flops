@@ -2398,6 +2398,11 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
     transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
     width 320ms cubic-bezier(0.22, 1, 0.36, 1),
     height 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+/* Magnetic drop — no red placeholder slot; neighbors reflow via compactType. */
+.dashboard-canvas--edit .react-grid-placeholder {
+  display: none !important;
 }
 .dashboard-canvas--edit .react-grid-item.react-draggable-dragging {
   transition: none;
@@ -2440,9 +2445,109 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
 .dashboard-stack .dashboard-card {
   height: auto;
 }
-.dashboard-canvas .dashboard-card {
+.dashboard-canvas:not(.dashboard-canvas--edit) .dashboard-card {
   height: 100%;
-  overflow: auto;
+}
+.dashboard-canvas--edit .dashboard-card {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.dashboard-card__scale-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  --card-scale: 1;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-card--edit .dashboard-card__scale-root .dash-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-card--edit .dashboard-card__scale-root .dash-section > .card {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: calc(14px * var(--card-scale)) calc(16px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .section-title {
+  font-size: calc(1.125rem * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .macro-strip {
+  flex: 1;
+  min-height: 0;
+  align-content: stretch;
+}
+.dashboard-card--edit .dashboard-card__scale-root .macro-cell {
+  padding: calc(12px * var(--card-scale)) calc(14px * var(--card-scale));
+  gap: calc(10px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .macro-ring {
+  width: calc(56px * var(--card-scale));
+  height: calc(56px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .macro-ring-pct {
+  font-size: calc(13px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .macro-label {
+  font-size: calc(12px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .macro-value {
+  font-size: calc(15px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .macro-status {
+  font-size: calc(11px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .macro-range {
+  font-size: calc(10px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .meal-name,
+.dashboard-card--edit .dashboard-card__scale-root .meal-macros,
+.dashboard-card--edit .dashboard-card__scale-root .meal-notes {
+  font-size: calc(14px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .supp-chip-grid {
+  flex: 1;
+  gap: calc(8px * var(--card-scale));
+  grid-template-columns: repeat(auto-fit, minmax(calc(120px * var(--card-scale)), 1fr));
+  align-content: stretch;
+}
+.dashboard-card--edit .dashboard-card__scale-root .supp-chip {
+  min-height: calc(64px * var(--card-scale));
+  padding: calc(8px * var(--card-scale)) calc(8px * var(--card-scale)) calc(8px * var(--card-scale)) calc(12px * var(--card-scale));
+  gap: calc(8px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .supp-chip__name {
+  font-size: calc(14px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .supp-chip__dose {
+  font-size: calc(12px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .supp-chip__check {
+  width: calc(20px * var(--card-scale));
+  height: calc(20px * var(--card-scale));
+  font-size: calc(13px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .stepper-btn {
+  width: calc(32px * var(--card-scale));
+  height: calc(32px * var(--card-scale));
+  min-height: calc(32px * var(--card-scale));
+  font-size: calc(16px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root .log-entry-row {
+  font-size: calc(14px * var(--card-scale));
+}
+.dashboard-card--edit .dashboard-card__scale-root input,
+.dashboard-card--edit .dashboard-card__scale-root button.btn-primary,
+.dashboard-card--edit .dashboard-card__scale-root button.btn-secondary {
+  font-size: calc(14px * var(--card-scale));
 }
 .dashboard-card--edit {
   border: 2px dashed var(--color-primary);
@@ -2462,6 +2567,7 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--color-primary-ink);
+  flex-shrink: 0;
 }
 .dashboard-card__drag-handle {
   display: inline-flex;
@@ -2547,20 +2653,17 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   font-weight: 500;
   color: var(--color-text-muted);
 }
-.dashboard-stack .dashboard-card {
-  height: auto;
-}
-.dashboard-canvas .dashboard-card {
-  height: 100%;
-  overflow: auto;
-}
 /* Macro strip brings its own surface — avoid a card inside a card */
-.dashboard-card:has(> .macro-strip) {
+.dashboard-card--view:has(> .macro-strip),
+.dashboard-card--view:has(.dashboard-card__scale-root > .macro-strip) {
   background: transparent;
   border: none;
   box-shadow: none;
   padding: 0;
   overflow: visible;
+}
+.dashboard-card--edit:has(.macro-strip) {
+  padding: var(--space-12);
 }
 .dashboard-card--edit {
   cursor: default;
@@ -2575,10 +2678,45 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   margin-top: var(--space-28);
 }
 .dashboard-canvas .react-resizable-handle {
-  opacity: 0.35;
+  opacity: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 .dashboard-canvas--edit .react-resizable-handle {
   opacity: 1;
+  z-index: 20;
+}
+/* Google Docs–style corner squares (royal blue) */
+.dashboard-canvas--edit .react-resizable-handle::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--color-primary);
+  background: #fff;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+.dashboard-canvas--edit .react-resizable-handle-se::after {
+  right: 3px;
+  bottom: 3px;
+}
+.dashboard-canvas--edit .react-resizable-handle-sw::after {
+  left: 3px;
+  bottom: 3px;
+}
+.dashboard-canvas--edit .react-resizable-handle-ne::after {
+  right: 3px;
+  top: 3px;
+}
+.dashboard-canvas--edit .react-resizable-handle-nw::after {
+  left: 3px;
+  top: 3px;
+}
+/* Hide default react-resizable SE arrow graphic */
+.dashboard-canvas--edit .react-resizable-handle-se {
+  background-image: none;
 }
 html[data-notebook-day] .dashboard-card--edit {
   border-color: var(--color-surface-border);

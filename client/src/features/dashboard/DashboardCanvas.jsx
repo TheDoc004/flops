@@ -2,10 +2,22 @@ import { useMemo } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
 import { DASH_CARD_META, layoutToRgl, mobileStackOrder, rglToLayout } from './dashboardLayout';
+import DashboardCardScale from './DashboardCardScale';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
 const Grid = WidthProvider(Responsive);
+
+const CORNER_HANDLES = ['nw', 'ne', 'sw', 'se'];
+
+const GRID_PROPS = {
+  margin: [12, 12],
+  containerPadding: [0, 0],
+  isDraggable: true,
+  isResizable: true,
+  compactType: 'vertical',
+  resizeHandles: CORNER_HANDLES,
+};
 
 function cardEditClass(id, exitingIds, enteringIds) {
   let cls = 'dashboard-card dashboard-card--edit';
@@ -16,6 +28,28 @@ function cardEditClass(id, exitingIds, enteringIds) {
 
 function cardLabel(id) {
   return DASH_CARD_META[id]?.label || id.replace('_', ' ');
+}
+
+function EditCard({ item, exitingIds, enteringIds, cards }) {
+  return (
+    <div
+      key={item.i}
+      className={cardEditClass(item.i, exitingIds, enteringIds)}
+      data-card-id={item.i}
+    >
+      <div className="dashboard-card__edit-chrome">
+        <span className="dashboard-card__drag-handle" title="Drag to move" aria-label="Drag card">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+            <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+            <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+            <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+          </svg>
+        </span>
+        <span className="dashboard-card__edit-label">{cardLabel(item.i)}</span>
+      </div>
+      <DashboardCardScale>{cards[item.i]}</DashboardCardScale>
+    </div>
+  );
 }
 
 /**
@@ -45,6 +79,10 @@ export default function DashboardCanvas({
     );
   }
 
+  const onLayout = (current) => {
+    onLayoutChange?.(rglToLayout(layout, current));
+  };
+
   if (isMobile) {
     return (
       <div className="dashboard-canvas dashboard-canvas--edit dashboard-canvas--mobile-edit">
@@ -54,14 +92,8 @@ export default function DashboardCanvas({
           breakpoints={{ lg: 0 }}
           cols={{ lg: 12 }}
           rowHeight={48}
-          margin={[12, 12]}
-          containerPadding={[0, 0]}
-          isDraggable
-          isResizable
-          compactType="vertical"
-          onLayoutChange={(current) => {
-            onLayoutChange?.(rglToLayout(layout, current));
-          }}
+          {...GRID_PROPS}
+          onLayoutChange={onLayout}
         >
           {rglLayout.map(item => (
             <div
@@ -72,7 +104,7 @@ export default function DashboardCanvas({
               <div className="dashboard-card__edit-label" aria-hidden="true">
                 {cardLabel(item.i)}
               </div>
-              {cards[item.i]}
+              <DashboardCardScale>{cards[item.i]}</DashboardCardScale>
             </div>
           ))}
         </Grid>
@@ -88,34 +120,18 @@ export default function DashboardCanvas({
         breakpoints={{ lg: 768 }}
         cols={{ lg: 12 }}
         rowHeight={42}
-        margin={[12, 12]}
-        containerPadding={[0, 0]}
-        isDraggable
-        isResizable
-        compactType="vertical"
         draggableHandle=".dashboard-card__drag-handle"
-        onLayoutChange={(current) => {
-          onLayoutChange?.(rglToLayout(layout, current));
-        }}
+        {...GRID_PROPS}
+        onLayoutChange={onLayout}
       >
         {rglLayout.map(item => (
-          <div
+          <EditCard
             key={item.i}
-            className={cardEditClass(item.i, exitingIds, enteringIds)}
-            data-card-id={item.i}
-          >
-            <div className="dashboard-card__edit-chrome">
-              <span className="dashboard-card__drag-handle" title="Drag to move" aria-label="Drag card">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
-                  <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
-                  <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
-                  <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
-                </svg>
-              </span>
-              <span className="dashboard-card__edit-label">{cardLabel(item.i)}</span>
-            </div>
-            {cards[item.i]}
-          </div>
+            item={item}
+            exitingIds={exitingIds}
+            enteringIds={enteringIds}
+            cards={cards}
+          />
         ))}
       </Grid>
     </div>
