@@ -121,6 +121,17 @@ describe('layoutForEditSession', () => {
     expect(macros.x).toBe(0);
     expect(macros.h).toBeLessThanOrEqual(4);
   });
+
+  it('resets inflated saved heights to compact edit defaults', () => {
+    const saved = {
+      version: 1,
+      cards: DEFAULT_DASH_LAYOUT.map(c =>
+        (c.id === 'macros' ? { ...c, h: 20, w: 12, x: 0, y: 0 } : c),
+      ),
+    };
+    const edit = layoutForEditSession(mergeDashLayout(saved));
+    expect(edit.cards.find(c => c.id === 'macros').h).toBe(2);
+  });
 });
 
 describe('mobileStackOrder', () => {

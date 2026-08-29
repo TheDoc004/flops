@@ -5,3 +5,6 @@ dist/
 .env
 .env.local
 .agents/
+client/test-results/
+client/playwright-report/
+client/blob-report/

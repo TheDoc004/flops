@@ -2450,104 +2450,56 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
 }
 .dashboard-canvas--edit .dashboard-card {
   height: 100%;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+.dashboard-card__content {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: visible;
 }
 .dashboard-card__scale-root {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   --card-scale: 1;
-  display: flex;
-  flex-direction: column;
 }
-.dashboard-card--edit .dashboard-card__scale-root .dash-section {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+.dashboard-card--edit .dashboard-card__scale-root .dash-section,
+.dashboard-card--edit .dashboard-card__content .dash-section {
+  flex: none;
+  min-height: auto;
+  display: block;
 }
-.dashboard-card--edit .dashboard-card__scale-root .dash-section > .card {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  padding: calc(14px * var(--card-scale)) calc(16px * var(--card-scale));
+.dashboard-card--edit .dashboard-card__scale-root .dash-section > .card,
+.dashboard-card--edit .dashboard-card__content .dash-section > .card {
+  flex: none;
+  min-height: auto;
+  overflow: visible;
+  display: block;
+  padding: 14px 16px;
 }
-.dashboard-card--edit .dashboard-card__scale-root .section-title {
-  font-size: calc(1.125rem * var(--card-scale));
+.dashboard-card--edit .dashboard-card__scale-root .macro-strip,
+.dashboard-card--edit .dashboard-card__content .macro-strip {
+  flex: none;
+  min-height: auto;
+  align-content: start;
 }
-.dashboard-card--edit .dashboard-card__scale-root .macro-strip {
-  flex: 1;
-  min-height: 0;
-  align-content: stretch;
+.dashboard-card--edit .dashboard-card__scale-root .supp-chip-grid,
+.dashboard-card--edit .dashboard-card__content .supp-chip-grid {
+  flex: none;
+  min-height: auto;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  align-content: start;
 }
-.dashboard-card--edit .dashboard-card__scale-root .macro-cell {
-  padding: calc(12px * var(--card-scale)) calc(14px * var(--card-scale));
-  gap: calc(10px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .macro-ring {
-  width: calc(56px * var(--card-scale));
-  height: calc(56px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .macro-ring-pct {
-  font-size: calc(13px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .macro-label {
-  font-size: calc(12px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .macro-value {
-  font-size: calc(15px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .macro-status {
-  font-size: calc(11px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .macro-range {
-  font-size: calc(10px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .meal-name,
-.dashboard-card--edit .dashboard-card__scale-root .meal-macros,
-.dashboard-card--edit .dashboard-card__scale-root .meal-notes {
-  font-size: calc(14px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .supp-chip-grid {
-  flex: 1;
-  gap: calc(8px * var(--card-scale));
-  grid-template-columns: repeat(auto-fit, minmax(calc(120px * var(--card-scale)), 1fr));
-  align-content: stretch;
-}
-.dashboard-card--edit .dashboard-card__scale-root .supp-chip {
-  min-height: calc(64px * var(--card-scale));
-  padding: calc(8px * var(--card-scale)) calc(8px * var(--card-scale)) calc(8px * var(--card-scale)) calc(12px * var(--card-scale));
-  gap: calc(8px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .supp-chip__name {
-  font-size: calc(14px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .supp-chip__dose {
-  font-size: calc(12px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .supp-chip__check {
-  width: calc(20px * var(--card-scale));
-  height: calc(20px * var(--card-scale));
-  font-size: calc(13px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .stepper-btn {
-  width: calc(32px * var(--card-scale));
-  height: calc(32px * var(--card-scale));
-  min-height: calc(32px * var(--card-scale));
-  font-size: calc(16px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root .log-entry-row {
-  font-size: calc(14px * var(--card-scale));
-}
-.dashboard-card--edit .dashboard-card__scale-root input,
-.dashboard-card--edit .dashboard-card__scale-root button.btn-primary,
-.dashboard-card--edit .dashboard-card__scale-root button.btn-secondary {
-  font-size: calc(14px * var(--card-scale));
+.dashboard-card--edit .dashboard-card__scale-root .supp-chip,
+.dashboard-card--edit .dashboard-card__content .supp-chip {
+  height: auto;
+  min-height: 64px;
+  padding: 8px 8px 8px 12px;
+  gap: 8px;
 }
 .dashboard-card--edit {
   border: 2px dashed var(--color-primary);
@@ -2700,6 +2652,9 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   border-radius: 2px;
   box-shadow: 0 1px 4px rgba(37, 99, 235, 0.25);
   pointer-events: none;
+}
+.dashboard-canvas--edit .react-grid-item > .react-resizable-handle {
+  pointer-events: auto;
 }
 .dashboard-canvas--edit .react-resizable-handle-se::after {
   right: 6px;
