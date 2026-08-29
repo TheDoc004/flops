@@ -13,16 +13,19 @@ Run this skill after any change to the Today layout editor or when the user repo
 - `AUTH_DEV=1` on the API (default in local dev)
 - Desktop width **≥768px** for drag-handle chrome
 
-## Step 1 — Automated tests
+## Step 1 — One-shot verify (preferred)
 
 ```bash
-cd client && npm test -- src/features/dashboard/dashboardLayout.test.js
-cd client && npm run test:e2e
+cd client && npm run verify:layout-editor
 ```
 
-E2E covers: compact macros card height, visible resize handles, drag via handle, resize via SE corner.
+Runs unit tests + desktop + mobile browser checks. JSON reports in `client/e2e/reports/`.
 
-If E2E fails on `dev_code missing`, ensure the server runs with `AUTH_DEV=1`.
+**Production:** `export FLOPS_E2E_TOKEN="..."` then `npm run verify:layout-editor -- --production`
+
+**Headed:** `npm run verify:layout-editor:headed`
+
+Full env vars: `docs/verify-dashboard-editor.md`
 
 ## Step 2 — Manual / browser checks
 
