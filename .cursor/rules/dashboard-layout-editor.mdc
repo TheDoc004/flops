@@ -1,0 +1,59 @@
+---
+description: Dashboard layout editor — edit mode behavior, verification, and debugging
+globs: client/src/features/dashboard/**/*.{js,jsx},client/src/styles/index.css,client/e2e/**/*
+alwaysApply: false
+---
+
+# Dashboard layout editor
+
+Today dashboard customization lives at **`/?editLayout=1`** (Profile → **Customize dashboard**).
+
+## Architecture
+
+| Mode | Component | Layout |
+|------|-----------|--------|
+| View | `DashboardCanvas` stack | Natural height, no grid |
+| Edit | `react-grid-layout` (`GridLayout` + `WidthProvider`) | 12 cols, `EDIT_GRID_ROW_HEIGHT` (36px) |
+
+Key files:
+- `dashboardLayout.js` — merge, `layoutForEditSession`, `layoutToRgl`, profile visibility
+- `Dashboard.jsx` — edit session seeding, profile sync, save/discard
+- `DashboardCanvas.jsx` — stack vs grid switch
+- `DashboardEditContext.jsx` — dirty state, nav lock, exit dialog
+
+## Edit session seeding (critical)
+
+When entering edit mode, **`layoutForEditSession()`** resets visible cards to compact full-width rows (`EDIT_DEFAULT_ROWS`). Do **not** let `applyProfileToDashboard()` overwrite the draft layout mid-edit.
+
+- `profileLoadedRef` + `editSeededRef` gate seeding
+- `refetchDashPrefs` is skipped while `editLayout=1`
+- Discard restores `savedLayoutRef` (pre-edit profile layout)
+
+## What “working” looks like (desktop ≥768px)
+
+1. Banner: **Customizing Today**
+2. Cards open at **compact** height (macros ~2 rows, not full viewport)
+3. **Drag handle** (six-dot icon in card chrome) moves cards
+4. **Corner resize handles** (blue squares) change card size
+5. Supplement chips stay **short** — not stretched vertically
+
+Mobile (`<768px`) uses a different grid path (no drag handle chrome).
+
+## Verification checklist (agents)
+
+1. **Merge/deploy** — fix must be on `main` / live before judging production
+2. Run unit tests: `cd client && npm test -- src/features/dashboard/dashboardLayout.test.js`
+3. Run E2E: `cd client && npm run test:e2e` (starts API + Vite; needs `AUTH_DEV=1`)
+4. Desktop viewport **1280×900**; hard-refresh after deploy
+5. If broken on live only: inspect `GET /api/profile` → `dash_layout_json` for inflated `h` values
+6. Browser console: errors from `react-grid-layout` / `react-draggable`
+
+## Debugging bad saved layouts
+
+If cards are huge after partial fixes, user may have saved inflated `h` values. Entering edit should reset via `layoutForEditSession`. To fully reset: save a fresh layout from edit mode, or clear `dash_layout_json` on profile.
+
+## Do not
+
+- Re-add `flex: 1` / `height: 100%` stretch on macro strip or supp chips in edit mode
+- Call `setDashLayout(mergeDashLayout(...))` during active edit session without re-seeding
+- Use `Responsive` grid when a single breakpoint suffices — prefer controlled `GridLayout`
