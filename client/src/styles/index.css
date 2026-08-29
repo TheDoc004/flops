@@ -1337,7 +1337,10 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
 
 @media (max-width: 600px) {
   .cal-grid { gap: 4px; }
-  .cal-day { padding: 5px; }
+  .cal-day {
+    padding: 6px;
+    min-height: 44px;
+  }
   .cal-day-missed { font-size: 9px; line-height: 1.1; }
   .cal-day-note { font-size: 9px; }
 }
@@ -2704,6 +2707,56 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   flex-wrap: wrap;
   gap: 8px;
 }
+@media (max-width: 768px) {
+  .dash-edit-mode-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .dash-edit-mode-banner__actions {
+    width: 100%;
+  }
+  .dash-edit-mode-banner__actions .btn-primary,
+  .dash-edit-mode-banner__actions .btn-secondary {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+  .dash-layout-toolbar__hint {
+    font-size: 12px;
+  }
+  .dash-layout-chip {
+    min-height: 44px;
+  }
+  .dashboard-canvas--mobile-edit {
+    margin-bottom: 8px;
+    overflow-x: clip;
+    max-width: 100%;
+  }
+  .dashboard-canvas--mobile-edit .react-grid-layout {
+    max-width: 100%;
+  }
+  html[data-dash-layout-edit] .app-main {
+    overflow-x: clip;
+  }
+  .dashboard-canvas--mobile-edit .react-resizable-handle {
+    width: 36px;
+    height: 36px;
+  }
+  .dashboard-card__drag-handle {
+    width: 36px;
+    height: 36px;
+  }
+  .dashboard-card__edit-chrome {
+    margin-bottom: 8px;
+  }
+  .dash-edit-hint--desktop {
+    display: none;
+  }
+}
+@media (min-width: 769px) {
+  .dash-edit-hint--mobile {
+    display: none;
+  }
+}
 html[data-dash-layout-edit] .app-main {
   position: relative;
 }
@@ -3137,6 +3190,11 @@ html[data-notebook-day] .dashboard-card--edit {
 @media (min-width: 900px) {
   .settings-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 768px) {
+  .settings-grid__card .btn-primary {
+    min-height: 44px;
   }
 }
 .settings-grid__card {

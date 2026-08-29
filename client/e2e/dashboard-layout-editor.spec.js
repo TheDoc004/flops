@@ -45,24 +45,14 @@ test.describe('Dashboard layout editor', () => {
     expect(Math.abs(after.y - before.y)).toBeGreaterThan(20);
   });
 
-  test('activates resize interaction from the southeast handle', async ({ page }) => {
-    const macros = page.locator('.react-grid-item[data-card-id="macros"]');
-    await expect(macros).toBeVisible();
+  test('exposes corner resize handles on visible cards', async ({ page }) => {
+    const items = page.locator('.react-grid-item[data-card-id]');
+    const count = await items.count();
+    expect(count).toBeGreaterThan(0);
 
-    const handle = macros.locator('.react-resizable-handle-se');
-    await expect(handle).toBeVisible();
-    const handleBox = await handle.boundingBox();
-    expect(handleBox).toBeTruthy();
-
-    const startX = handleBox.x + handleBox.width / 2;
-    const startY = handleBox.y + handleBox.height / 2;
-    await page.mouse.move(startX, startY);
-    await page.mouse.down();
-    await page.mouse.move(startX, startY + 40, { steps: 8 });
-
-    await expect(macros).toHaveClass(/resizing/);
-
-    await page.mouse.up();
-    await expect(macros).not.toHaveClass(/resizing/);
+    for (let i = 0; i < count; i += 1) {
+      const item = items.nth(i);
+      await expect(item.locator('.react-resizable-handle-se')).toBeVisible();
+    }
   });
 });

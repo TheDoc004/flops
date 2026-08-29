@@ -44,8 +44,5 @@ export async function openAuthed(page, request, path) {
   }, token);
   await page.goto(path);
   await page.waitForLoadState('domcontentloaded');
-  await page.locator('.dash-edit-mode-banner, .dashboard-canvas--edit, .dashboard-stack').first().waitFor({
-    state: 'visible',
-    timeout: 30_000,
-  });
+  await page.locator('main.app-main').waitFor({ state: 'visible', timeout: 30_000 });
 }

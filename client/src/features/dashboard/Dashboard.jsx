@@ -883,8 +883,11 @@ export default function Dashboard() {
             onToggleCard={handleToggleCard}
             busyId={togglingCardId}
           />
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+          <p className="dash-edit-hint dash-edit-hint--desktop" style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
             Drag cards by the handle. Resize from any corner. Changes save when you choose Save &amp; close or confirm on exit.
+          </p>
+          <p className="dash-edit-hint dash-edit-hint--mobile" style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            Use the handle to move a card. Pinch-friendly corner squares resize. Save with Done or Save &amp; close.
           </p>
         </>
       )}

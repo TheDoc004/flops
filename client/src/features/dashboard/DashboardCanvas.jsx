@@ -85,12 +85,7 @@ export default function DashboardCanvas({
       className={cardEditClass(item.i, exitingIds, enteringIds)}
       data-card-id={item.i}
     >
-      {!isMobile && <EditCardChrome cardId={item.i} />}
-      {isMobile && (
-        <div className="dashboard-card__edit-label" aria-hidden="true">
-          {cardLabel(item.i)}
-        </div>
-      )}
+      <EditCardChrome cardId={item.i} />
       <div className="dashboard-card__content">{cards[item.i]}</div>
     </div>
   ));
@@ -101,7 +96,7 @@ export default function DashboardCanvas({
         className="layout"
         layout={rglLayout}
         rowHeight={EDIT_GRID_ROW_HEIGHT}
-        draggableHandle={isMobile ? undefined : '.dashboard-card__drag-handle'}
+        draggableHandle=".dashboard-card__drag-handle"
         onLayoutChange={onLayout}
         {...GRID_PROPS}
       >
