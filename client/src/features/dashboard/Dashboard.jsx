@@ -10,7 +10,8 @@ import { fetchLogRange, createLogEntry, createCustomLog, updateLogEntry, deleteL
 import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile, saveProfile } from '@shared/api/profile';
 import DashboardCanvas from './DashboardCanvas';
-import { mergeDashLayout } from './dashboardLayout';
+import DashboardLayoutToolbar from './DashboardLayoutToolbar';
+import { mergeDashLayout, profilePatchForLayout, setCardVisible } from './dashboardLayout';
 import WeightTrendMini from '@features/history/WeightTrendMini';
 import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
@@ -164,6 +165,9 @@ export default function Dashboard() {
   const [pasteUi, setPasteUi] = useState('idle'); // idle | pasting | done
   const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
   const [dashLayout, setDashLayout] = useState(() => mergeDashLayout(null));
+  const [exitingCardIds, setExitingCardIds] = useState([]);
+  const [enteringCardIds, setEnteringCardIds] = useState([]);
+  const [togglingCardId, setTogglingCardId] = useState(null);
   const [supplementMacros, setSupplementMacros] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 
   const greeting = useMemo(() => getGreeting(), []);
@@ -277,6 +281,21 @@ export default function Dashboard() {
     return () => root.removeAttribute('data-notebook-day');
   }, [isPastDay, isFutureDay]);
 
+  const applyProfileToDashboard = useCallback((p) => {
+    const se = p.dash_supplements_enabled;
+    setDashSupplementsEnabled(se !== 0 && se !== false && se !== '0');
+    setDashLayout(mergeDashLayout(p.dash_layout_json, p));
+  }, []);
+
+  const refetchDashPrefs = useCallback(async () => {
+    try {
+      const p = await fetchProfile();
+      applyProfileToDashboard(p);
+    } catch {
+      /* keep current layout */
+    }
+  }, [applyProfileToDashboard]);
+
   const load = useCallback(async () => {
     setGoalsError('');
     setError('');
@@ -289,13 +308,7 @@ export default function Dashboard() {
     ]);
 
     if (profileResult.status === 'fulfilled') {
-      const p = profileResult.value;
-      // dash_weight_chart_enabled / dash_weight_days are retained-unused: the
-      // weight trend chart moved to History, where its range follows the days
-      // selected there.
-      const se = p.dash_supplements_enabled;
-      setDashSupplementsEnabled(se !== 0 && se !== false && se !== '0');
-      setDashLayout(mergeDashLayout(p.dash_layout_json, p));
+      applyProfileToDashboard(profileResult.value);
     }
 
     if (logResult.status === 'fulfilled') {
@@ -326,12 +339,21 @@ export default function Dashboard() {
       setGoalsLoaded(false);
     }
 
-  }, [today]);
+  }, [today, applyProfileToDashboard]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async load updates UI from server
     void load();
   }, [load]);
+
+  // Re-sync dashboard cards when returning from Profile or refocusing the tab.
+  useEffect(() => {
+    if (location.pathname !== '/') return undefined;
+    const onFocus = () => { void refetchDashPrefs(); };
+    window.addEventListener('focus', onFocus);
+    void refetchDashPrefs();
+    return () => window.removeEventListener('focus', onFocus);
+  }, [location.pathname, refetchDashPrefs]);
 
   async function handleLog(data) {
     // A bare ingredient logs as a one-off food, not a recipe log.
@@ -489,11 +511,50 @@ export default function Dashboard() {
   const handleLayoutChange = useCallback(async (nextLayout) => {
     setDashLayout(nextLayout);
     try {
-      await saveProfile({ dash_layout_json: nextLayout });
+      await saveProfile({
+        dash_layout_json: nextLayout,
+        ...profilePatchForLayout(nextLayout),
+      });
     } catch {
       /* layout still applied locally */
     }
   }, []);
+
+  const displayLayout = useMemo(() => {
+    if (!exitingCardIds.length) return dashLayout;
+    const cards = dashLayout.cards.map(c =>
+      (exitingCardIds.includes(c.id) ? { ...c, visible: true } : c),
+    );
+    return { ...dashLayout, cards };
+  }, [dashLayout, exitingCardIds]);
+
+  const handleToggleCard = useCallback(async (cardId, visible) => {
+    setTogglingCardId(cardId);
+    try {
+      if (!visible) {
+        setExitingCardIds(prev => (prev.includes(cardId) ? prev : [...prev, cardId]));
+        await new Promise(r => setTimeout(r, 300));
+        setExitingCardIds(prev => prev.filter(id => id !== cardId));
+        const next = setCardVisible(dashLayout, cardId, false);
+        setDashLayout(next);
+        if (cardId === 'supplements') setDashSupplementsEnabled(false);
+        await saveProfile({ dash_layout_json: next, ...profilePatchForLayout(next) });
+      } else {
+        const next = setCardVisible(dashLayout, cardId, true);
+        setDashLayout(next);
+        if (cardId === 'supplements') setDashSupplementsEnabled(true);
+        setEnteringCardIds(prev => (prev.includes(cardId) ? prev : [...prev, cardId]));
+        setTimeout(() => {
+          setEnteringCardIds(prev => prev.filter(id => id !== cardId));
+        }, 400);
+        await saveProfile({ dash_layout_json: next, ...profilePatchForLayout(next) });
+      }
+    } catch {
+      /* local preview still updated */
+    } finally {
+      setTogglingCardId(null);
+    }
+  }, [dashLayout]);
 
   const dashboardCards = useMemo(() => ({
     macros: <MacroTotals totals={combinedTotals} targets={targets} />,
@@ -597,7 +658,7 @@ export default function Dashboard() {
     : ` dashboard-day-body--${dayShiftDir.current}`;
 
   return (
-    <div className="dashboard">
+    <div className={`dashboard${editLayout ? ' dashboard--layout-edit' : ''}`}>
       {/* ── Day ← / → row stays fixed in Y; banner animates below and may push the greeting ── */}
       <Reveal className="dash-toolbar">
         <div className="dash-day">
@@ -736,24 +797,33 @@ export default function Dashboard() {
       )}
 
       {editLayout && (
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-          Drag and resize cards. Macros stay pinned. Changes save automatically.{' '}
-          <button
-            type="button"
-            className="btn-secondary"
-            style={{ minHeight: 32, padding: '4px 12px', fontSize: 13, marginLeft: 4 }}
-            onClick={() => setSearchParams({})}
-          >
-            Done
-          </button>
-        </p>
+        <>
+          <DashboardLayoutToolbar
+            layout={dashLayout}
+            onToggleCard={handleToggleCard}
+            busyId={togglingCardId}
+          />
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            Drag cards by the handle. Resize from corners. Changes save automatically.{' '}
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ minHeight: 32, padding: '4px 12px', fontSize: 13, marginLeft: 4 }}
+              onClick={() => setSearchParams({})}
+            >
+              Done
+            </button>
+          </p>
+        </>
       )}
 
       <DashboardCanvas
-        layout={dashLayout}
+        layout={displayLayout}
         editMode={editLayout}
         onLayoutChange={handleLayoutChange}
         cards={dashboardCards}
+        exitingIds={exitingCardIds}
+        enteringIds={enteringCardIds}
       />
       </div>
 

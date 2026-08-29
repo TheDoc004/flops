@@ -5,6 +5,9 @@ import {
   layoutToRgl,
   rglToLayout,
   mobileStackOrder,
+  applyProfileVisibility,
+  profilePatchForLayout,
+  setCardVisible,
 } from './dashboardLayout';
 
 describe('mergeDashLayout', () => {
@@ -45,6 +48,17 @@ describe('mergeDashLayout', () => {
     const result = mergeDashLayout(null, { dash_weight_chart_card_enabled: 1 });
     expect(result.cards.find(c => c.id === 'weight_chart').visible).toBe(true);
   });
+
+  it('re-enables meals when profile flag is on even if layout saved hidden', () => {
+    const saved = {
+      version: 1,
+      cards: DEFAULT_DASH_LAYOUT.map(c =>
+        (c.id === 'meals' ? { ...c, visible: false } : c),
+      ),
+    };
+    const result = mergeDashLayout(saved, { dash_meals_enabled: 1 });
+    expect(result.cards.find(c => c.id === 'meals').visible).toBe(true);
+  });
 });
 
 describe('layoutToRgl', () => {
@@ -67,6 +81,32 @@ describe('rglToLayout', () => {
     const next = rglToLayout(prev, [{ i: 'macros', x: 0, y: 2, w: 12, h: 4 }]);
     expect(next.cards.find(c => c.id === 'macros').y).toBe(2);
     expect(next.cards).toHaveLength(DEFAULT_DASH_LAYOUT.length);
+  });
+});
+
+describe('setCardVisible', () => {
+  it('toggles a single card', () => {
+    const base = mergeDashLayout(null);
+    const next = setCardVisible(base, 'meals', false);
+    expect(next.cards.find(c => c.id === 'meals').visible).toBe(false);
+  });
+});
+
+describe('profilePatchForLayout', () => {
+  it('maps layout visibility to profile flags', () => {
+    const layout = setCardVisible(mergeDashLayout(null), 'weight', false);
+    const patch = profilePatchForLayout(layout);
+    expect(patch.dash_weight_enabled).toBe(0);
+    expect(patch.dash_meals_enabled).toBe(1);
+  });
+});
+
+describe('applyProfileVisibility', () => {
+  it('forces visibility from profile flags', () => {
+    const cards = DEFAULT_DASH_LAYOUT.map(c => ({ ...c, visible: false }));
+    applyProfileVisibility(cards, { dash_supplements_enabled: 1, dash_meals_enabled: 0 });
+    expect(cards.find(c => c.id === 'supplements').visible).toBe(true);
+    expect(cards.find(c => c.id === 'meals').visible).toBe(false);
   });
 });
 

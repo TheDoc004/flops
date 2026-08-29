@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchProfile, saveProfile } from '@shared/api/profile';
-import { DEFAULT_DASH_LAYOUT, DASH_LAYOUT_VERSION } from '../dashboard/dashboardLayout';
+import { DEFAULT_DASH_LAYOUT, DASH_LAYOUT_VERSION, mergeDashLayout } from '../dashboard/dashboardLayout';
 import { getInviteCode, linkCoach, myCoaches, revokeCoach } from '@shared/api/coach';
 import { useAuth } from '@shared/context/AuthContext';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
@@ -217,20 +217,29 @@ export default function Profile() {
     let cancelled = false;
     setDashPrefsError('');
     setDashPrefsSaved(false);
-    saveProfile({
+    const profileFlags = {
       dash_adherence_view: dashAdherenceView,
       dash_supplements_enabled: dashSupplementsEnabled ? 1 : 0,
       dash_weight_enabled: dashWeightEnabled ? 1 : 0,
       dash_meals_enabled: dashMealsEnabled ? 1 : 0,
       dash_weight_chart_card_enabled: dashWeightChartCardEnabled ? 1 : 0,
-    }).then(() => {
-      if (!cancelled) {
-        setDashPrefsSaved(true);
-        setTimeout(() => { if (!cancelled) setDashPrefsSaved(false); }, 2000);
+    };
+    (async () => {
+      try {
+        const current = await fetchProfile();
+        const nextLayout = mergeDashLayout(current.dash_layout_json, profileFlags);
+        await saveProfile({
+          ...profileFlags,
+          dash_layout_json: nextLayout,
+        });
+        if (!cancelled) {
+          setDashPrefsSaved(true);
+          setTimeout(() => { if (!cancelled) setDashPrefsSaved(false); }, 2000);
+        }
+      } catch (err) {
+        if (!cancelled) setDashPrefsError(err.message);
       }
-    }).catch(err => {
-      if (!cancelled) setDashPrefsError(err.message);
-    });
+    })();
     return () => { cancelled = true; };
   }, [
     dashAdherenceView,
@@ -442,7 +451,8 @@ export default function Profile() {
         <div className="card">
           <H3>Dashboard</H3>
           <p style={{ margin: '0 0 10px', color: 'var(--color-text-muted)', fontSize: 13 }}>
-            Choose which cards appear on Today. On desktop you can also drag and resize them.
+            Choose which cards appear on Today. For a live preview, use{' '}
+            <Link to="/?editLayout=1" style={{ color: 'var(--color-primary)' }}>Open layout editor</Link>.
           </p>
           {[
             {

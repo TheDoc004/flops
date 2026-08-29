@@ -2,6 +2,52 @@ export const DASH_LAYOUT_VERSION = 1;
 
 export const DASH_CARD_IDS = ['macros', 'supplements', 'weight', 'weight_chart', 'meals'];
 
+/** Card metadata for the layout editor and profile sync. */
+export const DASH_CARD_META = {
+  macros: { label: 'Macros', canHide: false },
+  supplements: { label: 'Supplements', profileKey: 'dash_supplements_enabled' },
+  weight: { label: 'Weight', profileKey: 'dash_weight_enabled' },
+  weight_chart: { label: 'Weight trend', profileKey: 'dash_weight_chart_card_enabled', defaultOff: true },
+  meals: { label: "Today's meals", profileKey: 'dash_meals_enabled' },
+};
+
+export function isProfileFlagOn(profile, key, defaultOn = true) {
+  if (!key) return defaultOn;
+  const v = profile[key];
+  if (v === null || v === undefined || v === '') return defaultOn;
+  return v !== 0 && v !== false && v !== '0';
+}
+
+/** Profile show/hide flags are authoritative for toggleable cards. */
+export function applyProfileVisibility(cards, profile = {}) {
+  for (const card of cards) {
+    const meta = DASH_CARD_META[card.id];
+    if (!meta?.profileKey) continue;
+    const on = isProfileFlagOn(profile, meta.profileKey, !meta.defaultOff);
+    card.visible = on;
+  }
+  return cards;
+}
+
+/** Build profile PUT fields from layout card visibility. */
+export function profilePatchForLayout(layout) {
+  const patch = {};
+  for (const id of DASH_CARD_IDS) {
+    const meta = DASH_CARD_META[id];
+    if (!meta?.profileKey) continue;
+    const card = layout?.cards?.find(c => c.id === id);
+    patch[meta.profileKey] = card?.visible !== false ? 1 : 0;
+  }
+  return patch;
+}
+
+export function setCardVisible(layout, cardId, visible) {
+  const cards = (layout?.cards || DEFAULT_DASH_LAYOUT).map(c =>
+    (c.id === cardId ? { ...c, visible } : c),
+  );
+  return { version: DASH_LAYOUT_VERSION, cards };
+}
+
 /** Default desktop canvas layout (12-column grid). */
 export const DEFAULT_DASH_LAYOUT = [
   { id: 'macros', x: 0, y: 0, w: 12, h: 4, visible: true },
@@ -47,22 +93,12 @@ export function mergeDashLayout(saved, profile = {}) {
     };
   });
 
-  if (profile.dash_supplements_enabled === 0 || profile.dash_supplements_enabled === false) {
-    const s = merged.find(c => c.id === 'supplements');
-    if (s) s.visible = false;
-  }
-  if (profile.dash_weight_enabled === 0 || profile.dash_weight_enabled === false) {
-    const w = merged.find(c => c.id === 'weight');
-    if (w) w.visible = false;
-  }
-  if (profile.dash_meals_enabled === 0 || profile.dash_meals_enabled === false) {
-    const m = merged.find(c => c.id === 'meals');
-    if (m) m.visible = false;
-  }
-  const chartOn = boolFlag(profile.dash_weight_chart_card_enabled, false)
-    || boolFlag(profile.dash_weight_chart_enabled, false);
+  applyProfileVisibility(merged, profile);
+  // Legacy alias: dash_weight_chart_enabled also turns on the chart card.
   const chart = merged.find(c => c.id === 'weight_chart');
-  if (chart) chart.visible = chartOn;
+  if (chart && boolFlag(profile.dash_weight_chart_enabled, false)) {
+    chart.visible = true;
+  }
 
   return { version: DASH_LAYOUT_VERSION, cards: merged };
 }

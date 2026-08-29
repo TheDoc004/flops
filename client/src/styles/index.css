@@ -2370,11 +2370,41 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   to { opacity: 1; transform: none; }
 }
 /* ── Dashboard canvas (react-grid-layout on desktop, stack on mobile) ── */
+.dashboard--layout-edit .dashboard-day-body {
+  position: relative;
+  padding: 20px 16px 28px 28px;
+  margin: 0 -16px;
+  border-radius: var(--radius-lg);
+  background-color: #f6f0e4;
+  background-image:
+    repeating-linear-gradient(
+      transparent,
+      transparent 27px,
+      rgba(120, 113, 108, 0.14) 27px,
+      rgba(120, 113, 108, 0.14) 28px
+    );
+  box-shadow: inset 4px 0 0 0 rgba(168, 162, 158, 0.35);
+  animation: dash-notebook-in 0.4s var(--ease-out);
+}
+@keyframes dash-notebook-in {
+  from { opacity: 0.6; }
+  to { opacity: 1; }
+}
 .dashboard-canvas {
   margin-top: var(--space-28);
 }
 .dashboard-canvas--edit .react-grid-item {
-  transition: box-shadow 0.12s ease;
+  transition:
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dashboard-canvas--edit .react-grid-item.react-draggable-dragging {
+  transition: none;
+  z-index: 12;
+}
+.dashboard-canvas--edit .react-grid-item > .dashboard-card {
+  box-shadow: 0 8px 28px rgba(37, 99, 235, 0.12);
 }
 .dashboard-card {
   background: var(--color-surface);
@@ -2383,6 +2413,139 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   box-shadow: var(--shadow-card);
   padding: var(--space-16) var(--space-20);
   overflow: visible;
+  transition:
+    opacity 280ms var(--ease-out),
+    transform 280ms var(--ease-out),
+    box-shadow 200ms ease,
+    border-color 200ms ease;
+}
+.dashboard-card--entering {
+  animation: dash-card-in 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dashboard-card--exiting {
+  opacity: 0;
+  transform: scale(0.96) translateY(-6px);
+  pointer-events: none;
+}
+@keyframes dash-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.dashboard-stack .dashboard-card {
+  height: auto;
+}
+.dashboard-canvas .dashboard-card {
+  height: 100%;
+  overflow: auto;
+}
+.dashboard-card--edit {
+  border: 2px dashed var(--color-primary);
+  border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-surface-border));
+  background: color-mix(in srgb, var(--color-surface) 92%, #fff8e8);
+}
+.dashboard-card__edit-chrome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 10px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary-subtle) 70%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-primary-ink);
+}
+.dashboard-card__drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-border);
+  color: var(--color-text-muted);
+  cursor: grab;
+}
+.dashboard-card__drag-handle:active {
+  cursor: grabbing;
+}
+.dashboard-card__edit-label {
+  flex: 1;
+  min-width: 0;
+}
+.dash-layout-toolbar {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-surface-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  animation: dash-card-in 0.35s var(--ease-out);
+}
+.dash-layout-toolbar__hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+.dash-layout-toolbar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dash-layout-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-surface-border);
+  background: var(--color-secondary-bg);
+  color: var(--color-text-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease,
+    opacity 0.2s ease;
+}
+.dash-layout-chip:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.dash-layout-chip.is-on {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-ink);
+}
+.dash-layout-chip.is-busy {
+  opacity: 0.65;
+}
+.dash-layout-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-faint);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.dash-layout-chip.is-on .dash-layout-chip__dot {
+  background: var(--color-primary);
+  transform: scale(1.15);
+}
+.dash-layout-chip__action {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-muted);
 }
 .dashboard-stack .dashboard-card {
   height: auto;
@@ -2400,12 +2563,10 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   overflow: visible;
 }
 .dashboard-card--edit {
-  border-style: dashed;
-  border-color: var(--color-border, var(--color-surface-border));
-  cursor: grab;
+  cursor: default;
 }
 .dashboard-card--edit:active {
-  cursor: grabbing;
+  cursor: default;
 }
 .dashboard-stack {
   display: flex;
