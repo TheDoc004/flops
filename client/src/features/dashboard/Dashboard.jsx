@@ -136,9 +136,12 @@ export default function Dashboard() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const editLayout = searchParams.get('editLayout') === '1';
+  const editLayoutRef = useRef(editLayout);
+  editLayoutRef.current = editLayout;
   const dashEdit = useDashboardEdit();
   const savedLayoutRef = useRef(null);
   const editSeededRef = useRef(false);
+  const profileLoadedRef = useRef(false);
 
   useEffect(() => {
     if (location.state?.scrollToTop) {
@@ -285,13 +288,28 @@ export default function Dashboard() {
     return () => root.removeAttribute('data-notebook-day');
   }, [isPastDay, isFutureDay]);
 
+  const seedEditLayout = useCallback((sourceLayout) => {
+    savedLayoutRef.current = sourceLayout;
+    const seeded = layoutForEditSession(sourceLayout, { mealCount: entries.length });
+    setDashLayout(seeded);
+    dashEdit?.beginSession(seeded);
+    editSeededRef.current = true;
+  }, [entries.length, dashEdit]);
+
   const applyProfileToDashboard = useCallback((p) => {
     const se = p.dash_supplements_enabled;
     setDashSupplementsEnabled(se !== 0 && se !== false && se !== '0');
-    setDashLayout(mergeDashLayout(p.dash_layout_json, p));
-  }, []);
+    const merged = mergeDashLayout(p.dash_layout_json, p);
+    profileLoadedRef.current = true;
+    if (editLayoutRef.current) {
+      if (!editSeededRef.current) seedEditLayout(merged);
+      return;
+    }
+    setDashLayout(merged);
+  }, [seedEditLayout]);
 
   const refetchDashPrefs = useCallback(async () => {
+    if (editLayoutRef.current) return;
     try {
       const p = await fetchProfile();
       applyProfileToDashboard(p);
@@ -535,15 +553,9 @@ export default function Dashboard() {
       editSeededRef.current = false;
       return;
     }
-    if (editSeededRef.current) return;
-    editSeededRef.current = true;
-    setDashLayout(prev => {
-      savedLayoutRef.current = prev;
-      const seeded = layoutForEditSession(prev, { mealCount: entries.length });
-      dashEdit?.beginSession(seeded);
-      return seeded;
-    });
-  }, [editLayout, entries.length, dashEdit]);
+    if (editSeededRef.current || !profileLoadedRef.current) return;
+    seedEditLayout(dashLayout);
+  }, [editLayout, dashLayout, seedEditLayout]);
 
   useEffect(() => {
     if (!editLayout || !dashEdit) return undefined;

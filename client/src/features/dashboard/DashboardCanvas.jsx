@@ -1,22 +1,24 @@
 import { useMemo } from 'react';
-import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
+import GridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
 import { DASH_CARD_META, EDIT_GRID_ROW_HEIGHT, layoutToRgl, mobileStackOrder, rglToLayout } from './dashboardLayout';
-import DashboardCardScale from './DashboardCardScale';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
-const Grid = WidthProvider(Responsive);
+const Grid = WidthProvider(GridLayout);
 
 const CORNER_HANDLES = ['nw', 'ne', 'sw', 'se'];
 
 const GRID_PROPS = {
+  cols: 12,
   margin: [12, 12],
   containerPadding: [0, 0],
   isDraggable: true,
   isResizable: true,
   compactType: 'vertical',
   resizeHandles: CORNER_HANDLES,
+  draggableCancel:
+    'input, textarea, button, select, option, a, .supp-chip__toggle, .stepper-btn, .log-entry-row button',
 };
 
 function cardEditClass(id, exitingIds, enteringIds) {
@@ -30,24 +32,17 @@ function cardLabel(id) {
   return DASH_CARD_META[id]?.label || id.replace('_', ' ');
 }
 
-function EditCard({ item, exitingIds, enteringIds, cards }) {
+function EditCardChrome({ cardId }) {
   return (
-    <div
-      key={item.i}
-      className={cardEditClass(item.i, exitingIds, enteringIds)}
-      data-card-id={item.i}
-    >
-      <div className="dashboard-card__edit-chrome">
-        <span className="dashboard-card__drag-handle" title="Drag to move" aria-label="Drag card">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
-            <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
-            <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
-            <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
-          </svg>
-        </span>
-        <span className="dashboard-card__edit-label">{cardLabel(item.i)}</span>
-      </div>
-      <DashboardCardScale>{cards[item.i]}</DashboardCardScale>
+    <div className="dashboard-card__edit-chrome">
+      <span className="dashboard-card__drag-handle" title="Drag to move" aria-label="Drag card">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+          <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+          <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+          <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+        </svg>
+      </span>
+      <span className="dashboard-card__edit-label">{cardLabel(cardId)}</span>
     </div>
   );
 }
@@ -83,56 +78,34 @@ export default function DashboardCanvas({
     onLayoutChange?.(rglToLayout(layout, current));
   };
 
-  if (isMobile) {
-    return (
-      <div className="dashboard-canvas dashboard-canvas--edit dashboard-canvas--mobile-edit">
-        <Grid
-          className="layout"
-          layouts={{ lg: rglLayout }}
-          breakpoints={{ lg: 0 }}
-          cols={{ lg: 12 }}
-          rowHeight={EDIT_GRID_ROW_HEIGHT}
-          {...GRID_PROPS}
-          onLayoutChange={onLayout}
-        >
-          {rglLayout.map(item => (
-            <div
-              key={item.i}
-              className={cardEditClass(item.i, exitingIds, enteringIds)}
-              data-card-id={item.i}
-            >
-              <div className="dashboard-card__edit-label" aria-hidden="true">
-                {cardLabel(item.i)}
-              </div>
-              <DashboardCardScale>{cards[item.i]}</DashboardCardScale>
-            </div>
-          ))}
-        </Grid>
-      </div>
-    );
-  }
+  const gridItems = rglLayout.map(item => (
+    <div
+      key={item.i}
+      data-grid={item}
+      className={cardEditClass(item.i, exitingIds, enteringIds)}
+      data-card-id={item.i}
+    >
+      {!isMobile && <EditCardChrome cardId={item.i} />}
+      {isMobile && (
+        <div className="dashboard-card__edit-label" aria-hidden="true">
+          {cardLabel(item.i)}
+        </div>
+      )}
+      <div className="dashboard-card__content">{cards[item.i]}</div>
+    </div>
+  ));
 
   return (
-    <div className="dashboard-canvas dashboard-canvas--edit">
+    <div className={`dashboard-canvas dashboard-canvas--edit${isMobile ? ' dashboard-canvas--mobile-edit' : ''}`}>
       <Grid
         className="layout"
-        layouts={{ lg: rglLayout }}
-        breakpoints={{ lg: 768 }}
-        cols={{ lg: 12 }}
+        layout={rglLayout}
         rowHeight={EDIT_GRID_ROW_HEIGHT}
-        draggableHandle=".dashboard-card__drag-handle"
-        {...GRID_PROPS}
+        draggableHandle={isMobile ? undefined : '.dashboard-card__drag-handle'}
         onLayoutChange={onLayout}
+        {...GRID_PROPS}
       >
-        {rglLayout.map(item => (
-          <EditCard
-            key={item.i}
-            item={item}
-            exitingIds={exitingIds}
-            enteringIds={enteringIds}
-            cards={cards}
-          />
-        ))}
+        {gridItems}
       </Grid>
     </div>
   );

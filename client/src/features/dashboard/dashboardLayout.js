@@ -155,6 +155,15 @@ export function layoutForEditSession(layout, { mealCount = 0 } = {}) {
 
 const CORNER_HANDLES = ['nw', 'ne', 'sw', 'se'];
 
+/** Max row counts in the editor — prevents runaway saved heights from dominating the canvas. */
+export const EDIT_MAX_ROWS = {
+  macros: 6,
+  supplements: 6,
+  weight: 5,
+  weight_chart: 8,
+  meals: 14,
+};
+
 export function layoutToRgl(layout) {
   return visibleCards(layout).map(c => ({
     i: c.id,
@@ -164,6 +173,7 @@ export function layoutToRgl(layout) {
     h: c.h,
     minW: 3,
     minH: 2,
+    maxH: EDIT_MAX_ROWS[c.id] ?? 10,
     resizeHandles: CORNER_HANDLES,
   }));
 }
