@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
-import { DASH_CARD_META, layoutToRgl, mobileStackOrder, rglToLayout } from './dashboardLayout';
+import { DASH_CARD_META, EDIT_GRID_ROW_HEIGHT, layoutToRgl, mobileStackOrder, rglToLayout } from './dashboardLayout';
 import DashboardCardScale from './DashboardCardScale';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -91,7 +91,7 @@ export default function DashboardCanvas({
           layouts={{ lg: rglLayout }}
           breakpoints={{ lg: 0 }}
           cols={{ lg: 12 }}
-          rowHeight={48}
+          rowHeight={EDIT_GRID_ROW_HEIGHT}
           {...GRID_PROPS}
           onLayoutChange={onLayout}
         >
@@ -119,7 +119,7 @@ export default function DashboardCanvas({
         layouts={{ lg: rglLayout }}
         breakpoints={{ lg: 768 }}
         cols={{ lg: 12 }}
-        rowHeight={42}
+        rowHeight={EDIT_GRID_ROW_HEIGHT}
         draggableHandle=".dashboard-card__drag-handle"
         {...GRID_PROPS}
         onLayoutChange={onLayout}

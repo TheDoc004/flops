@@ -1,5 +1,6 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@shared/context/AuthContext';
+import { useDashboardEdit } from '@features/dashboard/DashboardEditContext';
 import styles from './BottomNav.module.css';
 
 /* ── Icons (inline stroke SVG, sized via CSS) ── */
@@ -30,44 +31,60 @@ function isGymPath(pathname) {
 
 export default function BottomNav() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const dashEdit = useDashboardEdit();
   const { isCoach } = useAuth();
   const gym = isGymPath(pathname);
   const recipesActive = RECIPE_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`));
 
   const tabClass = ({ isActive }) => (isActive ? `${styles.tab} ${styles.tabActive}` : styles.tab);
 
+  function guardNav(e, to) {
+    if (!dashEdit?.editing) return;
+    e.preventDefault();
+    dashEdit.requestExit({
+      type: 'navigate',
+      onContinue: () => navigate(to),
+    });
+  }
+
+  function guardedTabClass(isActive) {
+    return isActive ? `${styles.tab} ${styles.tabActive}` : styles.tab;
+  }
+
   if (gym) {
     return (
       <nav className={styles.bar} aria-label="Training">
-        <NavLink to="/training" end className={tabClass}><IconHome /><span>Today</span></NavLink>
-        <NavLink to="/training/schedule" className={tabClass}><IconSchedule /><span>Schedule</span></NavLink>
-        <NavLink to="/training/workouts" className={tabClass}><IconWorkouts /><span>Workouts</span></NavLink>
-        <NavLink to="/training/progress" className={tabClass}><IconProgress /><span>Progress</span></NavLink>
+        <NavLink to="/training" end className={tabClass} onClick={e => guardNav(e, '/training')}><IconHome /><span>Today</span></NavLink>
+        <NavLink to="/training/schedule" className={tabClass} onClick={e => guardNav(e, '/training/schedule')}><IconSchedule /><span>Schedule</span></NavLink>
+        <NavLink to="/training/workouts" className={tabClass} onClick={e => guardNav(e, '/training/workouts')}><IconWorkouts /><span>Workouts</span></NavLink>
+        <NavLink to="/training/progress" className={tabClass} onClick={e => guardNav(e, '/training/progress')}><IconProgress /><span>Progress</span></NavLink>
       </nav>
     );
   }
 
   return (
     <nav className={styles.bar} aria-label="Primary">
-      <NavLink to="/" end className={tabClass}><IconHome /><span>Today</span></NavLink>
+      <NavLink to="/" end className={tabClass} onClick={e => guardNav(e, '/')}><IconHome /><span>Today</span></NavLink>
       <NavLink
         to="/recipes"
         className={recipesActive ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+        onClick={e => guardNav(e, '/recipes')}
       >
         <IconRecipes />
         <span>Library</span>
       </NavLink>
-      <NavLink to="/history" className={tabClass}><IconHistory /><span>Review</span></NavLink>
+      <NavLink to="/history" className={tabClass} onClick={e => guardNav(e, '/history')}><IconHistory /><span>Review</span></NavLink>
       {isCoach ? (
-        <NavLink to="/coach" className={tabClass}><IconCoach /><span>Coach</span></NavLink>
+        <NavLink to="/coach" className={tabClass} onClick={e => guardNav(e, '/coach')}><IconCoach /><span>Coach</span></NavLink>
       ) : null}
       <NavLink
         to="/plan/profile"
-        className={({ isActive }) => (
-          pathname === '/plan' || pathname.startsWith('/plan/')
-            ? `${styles.tab} ${styles.tabActive}`
-            : isActive ? `${styles.tab} ${styles.tabActive}` : styles.tab
-        )}
+        className={({ isActive }) => {
+          const planActive = pathname === '/plan' || pathname.startsWith('/plan/');
+          return guardedTabClass(planActive || isActive);
+        }}
+        onClick={e => guardNav(e, '/plan/profile')}
       >
         <IconPlan />
         <span>Profile</span>

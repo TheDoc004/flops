@@ -107,6 +107,54 @@ export function visibleCards(layout) {
   return (layout?.cards || DEFAULT_DASH_LAYOUT).filter(c => c.visible !== false);
 }
 
+export function mobileStackOrder(layout) {
+  return visibleCards(layout)
+    .slice()
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .map(c => c.id);
+}
+
+/** Row height (px) used in the layout editor grid. */
+export const EDIT_GRID_ROW_HEIGHT = 36;
+
+/** Default row counts per card — tuned to match natural Today stack heights. */
+export const EDIT_DEFAULT_ROWS = {
+  macros: 2,
+  supplements: 3,
+  weight: 2,
+  weight_chart: 4,
+  meals: 5,
+};
+
+/**
+ * Seed edit-mode grid from the current Today stack so cards open at view-like
+ * sizes (full-width column) instead of oversized saved grid cells.
+ */
+export function layoutForEditSession(layout, { mealCount = 0 } = {}) {
+  const order = mobileStackOrder(layout);
+  const byId = new Map((layout?.cards || DEFAULT_DASH_LAYOUT).map(c => [c.id, { ...c }]));
+  let y = 0;
+  for (const id of order) {
+    const c = byId.get(id);
+    if (!c || c.visible === false) continue;
+    let h = EDIT_DEFAULT_ROWS[id] ?? 3;
+    if (id === 'meals') {
+      h = Math.min(12, EDIT_DEFAULT_ROWS.meals + Math.ceil(mealCount / 2));
+    }
+    c.x = 0;
+    c.w = 12;
+    c.y = y;
+    c.h = h;
+    y += h;
+  }
+  return {
+    version: DASH_LAYOUT_VERSION,
+    cards: (layout?.cards || DEFAULT_DASH_LAYOUT).map(c => byId.get(c.id) || { ...c }),
+  };
+}
+
+const CORNER_HANDLES = ['nw', 'ne', 'sw', 'se'];
+
 export function layoutToRgl(layout) {
   return visibleCards(layout).map(c => ({
     i: c.id,
@@ -114,9 +162,9 @@ export function layoutToRgl(layout) {
     y: c.y,
     w: c.w,
     h: c.h,
-    minW: 4,
+    minW: 3,
     minH: 2,
-    static: c.id === 'macros',
+    resizeHandles: CORNER_HANDLES,
   }));
 }
 
@@ -138,11 +186,4 @@ export function rglToLayout(prevLayout, nextItems) {
     version: DASH_LAYOUT_VERSION,
     cards: DEFAULT_DASH_LAYOUT.map(def => byId.get(def.id) || { ...def }),
   };
-}
-
-export function mobileStackOrder(layout) {
-  return visibleCards(layout)
-    .slice()
-    .sort((a, b) => a.y - b.y || a.x - b.x)
-    .map(c => c.id);
 }

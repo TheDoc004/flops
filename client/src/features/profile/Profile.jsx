@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchProfile, saveProfile } from '@shared/api/profile';
-import { DEFAULT_DASH_LAYOUT, DASH_LAYOUT_VERSION, mergeDashLayout } from '../dashboard/dashboardLayout';
+import { DEFAULT_DASH_LAYOUT, DASH_LAYOUT_VERSION } from '../dashboard/dashboardLayout';
 import { getInviteCode, linkCoach, myCoaches, revokeCoach } from '@shared/api/coach';
 import { useAuth } from '@shared/context/AuthContext';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
@@ -210,44 +210,22 @@ export default function Profile() {
     }
   }
 
-  // Auto-save dashboard prefs whenever the user changes them.
-  // dashInteracted guard prevents a spurious save during initial load.
+  // Auto-save adherence view only — card visibility is edited in the layout editor.
   useEffect(() => {
     if (!dashInteracted.current) return;
     let cancelled = false;
     setDashPrefsError('');
     setDashPrefsSaved(false);
-    const profileFlags = {
-      dash_adherence_view: dashAdherenceView,
-      dash_supplements_enabled: dashSupplementsEnabled ? 1 : 0,
-      dash_weight_enabled: dashWeightEnabled ? 1 : 0,
-      dash_meals_enabled: dashMealsEnabled ? 1 : 0,
-      dash_weight_chart_card_enabled: dashWeightChartCardEnabled ? 1 : 0,
-    };
-    (async () => {
-      try {
-        const current = await fetchProfile();
-        const nextLayout = mergeDashLayout(current.dash_layout_json, profileFlags);
-        await saveProfile({
-          ...profileFlags,
-          dash_layout_json: nextLayout,
-        });
-        if (!cancelled) {
-          setDashPrefsSaved(true);
-          setTimeout(() => { if (!cancelled) setDashPrefsSaved(false); }, 2000);
-        }
-      } catch (err) {
-        if (!cancelled) setDashPrefsError(err.message);
+    saveProfile({ dash_adherence_view: dashAdherenceView }).then(() => {
+      if (!cancelled) {
+        setDashPrefsSaved(true);
+        setTimeout(() => { if (!cancelled) setDashPrefsSaved(false); }, 2000);
       }
-    })();
+    }).catch(err => {
+      if (!cancelled) setDashPrefsError(err.message);
+    });
     return () => { cancelled = true; };
-  }, [
-    dashAdherenceView,
-    dashSupplementsEnabled,
-    dashWeightEnabled,
-    dashMealsEnabled,
-    dashWeightChartCardEnabled,
-  ]);
+  }, [dashAdherenceView]);
 
   async function handleResetDashboardLayout() {
     dashInteracted.current = true;
@@ -423,7 +401,7 @@ export default function Profile() {
       </Reveal>
 
       <Reveal delay={60} className="settings-grid">
-        <div className="card">
+        <div className="card settings-grid__card">
           <H3>Nutrition units</H3>
           <p style={{ margin: '0 0 10px', color: '#6b7280', fontSize: 13 }}>
             How protein, carbs &amp; fat appear in goals and the Dashboard.
@@ -436,7 +414,7 @@ export default function Profile() {
           </div>
         </div>
 
-        <div className="card">
+        <div className="card settings-grid__card">
           <H3>Body measurements</H3>
           <p style={{ margin: '0 0 10px', color: '#6b7280', fontSize: 13 }}>
             How height and weight appear on this page.
@@ -448,66 +426,55 @@ export default function Profile() {
               label="US-style" sub="ft / in / lb" />
           </div>
         </div>
-        <div className="card">
+        <div className="card settings-grid__card">
           <H3>Dashboard</H3>
-          <p style={{ margin: '0 0 10px', color: 'var(--color-text-muted)', fontSize: 13 }}>
-            Choose which cards appear on Today. For a live preview, use{' '}
-            <Link to="/?editLayout=1" style={{ color: 'var(--color-primary)' }}>Open layout editor</Link>.
+          <p style={{ margin: '0 0 12px', color: 'var(--color-text-muted)', fontSize: 13 }}>
+            Customize which cards appear on Today and how they&apos;re arranged.
           </p>
-          {[
-            {
-              checked: dashSupplementsEnabled,
-              onChange: setDashSupplementsEnabled,
-              title: 'Take the same stack daily?',
-              sub: 'Show a check-off strip under your macros',
-            },
-            {
-              checked: dashWeightEnabled,
-              onChange: setDashWeightEnabled,
-              title: 'Weigh in on Today?',
-              sub: 'Show today\'s weight field on the dashboard',
-            },
-            {
-              checked: dashWeightChartCardEnabled,
-              onChange: setDashWeightChartCardEnabled,
-              title: 'Want a quick weight trend?',
-              sub: 'Add a 14-day sparkline card (desktop layout)',
-            },
-            {
-              checked: dashMealsEnabled,
-              onChange: setDashMealsEnabled,
-              title: 'Log meals from Today?',
-              sub: 'Show today\'s meal list on the dashboard',
-            },
-          ].map(opt => (
-            <label
-              key={opt.title}
-              style={{
-                display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
-                padding: '8px 10px', marginBottom: 8, borderRadius: 9,
-                border: `1px solid ${opt.checked ? 'var(--color-primary)' : '#e8e4dc'}`,
-                background: opt.checked ? 'var(--color-primary-subtle)' : 'transparent',
-                transition: 'border-color 0.12s, background 0.12s',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={opt.checked}
-                onChange={e => {
-                  dashInteracted.current = true;
-                  opt.onChange(e.target.checked);
-                }}
-                style={{ flexShrink: 0, marginTop: 3, width: 'auto' }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-body)', lineHeight: 1.3 }}>
-                  {opt.title}
+          <ul className="dash-pref-hints">
+            {[
+              {
+                title: 'Take the same stack daily?',
+                sub: 'Show a check-off strip under your macros',
+                on: dashSupplementsEnabled,
+              },
+              {
+                title: 'Weigh in on Today?',
+                sub: "Show today's weight field on the dashboard",
+                on: dashWeightEnabled,
+              },
+              {
+                title: 'Want a quick weight trend?',
+                sub: 'Add a 14-day sparkline card (desktop layout)',
+                on: dashWeightChartCardEnabled,
+              },
+              {
+                title: 'Log meals from Today?',
+                sub: "Show today's meal list on the dashboard",
+                on: dashMealsEnabled,
+              },
+            ].map(hint => (
+              <li key={hint.title} className="dash-pref-hint">
+                <div className="dash-pref-hint__copy">
+                  <div className="dash-pref-hint__title">{hint.title}</div>
+                  <div className="dash-pref-hint__sub">{hint.sub}</div>
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-faint)', marginTop: 1 }}>{opt.sub}</div>
-              </div>
-            </label>
-          ))}
-          <div style={{ marginTop: 10 }}>
+                <span className={`dash-pref-hint__badge${hint.on ? ' is-on' : ''}`}>
+                  {hint.on ? 'On Today' : 'Hidden'}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div style={{ marginTop: 'auto', paddingTop: 14 }}>
+            <Link
+              to="/?editLayout=1"
+              className="btn-primary"
+              style={{ display: 'inline-block', textDecoration: 'none', width: '100%', textAlign: 'center' }}
+            >
+              Customize dashboard
+            </Link>
+          </div>
+          <div style={{ marginTop: 14 }}>
             <label style={{ marginBottom: 4 }}>Goal adherence view</label>
             <select
               value={dashAdherenceView}
@@ -522,22 +489,15 @@ export default function Profile() {
               <option value="calendar">Month calendar</option>
             </select>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
-            <Link
-              to="/?editLayout=1"
-              className="btn-secondary"
-              style={{ textDecoration: 'none', fontSize: 13 }}
-            >
-              Open layout editor
-            </Link>
+          <div style={{ marginTop: 12 }}>
             <button
               type="button"
               className="btn-secondary"
-              style={{ fontSize: 13 }}
+              style={{ fontSize: 13, width: '100%' }}
               disabled={dashResetBusy}
               onClick={() => { void handleResetDashboardLayout(); }}
             >
-              {dashResetBusy ? 'Resetting…' : 'Reset layout'}
+              {dashResetBusy ? 'Resetting…' : 'Reset layout to defaults'}
             </button>
           </div>
           {dashPrefsError && <p className="error" style={{ marginTop: 8 }}>{dashPrefsError}</p>}

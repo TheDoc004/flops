@@ -11,7 +11,8 @@ import { fetchGoals } from '@shared/api/goals';
 import { fetchProfile, saveProfile } from '@shared/api/profile';
 import DashboardCanvas from './DashboardCanvas';
 import DashboardLayoutToolbar from './DashboardLayoutToolbar';
-import { mergeDashLayout, profilePatchForLayout, setCardVisible } from './dashboardLayout';
+import { useDashboardEdit } from './DashboardEditContext';
+import { layoutForEditSession, mergeDashLayout, profilePatchForLayout, setCardVisible } from './dashboardLayout';
 import WeightTrendMini from '@features/history/WeightTrendMini';
 import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
@@ -133,8 +134,11 @@ function initialBannerDismissed(viewing, cal) {
 export default function Dashboard() {
   const { bodyUnits } = useMacroUnits();
   const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const editLayout = searchParams.get('editLayout') === '1';
+  const dashEdit = useDashboardEdit();
+  const savedLayoutRef = useRef(null);
+  const editSeededRef = useRef(false);
 
   useEffect(() => {
     if (location.state?.scrollToTop) {
@@ -512,17 +516,49 @@ export default function Dashboard() {
     minHeight: '44px',
   };
 
-  const handleLayoutChange = useCallback(async (nextLayout) => {
+  const handleLayoutChange = useCallback((nextLayout) => {
     setDashLayout(nextLayout);
-    try {
-      await saveProfile({
-        dash_layout_json: nextLayout,
-        ...profilePatchForLayout(nextLayout),
-      });
-    } catch {
-      /* layout still applied locally */
-    }
+    dashEdit?.markDirty(nextLayout);
+  }, [dashEdit]);
+
+  const persistLayout = useCallback(async (layout) => {
+    await saveProfile({
+      dash_layout_json: layout,
+      ...profilePatchForLayout(layout),
+    });
+    const se = profilePatchForLayout(layout).dash_supplements_enabled;
+    if (se != null) setDashSupplementsEnabled(se === 1);
   }, []);
+
+  useEffect(() => {
+    if (!editLayout) {
+      editSeededRef.current = false;
+      return;
+    }
+    if (editSeededRef.current) return;
+    editSeededRef.current = true;
+    setDashLayout(prev => {
+      savedLayoutRef.current = prev;
+      const seeded = layoutForEditSession(prev, { mealCount: entries.length });
+      dashEdit?.beginSession(seeded);
+      return seeded;
+    });
+  }, [editLayout, entries.length, dashEdit]);
+
+  useEffect(() => {
+    if (!editLayout || !dashEdit) return undefined;
+    dashEdit.registerHandlers({
+      onSave: async () => {
+        await persistLayout(dashLayout);
+        savedLayoutRef.current = dashLayout;
+        dashEdit.beginSession(dashLayout);
+      },
+      onDiscard: () => {
+        if (savedLayoutRef.current) setDashLayout(savedLayoutRef.current);
+      },
+    });
+    return () => dashEdit.registerHandlers(null);
+  }, [editLayout, dashEdit, dashLayout, persistLayout]);
 
   const displayLayout = useMemo(() => {
     if (!exitingCardIds.length) return dashLayout;
@@ -542,7 +578,7 @@ export default function Dashboard() {
         const next = setCardVisible(dashLayout, cardId, false);
         setDashLayout(next);
         if (cardId === 'supplements') setDashSupplementsEnabled(false);
-        await saveProfile({ dash_layout_json: next, ...profilePatchForLayout(next) });
+        dashEdit?.markDirty(next);
       } else {
         const next = setCardVisible(dashLayout, cardId, true);
         setDashLayout(next);
@@ -551,14 +587,20 @@ export default function Dashboard() {
         setTimeout(() => {
           setEnteringCardIds(prev => prev.filter(id => id !== cardId));
         }, 400);
-        await saveProfile({ dash_layout_json: next, ...profilePatchForLayout(next) });
+        dashEdit?.markDirty(next);
       }
-    } catch {
-      /* local preview still updated */
     } finally {
       setTogglingCardId(null);
     }
-  }, [dashLayout]);
+  }, [dashLayout, dashEdit]);
+
+  const handleFinishEdit = useCallback(() => {
+    if (!dashEdit?.dirty) {
+      dashEdit?.finishExit();
+      return;
+    }
+    dashEdit.requestExit({ type: 'close' });
+  }, [dashEdit]);
 
   const dashboardCards = useMemo(() => ({
     macros: <MacroTotals totals={combinedTotals} targets={targets} />,
@@ -663,6 +705,24 @@ export default function Dashboard() {
 
   return (
     <div className={`dashboard${editLayout ? ' dashboard--layout-edit' : ''}`}>
+      {editLayout && (
+        <div className="dash-edit-mode-banner" role="status">
+          <div className="dash-edit-mode-banner__copy">
+            <strong>Customizing Today</strong>
+            <span>Drag, resize, and add or hide cards. Press Esc to exit.</span>
+          </div>
+          <div className="dash-edit-mode-banner__actions">
+            {dashEdit?.dirty && (
+              <button type="button" className="btn-primary" onClick={() => { void persistLayout(dashLayout).then(() => dashEdit?.finishExit()); }}>
+                Save &amp; close
+              </button>
+            )}
+            <button type="button" className="btn-secondary" onClick={handleFinishEdit}>
+              {dashEdit?.dirty ? 'Exit…' : 'Done'}
+            </button>
+          </div>
+        </div>
+      )}
       {/* ── Day ← / → row stays fixed in Y; banner animates below and may push the greeting ── */}
       <Reveal className="dash-toolbar">
         <div className="dash-day">
@@ -706,6 +766,8 @@ export default function Dashboard() {
           </button>
         </div>
         <div className="dash-actions">
+          {!editLayout && (
+          <>
           <button
             type="button"
             className="btn-ai"
@@ -731,6 +793,8 @@ export default function Dashboard() {
           >
             Training
           </Link>
+          </>
+          )}
         </div>
       </Reveal>
 
@@ -808,15 +872,7 @@ export default function Dashboard() {
             busyId={togglingCardId}
           />
           <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-            Drag cards by the handle. Resize from corners. Changes save automatically.{' '}
-            <button
-              type="button"
-              className="btn-secondary"
-              style={{ minHeight: 32, padding: '4px 12px', fontSize: 13, marginLeft: 4 }}
-              onClick={() => setSearchParams({})}
-            >
-              Done
-            </button>
+            Drag cards by the handle. Resize from any corner. Changes save when you choose Save &amp; close or confirm on exit.
           </p>
         </>
       )}

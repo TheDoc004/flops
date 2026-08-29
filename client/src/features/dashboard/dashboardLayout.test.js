@@ -8,6 +8,7 @@ import {
   applyProfileVisibility,
   profilePatchForLayout,
   setCardVisible,
+  layoutForEditSession,
 } from './dashboardLayout';
 
 describe('mergeDashLayout', () => {
@@ -62,10 +63,11 @@ describe('mergeDashLayout', () => {
 });
 
 describe('layoutToRgl', () => {
-  it('pins macros as static', () => {
+  it('includes corner resize handles on items', () => {
     const layout = mergeDashLayout(null);
     const items = layoutToRgl(layout);
-    expect(items.find(i => i.i === 'macros').static).toBe(true);
+    expect(items.find(i => i.i === 'macros').resizeHandles).toEqual(['nw', 'ne', 'sw', 'se']);
+    expect(items.find(i => i.i === 'macros').static).toBeUndefined();
   });
 
   it('omits hidden cards', () => {
@@ -107,6 +109,17 @@ describe('applyProfileVisibility', () => {
     applyProfileVisibility(cards, { dash_supplements_enabled: 1, dash_meals_enabled: 0 });
     expect(cards.find(c => c.id === 'supplements').visible).toBe(true);
     expect(cards.find(c => c.id === 'meals').visible).toBe(false);
+  });
+});
+
+describe('layoutForEditSession', () => {
+  it('stacks visible cards full-width with compact row heights', () => {
+    const base = mergeDashLayout(null);
+    const edit = layoutForEditSession(base);
+    const macros = edit.cards.find(c => c.id === 'macros');
+    expect(macros.w).toBe(12);
+    expect(macros.x).toBe(0);
+    expect(macros.h).toBeLessThanOrEqual(4);
   });
 });
 

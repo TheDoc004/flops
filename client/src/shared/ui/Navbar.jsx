@@ -1,5 +1,6 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@shared/context/AuthContext';
+import { useDashboardEdit } from '@features/dashboard/DashboardEditContext';
 import styles from './Navbar.module.css';
 
 /* Flat top nav — every item is a direct link, no dropdowns.
@@ -20,8 +21,19 @@ function isGymPath(pathname) {
 
 export default function Navbar() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const dashEdit = useDashboardEdit();
   const { isCoach } = useAuth();
   const gym = isGymPath(pathname);
+
+  function guardNav(e, to) {
+    if (!dashEdit?.editing) return;
+    e.preventDefault();
+    dashEdit.requestExit({
+      type: 'navigate',
+      onContinue: () => navigate(to),
+    });
+  }
 
   const nutritionLinks = [
     { label: 'Today', to: '/', end: true },
@@ -48,7 +60,11 @@ export default function Navbar() {
     <nav className={styles.nav}>
       <div className={styles.inner}>
         {/* Brand: cropped badge + wordmark. Gym home stays in the gym. */}
-        <NavLink to={gym ? '/training' : '/'} className={styles.brand}>
+        <NavLink
+          to={gym ? '/training' : '/'}
+          className={styles.brand}
+          onClick={e => guardNav(e, gym ? '/training' : '/')}
+        >
           <div className={styles.badgeWrap}>
             <img src="/flops-badge.png" alt="Flops logo" className={styles.badge} />
           </div>
@@ -68,6 +84,7 @@ export default function Navbar() {
                 to={l.to}
                 end={l.end}
                 className={({ isActive }) => ((sectionActive ?? isActive) ? styles.active : '')}
+                onClick={e => guardNav(e, l.to)}
               >
                 {l.label}
               </NavLink>
