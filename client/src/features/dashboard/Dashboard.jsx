@@ -351,9 +351,13 @@ export default function Dashboard() {
     if (location.pathname !== '/') return undefined;
     const onFocus = () => { void refetchDashPrefs(); };
     window.addEventListener('focus', onFocus);
-    void refetchDashPrefs();
     return () => window.removeEventListener('focus', onFocus);
   }, [location.pathname, refetchDashPrefs]);
+
+  // Navigating back to Today from Profile should pick up pref changes immediately.
+  useEffect(() => {
+    if (location.pathname === '/') void refetchDashPrefs();
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps -- only on route change
 
   async function handleLog(data) {
     // A bare ingredient logs as a one-off food, not a recipe log.
