@@ -119,11 +119,11 @@ export const EDIT_GRID_ROW_HEIGHT = 36;
 
 /** Default row counts per card — tuned to match natural Today stack heights. */
 export const EDIT_DEFAULT_ROWS = {
-  macros: 2,
-  supplements: 3,
-  weight: 2,
-  weight_chart: 4,
-  meals: 5,
+  macros: 3,
+  supplements: 4,
+  weight: 3,
+  weight_chart: 5,
+  meals: 6,
 };
 
 /**

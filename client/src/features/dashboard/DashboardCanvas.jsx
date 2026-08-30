@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import useMediaQuery from '@shared/hooks/useMediaQuery';
+import DashboardCardScale from './DashboardCardScale';
 import { DASH_CARD_META, EDIT_GRID_ROW_HEIGHT, layoutToRgl, mobileStackOrder, rglToLayout } from './dashboardLayout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -87,7 +88,9 @@ export default function DashboardCanvas({
       data-card-id={item.i}
     >
       <EditCardChrome cardId={item.i} />
-      <div className="dashboard-card__content">{cards[item.i]}</div>
+      <div className="dashboard-card__content">
+        <DashboardCardScale>{cards[item.i]}</DashboardCardScale>
+      </div>
     </div>
   ));
 
