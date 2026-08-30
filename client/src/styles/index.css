@@ -2397,19 +2397,18 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   margin-top: var(--space-28);
 }
 .dashboard-canvas--edit .react-grid-item {
-  transition:
-    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 320ms cubic-bezier(0.22, 1, 0.36, 1);
-  overflow: visible;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+/* Height/width must not animate during resize — it reads as the card expanding downward. */
+.dashboard-canvas--edit .react-grid-item.react-draggable-dragging,
+.dashboard-canvas--edit .react-grid-item:has(.react-resizable-handle:active) {
+  transition: none;
+  z-index: 12;
 }
 /* Magnetic drop — no red placeholder slot; neighbors reflow via compactType. */
 .dashboard-canvas--edit .react-grid-placeholder {
   display: none !important;
-}
-.dashboard-canvas--edit .react-grid-item.react-draggable-dragging {
-  transition: none;
-  z-index: 12;
 }
 .dashboard-canvas--edit .react-grid-item > .dashboard-card {
   box-shadow: 0 8px 28px rgba(37, 99, 235, 0.12);
@@ -2452,23 +2451,25 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   height: 100%;
 }
 .dashboard-canvas--edit .dashboard-card {
-  height: auto;
-  max-height: 100%;
-  overflow: visible;
+  height: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 .dashboard-card__content {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .dashboard-card__scale-root {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   overflow: visible;
   --card-scale: 1;
+  will-change: transform;
 }
 .dashboard-card--edit .dashboard-card__scale-root .dash-section,
 .dashboard-card--edit .dashboard-card__content .dash-section {
@@ -2770,15 +2771,15 @@ html[data-dash-layout-edit] nav[class*="bar"] {
   border: none;
   padding: 0;
   background: transparent;
+  width: auto;
   max-width: none;
-  max-height: none;
+  box-shadow: none;
 }
 .dash-edit-exit-dialog::backdrop {
   background: rgba(17, 24, 39, 0.45);
 }
 .dash-edit-exit-dialog__panel {
   width: min(420px, 92vw);
-  margin: auto;
   padding: 22px 20px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-surface-border);

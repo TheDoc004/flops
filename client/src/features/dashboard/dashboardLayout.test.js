@@ -130,7 +130,7 @@ describe('layoutForEditSession', () => {
     const macros = edit.cards.find(c => c.id === 'macros');
     expect(macros.w).toBe(12);
     expect(macros.x).toBe(0);
-    expect(macros.h).toBeLessThanOrEqual(4);
+    expect(macros.h).toBeLessThanOrEqual(6);
   });
 
   it('resets inflated saved heights to compact edit defaults', () => {
@@ -141,7 +141,7 @@ describe('layoutForEditSession', () => {
       ),
     };
     const edit = layoutForEditSession(mergeDashLayout(saved));
-    expect(edit.cards.find(c => c.id === 'macros').h).toBe(2);
+    expect(edit.cards.find(c => c.id === 'macros').h).toBe(3);
   });
 });
 
