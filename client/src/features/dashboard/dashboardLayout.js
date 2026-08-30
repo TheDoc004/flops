@@ -164,13 +164,21 @@ export const EDIT_MAX_ROWS = {
   meals: 14,
 };
 
+function clampEditRows(cardId, h) {
+  const max = EDIT_MAX_ROWS[cardId] ?? 10;
+  const min = 2;
+  const n = Number(h);
+  if (!Number.isFinite(n)) return EDIT_DEFAULT_ROWS[cardId] ?? 3;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
 export function layoutToRgl(layout) {
   return visibleCards(layout).map(c => ({
     i: c.id,
     x: c.x,
     y: c.y,
     w: c.w,
-    h: c.h,
+    h: clampEditRows(c.id, c.h),
     minW: 3,
     minH: 2,
     maxH: EDIT_MAX_ROWS[c.id] ?? 10,

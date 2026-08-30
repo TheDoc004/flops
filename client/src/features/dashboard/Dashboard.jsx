@@ -140,6 +140,7 @@ export default function Dashboard() {
   editLayoutRef.current = editLayout;
   const dashEdit = useDashboardEdit();
   const savedLayoutRef = useRef(null);
+  const profileLayoutRef = useRef(null);
   const editSeededRef = useRef(false);
   const profileLoadedRef = useRef(false);
 
@@ -175,6 +176,7 @@ export default function Dashboard() {
   const [exitingCardIds, setExitingCardIds] = useState([]);
   const [enteringCardIds, setEnteringCardIds] = useState([]);
   const [togglingCardId, setTogglingCardId] = useState(null);
+  const [editSessionKey, setEditSessionKey] = useState(0);
   const [supplementMacros, setSupplementMacros] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 
   const greeting = useMemo(() => getGreeting(), []);
@@ -294,12 +296,14 @@ export default function Dashboard() {
     setDashLayout(seeded);
     dashEdit?.beginSession(seeded);
     editSeededRef.current = true;
+    setEditSessionKey(k => k + 1);
   }, [entries.length, dashEdit]);
 
   const applyProfileToDashboard = useCallback((p) => {
     const se = p.dash_supplements_enabled;
     setDashSupplementsEnabled(se !== 0 && se !== false && se !== '0');
     const merged = mergeDashLayout(p.dash_layout_json, p);
+    profileLayoutRef.current = merged;
     profileLoadedRef.current = true;
     if (editLayoutRef.current) {
       if (!editSeededRef.current) seedEditLayout(merged);
@@ -554,8 +558,8 @@ export default function Dashboard() {
       return;
     }
     if (editSeededRef.current || !profileLoadedRef.current) return;
-    seedEditLayout(dashLayout);
-  }, [editLayout, dashLayout, seedEditLayout]);
+    seedEditLayout(profileLayoutRef.current ?? mergeDashLayout(null));
+  }, [editLayout, seedEditLayout]);
 
   useEffect(() => {
     if (!editLayout || !dashEdit) return undefined;
@@ -895,6 +899,7 @@ export default function Dashboard() {
       <DashboardCanvas
         layout={displayLayout}
         editMode={editLayout}
+        layoutSessionKey={editSessionKey}
         onLayoutChange={handleLayoutChange}
         cards={dashboardCards}
         exitingIds={exitingCardIds}

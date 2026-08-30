@@ -75,6 +75,17 @@ describe('layoutToRgl', () => {
     const items = layoutToRgl(layout);
     expect(items.some(i => i.i === 'weight')).toBe(false);
   });
+
+  it('clamps inflated saved heights to edit max rows', () => {
+    const saved = {
+      version: 1,
+      cards: DEFAULT_DASH_LAYOUT.map(c =>
+        (c.id === 'macros' ? { ...c, h: 20, visible: true } : c),
+      ),
+    };
+    const items = layoutToRgl(mergeDashLayout(saved));
+    expect(items.find(i => i.i === 'macros').h).toBe(6);
+  });
 });
 
 describe('rglToLayout', () => {
