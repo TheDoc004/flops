@@ -676,34 +676,36 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                   <div key={line.id} className="slot-list__line">
                     <div className="slot-row">
                       <div className="slot-row__name" title={lineDisplayName(line)}>
-                        <button
-                          type="button"
-                          onClick={() => (open ? setSubLineId(null) : openSubstitutes(line))}
-                          aria-expanded={open}
-                          aria-label={`Find substitutes for ${line.name}`}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            margin: 0,
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            color: 'var(--color-text-strong)',
-                            font: 'inherit',
-                            textDecoration: 'underline',
-                            textDecorationStyle: 'dotted',
-                          }}
-                          title="Find substitutes from your library"
-                        >
-                          {line.name}
-                        </button>
-                        {line.prepped_batch_id ? (
-                          <PreppedIndicator
-                            detail={batchById[String(line.prepped_batch_id)]
-                              ? `${Math.round(Number(batchById[String(line.prepped_batch_id)].remaining_weight_g))}g left`
-                              : undefined}
-                          />
-                        ) : null}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => (open ? setSubLineId(null) : openSubstitutes(line))}
+                            aria-expanded={open}
+                            aria-label={`Find substitutes for ${line.name}`}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              margin: 0,
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              color: 'var(--color-text-strong)',
+                              font: 'inherit',
+                              textDecoration: 'underline',
+                              textDecorationStyle: 'dotted',
+                            }}
+                            title="Find substitutes from your library"
+                          >
+                            {line.name}
+                          </button>
+                          {line.prepped_batch_id ? (
+                            <PreppedIndicator
+                              detail={batchById[String(line.prepped_batch_id)]
+                                ? `${Math.round(Number(batchById[String(line.prepped_batch_id)].remaining_weight_g))}g left`
+                                : undefined}
+                            />
+                          ) : null}
+                        </div>
                         {line.calories != null && (
                           <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
                             {Math.round(line.calories)} cal · P {Number(line.protein_g).toFixed(1)} · C{' '}
