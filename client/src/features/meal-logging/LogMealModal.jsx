@@ -4,6 +4,7 @@ import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import { fetchPreppedBatches } from '@shared/api/preppedBatches';
 import { suggestSubstitutes } from '@shared/api/ai';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
+import PreppedIndicator from '@shared/ui/PreppedIndicator';
 import IngredientCombobox from '@features/meal-builder/IngredientCombobox';
 import { canonicalUnit, loggableUnitsFor } from '@shared/utils/unitConvert';
 import { pluralizeUnit } from '@shared/utils/servingBasis';
@@ -696,6 +697,13 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                         >
                           {line.name}
                         </button>
+                        {line.prepped_batch_id ? (
+                          <PreppedIndicator
+                            detail={batchById[String(line.prepped_batch_id)]
+                              ? `${Math.round(Number(batchById[String(line.prepped_batch_id)].remaining_weight_g))}g left`
+                              : undefined}
+                          />
+                        ) : null}
                         {line.calories != null && (
                           <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
                             {Math.round(line.calories)} cal · P {Number(line.protein_g).toFixed(1)} · C{' '}
