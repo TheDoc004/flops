@@ -1485,6 +1485,34 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
   color: var(--color-primary-ink);
 }
 
+/* Active cooked-batch marker — ingredient library, combobox, receipt rows. */
+.prepped-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--status-partial-bg);
+  color: var(--status-partial-text);
+  border: 1px solid var(--status-partial-border);
+  vertical-align: middle;
+}
+.prepped-indicator__detail {
+  text-transform: none;
+  font-weight: 600;
+  letter-spacing: 0;
+  font-size: 10px;
+  opacity: 0.95;
+}
+.ingredient-combobox__prepped {
+  margin-left: 6px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .prep-split,
   .prep-split:hover,

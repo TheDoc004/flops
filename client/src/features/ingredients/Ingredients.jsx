@@ -21,6 +21,7 @@ import ServingUnitsHint from '@shared/ui/ServingUnitsHint';
 import FeaturePrompt from '@shared/ui/FeaturePrompt';
 import Reveal from '@shared/ui/Reveal';
 import GrowStack from '@shared/ui/GrowStack';
+import PreppedIndicator from '@shared/ui/PreppedIndicator';
 
 function filterByName(items, q) {
   const query = String(q ?? '').trim().toLowerCase();
@@ -35,6 +36,50 @@ function filterByName(items, q) {
 }
 
 const PAGE_SIZE = 10;
+
+function buildPreppedIndex(batches) {
+  const byIngredientId = new Map();
+  const byName = new Map();
+  for (const b of batches || []) {
+    if (b.label_ingredient_id) {
+      const k = String(b.label_ingredient_id);
+      if (!byIngredientId.has(k)) byIngredientId.set(k, []);
+      byIngredientId.get(k).push(b);
+    }
+    const nk = String(b.name || '').trim().toLowerCase();
+    if (nk) {
+      if (!byName.has(nk)) byName.set(nk, []);
+      byName.get(nk).push(b);
+    }
+  }
+  return { byIngredientId, byName };
+}
+
+function preppedBatchesForIngredient(ing, index) {
+  const seen = new Set();
+  const out = [];
+  for (const b of index.byIngredientId.get(String(ing.id)) || []) {
+    if (!seen.has(b.id)) {
+      seen.add(b.id);
+      out.push(b);
+    }
+  }
+  const nk = String(ing.name || '').trim().toLowerCase();
+  for (const b of index.byName.get(nk) || []) {
+    if (!seen.has(b.id)) {
+      seen.add(b.id);
+      out.push(b);
+    }
+  }
+  return out;
+}
+
+function preppedDetailLabel(batches) {
+  if (!batches?.length) return '';
+  if (batches.length > 1) return `${batches.length} batches`;
+  const rem = Math.round(Number(batches[0].remaining_weight_g) || 0);
+  return `${rem}g left`;
+}
 
 function emptyForm() {
   return {
@@ -111,6 +156,8 @@ export default function Ingredients() {
   useEffect(() => { void load(); }, []);
 
   const filtered = useMemo(() => filterByName(items, search), [items, search]);
+
+  const preppedIndex = useMemo(() => buildPreppedIndex(preppedBatches), [preppedBatches]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -684,10 +731,13 @@ export default function Ingredients() {
                   ? Math.round((Number(b.remaining_weight_g) / Number(b.total_weight_g)) * 100)
                   : 0;
                 return (
-                  <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
-                    <strong>{b.name}</strong>
+                  <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <strong>{b.name}</strong>
+                      <PreppedIndicator detail={`${Math.round(Number(b.remaining_weight_g))}g left`} />
+                    </span>
                     <span style={{ color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                      {Math.round(Number(b.remaining_weight_g))}g left ({pct}%)
+                      {pct}%
                     </span>
                   </div>
                 );
@@ -744,11 +794,16 @@ export default function Ingredients() {
               style={{ display: 'flex', flexDirection: 'column', minHeight: listMinHeight || undefined }}
             >
               <GrowStack slideFrom={slideFrom}>
-              {paginated.map(i => (
+              {paginated.map(i => {
+                const activePrepped = preppedBatchesForIngredient(i, preppedIndex);
+                return (
                 <div className="ingredient-card" key={i.id}>
                   <div className="ingredient-card-main">
                     <div className="ingredient-card-head">
                       <strong className="ingredient-card-name name-uniform">{i.name}</strong>
+                      {activePrepped.length > 0 ? (
+                        <PreppedIndicator detail={preppedDetailLabel(activePrepped)} />
+                      ) : null}
                       {i.brand_name ? <span style={{ color: 'var(--color-text-muted)' }}>({i.brand_name})</span> : null}
                       {i.base_label ? <span style={{ color: 'var(--color-text-faint)' }}>{i.base_label}</span> : null}
                     </div>
@@ -775,7 +830,8 @@ export default function Ingredients() {
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
               </GrowStack>
               {totalPages > 1 && paginated.length < PAGE_SIZE && (
                 <div className="ghost-slots">

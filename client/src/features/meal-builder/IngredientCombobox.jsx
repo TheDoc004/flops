@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import useDropdownPlacement from '@shared/hooks/useDropdownPlacement';
+import PreppedIndicator from '@shared/ui/PreppedIndicator';
 
 function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));
@@ -37,6 +38,34 @@ function filterByName(items, query) {
     if (ra !== rb) return ra - rb;
     return byName(a, b);
   });
+}
+
+function ItemTitle({ item }) {
+  return (
+    <>
+      <strong>{item.name}</strong>
+      {item.is_prepped_batch ? (
+        <PreppedIndicator detail={item.serving_size_text} className="ingredient-combobox__prepped" />
+      ) : null}
+      {!item.is_prepped_batch && item.brand_name ? (
+        <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>{item.brand_name}</span>
+      ) : null}
+    </>
+  );
+}
+
+function ItemMeta({ item }) {
+  if (item.is_prepped_batch) return null;
+  return (
+    <>
+      {item.grams_per_serving != null ? (
+        <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>{item.grams_per_serving}g/serving</span>
+      ) : null}
+      {item.serving_size_text ? (
+        <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>{item.serving_size_text}</span>
+      ) : null}
+    </>
+  );
 }
 
 /**
@@ -82,16 +111,27 @@ const IngredientCombobox = forwardRef(function IngredientCombobox({
   );
 
   const recent = useMemo(() => {
-    const list = (items || []).filter(x => normalizeDateMs(x.last_used_at) > 0);
+    const list = (items || []).filter(x => normalizeDateMs(x.last_used_at) > 0 && !x.is_prepped_batch);
     return list.sort((a, b) => normalizeDateMs(b.last_used_at) - normalizeDateMs(a.last_used_at)).slice(0, 8);
   }, [items]);
 
   const frequent = useMemo(() => {
-    const list = (items || []).filter(x => Number(x.use_count || 0) > 0);
+    const list = (items || []).filter(x => Number(x.use_count || 0) > 0 && !x.is_prepped_batch);
     return list.sort((a, b) => Number(b.use_count || 0) - Number(a.use_count || 0)).slice(0, 8);
   }, [items]);
 
+  const preppedItems = useMemo(
+    () => (items || []).filter(x => x.is_prepped_batch).sort(byName),
+    [items],
+  );
+
+  const libraryItems = useMemo(
+    () => (items || []).filter(x => !x.is_prepped_batch),
+    [items],
+  );
+
   const filtered = useMemo(() => filterByName(items || [], query), [items, query]);
+  const filteredLibrary = useMemo(() => filterByName(libraryItems, query), [libraryItems, query]);
 
   // When suggestions mode is active and no query, keyboard nav operates on suggestions list
   const visibleItems = useMemo(
@@ -257,6 +297,22 @@ const IngredientCombobox = forwardRef(function IngredientCombobox({
               </div>
             ) : query.trim() === '' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {preppedItems.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 700, padding: '6px 8px' }}>Prepped batches</div>
+                    {preppedItems.map(r => (
+                      <button
+                        key={`prepped-${r.id}`}
+                        type="button"
+                        onMouseDown={preventOptionMouseDown}
+                        onClick={() => selectItem(r)}
+                        style={{ width: '100%', textAlign: 'left', border: 'none', background: 'transparent', borderRadius: 8, padding: '12px 10px', cursor: 'pointer' }}
+                      >
+                        <ItemTitle item={r} />
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {recent.length > 0 && (
                   <div>
                     <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 700, padding: '6px 8px' }}>Recent</div>
@@ -268,9 +324,8 @@ const IngredientCombobox = forwardRef(function IngredientCombobox({
                         onClick={() => selectItem(r)}
                         style={{ width: '100%', textAlign: 'left', border: 'none', background: 'transparent', borderRadius: 8, padding: '12px 10px', cursor: 'pointer' }}
                       >
-                        <strong>{r.name}</strong>
-                        {r.brand_name ? <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>{r.brand_name}</span> : null}
-                        {r.grams_per_serving != null ? <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>{r.grams_per_serving}g/serving</span> : null}
+                        <ItemTitle item={r} />
+                        <ItemMeta item={r} />
                       </button>
                     ))}
                   </div>
@@ -286,8 +341,7 @@ const IngredientCombobox = forwardRef(function IngredientCombobox({
                         onClick={() => selectItem(r)}
                         style={{ width: '100%', textAlign: 'left', border: 'none', background: 'transparent', borderRadius: 8, padding: '12px 10px', cursor: 'pointer' }}
                       >
-                        <strong>{r.name}</strong>
-                        {r.brand_name ? <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>{r.brand_name}</span> : null}
+                        <ItemTitle item={r} />
                         <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>{Number(r.use_count || 0)} uses</span>
                       </button>
                     ))}
@@ -295,7 +349,7 @@ const IngredientCombobox = forwardRef(function IngredientCombobox({
                 )}
                 <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 8 }}>
                   <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 700, padding: '6px 8px' }}>All ingredients</div>
-                  {filtered.slice(0, 30).map((r, idx) => {
+                  {filteredLibrary.slice(0, 30).map((r, idx) => {
                     const isActive = idx === activeIndex;
                     const isSelected = selected && String(selected.id) === String(r.id);
                     return (
@@ -310,9 +364,8 @@ const IngredientCombobox = forwardRef(function IngredientCombobox({
                         onClick={() => selectItem(r)}
                         style={{ width: '100%', textAlign: 'left', border: 'none', background: isActive ? '#eff6ff' : 'transparent', borderRadius: 8, padding: '12px 10px', cursor: 'pointer' }}
                       >
-                        <strong>{r.name}</strong>
-                        {r.brand_name ? <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>{r.brand_name}</span> : null}
-                        {r.serving_size_text ? <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>{r.serving_size_text}</span> : null}
+                        <ItemTitle item={r} />
+                        <ItemMeta item={r} />
                       </button>
                     );
                   })}
@@ -345,9 +398,8 @@ const IngredientCombobox = forwardRef(function IngredientCombobox({
                     onClick={() => selectItem(r)}
                     style={{ width: '100%', textAlign: 'left', border: 'none', background: isActive ? '#eff6ff' : 'transparent', borderRadius: 8, padding: '12px 10px', cursor: 'pointer' }}
                   >
-                    <strong>{r.name}</strong>
-                    {r.brand_name ? <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>{r.brand_name}</span> : null}
-                    {r.serving_size_text ? <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>{r.serving_size_text}</span> : null}
+                    <ItemTitle item={r} />
+                    <ItemMeta item={r} />
                   </button>
                 );
               })
