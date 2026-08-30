@@ -141,7 +141,8 @@ export default function AugmentMealPrepModal({ recipe, onClose, onSaved }) {
         <div style={{ marginBottom: 12 }}>
           <label style={{ marginBottom: 4 }}>Add ingredient (whole batch)</label>
           <IngredientCombobox
-            ingredients={labelIngredients}
+            label=""
+            items={labelIngredients}
             value={addIngredientId}
             onChange={id => { setAddIngredientId(id); if (id) addIngredient(id); }}
             placeholder="Search your library…"
