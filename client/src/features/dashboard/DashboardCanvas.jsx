@@ -53,6 +53,7 @@ function EditCardChrome({ cardId }) {
 export default function DashboardCanvas({
   layout,
   editMode,
+  layoutSessionKey = 0,
   onLayoutChange,
   cards,
   exitingIds = [],
@@ -74,7 +75,7 @@ export default function DashboardCanvas({
     );
   }
 
-  const onLayout = (current) => {
+  const commitLayout = (current) => {
     onLayoutChange?.(rglToLayout(layout, current));
   };
 
@@ -93,11 +94,13 @@ export default function DashboardCanvas({
   return (
     <div className={`dashboard-canvas dashboard-canvas--edit${isMobile ? ' dashboard-canvas--mobile-edit' : ''}`}>
       <Grid
+        key={`edit-${layoutSessionKey}`}
         className="layout"
         layout={rglLayout}
         rowHeight={EDIT_GRID_ROW_HEIGHT}
         draggableHandle=".dashboard-card__drag-handle"
-        onLayoutChange={onLayout}
+        onDragStop={commitLayout}
+        onResizeStop={commitLayout}
         {...GRID_PROPS}
       >
         {gridItems}
