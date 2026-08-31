@@ -179,12 +179,32 @@ export const EDIT_MIN_ROWS = {
 
 /** Lowest uniform scale applied in edit mode — below this, text/rings become illegible. */
 export const EDIT_MIN_SCALE = {
-  macros: 0.72,
-  supplements: 0.68,
-  weight: 0.7,
+  macros: 0.76,
+  supplements: 0.78,
+  weight: 0.76,
   weight_chart: 0.62,
-  meals: 0.68,
+  meals: 0.78,
 };
+
+/** Minimum grid columns (of 12) — prevents extreme horizontal wrap on text-heavy cards. */
+export const EDIT_MIN_COLS = {
+  macros: 10,
+  supplements: 8,
+  weight: 5,
+  weight_chart: 6,
+  meals: 8,
+};
+
+/** Minimum rendered typography in edit mode (px) — used to derive scale floors. */
+export const EDIT_MIN_BODY_PX = 12;
+export const EDIT_MIN_TITLE_PX = 16;
+
+function clampEditCols(cardId, w) {
+  const min = EDIT_MIN_COLS[cardId] ?? 4;
+  const n = Number(w);
+  if (!Number.isFinite(n)) return 12;
+  return Math.min(12, Math.max(min, Math.round(n)));
+}
 
 function clampEditRows(cardId, h) {
   const max = EDIT_MAX_ROWS[cardId] ?? 10;
@@ -199,9 +219,9 @@ export function layoutToRgl(layout) {
     i: c.id,
     x: c.x,
     y: c.y,
-    w: c.w,
+    w: clampEditCols(c.id, c.w),
     h: clampEditRows(c.id, c.h),
-    minW: 3,
+    minW: EDIT_MIN_COLS[c.id] ?? 4,
     minH: EDIT_MIN_ROWS[c.id] ?? 2,
     maxH: EDIT_MAX_ROWS[c.id] ?? 10,
     resizeHandles: CORNER_HANDLES,
@@ -217,7 +237,7 @@ export function rglToLayout(prevLayout, nextItems) {
       ...prev,
       x: item.x,
       y: item.y,
-      w: item.w,
+      w: clampEditCols(item.i, item.w),
       h: clampEditRows(item.i, item.h),
       visible: prev.visible !== false,
     });

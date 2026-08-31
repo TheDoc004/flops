@@ -99,6 +99,19 @@ describe('layoutToRgl', () => {
     expect(macros.h).toBe(4);
     expect(macros.minH).toBe(4);
   });
+
+  it('enforces per-card minimum column widths to limit text wrap', () => {
+    const saved = {
+      version: 1,
+      cards: DEFAULT_DASH_LAYOUT.map(c =>
+        (c.id === 'meals' ? { ...c, w: 3, visible: true } : c),
+      ),
+    };
+    const items = layoutToRgl(mergeDashLayout(saved));
+    const meals = items.find(i => i.i === 'meals');
+    expect(meals.w).toBe(8);
+    expect(meals.minW).toBe(8);
+  });
 });
 
 describe('rglToLayout', () => {
@@ -113,6 +126,12 @@ describe('rglToLayout', () => {
     const prev = mergeDashLayout(null);
     const next = rglToLayout(prev, [{ i: 'macros', x: 0, y: 0, w: 12, h: 1 }]);
     expect(next.cards.find(c => c.id === 'macros').h).toBe(4);
+  });
+
+  it('clamps width to per-card minimum columns on commit', () => {
+    const prev = mergeDashLayout(null);
+    const next = rglToLayout(prev, [{ i: 'macros', x: 0, y: 0, w: 4, h: 4 }]);
+    expect(next.cards.find(c => c.id === 'macros').w).toBe(10);
   });
 });
 
