@@ -13,6 +13,10 @@ import DashboardCanvas from './DashboardCanvas';
 import DashboardLayoutToolbar from './DashboardLayoutToolbar';
 import { useDashboardEdit } from './DashboardEditContext';
 import { layoutForEditSession, mergeDashLayout, profilePatchForLayout, setCardVisible } from './dashboardLayout';
+import {
+  EDIT_MEALS_PREVIEW_ENTRIES,
+  editMealsPreviewTotals,
+} from './dashboardEditMealsPreview';
 import WeightTrendMini from '@features/history/WeightTrendMini';
 import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
@@ -292,12 +296,12 @@ export default function Dashboard() {
 
   const seedEditLayout = useCallback((sourceLayout) => {
     savedLayoutRef.current = sourceLayout;
-    const seeded = layoutForEditSession(sourceLayout, { mealCount: entries.length });
+    const seeded = layoutForEditSession(sourceLayout);
     setDashLayout(seeded);
     dashEdit?.beginSession(seeded);
     editSeededRef.current = true;
     setEditSessionKey(k => k + 1);
-  }, [entries.length, dashEdit]);
+  }, [dashEdit]);
 
   const applyProfileToDashboard = useCallback((p) => {
     const se = p.dash_supplements_enabled;
@@ -618,6 +622,8 @@ export default function Dashboard() {
     dashEdit.requestExit({ type: 'close' });
   }, [dashEdit]);
 
+  const mealsPreviewTotals = useMemo(() => editMealsPreviewTotals(), []);
+
   const dashboardCards = useMemo(() => ({
     macros: <MacroTotals totals={combinedTotals} targets={targets} />,
     supplements: dashSupplementsEnabled ? (
@@ -630,7 +636,40 @@ export default function Dashboard() {
         <WeightTrendMini today={today} bodyUnits={bodyUnits} />
       </div>
     ),
-    meals: (
+    meals: editLayout ? (
+      <div className="dashboard-meals-preview" data-layout-preview>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 'clamp(14px, 1.4vw, 18px)',
+          gap: 8,
+        }}>
+          <div>
+            <h2 className="section-title" style={{ margin: 0 }}>Today&apos;s meals</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-secondary)', color: 'var(--color-text-muted)' }}>
+              {mealsPreviewTotals.count} meals · {mealsPreviewTotals.calories.toLocaleString()} kcal
+            </p>
+          </div>
+        </div>
+        <div style={{
+          background: 'var(--color-surface)',
+          borderRadius: 14,
+          border: '1px solid var(--color-surface-border)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+          overflow: 'visible',
+        }}>
+          {EDIT_MEALS_PREVIEW_ENTRIES.map((entry, idx) => (
+            <div
+              key={entry.id}
+              style={{ borderBottom: idx < EDIT_MEALS_PREVIEW_ENTRIES.length - 1 ? '1px solid var(--color-divider-warm)' : 'none' }}
+            >
+              <LogEntryRow entry={entry} variant="dashboard" />
+            </div>
+          ))}
+        </div>
+      </div>
+    ) : (
       <div>
         <div style={{
           display: 'flex',
@@ -711,7 +750,7 @@ export default function Dashboard() {
       </div>
     ),
   }), [
-    combinedTotals, targets, dashSupplementsEnabled, today, bodyUnits, entries, totalLoggedCal,
+    editLayout, mealsPreviewTotals, combinedTotals, targets, dashSupplementsEnabled, today, bodyUnits, entries, totalLoggedCal,
     mealClipboard, pasteUi, calendarToday, handlePasteMeal, handleDelete, handleCopyMeal, handleSaveMealAsRecipe,
   ]);
 

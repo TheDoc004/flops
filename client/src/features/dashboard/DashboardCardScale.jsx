@@ -1,32 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { EDIT_MIN_BODY_PX, EDIT_MIN_SCALE, EDIT_MIN_TITLE_PX } from './dashboardLayout';
+import { readabilityScaleFloor } from './dashboardReadability';
 
 const SCALE_MAX = 1;
 
 function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));
-}
-
-const TITLE_SELECTOR = '.section-title, .subsection-title, h2, h3';
-
-function isTitleNode(el) {
-  return el.matches?.(TITLE_SELECTOR);
-}
-
-/** Lowest uniform scale that keeps body ≥12px and titles ≥16px after transform. */
-function readabilityScaleFloor(root, cardId) {
-  let floor = EDIT_MIN_SCALE[cardId] ?? 0.65;
-  const nodes = root.querySelectorAll('*');
-  for (let i = 0; i < nodes.length; i += 1) {
-    const el = nodes[i];
-    const fs = parseFloat(getComputedStyle(el).fontSize);
-    if (fs <= 0) continue;
-    const minPx = isTitleNode(el) ? EDIT_MIN_TITLE_PX : EDIT_MIN_BODY_PX;
-    floor = Math.max(floor, minPx / fs);
-  }
-  const rootFs = parseFloat(getComputedStyle(root).fontSize);
-  if (rootFs > 0) floor = Math.max(floor, EDIT_MIN_BODY_PX / rootFs);
-  return floor;
 }
 
 /**
@@ -71,7 +49,7 @@ export default function DashboardCardScale({ cardId, children }) {
       const naturalW = availW;
       if (naturalH < 1 || naturalW < 1) return;
 
-      const scaleFloor = readabilityScaleFloor(root, cardId);
+      const scaleFloor = readabilityScaleFloor(cardId, root);
 
       const rawScale = Math.min(availW / naturalW, availH / naturalH);
       const scale = clamp(rawScale, scaleFloor, SCALE_MAX);
