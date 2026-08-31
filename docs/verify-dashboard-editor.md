@@ -1,6 +1,13 @@
 # Verify the Today dashboard layout editor in one go
 
-Use this when edit mode feels broken (huge cards, no drag/resize). One command runs unit tests + browser checks on **desktop and mobile**, writes JSON reports, and exits `0` only if everything passes.
+Use this when edit mode feels broken (huge cards, no drag/resize) or after changing
+`DashboardCanvas.jsx`, `dashboardLayout.js`, `DashboardCardScale.jsx`, or `dashboardReadability.js`.
+
+**Status (Aug 2026):** Editor is shipped and usable; Diego parked further visual polish.
+This harness is the regression net for drag/resize, card height caps, and overflow.
+
+One command runs unit tests + browser checks on **desktop and mobile**, writes JSON reports,
+and exits `0` only if everything passes.
 
 ---
 

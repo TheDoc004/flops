@@ -1,6 +1,7 @@
 # FLOPS — Project Context for Claude / Claude Code
 
-> **Current state snapshot:** see **`HANDOFF.md`** (updated each session). Canonical repo: **`~/dev/FLOPS`**. Live: **https://www.useflops.com** (Vercel + Render, push `main` to deploy).
+> **Current state snapshot:** see **`HANDOFF.md`** (last updated 2026-08-31 — Diego pause checkpoint).
+> Canonical repo: **`~/dev/FLOPS`**. Live: **https://www.useflops.com** (Vercel + Render, push `main` to deploy).
 
 ## What This App Is
 
@@ -10,9 +11,11 @@ a deliberate integration layer (the "bridge") — training history informing nut
 recommendations, and food logs informing training readiness.
 
 **Current state:** Nutrition and Training are developed as two FULLY SEPARATED domains
-(decision: July 2026). Nutrition is feature-complete. Training is a **gym dashboard** at
+(decision: July 2026). Nutrition is feature-complete for daily use. Training is a **gym dashboard** at
 `/training` with its own nav chrome (Today / Schedule / Workouts / Progress) and `/api/gym`
 backend — rebuilt Aug 2026 as a set-by-set logger (templates, schedule, progress, 1RM).
+**Today dashboard layout customization** (`?editLayout=1`, card drag/resize) shipped Aug 2026 but
+visual polish is parked — see `HANDOFF.md`.
 The earlier cross-domain fuel/readiness features were removed from the active app and are
 preserved on the branch `archive/nutrition-training-integration` — see
 `docs/future/nutrition-training-bridge.md`. Do not add new cross-domain features:

@@ -2,7 +2,7 @@
 
 > Practical rules for AI agents (Claude Code, Cursor, Copilot, etc.) working on Flops, especially when
 > **multiple agents run in parallel terminals**. Read this before editing anything.
-> Companion document: [`FOLDER_REFACTOR_PLAN.md`](./FOLDER_REFACTOR_PLAN.md) (the target structure and ownership map).
+> **Current app state:** **`HANDOFF.md`** (updated 2026-08-31). Companion: [`FOLDER_REFACTOR_PLAN.md`](./FOLDER_REFACTOR_PLAN.md) (target structure; refactor is complete).
 
 ---
 

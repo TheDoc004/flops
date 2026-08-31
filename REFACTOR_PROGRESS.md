@@ -2,9 +2,9 @@
 
 > **Status:** ✅ Done. The `client/src` folder-structure refactor is finished. `pages/`,
 > `components/`, and `utils/` are fully dissolved into a feature-based layout.
+> Merged to `main` long ago. For **current app state**, read **`HANDOFF.md`** instead.
 >
-> **Branch:** `refactor/folder-structure` (commits are local only; `main` untouched, nothing pushed).
-> **Last updated:** 2026-06-21
+> **Last updated:** 2026-08-31 (historical doc — refactor itself finished 2026-06)
 
 ---
 

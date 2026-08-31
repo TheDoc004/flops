@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-08-26_
+_Last updated: 2026-08-31 (Diego pause checkpoint)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -10,13 +10,34 @@ _Last updated: 2026-08-26_
 >
 > **Deploy:** **LIVE** — see [Deploy (live)](#deploy-live) below and **`docs/deploy-checklist.md`**.
 
-Snapshot of where the app stands so any session (human or Claude Code) can pick up quickly.
+Snapshot of where the app stands so any session (human or agent) can pick up quickly.
 For conventions, architecture, and the phase vision, see **`CLAUDE.md`** — this file is the
 _current-state_ companion to it.
 
 > **⚠️ Canonical repo:** **`~/dev/FLOPS`**. Do **not** work from
 > `~/Documents/FLOPS workspace/` — that folder is stale / iCloud-adjacent and may
-> not match what is deployed. Claude Code should `cd ~/dev/FLOPS`.
+> not match what is deployed. Start sessions from `~/dev/FLOPS`.
+
+---
+
+## Where Diego left off (read this first)
+
+**Status:** Diego is **happy with FLOPS for daily use** (school starting back up; using it for
+everything he needs). He is **taking a break from active development** as of late August 2026.
+
+**Last active work stream:** **Today dashboard layout customization** (`?editLayout=1`) —
+drag/resize cards, show/hide toggles, per-card scaling and readable resize floors. Multiple PRs
+landed (#4–#11, Aug 2026). The editor is **usable and shipped**, but Diego felt it was **not
+quite where he wanted visually** (scaling/reflow still fights the user in edge cases). He chose
+to **park further polish** rather than keep iterating.
+
+**When you return:** The app is production-stable. Unless you explicitly want to reopen layout
+editor UX, there is **no blocking work**. Good next picks (optional, not urgent):
+
+1. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026) below.
+2. **Gym UX polish** — Setgraph-like refinements on `/training`.
+3. **Notebook-day modal contrast** — deeper AI review panels if opened off-today.
+4. **Ops:** Resend domain verification for production OTP email (if not done yet).
 
 ---
 
@@ -31,7 +52,7 @@ _current-state_ companion to it.
 | **Backup Vercel URL** | `https://flops-amber.vercel.app` |
 
 **Workflow:** commit + push to **`main`** → Vercel production deploy within ~1 min.
-Render redeploys on push if connected to the same repo (confirm in Render dashboard if API changes don't appear).
+Render redeploys on push if connected to the same repo.
 
 **Verify a deploy:** `gh api repos/TheDoc004/flops/deployments --jq '.[0] | {env:.environment, sha:.sha[0:7], created:.created_at}'`
 
@@ -43,7 +64,7 @@ A personal nutrition + training tracker, built toward eventually connecting the 
 (the "bridge", Phase 3). Nutrition and Training are developed as **separate domains** —
 do not import one domain's business logic into the other.
 
-Phases: **1 Nutrition** (feature-complete), **2 Training** (gym dashboard rebuilt — see below),
+Phases: **1 Nutrition** (feature-complete for Diego's daily use), **2 Training** (gym dashboard),
 **3 Bridge** (future, not started).
 
 ---
@@ -69,196 +90,115 @@ Bearer session on `/api/*`; ownership via `req.user.id`. Schema + migrations are
 > If a running API server predates a schema/route change, **restart it** — a plain
 > `node index.js` will not pick up new code or run new migrations on its own.
 
-**Tests:** `npm test --prefix server` · `npm test --prefix client` · `npm run build --prefix client`
+**Tests:**
+
+```bash
+npm test --prefix server    # Jest — ~301 tests
+npm test --prefix client    # Vitest unit tests — ~366 tests (excludes Playwright e2e)
+npm run build --prefix client
+```
+
+**Layout editor verify harness** (Playwright — separate from `npm test`):
+
+```bash
+cd client && npm run verify:layout-editor
+```
+
+See **`docs/verify-dashboard-editor.md`**.
 
 ---
 
 ## 3. Current state by area
 
-### Marketing landing (unauthenticated) — refreshed 2026-08-26
-
-When signed out, `/` shows the English landing and `/es` the Spanish one
-(`client/src/features/marketing/`). Copy lives in `landingCopy.js` (flip-flops line,
-mission, how it works, today vs Phase 3 vision, About Diego). Footer: Terms/Privacy
-“Coming soon”, phone `925-286-6097` (no email on page). Social proof gated by
-`SHOW_SOCIAL_PROOF` (false until real quotes). Primary CTA → `/login`.
-
-**Auth UX:** web Login is email OTP only (Apple button removed; it 503’d in prod).
-OTP send failures use clearer “email delivery may still be setting up” copy. Live OTP
-still needs Resend domain verification on Diego’s side.
-
-### Nutrition (Phase 1) — solid / feature-complete
+### Nutrition (Phase 1) — feature-complete / daily-driver ready
 
 Dashboard, Recipe Library, Ingredient Library (OCR + barcode), Meal Builder, History/Review,
 Goals, Report, Profile, Adherence, supplements, prep strip, coach, and AI Estimate all work.
 
 **Today dashboard actions:** `AI Estimate` (`btn-ai`) and `+ Log a Meal` (`btn-primary`) in
-`Dashboard.jsx` → `AiLoggerModal` / `LogMealModal`. Meal rows’ ⋯ menu includes **Edit meal**
-(opens the receipt editor on the existing entry — tweak amounts / drop a sauce after
-copy-paste), plus Copy / Save as Recipe / Remove. **Training** hop (`Link` to `/training`)
-lives beside them — Training is **not** in the nutrition navbar tabs. **Customize** toggles
-layout edit mode (`?editLayout=1`) — drag/resize cards on desktop; mobile stacks by order.
+`Dashboard.jsx` → `AiLoggerModal` / `LogMealModal`. Meal rows' ⋯ menu includes **Edit meal**,
+Copy / Save as Recipe / Remove. **Training** hop (`Link` to `/training`) beside them.
 
-**Dashboard canvas (Pass 2, 2026-08):** Today is a card canvas, not a fixed section order.
-Registry cards: macros (pinned), supplements, weight, weight trend mini-chart, meals.
-Layout in `user_profile.dash_layout_json`; show/hide via Profile toggles
-(`dash_weight_enabled`, `dash_meals_enabled`, `dash_weight_chart_card_enabled`,
-`dash_supplements_enabled`). Full weight history stays on Review; the mini-chart is optional
-on Today. Implementation: `DashboardCanvas.jsx`, `dashboardLayout.js`, `WeightTrendMini.jsx`.
+**Customize layout:** Profile → customize dashboard, or `/?editLayout=1`. See layout editor section below.
 
-**Prepped ingredient batches (Pass 1, 2026-08):** Cooked batches with known total weight +
-macros (`prepped_batches` table). Log by grams in Log a Meal; pool depletes on POST/PUT/DELETE
-and hides when empty. Separate from limited-use **meal prep recipes** (`remaining_uses`) and
-from **Augment meal prep** (add ingredients to an equal-split prep template in Recipe Library).
-Entry: Ingredients → "Prep a batch". API: `/api/prepped-batches`.
+**Prepped ingredient batches:** Cooked batches with known total weight + macros (`prepped_batches`).
+**Prepped badge** (Aug 2026): active batches show a badge in ingredient library, combobox, and
+log receipt lines. Entry: Ingredients → "Prep a batch".
 
-**Augment meal prep:** Recipe Library → **Add to prep** on equal-split limited recipes with
-`remaining_uses > 0`. Adds batch-level ingredients split across containers; does not change
-`remaining_uses` or past log entries.
+**Augment meal prep:** Recipe Library → **Add to prep** on equal-split limited recipes. Fixed Aug 2026:
+`AugmentMealPrepModal` passes `items=` (not `ingredients=`) to `IngredientCombobox`.
 
-**Log Meal vs AI Estimate:** Log a Meal is a **receipt** (optional recipe seed + library foods).
-AI Estimate is speak/type natural language. See `docs/log-once-vs-save-as-recipe.md`.
-A receipt — or an already-logged meal — can be **captured as a recipe**; see
-*Units & recipes from a receipt* below.
+**Units & save-as-recipe:** See prior handoff detail in git history; `unitConvert.js` twin files,
+Save as Recipe / Meal Prep from log modal and meal ⋯ menu. Still accurate.
 
-### Notebook-day UI (off-today on Dashboard) — important for styling work
+### Dashboard layout editor — last touched Aug 2026
 
-When the user views a date other than calendar-today on **`/`**, `Dashboard.jsx` sets
-`html[data-notebook-day="past"|"future"]` on `<html>` and clears it on unmount.
+Today is a **card canvas** (not a fixed section stack). Registry cards:
 
-**Theme:** `client/src/styles/index.css` (~lines 132–164) overrides design tokens to charcoal
-surfaces + light text. **Today** keeps warm beige tokens.
-
-**Gotchas discovered 2026-08-23:**
-
-1. **Native `<dialog>` stays browser-white** unless styled. Off-today tokens make labels/titles
-   light-on-white → invisible. Fix: `html[data-notebook-day] dialog { … }` block in `index.css`
-   (~979+) — dialog surface, nested `.card`, inputs, utility classes.
-2. **`--color-primary` becomes sky blue (`#60a5fa`)** on notebook days (for links). Default
-   `.btn-primary` (white on sky blue) and `.btn-ai` washes out on charcoal. Fix: notebook-day
-   overrides for `.btn-primary` / `.btn-ai` (~639+).
-3. **Hardcoded light inline colors in modals** (e.g. `#f9fafb`, `#eff6ff`) break on notebook days.
-   Prefer CSS variables or classes: `modal-subpanel`, `modal-highlight-panel`, `modal-loading-overlay`.
-
-**Files:** `Dashboard.jsx` (attribute toggle), `index.css` (tokens + notebook rules),
-`LogMealModal.jsx`, `AiLoggerModal.jsx`, `AiMacroLogger.jsx`.
-
-Only the **Dashboard** page sets notebook-day — Recipes/Review/Training stay beige unless you
-extend the pattern deliberately.
-
-### Training / Gym (Phase 2) — rebuilt 2026-08-23
-
-Nutrition logging is **untouched**. Training is a separate **gym dashboard** at `/training`.
-
-| Route | Page | Role |
+| Card ID | Label | Notes |
 |---|---|---|
-| `/training` | `GymToday` | Start/finish sessions, per-set logging, rest timer, activity sessions |
-| `/training/schedule` | `GymSchedule` | Assign workout templates to weekdays |
-| `/training/workouts` | `GymWorkouts` | Template list, muscle-grouped exercises, set/rep/weight targets |
-| `/training/progress` | `GymProgress` | Charts, filters, last-session comparison, 1RM estimates |
+| `macros` | Macros | Pinned visible; scales well in edit mode |
+| `supplements` | Supplements | Profile `dash_supplements_enabled` |
+| `weight` | Today's weight | Profile `dash_weight_enabled` |
+| `weight_chart` | Weight trend mini | Optional; `dash_weight_chart_card_enabled` |
+| `meals` | Today's meals | Profile `dash_meals_enabled` |
 
-**Shell:** `TrainingLayout.jsx` — gym title + **Nutrition** hop back. Gym tabs live in
-`Navbar` / `BottomNav` (Today / Schedule / Workouts / Progress) when on `/training/*`.
-Nutrition nav does **not** include Training as a tab.
+**Persistence:** `user_profile.dash_layout_json` (12-col grid positions). Show/hide syncs to profile flags via `profilePatchForLayout()`.
 
-**Backend:** new `/api/gym/*` in `server/routes/gym.js` — exercises, templates, sessions, sets,
-schedule, 1RM helpers, duration-based activity sessions. Tests: `server/gym.test.js`.
+**Key files:**
 
-**Client:** `client/src/features/training-workouts/` — `GymApp.jsx` routes by pathname;
-`SetKeypad.jsx` for paper-style entry. Old monolithic `TrainingWorkouts.jsx` logger removed.
+```
+client/src/features/dashboard/
+  Dashboard.jsx              — page shell, edit banner, card content (incl. meals preview)
+  DashboardCanvas.jsx        — view stack vs react-grid-layout edit grid
+  DashboardCardScale.jsx     — ResizeObserver + uniform transform scale in edit cells
+  dashboardLayout.js         — merge/save layout, EDIT_MIN_ROWS/COLS/SCALE, layoutToRgl
+  dashboardReadability.js    — per-card scale floors (graph, macros, list, etc.)
+  dashboardEditMealsPreview.js — 3 preset meals shown in edit mode (not live log)
+  DashboardLayoutToolbar.jsx — show/hide chips (banner variant, off canvas)
+  DashboardEditContext.jsx   — ?editLayout=1 session, dirty state, exit dialog
+```
 
-**Setgraph parity goal:** live per-set logging, templates, schedule, progress, rest timer from
-template `rest_sec`, repeat-last-set, previous comparison, plate helper / XRM tables.
+**Edit mode behavior (as shipped):**
 
-Legacy `server/routes/training.js` + `workouts.js` still exist; new gym UI uses **`gym.js`**.
+- **View mode:** natural-height stack (`dashboard-stack`).
+- **Edit mode:** `react-grid-layout` (12 cols, `EDIT_GRID_ROW_HEIGHT = 36px`), corner resize only.
+- **Scaling:** card innards scale via `transform: scale()` — no internal scrollbars; overflow clipped.
+- **Readable floors:** per-card `minH`/`minW` on grid items + typography-aware scale floors
+  (body ≥12px, titles ≥16px). Weight chart has higher vertical floor (`minH: 7`) and chart-height floor.
+- **Meals in edit mode:** live log **hidden**; fixed 3-meal preview (`Preset Breakfast/Lunch/Dinner`)
+  so layout height is predictable. `minH: 2` allows tighter vertical compression than supplements.
+- **Show/hide toggles:** in **Customizing Today** banner (not over the canvas). Greeting `h1` hidden in edit mode.
+- **Exit dialog:** centered via `showModal()` + CSS `translate(-50%, -50%)`.
 
-### Supplements, barcode, AI logger, auth, coach
+**Known rough edges (parked — Diego's feedback):**
 
-Unchanged from prior handoff detail — still accurate. See sections in git history or ask;
-highlights: DSLD name lookup, label scan, dose vs serving, micronutrients v2, barcode via OFF,
-multi-user auth, coach invite codes.
+- Scaling can still feel like it "fights" the user vs. fluid document reflow (Google Docs mental model).
+- One-size-fits-all constraints were replaced with per-card rules, but **not perfect** for every card size.
+- Weight chart: vertical compression was improved but may still clip before resize halts in edge cases.
+- User was **not fully satisfied** with edit-mode visual parity to view mode — acceptable for now, not urgent.
 
-### Units & recipes from a receipt — added 2026-08-25
+**Verify tooling:** `client/e2e/layout-editor.verify.spec.js`, `npm run verify:layout-editor`.
+Skill: `.cursor/skills/dashboard-layout-editor-verify/SKILL.md`.
 
-Two things shipped together: a **unit conversion layer**, and the ability to **save a receipt
-or a logged meal as a recipe**.
+### Notebook-day UI (off-today on Dashboard)
 
-**Conversion.** A saved ingredient can now be logged in any unit it can actually be measured
-in — a milk saved as "1 cup" takes 200 ml, 7 fl oz, or 245 g. Rules live in
-`client/src/shared/utils/unitConvert.js` + its CommonJS twin `server/unitConvert.js`; see
-CLAUDE.md § Critical Conventions for the family model and the twin-file rule. The bridge across
-families is `grams_per_unit`, a column that had been on `label_ingredients` all along and was
-read by nothing until now. The log modal's unit dropdown offers only units that resolve, and
-switching it *restates* the amount (1 cup → 236.59 ml) rather than reinterpreting the number.
+When viewing a non-today date on **`/`**, `Dashboard.jsx` sets `html[data-notebook-day="past"|"future"]`.
 
-**The AI logger sees the ingredient library.** `buildUserContent()` in `aiMacroService.js` now
-sends each saved ingredient with the unit it is measured in, forbids converting the unit the
-user said, and asks the model to name the ingredient it matched (`savedIngredient`). That name
-is resolved against the real library and ignored when it isn't genuinely there, so a
-hallucinated match yields nothing rather than wrong macros. This is what stopped
-"1 filet of salmon" coming back as 100 g.
+**Gotchas:** native `<dialog>` needs explicit notebook-day styles; `.btn-primary` / `.btn-ai` need
+overrides on charcoal; avoid hardcoded `#f9fafb` in modal JSX. See `index.css` notebook blocks.
+Only Dashboard sets this attribute — other pages stay beige.
 
-**Save as Recipe / Meal Prep** has two entry points, both producing library-backed lines so the
-saved recipe stays editable in the Meal Builder:
+### Training / Gym (Phase 2)
 
-| Where | Behaviour |
-|---|---|
-| Under `Log Meal` in `LogMealModal` | **Save as Recipe** or **Save as Meal Prep**; checkbox + equal N-way split; advanced custom % per container (creates one 1-use limited recipe per container) |
-| `⋯` menu on a logged meal (`LogEntryRow`) | `SaveMealAsRecipeDialog` — name + optional equal meal-prep split |
+Separate gym dashboard at `/training`. Routes: Today, Schedule, Workouts, Progress.
+Backend: `/api/gym/*` in `server/routes/gym.js`. Client: `client/src/features/training-workouts/`.
+Legacy `training.js` + `workouts.js` exist; new UI uses `gym.js`. **No bridge to nutrition yet.**
 
-Meal prep saves a **limited-use** template (`recipe_kind: 'limited'`, `meal_builder_meta.source: 'log_meal_prep'`), same accounting as AI logger meal prep: logging a serving decrements uses. Equal split = one recipe with N uses; custom % = N separate 1-use recipes.
+### Marketing, auth, coach, supplements, barcode, AI
 
-A logged entry stores its ingredient rows **per serving**, so servings are deliberately not
-applied when saving a normal recipe — saving a two-serving log produces a recipe for one.
-
-**Traps worth remembering:**
-
-- **Hybrid ingredient rows.** Both write handlers used to default `tracking_type` to `'weight'`,
-  so a unit-shaped serving with no grams became permanently unloggable while looking complete
-  in the library list — the symptom was *"needs grams per serving"* on an ingredient whose
-  macros were saved. Fixed at the write path and repaired at boot.
-- **The remembered-amounts memo** (last-used amounts per recipe, in localStorage) must
-  round-trip the real unit. It briefly collapsed to g/oz on write, which re-seeded a meal logged
-  as "200 ml" as "200 cup".
-- **Placeholder units.** `unit`, `serving`, `portion`, `each` are interchangeable *only* when
-  the ingredient's own unit is also a placeholder. A real unit never absorbs a vague one — one
-  serving of a spray may be ten sprays.
-
-**Not visually verified.** The unit dropdown, the ingredient-form hint, the Save as Recipe
-button and its dialog are covered by tests and a clean build, but were never seen rendered —
-the agent had no signed-in session. Worth an eyeball pass.
-
-### Site chrome & link previews — added 2026-08-25
-
-Sharing a Flops link (iMessage, Slack, WhatsApp) shows a navy wordmark card instead of a bare
-blue link. Everything lives in `client/index.html`'s `<head>` plus two files in `client/public/`:
-
-| File | What | Notes |
-|---|---|---|
-| `og-image.png` | 1200x630 link-preview card | Navy `#1e3a8a`, "Flops" in DM Serif Display, paper `#f3ede3` |
-| `apple-touch-icon.png` | 180x180 home-screen icon | Navy tile + serif F, matches `favicon.svg` |
-
-**Rules that are easy to get wrong:**
-
-- `og:image` must be an **absolute** `https://` URL. A relative `/og-image.png` silently fails
-  in iMessage.
-- Must be a real bitmap. **SVG does not render** in link previews.
-- Keep it under ~300KB (currently 208KB). iMessage abandons slow fetches and falls back to
-  the plain text bubble with no error.
-- **Bump `?v=` in the `og:image` URL whenever the artwork changes.** iMessage caches previews
-  per-device essentially forever; without a new query string, nobody who already saw the old
-  card will ever see the new one. To test, send yourself `useflops.com/?v=2`.
-
-**Debugging trap:** `vercel.json` rewrites `/(.*)` to `/index.html`. Vercel checks the
-filesystem first, so real assets serve correctly — but a **missing** asset returns
-`200 text/html`, not a 404. A typo'd filename therefore hands iMessage an HTML page where it
-expects a PNG, and the preview just silently goes blank. If a preview breaks, `curl -I` the
-image URL and check the content-type before anything else.
-
-**Regenerating the card:** it was rendered by headless Chrome from an HTML file (so DM Serif
-Display loads from Google Fonts), screenshotted at `--force-device-scale-factor=2`, then
-downsampled with `sips --resampleHeightWidth 630 1200`. Rendering at 2x and halving is what
-keeps the serif edges clean.
+Still accurate from prior handoffs. Highlights: landing at `/` + `/es`, email OTP login (Resend
+needs domain verification for prod delivery), DSLD supplement lookup, barcode via OFF, coach invites.
 
 ---
 
@@ -266,59 +206,48 @@ keeps the serif edges clean.
 
 **Branch:** `main` · **Remote:** `origin/main` (GitHub `TheDoc004/flops`) · **in sync**
 
-Recent production commits (newest first):
+Recent production commits (newest first, Aug 2026 dashboard editor sprint):
 
 ```
-e24bc27 feat(recipes): save a receipt or a logged meal as a recipe
-a4fbfde test(dashboard): match the weigh-in tests to the settled card
-772a7cd fix(ingredients): repair saved ingredients that could never be logged
-4c9dee9 feat(nutrition): log a saved ingredient in any unit it can reach
-f4750a8 Add link preview card and Apple touch icon
+0f1585a Merge PR #11 — per-card readability rules + meals edit preview
+6cdf3b4 Merge PR #10 — edit scaling, resize floors, toolbar in banner
+439c0ce Merge PR #9  — minimum readable size when compressing cards
+a02e766 Merge PR #8  — center layout-editor exit dialog
+9897921 Merge PR #7  — Prepped badge for active cooked batches
+da98a67 Merge PR #6  — fix Add to prep IngredientCombobox prop
+cbbf087 Merge PR #4  — stop RGL mount inflating edit-mode card sizes
+e1d192e chore — layout editor verify harness (Playwright)
 ```
 
 Working tree should be clean before starting new work. **One topic per commit**; push to `main`
-for live deploy unless explicitly working on a feature branch.
+for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-commits.mdc`).
 
 ---
 
 ## 5. Known issues & tech debt
 
-- **Email OTP / Resend** — codes fail in production until the Resend sending domain is
-  verified (and `RESEND_API_KEY` / `MAIL_FROM` are set on Render). Login UI copy now
-  hints at setup; do not treat a code change as fixing delivery.
-- **Oversized components:** `AiMacroLogger.jsx`, `Ingredients.jsx`, `MealBuilder.jsx`,
-  `LogMealModal.jsx`, `ManageSupplementsModal.jsx`. Extract hooks to `client/src/shared/hooks/`.
-- **Pre-existing lint:** duplicate `fontWeight` in inline styles (`Ingredients.jsx`,
-  `ManageSupplementsModal.jsx`); `Profile.jsx` static-components warnings.
-- **Client component tests** — still thin, but no longer bare: `test-setup.js` now stubs
-  `matchMedia` (jsdom ships none), which was silently blocking any test that rendered
-  `LogEntryRow` or anything else behind `useMediaQuery`. Suite is green: 332 client, 296 server.
-- **Stale tab after a units deploy** — a cached bundle can send `g` for a count-tracked
-  ingredient that has a gram equivalent, and the server will now read that as grams. Hard-refresh
-  after deploying anything touching `unitConvert`. Narrow window; only affects ingredients with a
-  gram equivalent recorded.
-- **No in-app data export** — SQLite on Render disk; use `scripts/backup-sqlite.sh`.
-- **Meal Builder browser history** — mode/step changes push history entries (fix: `{ replace: true }`).
-- **Conditional inline style shorthand/longhand trap** — see old handoff note; grep when styling bugs appear.
-- **Stale brand asset:** `flops-badge.png` (Navbar, Login, Landing) is still the old amber
-  "Fuel your day" lightbulb from before the nutrition/training split, and clashes with the
-  navy/paper identity in `styles/index.css`. It is also a 2MB 1536x1024 file rendered at badge
-  size. Replacing it is its own pass — the 2026-08-25 link-preview work deliberately left it alone.
-- **AiMacroLogger** still has many hardcoded light-theme inline colors in review/expand panels —
-  only the input card + loading overlay were fixed for notebook-day modals; deeper AI review UI
-  may need the same token/class treatment if opened off-today.
+**Not blocking daily use:**
+
+- **Dashboard layout editor UX** — functional but not polished to Diego's ideal; **parked**.
+- **Email OTP / Resend** — production codes fail until Resend sending domain verified on Render.
+- **Oversized components:** `AiMacroLogger.jsx`, `Ingredients.jsx`, `MealBuilder.jsx`, `LogMealModal.jsx`.
+- **AiMacroLogger** hardcoded light-theme inline colors in review panels (notebook-day risk).
+- **Stale brand asset:** `flops-badge.png` (2MB amber lightbulb) clashes with navy/paper identity.
+- **No in-app data export** — SQLite on Render disk; `scripts/backup-sqlite.sh`.
+- **Meal Builder browser history** — mode/step pushes history entries (`{ replace: true }` fix deferred).
+
+**Tests (Aug 2026):** server ~301 Jest; client ~366 Vitest unit. Playwright e2e specs live under
+`client/e2e/` and run via `npm run verify:layout-editor`, not `npm test`.
 
 ---
 
 ## 6. Parked / deliberately deferred
 
+- **Dashboard layout editor visual polish** — Diego paused here; app is usable without it.
 - Goals & Profile restructure (Plan shell organization).
-- AI Logger per-unit "1 g" bug — **probably closed** by the 2026-08-25 units work (the model
-  now keeps the unit you said, and the matcher converts instead of refusing). Re-check against
-  a real library before deleting this line.
-- AI Logger recipe "one-shot invert" (estimate primary, saved recipe as suggestion).
-- Phase 3 bridge — do not start until both domains feel solid independently.
+- Phase 3 nutrition↔training bridge — do not start until both domains feel solid independently.
 - Nutrition refactors — opportunistic when touching files.
+- AI Logger recipe "one-shot invert" (estimate primary, saved recipe as suggestion).
 
 ---
 
@@ -327,28 +256,21 @@ for live deploy unless explicitly working on a feature branch.
 - Beginner-friendly: explain non-obvious decisions; prefer the smallest change that works.
 - Mobile-first always (test mentally at 390px).
 - One topic per commit; don't bundle unrelated changes.
-- Feature Brief before building a new feature; verify in browser, not just tests.
-- **Do not put the repo back in iCloud-synced `~/Documents`.** Related: **launch Claude Code
-  from `~/dev/FLOPS`**, not the workspace folder — project hooks and settings only load for the
-  directory the session started in.
-- **This file is enforced, not suggested.** `.claude/hooks/check-handoff.sh` runs on the `Stop`
-  event: it diffs everything since the session's starting commit (commits *and* working tree)
-  and blocks once if source changed while `HANDOFF.md` did not. `.claude/hooks/session-base.sh`
-  records that baseline at `SessionStart` — which is why a working-tree-only check is not enough,
-  since work that has already been committed leaves a clean tree.
-- For UI/theming: read **`docs/design-system.md`** and the notebook-day section above before
-  touching `index.css` or modal components.
+- **Do not put the repo back in iCloud-synced `~/Documents`.** Start from **`~/dev/FLOPS`**.
+- **HANDOFF.md is enforced** — `.claude/hooks/check-handoff.sh` blocks Stop if source changed without updating this file.
+- For UI/theming: **`docs/design-system.md`** + notebook-day section above.
+- Auto-ship: push `main` after shippable work unless Diego says "don't push".
 
 ---
 
-## 8. Moving to Claude Code (terminal)
+## 8. Picking up after the pause
 
-1. `cd ~/dev/FLOPS` — not the Documents workspace copy.
-2. Claude Code reads **`CLAUDE.md`** automatically; check **`HANDOFF.md`** (this file) for current state.
-3. **`AGENTS.md`** — UI/design agent guide (some dashboard order notes are stale; trust this file for state).
-4. Live changes: commit → `git push origin main` → confirm Vercel production deploy.
-5. Local dev: two terminals (server + client) or `start-app.sh`.
+1. `cd ~/dev/FLOPS && git pull origin main`
+2. Read this file + skim **`CLAUDE.md`** for architecture.
+3. `cd server && npm run dev` + `cd client && npm run dev` (or `start-app.sh`).
+4. Log in at [useflops.com](https://www.useflops.com) — app should match `main`.
+5. **If resuming layout editor:** start with `client/src/features/dashboard/`, run
+   `npm run verify:layout-editor` in `client/`, read Diego's feedback in PRs #4–#11.
+6. **If resuming gym:** `client/src/features/training-workouts/`, `/api/gym/*`.
 
-**Session context (2026-08-23):** Fixed off-today readability for Log Meal / AI Estimate toolbar
-buttons and modal interiors (charcoal notebook theme). Gym/set-logger rebuild shipped earlier
-same week. User may continue gym UX polish (Setgraph-like live logging flow) or nutrition edges.
+**Agent docs:** `AGENTS.md` (UI guide), `AGENT_WORKFLOW.md` (parallel agent rules), `CLAUDE.md` (full reference).

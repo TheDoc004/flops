@@ -14,8 +14,10 @@ It has two sides — a nutrition tracker and a workout tracker — that will eve
 to surface insights automatically. Think: your nutritionist and personal trainer in one app,
 sharing the same client file.
 
-**Current focus:** Gym dashboard (`/training`) — set-by-set logging, templates, schedule, progress.
-Nutrition is feature-complete; polish and notebook-day UI consistency are ongoing.
+**Current focus (Aug 2026 pause):** Diego is **not actively developing** — FLOPS is his daily driver
+and he's happy with it. Last touched area: **Today dashboard layout editor** (`?editLayout=1`) —
+shipped and usable, but visual polish is **parked** (see `HANDOFF.md` § Dashboard layout editor).
+When work resumes, either continue that polish or gym UX on `/training`. Nutrition is feature-complete.
 
 ---
 
@@ -108,14 +110,17 @@ within a feature use relative paths. Import cross-cutting modules via their barr
 
 ---
 
-## Dashboard Section Order (nutrition `/`)
+## Dashboard (nutrition `/`)
 
-Order evolves — verify in `Dashboard.jsx` before changing. Roughly:
-1. Date toolbar + **AI Estimate** / **Log a Meal** / **Training** hop
-2. Off-today banner (when not calendar-today)
-3. Macro rings + supplements strip + weight row
-4. Today's meals list
+**View mode:** card canvas (`DashboardCanvas.jsx`) — user-ordered stack of registry cards
+(macros, supplements, weight, optional weight trend mini-chart, meals). Layout in
+`user_profile.dash_layout_json`. Not a fixed section order — verify `Dashboard.jsx` + `dashboardLayout.js`.
 
+**Edit mode:** `?editLayout=1` — react-grid-layout drag/resize; show/hide chips in the
+**Customizing Today** banner. Scaling via `DashboardCardScale.jsx` + per-card floors in
+`dashboardReadability.js`. Meals card shows a **3-meal preview** in edit mode, not the live log.
+
+Rough view-mode stack when using defaults: date toolbar → off-today banner → cards above.
 Charts, adherence, and micronutrient review live on **`/history`**, not Today.
 
 **Gym `/training`:** separate shell — `TrainingLayout` + gym tabs in nav (Today / Schedule / Workouts / Progress).
