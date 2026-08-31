@@ -2441,9 +2441,12 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
 .dashboard-canvas--edit .react-grid-placeholder {
   display: none !important;
 }
-.dashboard-canvas--edit .react-grid-item > .dashboard-card {
-  box-shadow: 0 8px 28px rgba(37, 99, 235, 0.12);
+.dashboard-canvas--edit .react-grid-item[data-scale-floor="1"] > .dashboard-card {
+  box-shadow:
+    0 8px 28px rgba(37, 99, 235, 0.12),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-caution) 35%, transparent);
 }
+
 .dashboard-card {
   background: var(--color-surface);
   border: 1px solid var(--color-surface-border);

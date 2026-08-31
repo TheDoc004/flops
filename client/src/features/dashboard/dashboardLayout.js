@@ -138,6 +138,7 @@ export function layoutForEditSession(layout, { mealCount = 0 } = {}) {
     const c = byId.get(id);
     if (!c || c.visible === false) continue;
     let h = EDIT_DEFAULT_ROWS[id] ?? 3;
+    h = Math.max(h, EDIT_MIN_ROWS[id] ?? 2);
     if (id === 'meals') {
       h = Math.min(12, EDIT_DEFAULT_ROWS.meals + Math.ceil(mealCount / 2));
     }
@@ -164,9 +165,30 @@ export const EDIT_MAX_ROWS = {
   meals: 14,
 };
 
+/**
+ * Minimum grid rows per card — resize handles snap here; content stays readable.
+ * Tuned for EDIT_GRID_ROW_HEIGHT (36px) + 12px vertical margin between rows.
+ */
+export const EDIT_MIN_ROWS = {
+  macros: 4,
+  supplements: 3,
+  weight: 2,
+  weight_chart: 4,
+  meals: 3,
+};
+
+/** Lowest uniform scale applied in edit mode — below this, text/rings become illegible. */
+export const EDIT_MIN_SCALE = {
+  macros: 0.72,
+  supplements: 0.68,
+  weight: 0.7,
+  weight_chart: 0.62,
+  meals: 0.68,
+};
+
 function clampEditRows(cardId, h) {
   const max = EDIT_MAX_ROWS[cardId] ?? 10;
-  const min = 2;
+  const min = EDIT_MIN_ROWS[cardId] ?? 2;
   const n = Number(h);
   if (!Number.isFinite(n)) return EDIT_DEFAULT_ROWS[cardId] ?? 3;
   return Math.min(max, Math.max(min, Math.round(n)));
@@ -180,7 +202,7 @@ export function layoutToRgl(layout) {
     w: c.w,
     h: clampEditRows(c.id, c.h),
     minW: 3,
-    minH: 2,
+    minH: EDIT_MIN_ROWS[c.id] ?? 2,
     maxH: EDIT_MAX_ROWS[c.id] ?? 10,
     resizeHandles: CORNER_HANDLES,
   }));
@@ -196,7 +218,7 @@ export function rglToLayout(prevLayout, nextItems) {
       x: item.x,
       y: item.y,
       w: item.w,
-      h: item.h,
+      h: clampEditRows(item.i, item.h),
       visible: prev.visible !== false,
     });
   }
