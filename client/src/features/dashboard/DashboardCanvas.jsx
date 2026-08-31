@@ -89,7 +89,7 @@ export default function DashboardCanvas({
     >
       <EditCardChrome cardId={item.i} />
       <div className="dashboard-card__content">
-        <DashboardCardScale>{cards[item.i]}</DashboardCardScale>
+        <DashboardCardScale cardId={item.i}>{cards[item.i]}</DashboardCardScale>
       </div>
     </div>
   ));

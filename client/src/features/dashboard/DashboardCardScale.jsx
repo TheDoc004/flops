@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { EDIT_MIN_SCALE } from './dashboardLayout';
 
-const SCALE_MIN = 0.38;
 const SCALE_MAX = 1;
 
 function clamp(n, min, max) {
@@ -11,8 +11,10 @@ function clamp(n, min, max) {
  * Scales card innards to the react-grid-layout cell in edit mode.
  * Measures natural content size, then applies a uniform transform so macros,
  * supplement chips, weight row, and charts reflow visually without overlap.
+ * Scale never drops below EDIT_MIN_SCALE[cardId] — paired with grid minH so
+ * resize handles stop at the same readable boundary.
  */
-export default function DashboardCardScale({ children }) {
+export default function DashboardCardScale({ cardId, children }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -20,6 +22,7 @@ export default function DashboardCardScale({ children }) {
     if (!root) return undefined;
 
     let frame = 0;
+    const scaleFloor = EDIT_MIN_SCALE[cardId] ?? 0.65;
 
     const update = () => {
       frame = 0;
@@ -48,11 +51,9 @@ export default function DashboardCardScale({ children }) {
       const naturalW = availW;
       if (naturalH < 1 || naturalW < 1) return;
 
-      const scale = clamp(
-        Math.min(availW / naturalW, availH / naturalH),
-        SCALE_MIN,
-        SCALE_MAX,
-      );
+      const rawScale = Math.min(availW / naturalW, availH / naturalH);
+      const scale = clamp(rawScale, scaleFloor, SCALE_MAX);
+      const atFloor = rawScale < scaleFloor - 0.001;
 
       root.style.transformOrigin = 'top center';
       root.style.transform = `scale(${scale})`;
@@ -62,6 +63,8 @@ export default function DashboardCardScale({ children }) {
         root.style.marginBottom = `${naturalH * (scale - 1)}px`;
       }
       root.style.setProperty('--card-scale', String(scale));
+      root.dataset.scaleFloor = atFloor ? '1' : '0';
+      cell.dataset.scaleFloor = atFloor ? '1' : '0';
     };
 
     const schedule = () => {
@@ -79,10 +82,10 @@ export default function DashboardCardScale({ children }) {
       if (frame) cancelAnimationFrame(frame);
       ro.disconnect();
     };
-  }, []);
+  }, [cardId]);
 
   return (
-    <div ref={ref} className="dashboard-card__scale-root">
+    <div ref={ref} className="dashboard-card__scale-root" data-card-scale-id={cardId}>
       {children}
     </div>
   );

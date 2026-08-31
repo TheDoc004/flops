@@ -86,6 +86,19 @@ describe('layoutToRgl', () => {
     const items = layoutToRgl(mergeDashLayout(saved));
     expect(items.find(i => i.i === 'macros').h).toBe(6);
   });
+
+  it('enforces per-card minimum row counts for readable resize floors', () => {
+    const saved = {
+      version: 1,
+      cards: DEFAULT_DASH_LAYOUT.map(c =>
+        (c.id === 'macros' ? { ...c, h: 1, visible: true } : c),
+      ),
+    };
+    const items = layoutToRgl(mergeDashLayout(saved));
+    const macros = items.find(i => i.i === 'macros');
+    expect(macros.h).toBe(4);
+    expect(macros.minH).toBe(4);
+  });
 });
 
 describe('rglToLayout', () => {
@@ -94,6 +107,12 @@ describe('rglToLayout', () => {
     const next = rglToLayout(prev, [{ i: 'macros', x: 0, y: 2, w: 12, h: 4 }]);
     expect(next.cards.find(c => c.id === 'macros').y).toBe(2);
     expect(next.cards).toHaveLength(DEFAULT_DASH_LAYOUT.length);
+  });
+
+  it('clamps height to per-card minimum rows on commit', () => {
+    const prev = mergeDashLayout(null);
+    const next = rglToLayout(prev, [{ i: 'macros', x: 0, y: 0, w: 12, h: 1 }]);
+    expect(next.cards.find(c => c.id === 'macros').h).toBe(4);
   });
 });
 
@@ -141,7 +160,7 @@ describe('layoutForEditSession', () => {
       ),
     };
     const edit = layoutForEditSession(mergeDashLayout(saved));
-    expect(edit.cards.find(c => c.id === 'macros').h).toBe(3);
+    expect(edit.cards.find(c => c.id === 'macros').h).toBe(4);
   });
 });
 
