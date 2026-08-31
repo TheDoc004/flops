@@ -2501,9 +2501,19 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
 .dashboard-card__scale-root {
   flex: 0 0 auto;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
   --card-scale: 1;
   will-change: transform;
+}
+.dashboard-card--edit .dashboard-card__scale-root .macro-strip,
+.dashboard-card--edit .dashboard-card__content .macro-strip,
+.dashboard-card--edit .dashboard-card__scale-root .supp-chip-grid,
+.dashboard-card--edit .dashboard-card__content .supp-chip-grid,
+.dashboard-card--edit .dashboard-card__scale-root .log-entry-row,
+.dashboard-card--edit .dashboard-card__content .log-entry-row,
+.dashboard-card--edit .dashboard-card__scale-root .recharts-responsive-container,
+.dashboard-card--edit .dashboard-card__content .recharts-responsive-container {
+  overflow: hidden;
 }
 .dashboard-card--edit .dashboard-card__scale-root .dash-section,
 .dashboard-card--edit .dashboard-card__content .dash-section {
@@ -2515,7 +2525,7 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
 .dashboard-card--edit .dashboard-card__content .dash-section > .card {
   flex: none;
   min-height: auto;
-  overflow: visible;
+  overflow: hidden;
   display: block;
   padding: 14px 16px;
 }
@@ -2716,9 +2726,8 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
 }
 .dash-edit-mode-banner {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
   margin: 0 0 16px;
   padding: 14px 16px;
@@ -2726,6 +2735,25 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   border: 2px solid var(--color-primary);
   background: color-mix(in srgb, var(--color-primary-subtle) 80%, #fff);
   box-shadow: var(--shadow-card);
+}
+.dash-edit-mode-banner__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dash-edit-mode-banner__toggles {
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-surface-border));
+}
+.dash-edit-mode-banner__toggle-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 .dash-edit-mode-banner__copy {
   display: flex;
@@ -2744,7 +2772,7 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   gap: 8px;
 }
 @media (max-width: 768px) {
-  .dash-edit-mode-banner {
+  .dash-edit-mode-banner__head {
     flex-direction: column;
     align-items: stretch;
   }
@@ -2784,17 +2812,12 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
   .dashboard-card__edit-chrome {
     margin-bottom: 8px;
   }
-  .dash-edit-hint--desktop {
-    display: none;
-  }
-}
-@media (min-width: 769px) {
-  .dash-edit-hint--mobile {
-    display: none;
-  }
 }
 html[data-dash-layout-edit] .app-main {
   position: relative;
+}
+html[data-dash-layout-edit] .dash-greeting {
+  display: none;
 }
 html[data-dash-layout-edit] nav[class*="nav"],
 html[data-dash-layout-edit] nav[class*="bar"] {

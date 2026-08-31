@@ -1,17 +1,31 @@
 import { DASH_CARD_IDS, DASH_CARD_META } from './dashboardLayout';
 
 /**
- * In-layout card picker — add/remove cards with immediate preview (edit mode only).
+ * Card show/hide toggles for layout edit mode.
+ * variant="banner" docks chips in the Customizing Today header (off-canvas).
  */
-export default function DashboardLayoutToolbar({ layout, onToggleCard, busyId }) {
+export default function DashboardLayoutToolbar({
+  layout,
+  onToggleCard,
+  busyId,
+  variant = 'canvas',
+}) {
   const visible = new Set(
     (layout?.cards || []).filter(c => c.visible !== false).map(c => c.id),
   );
 
+  const isBanner = variant === 'banner';
+
   return (
-    <div className="dash-layout-toolbar" role="toolbar" aria-label="Dashboard cards">
-      <p className="dash-layout-toolbar__hint">
-        Tap a card to show or hide it. Drag handles on the canvas to move and resize.
+    <div
+      className={isBanner ? 'dash-edit-mode-banner__toggles' : 'dash-layout-toolbar'}
+      role="toolbar"
+      aria-label="Dashboard cards"
+    >
+      <p className={isBanner ? 'dash-edit-mode-banner__toggle-hint' : 'dash-layout-toolbar__hint'}>
+        {isBanner
+          ? 'Show or hide cards'
+          : 'Tap a card to show or hide it. Drag handles on the canvas to move and resize.'}
       </p>
       <div className="dash-layout-toolbar__chips">
         {DASH_CARD_IDS.map(id => {

@@ -723,20 +723,28 @@ export default function Dashboard() {
     <div className={`dashboard${editLayout ? ' dashboard--layout-edit' : ''}`}>
       {editLayout && (
         <div className="dash-edit-mode-banner" role="status">
-          <div className="dash-edit-mode-banner__copy">
-            <strong>Customizing Today</strong>
-            <span>Drag, resize, and add or hide cards. Press Esc to exit.</span>
-          </div>
-          <div className="dash-edit-mode-banner__actions">
-            {dashEdit?.dirty && (
-              <button type="button" className="btn-primary" onClick={() => { void persistLayout(dashLayout).then(() => dashEdit?.finishExit()); }}>
-                Save &amp; close
+          <div className="dash-edit-mode-banner__head">
+            <div className="dash-edit-mode-banner__copy">
+              <strong>Customizing Today</strong>
+              <span>Drag by the handle, resize from corners. Press Esc to exit.</span>
+            </div>
+            <div className="dash-edit-mode-banner__actions">
+              {dashEdit?.dirty && (
+                <button type="button" className="btn-primary" onClick={() => { void persistLayout(dashLayout).then(() => dashEdit?.finishExit()); }}>
+                  Save &amp; close
+                </button>
+              )}
+              <button type="button" className="btn-secondary" onClick={handleFinishEdit}>
+                {dashEdit?.dirty ? 'Exit…' : 'Done'}
               </button>
-            )}
-            <button type="button" className="btn-secondary" onClick={handleFinishEdit}>
-              {dashEdit?.dirty ? 'Exit…' : 'Done'}
-            </button>
+            </div>
           </div>
+          <DashboardLayoutToolbar
+            variant="banner"
+            layout={dashLayout}
+            onToggleCard={handleToggleCard}
+            busyId={togglingCardId}
+          />
         </div>
       )}
       {/* ── Day ← / → row stays fixed in Y; banner animates below and may push the greeting ── */}
@@ -878,22 +886,6 @@ export default function Dashboard() {
         <p className="error" style={{ marginBottom: 16 }}>
           Could not load goals: {goalsError}
         </p>
-      )}
-
-      {editLayout && (
-        <>
-          <DashboardLayoutToolbar
-            layout={dashLayout}
-            onToggleCard={handleToggleCard}
-            busyId={togglingCardId}
-          />
-          <p className="dash-edit-hint dash-edit-hint--desktop" style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-            Drag cards by the handle. Resize from any corner. Changes save when you choose Save &amp; close or confirm on exit.
-          </p>
-          <p className="dash-edit-hint dash-edit-hint--mobile" style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-            Use the handle to move a card. Pinch-friendly corner squares resize. Save with Done or Save &amp; close.
-          </p>
-        </>
       )}
 
       <DashboardCanvas
