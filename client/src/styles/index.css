@@ -2515,6 +2515,9 @@ html[data-notebook-day] .day-off-banner--future .day-off-banner-copy span {
 .dashboard-card--edit .dashboard-card__content .recharts-responsive-container {
   overflow: hidden;
 }
+.dashboard-meals-preview .meal-row-menu-btn {
+  display: none;
+}
 .dashboard-card--edit .dashboard-card__scale-root .dash-section,
 .dashboard-card--edit .dashboard-card__content .dash-section {
   flex: none;

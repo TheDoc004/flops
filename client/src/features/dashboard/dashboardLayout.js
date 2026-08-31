@@ -123,14 +123,14 @@ export const EDIT_DEFAULT_ROWS = {
   supplements: 4,
   weight: 3,
   weight_chart: 5,
-  meals: 6,
+  meals: 5,
 };
 
 /**
  * Seed edit-mode grid from the current Today stack so cards open at view-like
  * sizes (full-width column) instead of oversized saved grid cells.
  */
-export function layoutForEditSession(layout, { mealCount = 0 } = {}) {
+export function layoutForEditSession(layout) {
   const order = mobileStackOrder(layout);
   const byId = new Map((layout?.cards || DEFAULT_DASH_LAYOUT).map(c => [c.id, { ...c }]));
   let y = 0;
@@ -139,9 +139,6 @@ export function layoutForEditSession(layout, { mealCount = 0 } = {}) {
     if (!c || c.visible === false) continue;
     let h = EDIT_DEFAULT_ROWS[id] ?? 3;
     h = Math.max(h, EDIT_MIN_ROWS[id] ?? 2);
-    if (id === 'meals') {
-      h = Math.min(12, EDIT_DEFAULT_ROWS.meals + Math.ceil(mealCount / 2));
-    }
     c.x = 0;
     c.w = 12;
     c.y = y;
@@ -173,8 +170,8 @@ export const EDIT_MIN_ROWS = {
   macros: 4,
   supplements: 3,
   weight: 2,
-  weight_chart: 4,
-  meals: 3,
+  weight_chart: 7,
+  meals: 2,
 };
 
 /** Lowest uniform scale applied in edit mode — below this, text/rings become illegible. */
@@ -182,8 +179,8 @@ export const EDIT_MIN_SCALE = {
   macros: 0.76,
   supplements: 0.78,
   weight: 0.76,
-  weight_chart: 0.62,
-  meals: 0.78,
+  weight_chart: 0.72,
+  meals: 0.65,
 };
 
 /** Minimum grid columns (of 12) — prevents extreme horizontal wrap on text-heavy cards. */

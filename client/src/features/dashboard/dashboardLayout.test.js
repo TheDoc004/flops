@@ -112,6 +112,19 @@ describe('layoutToRgl', () => {
     expect(meals.w).toBe(8);
     expect(meals.minW).toBe(8);
   });
+
+  it('uses a higher vertical floor for the weight trend chart', () => {
+    const layout = mergeDashLayout(null, { dash_weight_chart_card_enabled: 1 });
+    const chart = layoutToRgl(layout).find(i => i.i === 'weight_chart');
+    expect(chart.minH).toBe(7);
+  });
+
+  it('allows tighter vertical compression for the meals preview list', () => {
+    const items = layoutToRgl(mergeDashLayout(null));
+    const meals = items.find(i => i.i === 'meals');
+    expect(meals.minH).toBe(2);
+    expect(meals.minH).toBeLessThan(items.find(i => i.i === 'supplements').minH);
+  });
 });
 
 describe('rglToLayout', () => {
@@ -180,6 +193,12 @@ describe('layoutForEditSession', () => {
     };
     const edit = layoutForEditSession(mergeDashLayout(saved));
     expect(edit.cards.find(c => c.id === 'macros').h).toBe(4);
+  });
+
+  it('seeds meals at a fixed preview height regardless of live log length', () => {
+    const base = mergeDashLayout(null);
+    const edit = layoutForEditSession(base);
+    expect(edit.cards.find(c => c.id === 'meals').h).toBe(5);
   });
 });
 
