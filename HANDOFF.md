@@ -185,8 +185,9 @@ Skill: `.cursor/skills/dashboard-layout-editor-verify/SKILL.md`.
 
 When viewing a non-today date on **`/`**, `Dashboard.jsx` sets `html[data-notebook-day="past"|"future"]`.
 
-**Gotchas:** native `<dialog>` needs explicit notebook-day styles; `.btn-primary` / `.btn-ai` need
-overrides on charcoal; avoid hardcoded `#f9fafb` in modal JSX. See `index.css` notebook blocks.
+**Gotchas:** native `<dialog>` needs explicit notebook-day styles; `.btn-primary` / `.btn-ai` /
+`.btn-ghost` all need overrides on charcoal (all four variants are now covered — keep it that way);
+avoid hardcoded `#f9fafb` in modal JSX. See `index.css` notebook blocks.
 Only Dashboard sets this attribute — other pages stay beige.
 
 **Contrast audit + fixes (2026-09-04).** Every fg/bg pair was measured across all three themes
@@ -215,7 +216,7 @@ findings are unaffected, the type is not.**
 
 **Nav label (settled 2026-09-04):** the top-level item for the plan section is **Profile** →
 `/plan/profile`, with `matchPaths: ['/plan']` so it stays lit across the section. It was briefly
-changed to "Plan" → `/plan` in `640c769` and reverted here — **Profile is the intended label.**
+changed to "Plan" → `/plan` in `640c769` and reverted in `1bd9da2` — **Profile is the intended label.**
 (For the record, the earlier "Goals" label collided with the *Goals* tab inside `PlanLayout`;
 that collision is gone either way.)
 

@@ -1,6 +1,6 @@
 # FLOPS — Project Context for Claude / Claude Code
 
-> **Current state snapshot:** see **`HANDOFF.md`** (last updated 2026-08-31 — Diego pause checkpoint).
+> **Current state snapshot:** see **`HANDOFF.md`** (last updated 2026-09-04).
 > Canonical repo: **`~/dev/FLOPS`**. Live: **https://www.useflops.com** (Vercel + Render, push `main` to deploy).
 
 ## What This App Is

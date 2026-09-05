@@ -89,15 +89,23 @@ When the user views a past or future date on **`/`**, `Dashboard.jsx` sets
 
 1. **Never assume modals inherit the page theme.** Native `<dialog>` defaults to white;
    add/use `html[data-notebook-day] dialog { … }` rules.
-2. **Override action buttons off-today.** `.btn-primary` and `.btn-ai` need notebook-day
-   fills (darker blue / navy) — sky blue on charcoal fails contrast.
+2. **Override action buttons off-today.** `.btn-primary`, `.btn-ai` and `.btn-ghost` all need
+   notebook-day rules — sky blue on charcoal fails contrast. All four variants are covered as of
+   2026-09-04; a new variant needs one too.
 3. **Use tokens in modal JSX**, not hardcoded `#f9fafb` / `#eff6ff`. Utility classes:
    `modal-subpanel`, `modal-highlight-panel`, `modal-loading-overlay`.
 4. **Only Dashboard sets the attribute** — other routes stay warm beige unless extended deliberately.
 5. **Receipt editor panels** (`.slot-list`, `.prep-split`) and expanded meal rows must have notebook-day dialog rules — never hardcoded `#fff` / `#f9fafb` without overrides.
 6. **Component checklist for new modal work:** use `modal-subpanel`, `modal-highlight-panel`, and CSS variables (`var(--color-text-muted)`, `var(--color-divider)`) — never inline `#6b7280` / `#f3f4f6`.
 
-See **`HANDOFF.md`** § Notebook-day UI for file pointers and recent fixes.
+7. **Measure a text token against `--color-bg` AND `--color-surface`.** Cream (`#f3ede3`) is a
+   harder background than the card (`#faf9f7`), and plenty of text renders directly on the page —
+   a value tuned only against cards will under-shoot. The floor is WCAG AA: **4.5:1 for body and
+   small text**, which is nearly everything here (`.section-label` is 11px, `.macro-status` 12px).
+   3:1 applies only at 18.66px+ bold or 24px+, which almost no text in this app reaches.
+
+See **`HANDOFF.md`** § Notebook-day UI for file pointers, the 2026-09-04 contrast audit, and the
+one pair still open (light-theme `--color-text-faint` / `--color-text-muted` at 4.15:1 on `--color-bg`).
 
 ---
 
