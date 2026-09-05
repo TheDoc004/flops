@@ -79,15 +79,15 @@ export default function BottomNav() {
         <NavLink to="/coach" className={tabClass} onClick={e => guardNav(e, '/coach')}><IconCoach /><span>Coach</span></NavLink>
       ) : null}
       <NavLink
-        to="/plan"
+        to="/plan/profile"
         className={({ isActive }) => {
           const planActive = pathname === '/plan' || pathname.startsWith('/plan/');
           return guardedTabClass(planActive || isActive);
         }}
-        onClick={e => guardNav(e, '/plan')}
+        onClick={e => guardNav(e, '/plan/profile')}
       >
         <IconPlan />
-        <span>Plan</span>
+        <span>Profile</span>
       </NavLink>
     </nav>
   );

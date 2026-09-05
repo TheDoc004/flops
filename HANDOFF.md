@@ -213,11 +213,11 @@ Working files in `.design/` (`gen.py` regenerates the artboards). **Note both ca
 `feat(typography): Nunito headings + Open Sans UI body` and still draw DM Serif — the contrast
 findings are unaffected, the type is not.**
 
-**Nav label (changed 2026-09-04):** the top-level item for the plan section is now **Plan** →
-`/plan`, in both `Navbar.jsx` and `BottomNav.jsx`. It had been "Goals" (colliding with the *Goals*
-tab inside `PlanLayout`), and was independently changed to "Profile" → `/plan/profile` on `main`
-before this landed. Both of those name one of the section's three tabs and hide the other two;
-"Plan" names the section. The remote's `matchPaths` / `guardNav` structure is preserved.
+**Nav label (settled 2026-09-04):** the top-level item for the plan section is **Profile** →
+`/plan/profile`, with `matchPaths: ['/plan']` so it stays lit across the section. It was briefly
+changed to "Plan" → `/plan` in `640c769` and reverted here — **Profile is the intended label.**
+(For the record, the earlier "Goals" label collided with the *Goals* tab inside `PlanLayout`;
+that collision is gone either way.)
 
 ### Training / Gym (Phase 2)
 
