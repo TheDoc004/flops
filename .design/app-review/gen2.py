@@ -120,10 +120,10 @@ FIND = [
   'LibrarySubNav slides a white thumb along a grey track with <code>--color-primary</code> type. <code>.plan-tab.is-active</code> fills the pill with <code>--color-text-strong</code> and inverts. Both are pill-shaped; neither resembles the other in behaviour.',
   'Recipes &rarr; Plan is two clicks, and the answer to &ldquo;which tab am I on?&rdquo; changes on the way. This is the clearest chrome inconsistency in the app.',
   'Pick one. The sliding thumb is the more distinctive of the two and already handles a two-item set; plan-tabs would need it to handle three.'),
- ('The nav says &ldquo;Goals&rdquo;, the section says &ldquo;Plan&rdquo;',
-  'Both navs label the destination <code>Goals</code> &rarr; <code>/plan</code>. <code>PlanLayout</code> then renders a <code>.section-label</code> reading <strong>Plan</strong>, with <strong>Goals</strong> as the first of three tabs.',
-  'The word Goals means two different scopes one click apart &mdash; the whole section, then one tab inside it. Report and Profile live under a nav item that does not mention them.',
-  'Rename the nav item to <strong>Plan</strong>, matching the section and CLAUDE.md&rsquo;s own route map. One-word change in two files.'),
+ ('The nav item for the plan section',
+  'It read <code>Goals</code> &rarr; <code>/plan</code>, colliding with the <em>Goals</em> tab inside <code>PlanLayout</code> &mdash; one word meaning both the section and one of its three tabs.',
+  'Report and Profile sat under a nav item that never mentioned them.',
+  '<strong>Settled: Profile &rarr; /plan/profile</strong>, with <code>matchPaths: [&#39;/plan&#39;]</code> so it stays lit across the section. This canvas originally argued for &ldquo;Plan&rdquo;; that was proposed, briefly shipped in <code>640c769</code>, and reverted in <code>1bd9da2</code>. Profile is the intended label &mdash; the Goals collision is resolved either way.', 'settled'),
  ('Two styling systems',
   'Nutrition styles through global classes in <code>index.css</code>. Training and the shared navs use CSS modules. Both consume the same tokens, so nothing looks broken.',
   'A fork with no signpost: every future shared control has to pick a side, and today the answer is &ldquo;whichever domain builds it first&rdquo;.',
@@ -135,32 +135,41 @@ FIND = [
  ('--color-text-faint carries the most sub-AA text',
   '4.26:1 off-today, across <code>.section-label</code> (11px), <code>.empty-state</code> (15px) and gym <code>.prev</code> (12px) &mdash; 64 call sites.',
   'The smallest type in the app has the least contrast, and it is worst on notebook days.',
-  '<code>#a1a1aa</code> &rarr; <code>#a8a8b0</code>. 4.63:1, visually near-identical.'),
+  '<strong>Applied in <code>640c769</code>:</strong> <code>#a1a1aa</code> &rarr; <code>#a8a8b0</code>. 4.63:1 on the card, 5.94:1 on the page.', 'applied'),
  ('--color-success at 12px',
   '<code>#059669</code> on cream is 3.58:1 &mdash; the lowest pair in the palette, in <code>.macro-status.is-ok</code>.',
   'The &ldquo;on target&rdquo; indicator you read every day is the least legible text on the Dashboard.',
-  '<code>#059669</code> &rarr; <code>#04815a</code>. 4.65:1.'),
+  '<strong>Applied in <code>640c769</code>:</strong> <code>#059669</code> &rarr; <code>#047a55</code> &mdash; not the <code>#04815a</code> first proposed here. Success text also renders directly on <code>--color-bg</code> (the paste confirmation in <code>Dashboard.jsx</code>), and cream is a harder background than the card: <code>#04815a</code> reached only 4.20:1 there. <code>#047a55</code> clears both (4.60 / 5.09).', 'applied'),
  ('.btn-ghost has no notebook override',
   'The other three button variants have <code>html[data-notebook-day]</code> rules. <code>.btn-ghost</code> inherits sky-blue at 4.30:1 on charcoal.',
   'A gap in an otherwise complete set.',
-  'Add the fourth override, or lift the token to <code>#6dacfa</code>.'),
+  '<strong>Applied in <code>640c769</code>:</strong> a new <code>html[data-notebook-day] .btn-ghost</code> rule at <code>#6dacfa</code> (4.65:1), plus a hover pair. The token itself was left alone.', 'applied'),
 ]
 
+STATUS = {'settled': ('Settled', '#065f46', '#d1fae5', '#6ee7b7'),
+          'applied': ('Applied', '#065f46', '#d1fae5', '#6ee7b7'),
+          'open':    ('Open',    '#9a3412', '#ffedd5', '#fdba74')}
+
 def fcard(i,f):
-    t,what,why,fix=f
+    t,what,why,fix = f[0],f[1],f[2],f[3]
+    st = f[4] if len(f)>4 else 'open'
+    lbl,fg,bgc,bd = STATUS[st]
+    chip = (f'<span style="display:inline-flex;padding:2px 8px;border-radius:999px;font-family:ui-monospace,Menlo,monospace;'
+            f'font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;'
+            f'color:{fg};background:{bgc};border:1px solid {bd};margin-left:10px;vertical-align:middle;">{lbl}</span>')
     return f"""<div style="border-top:1px solid var(--divider-strong);padding:18px 0;display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;">
       <p style="margin:0;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--muted);">{i:02d}</p>
-      <div><p style="margin:0;font-size:17px;font-weight:600;color:var(--strong);">{t}</p>
+      <div><p style="margin:0;font-size:17px;font-weight:600;color:var(--strong);">{t}{chip}</p>
       <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;">{what}</p>
       <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;"><em style="color:var(--muted);">Why it matters &mdash;</em> {why}</p>
-      <p style="margin:8px 0 0;font-size:14px;color:var(--primary-ink);line-height:1.6;"><strong>Proposed &mdash;</strong> {fix}</p></div></div>"""
+      <p style="margin:8px 0 0;font-size:14px;color:var(--primary-ink);line-height:1.6;">{fix}</p></div></div>"""
 
 findings = f"""<div class="ab" style="height:auto;min-height:1560px;">
   <div class="body" style="padding:26px 30px;">
     <h1 class="page-title">Review findings</h1>
     <p class="page-subtitle" style="margin:8px 0 0;max-width:78ch;">
       A pass over all 14 routes and all 5 persistent chrome surfaces. Ordered by how much each one
-      shapes the product, not by how fast it can be fixed. Nothing has been changed in the code.</p>
+      shapes the product, not by how fast it can be fixed. Four are still open calls; three shipped in <code>640c769</code> and one is settled.</p>
     <div style="margin-top:16px;padding:14px 16px;border-radius:10px;background:#fff7ed;border:1px solid #fdba74;">
       <p style="margin:0;font-size:13px;font-weight:600;color:#9a3412;">Correction to the first version of this canvas</p>
       <p style="margin:6px 0 0;font-size:13px;color:var(--body);line-height:1.6;">
