@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-08-31 (Diego pause checkpoint)_
+_Last updated: 2026-09-04_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -188,6 +188,36 @@ When viewing a non-today date on **`/`**, `Dashboard.jsx` sets `html[data-notebo
 **Gotchas:** native `<dialog>` needs explicit notebook-day styles; `.btn-primary` / `.btn-ai` need
 overrides on charcoal; avoid hardcoded `#f9fafb` in modal JSX. See `index.css` notebook blocks.
 Only Dashboard sets this attribute — other pages stay beige.
+
+**Contrast audit + fixes (2026-09-04).** Every fg/bg pair was measured across all three themes
+(today / past / future) against both `--color-surface` and `--color-bg`. Three pairs were under
+WCAG AA and are now fixed:
+
+| Token | Was | Now | Where it bit |
+|---|---|---|---|
+| `--color-success` | `#059669` 3.58:1 | `#047a55` 4.60:1 | `.macro-status.is-ok` at 12px; paste confirmation at 13px |
+| notebook `--color-text-faint` | `#a1a1aa` 4.26:1 | `#a8a8b0` 4.63:1 | `.section-label` (11px), `.empty-state`, gym `.prev` |
+| `.btn-ghost` off-today | inherited `#60a5fa` 4.30:1 | `#6dacfa` override | the 4th button variant, missing from the notebook set |
+
+**When changing a text token, check it against `--color-bg` as well as `--color-surface`.** The first
+pass only tested cards and picked `#04815a`, which passes on the card (4.65:1) but only reaches
+4.20:1 on cream — success text renders directly on the page background in `Dashboard.jsx`
+(the paste confirmation). `#047a55` clears both.
+
+**Still open (found 2026-09-04, not changed):** in the *light* theme `--color-text-faint` and
+`--color-text-muted` are both `#6b7280` — 4.59:1 on cards but **4.15:1 on `--color-bg`**.
+
+Design canvases: contrast matrix <https://claude.ai/code/artifact/44f32c62-04be-4da5-bcf5-e163a2db33e2>,
+app review, all 14 routes + 5 chrome surfaces <https://claude.ai/code/artifact/dab937c0-3480-4304-87e9-12bb6068810a>.
+Working files in `.design/` (`gen.py` regenerates the artboards). **Note both canvases predate
+`feat(typography): Nunito headings + Open Sans UI body` and still draw DM Serif — the contrast
+findings are unaffected, the type is not.**
+
+**Nav label (changed 2026-09-04):** the top-level item for the plan section is now **Plan** →
+`/plan`, in both `Navbar.jsx` and `BottomNav.jsx`. It had been "Goals" (colliding with the *Goals*
+tab inside `PlanLayout`), and was independently changed to "Profile" → `/plan/profile` on `main`
+before this landed. Both of those name one of the section's three tabs and hide the other two;
+"Plan" names the section. The remote's `matchPaths` / `guardNav` structure is preserved.
 
 ### Training / Gym (Phase 2)
 

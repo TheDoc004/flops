@@ -1,0 +1,139 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap">
+  <style>
+    body { margin: 0; }
+    .ab {
+      --bg:#f3ede3; --surface:#faf9f7; --surface-border:#e8e4dc; --input-border:#d1d5db;
+      --border:#e5e7eb; --divider:#f3f4f6; --divider-warm:#f0ede8; --divider-strong:#e6e1d7;
+      --text:#1a1a1a; --strong:#111827; --body:#374151; --muted:#6b7280; --faint:#6b7280;
+      --primary:#1d4ed8; --primary-ink:#1e3a8a; --primary-subtle:#eff6ff; --link:#2563eb;
+      --success:#059669; --secondary-bg:#f3f4f6; --secondary-border:#e5e7eb;
+      --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+      --font-serif:'DM Serif Display',Georgia,serif;
+      width:900px; height:1000px; box-sizing:border-box;
+      background:var(--bg); color:var(--text); font-family:var(--font-sans); font-size:15px;
+      display:flex; flex-direction:column; overflow:hidden;
+    }
+    .card { background:var(--surface); border:1px solid var(--surface-border); border-radius:12px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.07); padding:16px; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:44px;
+           padding:0 16px; border-radius:8px; font-size:15px; font-weight:500;
+           border:1px solid transparent; box-sizing:border-box; }
+    .btn-primary { background:var(--primary); color:#fff; }
+    .btn-secondary { background:var(--secondary-bg); color:var(--primary); border-color:var(--secondary-border); }
+    .btn-ai { background:var(--primary-subtle); color:var(--primary); border-color:var(--border); font-weight:600; }
+    .btn-sm { min-height:34px; padding:0 10px; font-size:13px; }
+    .page-title { margin:0; font-family:var(--font-serif); font-size:28px; font-weight:400;
+                  color:var(--primary-ink); letter-spacing:-0.02em; }
+    .page-subtitle { margin:0 0 20px; font-size:15px; color:var(--muted); }
+    .section-title { margin:0; font-size:16px; font-weight:600; color:var(--primary-ink); }
+    .section-label { font-size:11px; font-weight:600; color:var(--faint); text-transform:uppercase;
+                     letter-spacing:0.07em; margin:0; }
+    .empty-state { text-align:center; color:var(--faint); padding:32px 0; font-size:15px; margin:0; }
+    .field { width:100%; box-sizing:border-box; min-height:44px; padding:0 12px; border-radius:8px;
+             border:1px solid var(--input-border); background:var(--surface); color:var(--muted);
+             font-size:15px; display:flex; align-items:center; }
+    .lede { margin:0; color:var(--muted); font-size:14px; }
+    .prev { margin:0; font-size:12px; color:var(--faint); }
+    .nav { display:flex; align-items:center; gap:20px; padding:0 20px; height:56px; background:var(--surface);
+           border-bottom:1px solid var(--surface-border); flex-shrink:0; }
+    .nav a { font-size:14px; color:var(--body); text-decoration:none; }
+    .nav a.on { color:var(--primary); font-weight:600; }
+    .brand { font-family:var(--font-serif); font-size:20px; color:var(--primary-ink); margin-right:6px; }
+    .body { padding:20px; overflow:hidden; display:flex; flex-direction:column; gap:16px; }
+    .note { display:inline-flex; align-items:center; gap:5px; padding:2px 7px; border-radius:999px;
+            font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600;
+            white-space:nowrap; color:#9a3412; background:#ffedd5; border:1px solid #fdba74; }
+    .note-ok { color:#065f46; background:#d1fae5; border-color:#6ee7b7; }
+    .ring { outline:1.5px dashed #fb923c; outline-offset:3px; border-radius:6px; }
+    /* real sub-nav vocabulary */
+    .plan-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+    .plan-tab { padding:8px 12px; border-radius:999px; border:1px solid var(--border);
+                background:var(--surface); color:var(--body); font-size:13px; font-weight:700; }
+    .plan-tab.is-active { background:var(--strong); color:var(--surface); border-color:var(--strong); }
+    .lib-bar { display:inline-flex; padding:3px; background:var(--divider); border-radius:999px; position:relative; }
+    .lib-tab { padding:8px 18px; border-radius:999px; font-size:14px; color:var(--muted); font-weight:500; }
+    .lib-tab.on { background:var(--surface); color:var(--primary); box-shadow:0 1px 2px rgba(0,0,0,0.06); }
+    .lib-build { display:inline-flex; align-items:center; height:44px; padding:0 20px; border-radius:8px;
+                 background:var(--primary); color:#fff; font-size:15.5px; font-weight:600; }
+    a { color:var(--link); } a:hover { color:var(--primary); }
+  </style>
+</helmet>
+<div class="ab" style="height:auto;min-height:1000px;">
+  <div class="body" style="padding:26px 30px;gap:26px;">
+    <div><h1 class="page-title">Navigation chrome</h1>
+      <p class="page-subtitle" style="margin:8px 0 0;max-width:74ch;">Every persistent surface, at real size. Labels are lifted from
+      <code>Navbar.jsx</code> and <code>BottomNav.jsx</code> &mdash; both use the same five, so desktop and mobile agree.</p></div>
+
+    <div><div style="margin-bottom:10px;"><p style="margin:0;font-size:15px;font-weight:600;color:var(--strong);">Desktop Navbar &mdash; nutrition</p>
+    <p class="prev" style="margin-top:3px;">shared/ui/Navbar.jsx</p></div><div style="display:flex;align-items:center;gap:20px;padding:0 20px;height:56px;background:var(--surface);
+      border:1px solid var(--surface-border);border-radius:10px;"><span class="brand">Flops</span><span style="font-size:14px;color:var(--primary);font-weight:600;">Today</span><span style="font-size:14px;color:var(--body);font-weight:400;">Library</span><span style="font-size:14px;color:var(--body);font-weight:400;">Review</span><span style="font-size:14px;color:var(--body);font-weight:400;">Coach</span><span style="font-size:14px;color:var(--body);font-weight:400;">Goals</span></div></div>
+    <div><div style="margin-bottom:10px;"><p style="margin:0;font-size:15px;font-weight:600;color:var(--strong);">Desktop Navbar &mdash; gym</p>
+    <p class="prev" style="margin-top:3px;">Swaps to the gym set on /training/*</p></div><div style="display:flex;align-items:center;gap:20px;padding:0 20px;height:56px;background:var(--surface);
+      border:1px solid var(--surface-border);border-radius:10px;"><span class="brand">Flops</span><span style="font-size:14px;color:var(--primary);font-weight:600;">Today</span><span style="font-size:14px;color:var(--body);font-weight:400;">Schedule</span><span style="font-size:14px;color:var(--body);font-weight:400;">Workouts</span><span style="font-size:14px;color:var(--body);font-weight:400;">Progress</span></div></div>
+    <div><div style="margin-bottom:10px;"><p style="margin:0;font-size:15px;font-weight:600;color:var(--strong);">Bottom nav &mdash; nutrition</p>
+    <p class="prev" style="margin-top:3px;">shared/ui/BottomNav.jsx &middot; mobile only</p></div><div style="max-width:400px;"><div style="display:flex;background:var(--surface);border-top:1px solid var(--surface-border);border-radius:0 0 10px 10px;"><div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;
+          color:var(--primary);font-size:11px;font-weight:600;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg>
+          <span>Today</span></div><div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;
+          color:var(--muted);font-size:11px;font-weight:500;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v16H4zM8 3v4M16 3v4M4 10h16"/></svg>
+          <span>Library</span></div><div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;
+          color:var(--muted);font-size:11px;font-weight:500;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h13"/></svg>
+          <span>Review</span></div><div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;
+          color:var(--muted);font-size:11px;font-weight:500;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19h-20"/></svg>
+          <span>Goals</span></div></div></div></div>
+    <div><div style="margin-bottom:10px;"><p style="margin:0;font-size:15px;font-weight:600;color:var(--strong);">Bottom nav &mdash; gym</p>
+    </div><div style="max-width:400px;"><div style="display:flex;background:var(--surface);border-top:1px solid var(--surface-border);border-radius:0 0 10px 10px;"><div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;
+          color:var(--primary);font-size:11px;font-weight:600;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg>
+          <span>Today</span></div><div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;
+          color:var(--muted);font-size:11px;font-weight:500;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v16H4zM8 3v4M16 3v4M4 10h16"/></svg>
+          <span>Schedule</span></div><div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;
+          color:var(--muted);font-size:11px;font-weight:500;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h13"/></svg>
+          <span>Workouts</span></div><div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;
+          color:var(--muted);font-size:11px;font-weight:500;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19h-20"/></svg>
+          <span>Progress</span></div></div></div></div>
+
+    <div style="border-top:1px solid var(--divider-strong);padding-top:22px;">
+      <div style="margin-bottom:10px;"><p style="margin:0;font-size:15px;font-weight:600;color:var(--strong);">The two sub-navs</p>
+    <p class="prev" style="margin-top:3px;">Same job, two different metaphors for the active state. This is finding 01.</p></div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-top:14px;">
+        <div>
+          <p class="section-label" style="margin-bottom:8px;">LibrarySubNav &mdash; /recipes, /ingredients</p>
+          <div class="ring" style="display:inline-block;padding:4px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <div class="lib-bar"><span class="lib-tab on">Recipes</span><span class="lib-tab">Ingredients</span></div>
+              <span class="lib-build">+ Build a meal</span></div></div>
+          <p class="prev" style="margin-top:10px;line-height:1.6;">A white thumb slides on a grey track. Active type is <code>--color-primary</code>. Segmented-control metaphor.</p>
+        </div>
+        <div>
+          <p class="section-label" style="margin-bottom:8px;">plan-tabs &mdash; /plan/*</p>
+          <div class="ring" style="display:inline-block;padding:4px;">
+            <div class="card" style="padding:12px;"><div class="plan-tabs">
+              <span class="plan-tab is-active">Goals</span><span class="plan-tab">Report</span><span class="plan-tab">Profile</span></div></div></div>
+          <p class="prev" style="margin-top:10px;line-height:1.6;">The active pill fills with <code>--color-text-strong</code> (near-black) and inverts its type. Toggle-chip metaphor.</p>
+        </div>
+      </div>
+      <p style="margin:18px 0 0;font-size:14px;color:var(--body);line-height:1.6;max-width:80ch;">
+        Nothing is broken in either one &mdash; but a person moving from Recipes to Plan meets two different
+        answers to &ldquo;which tab am I on?&rdquo; within two clicks. <span class="note">finding 01</span></p>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

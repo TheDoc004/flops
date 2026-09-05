@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap">
+  <style>
+    body { margin: 0; }
+    .ab {
+      --bg:#f3ede3; --surface:#faf9f7; --surface-border:#e8e4dc; --input-border:#d1d5db;
+      --border:#e5e7eb; --divider:#f3f4f6; --divider-warm:#f0ede8; --divider-strong:#e6e1d7;
+      --text:#1a1a1a; --strong:#111827; --body:#374151; --muted:#6b7280; --faint:#6b7280;
+      --primary:#1d4ed8; --primary-ink:#1e3a8a; --primary-subtle:#eff6ff; --link:#2563eb;
+      --success:#059669; --secondary-bg:#f3f4f6; --secondary-border:#e5e7eb;
+      --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+      --font-serif:'DM Serif Display',Georgia,serif;
+      width:800px; height:900px; box-sizing:border-box;
+      background:var(--bg); color:var(--text); font-family:var(--font-sans); font-size:15px;
+      display:flex; flex-direction:column; overflow:hidden;
+    }
+    .card { background:var(--surface); border:1px solid var(--surface-border); border-radius:12px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.07); padding:16px; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:44px;
+           padding:0 16px; border-radius:8px; font-size:15px; font-weight:500;
+           border:1px solid transparent; box-sizing:border-box; }
+    .btn-primary { background:var(--primary); color:#fff; }
+    .btn-secondary { background:var(--secondary-bg); color:var(--primary); border-color:var(--secondary-border); }
+    .btn-ai { background:var(--primary-subtle); color:var(--primary); border-color:var(--border); font-weight:600; }
+    .btn-sm { min-height:34px; padding:0 10px; font-size:13px; }
+    .page-title { margin:0; font-family:var(--font-serif); font-size:28px; font-weight:400;
+                  color:var(--primary-ink); letter-spacing:-0.02em; }
+    .page-subtitle { margin:0 0 20px; font-size:15px; color:var(--muted); }
+    .section-title { margin:0; font-size:16px; font-weight:600; color:var(--primary-ink); }
+    .section-label { font-size:11px; font-weight:600; color:var(--faint); text-transform:uppercase;
+                     letter-spacing:0.07em; margin:0; }
+    .empty-state { text-align:center; color:var(--faint); padding:32px 0; font-size:15px; margin:0; }
+    .field { width:100%; box-sizing:border-box; min-height:44px; padding:0 12px; border-radius:8px;
+             border:1px solid var(--input-border); background:var(--surface); color:var(--muted);
+             font-size:15px; display:flex; align-items:center; }
+    .lede { margin:0; color:var(--muted); font-size:14px; }
+    .prev { margin:0; font-size:12px; color:var(--faint); }
+    .nav { display:flex; align-items:center; gap:20px; padding:0 20px; height:56px; background:var(--surface);
+           border-bottom:1px solid var(--surface-border); flex-shrink:0; }
+    .nav a { font-size:14px; color:var(--body); text-decoration:none; }
+    .nav a.on { color:var(--primary); font-weight:600; }
+    .brand { font-family:var(--font-serif); font-size:20px; color:var(--primary-ink); margin-right:6px; }
+    .body { padding:20px; overflow:hidden; display:flex; flex-direction:column; gap:16px; }
+    .note { display:inline-flex; align-items:center; gap:5px; padding:2px 7px; border-radius:999px;
+            font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600;
+            white-space:nowrap; color:#9a3412; background:#ffedd5; border:1px solid #fdba74; }
+    .note-ok { color:#065f46; background:#d1fae5; border-color:#6ee7b7; }
+    .ring { outline:1.5px dashed #fb923c; outline-offset:3px; border-radius:6px; }
+    /* real sub-nav vocabulary */
+    .plan-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+    .plan-tab { padding:8px 12px; border-radius:999px; border:1px solid var(--border);
+                background:var(--surface); color:var(--body); font-size:13px; font-weight:700; }
+    .plan-tab.is-active { background:var(--strong); color:var(--surface); border-color:var(--strong); }
+    .lib-bar { display:inline-flex; padding:3px; background:var(--divider); border-radius:999px; position:relative; }
+    .lib-tab { padding:8px 18px; border-radius:999px; font-size:14px; color:var(--muted); font-weight:500; }
+    .lib-tab.on { background:var(--surface); color:var(--primary); box-shadow:0 1px 2px rgba(0,0,0,0.06); }
+    .lib-build { display:inline-flex; align-items:center; height:44px; padding:0 20px; border-radius:8px;
+                 background:var(--primary); color:#fff; font-size:15.5px; font-weight:600; }
+    a { color:var(--link); } a:hover { color:var(--primary); }
+  </style>
+</helmet>
+<div class="ab"><div class="nav"><span class="brand">Flops</span><a href="#" class="">Today</a><a href="#" class="">Schedule</a><a href="#" class="">Workouts</a><a href="#" class="on">Progress</a></div><div class="body">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h1 class="page-title">Training</h1><div class="btn btn-secondary">Nutrition</div></div>
+  
+  <div><h2 class="section-title">Progress</h2><p class="lede" style="margin-top:5px;">Weight, reps, and volume over time. Filter by window or rep range.</p></div>
+  <div class="card"><div class="field">Choose an exercise</div>
+    <div style="display:flex;gap:6px;margin-top:12px;">
+      <div class="btn btn-secondary btn-sm" style="background:var(--primary-subtle);border-color:var(--primary);color:var(--primary-ink);">8 weeks</div>
+      <div class="btn btn-secondary btn-sm">6 months</div><div class="btn btn-secondary btn-sm">All</div></div></div>
+  <div class="card"><svg viewBox="0 0 640 130" style="width:100%;height:130px;display:block;">
+    <polyline fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="12,104 90,96 168,98 246,82 324,74 402,66 480,60 558,46 626,40"/>
+    <polyline fill="none" stroke="#e6e1d7" stroke-width="1" points="12,122 626,122"/></svg>
+    <p class="prev" style="margin-top:8px;">Bench press &middot; 72.5 kg &rarr; 82.5 kg over 8 weeks</p></div>
+  <div class="card"><h3 class="section-title" style="margin-bottom:10px;">1RM</h3>
+    <p style="margin:0;font-size:28px;font-weight:600;color:var(--primary-ink);">96.4 kg</p>
+    <p class="prev" style="margin-top:4px;">Epley, from 82.5 kg &times; 6</p></div>
+</div></div>
+</x-dc>
+</body>
+</html>

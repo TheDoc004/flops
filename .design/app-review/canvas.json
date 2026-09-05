@@ -1,0 +1,230 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Nutrition"
+    },
+    {
+      "id": "page-2",
+      "name": "Training"
+    },
+    {
+      "id": "page-3",
+      "name": "Plan & Coach"
+    },
+    {
+      "id": "page-4",
+      "name": "Chrome"
+    },
+    {
+      "id": "page-5",
+      "name": "Entry"
+    },
+    {
+      "id": "page-6",
+      "name": "Findings"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-1"
+    },
+    {
+      "file": "Recipes.dc.html",
+      "x": 880,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-1"
+    },
+    {
+      "file": "Ingredients.dc.html",
+      "x": 1760,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-1"
+    },
+    {
+      "file": "MealBuilder.dc.html",
+      "x": 0,
+      "y": 1020,
+      "w": 800,
+      "h": 900,
+      "page": "page-1"
+    },
+    {
+      "file": "AiLogger.dc.html",
+      "x": 880,
+      "y": 1020,
+      "w": 800,
+      "h": 900,
+      "page": "page-1"
+    },
+    {
+      "file": "Review.dc.html",
+      "x": 1760,
+      "y": 1020,
+      "w": 800,
+      "h": 900,
+      "page": "page-1"
+    },
+    {
+      "file": "GymToday.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "GymSchedule.dc.html",
+      "x": 880,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "GymWorkouts.dc.html",
+      "x": 1760,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "GymProgress.dc.html",
+      "x": 0,
+      "y": 1020,
+      "w": 800,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "Goals.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-3"
+    },
+    {
+      "file": "Report.dc.html",
+      "x": 880,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-3"
+    },
+    {
+      "file": "Profile.dc.html",
+      "x": 1760,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-3"
+    },
+    {
+      "file": "Coach.dc.html",
+      "x": 0,
+      "y": 1020,
+      "w": 800,
+      "h": 900,
+      "page": "page-3"
+    },
+    {
+      "file": "Chrome.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 900,
+      "h": 1000,
+      "page": "page-4",
+      "print": "flow"
+    },
+    {
+      "file": "Landing.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-5"
+    },
+    {
+      "file": "Login.dc.html",
+      "x": 880,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-5"
+    },
+    {
+      "file": "Onboarding.dc.html",
+      "x": 1760,
+      "y": 0,
+      "w": 800,
+      "h": 900,
+      "page": "page-5"
+    },
+    {
+      "file": "Boot.dc.html",
+      "x": 0,
+      "y": 1020,
+      "w": 800,
+      "h": 900,
+      "page": "page-5"
+    },
+    {
+      "file": "Findings.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 900,
+      "h": 1560,
+      "page": "page-6",
+      "print": "flow"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "coverage",
+      "page": "page-1",
+      "x": -360,
+      "y": 0,
+      "w": 300,
+      "text": "All 14 routes and all 5 chrome surfaces, rebuilt from source.\n\nNutrition: Dashboard, Recipes, Ingredients, Meal Builder, AI Logger, Review.\n\nDashed rings mark something the Findings page argues about."
+    },
+    {
+      "id": "chrome-note",
+      "page": "page-4",
+      "x": -360,
+      "y": 0,
+      "w": 300,
+      "text": "The sub-nav comparison at the bottom of this sheet is finding 01 \u2014 the thing you asked about.\n\nBoth navs use the same five labels, so desktop and mobile agree. I had drawn them wrong in the first version."
+    },
+    {
+      "id": "entry-note",
+      "page": "page-5",
+      "x": -360,
+      "y": 0,
+      "w": 300,
+      "text": "The three screens a new person meets before the app proper, plus the boot wordmark.\n\nAll four are outside the design system: bare h1s, their own CSS modules. Finding 04."
+    },
+    {
+      "id": "find-note",
+      "page": "page-6",
+      "x": -360,
+      "y": 0,
+      "w": 300,
+      "text": "Seven findings. 01-04 are judgment calls about what the app should be. 05-07 are measured contrast defects with exact values.\n\nThe orange box at the top withdraws a finding from the first version that was wrong."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-4"
+  }
+}

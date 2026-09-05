@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap">
+  <style>
+    body { margin: 0; }
+    .ab {
+      --bg:#f3ede3; --surface:#faf9f7; --surface-border:#e8e4dc; --input-border:#d1d5db;
+      --border:#e5e7eb; --divider:#f3f4f6; --divider-warm:#f0ede8; --divider-strong:#e6e1d7;
+      --text:#1a1a1a; --strong:#111827; --body:#374151; --muted:#6b7280; --faint:#6b7280;
+      --primary:#1d4ed8; --primary-ink:#1e3a8a; --primary-subtle:#eff6ff; --link:#2563eb;
+      --success:#059669; --secondary-bg:#f3f4f6; --secondary-border:#e5e7eb;
+      --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+      --font-serif:'DM Serif Display',Georgia,serif;
+      width:800px; height:900px; box-sizing:border-box;
+      background:var(--bg); color:var(--text); font-family:var(--font-sans); font-size:15px;
+      display:flex; flex-direction:column; overflow:hidden;
+    }
+    .card { background:var(--surface); border:1px solid var(--surface-border); border-radius:12px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.07); padding:16px; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:44px;
+           padding:0 16px; border-radius:8px; font-size:15px; font-weight:500;
+           border:1px solid transparent; box-sizing:border-box; }
+    .btn-primary { background:var(--primary); color:#fff; }
+    .btn-secondary { background:var(--secondary-bg); color:var(--primary); border-color:var(--secondary-border); }
+    .btn-ai { background:var(--primary-subtle); color:var(--primary); border-color:var(--border); font-weight:600; }
+    .btn-sm { min-height:34px; padding:0 10px; font-size:13px; }
+    .page-title { margin:0; font-family:var(--font-serif); font-size:28px; font-weight:400;
+                  color:var(--primary-ink); letter-spacing:-0.02em; }
+    .page-subtitle { margin:0 0 20px; font-size:15px; color:var(--muted); }
+    .section-title { margin:0; font-size:16px; font-weight:600; color:var(--primary-ink); }
+    .section-label { font-size:11px; font-weight:600; color:var(--faint); text-transform:uppercase;
+                     letter-spacing:0.07em; margin:0; }
+    .empty-state { text-align:center; color:var(--faint); padding:32px 0; font-size:15px; margin:0; }
+    .field { width:100%; box-sizing:border-box; min-height:44px; padding:0 12px; border-radius:8px;
+             border:1px solid var(--input-border); background:var(--surface); color:var(--muted);
+             font-size:15px; display:flex; align-items:center; }
+    .lede { margin:0; color:var(--muted); font-size:14px; }
+    .prev { margin:0; font-size:12px; color:var(--faint); }
+    .nav { display:flex; align-items:center; gap:20px; padding:0 20px; height:56px; background:var(--surface);
+           border-bottom:1px solid var(--surface-border); flex-shrink:0; }
+    .nav a { font-size:14px; color:var(--body); text-decoration:none; }
+    .nav a.on { color:var(--primary); font-weight:600; }
+    .brand { font-family:var(--font-serif); font-size:20px; color:var(--primary-ink); margin-right:6px; }
+    .body { padding:20px; overflow:hidden; display:flex; flex-direction:column; gap:16px; }
+    .note { display:inline-flex; align-items:center; gap:5px; padding:2px 7px; border-radius:999px;
+            font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600;
+            white-space:nowrap; color:#9a3412; background:#ffedd5; border:1px solid #fdba74; }
+    .note-ok { color:#065f46; background:#d1fae5; border-color:#6ee7b7; }
+    .ring { outline:1.5px dashed #fb923c; outline-offset:3px; border-radius:6px; }
+    /* real sub-nav vocabulary */
+    .plan-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+    .plan-tab { padding:8px 12px; border-radius:999px; border:1px solid var(--border);
+                background:var(--surface); color:var(--body); font-size:13px; font-weight:700; }
+    .plan-tab.is-active { background:var(--strong); color:var(--surface); border-color:var(--strong); }
+    .lib-bar { display:inline-flex; padding:3px; background:var(--divider); border-radius:999px; position:relative; }
+    .lib-tab { padding:8px 18px; border-radius:999px; font-size:14px; color:var(--muted); font-weight:500; }
+    .lib-tab.on { background:var(--surface); color:var(--primary); box-shadow:0 1px 2px rgba(0,0,0,0.06); }
+    .lib-build { display:inline-flex; align-items:center; height:44px; padding:0 20px; border-radius:8px;
+                 background:var(--primary); color:#fff; font-size:15.5px; font-weight:600; }
+    a { color:var(--link); } a:hover { color:var(--primary); }
+  </style>
+</helmet>
+<div class="ab"><div class="nav"><span class="brand">Flops</span><a href="#" class="">Today</a><a href="#" class="">Schedule</a><a href="#" class="on">Workouts</a><a href="#" class="">Progress</a></div><div class="body">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h1 class="page-title">Training</h1><div class="btn btn-secondary">Nutrition</div></div>
+  
+  <div><h2 class="section-title">Workouts</h2><p class="lede" style="margin-top:5px;">Templates with set, rep, and weight targets. Organize by muscle.</p></div>
+  <div style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;">
+    <div class="card" style="margin:0;"><h3 class="section-title" style="margin-bottom:12px;">My workouts</h3>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="border:1px solid var(--primary);background:var(--primary-subtle);color:var(--primary-ink);border-radius:8px;padding:10px 12px;font-size:14px;">Push</div>
+        <div style="border:1px solid var(--surface-border);background:var(--surface);color:var(--body);border-radius:8px;padding:10px 12px;font-size:14px;">Pull</div>
+        <div style="border:1px solid var(--surface-border);background:var(--surface);color:var(--body);border-radius:8px;padding:10px 12px;font-size:14px;">Legs</div></div>
+      <div style="display:flex;gap:6px;margin-top:12px;"><div class="field" style="min-height:34px;font-size:13px;">New workout</div><div class="btn btn-secondary btn-sm">Add</div></div></div>
+    <div class="card" style="margin:0;"><h3 class="section-title" style="margin-bottom:10px;">Exercises</h3>
+      <p class="section-label" style="margin-bottom:6px;">Chest</p>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid var(--divider-warm);font-size:14px;"><span>Bench press</span><span class="prev">3 &times; 6 @ 82.5 kg</span></div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid var(--divider-warm);font-size:14px;"><span>Incline dumbbell press</span><span class="prev">3 &times; 10 @ 30 kg</span></div>
+      <p class="section-label" style="margin:14px 0 6px;">Shoulders</p>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid var(--divider-warm);font-size:14px;"><span>Overhead press</span><span class="prev">3 &times; 8 @ 45 kg</span></div></div>
+  </div>
+</div></div>
+</x-dc>
+</body>
+</html>

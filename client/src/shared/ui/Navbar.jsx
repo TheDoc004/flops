@@ -44,7 +44,7 @@ export default function Navbar() {
     },
     { label: 'Review', to: '/history' },
     ...(isCoach ? [{ label: 'Coach', to: '/coach' }] : []),
-    { label: 'Profile', to: '/plan/profile', matchPaths: ['/plan'] },
+    { label: 'Plan', to: '/plan', matchPaths: ['/plan'] },
   ];
 
   const gymLinks = [

@@ -1,0 +1,114 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 560,
+      "h": 760
+    },
+    {
+      "file": "TodayLogMeal.dc.html",
+      "x": 0,
+      "y": 880,
+      "w": 560,
+      "h": 700
+    },
+    {
+      "file": "TodayAiEstimate.dc.html",
+      "x": 0,
+      "y": 1700,
+      "w": 560,
+      "h": 700
+    },
+    {
+      "file": "PastDashboard.dc.html",
+      "x": 640,
+      "y": 0,
+      "w": 560,
+      "h": 760
+    },
+    {
+      "file": "PastLogMeal.dc.html",
+      "x": 640,
+      "y": 880,
+      "w": 560,
+      "h": 700
+    },
+    {
+      "file": "PastAiEstimate.dc.html",
+      "x": 640,
+      "y": 1700,
+      "w": 560,
+      "h": 700
+    },
+    {
+      "file": "FutureDashboard.dc.html",
+      "x": 1280,
+      "y": 0,
+      "w": 560,
+      "h": 760
+    },
+    {
+      "file": "FutureLogMeal.dc.html",
+      "x": 1280,
+      "y": 880,
+      "w": 560,
+      "h": 700
+    },
+    {
+      "file": "FutureAiEstimate.dc.html",
+      "x": 1280,
+      "y": 1700,
+      "w": 560,
+      "h": 700
+    },
+    {
+      "file": "Tokens.dc.html",
+      "x": 0,
+      "y": 2520,
+      "w": 1200,
+      "h": 640
+    }
+  ],
+  "annotations": [
+    {
+      "id": "how-to-read",
+      "x": -360,
+      "y": 0,
+      "w": 300,
+      "text": "Columns are the three themes; rows are Dashboard, Log a Meal, AI Estimate.\n\nDashed orange ring = a pair under 4.5:1. The chip beside it is the measured ratio."
+    },
+    {
+      "id": "success-note",
+      "x": -360,
+      "y": 220,
+      "w": 300,
+      "text": "--color-success on cream is 3.58:1 at 12px in .macro-status.is-ok.\n\nThe worst pair in the palette, and it is in the LIGHT theme. The notebook equivalent passes at 5.30:1."
+    },
+    {
+      "id": "faint-note",
+      "x": -360,
+      "y": 460,
+      "w": 300,
+      "text": "--color-text-faint is 4.26:1 off-today.\n\nThe light theme already fixed this once (#9ca3af -> #6b7280, per the comment in index.css). The notebook override reintroduced a light faint and never got the same treatment."
+    },
+    {
+      "id": "ghost-note",
+      "x": -360,
+      "y": 760,
+      "w": 300,
+      "text": "--color-primary as .btn-ghost text is 4.30:1 off-today.\n\nbtn-primary, btn-ai and btn-secondary all have notebook overrides. btn-ghost has none."
+    },
+    {
+      "id": "passes-note",
+      "x": -360,
+      "y": 1060,
+      "w": 300,
+      "text": "What already holds up: modal chrome, inputs, the highlight panel, btn-primary, btn-ai and status colours all clear AA in all three themes. The dialog overrides are doing their job."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

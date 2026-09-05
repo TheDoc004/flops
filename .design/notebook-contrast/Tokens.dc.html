@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap">
+  <style>
+    body { margin: 0; }
+    .sheet {
+      width: 1200px; height: 640px; box-sizing: border-box;
+      background: #faf9f7; color: #1a1a1a;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+    }
+    a { color: #2563eb; } a:hover { color: #1d4ed8; }
+  </style>
+</helmet>
+<div class="sheet">
+  <div style="padding:22px 18px 16px;">
+    <h1 style="margin:0;font-family:'DM Serif Display',Georgia,serif;font-size:28px;font-weight:400;color:#1e3a8a;letter-spacing:-0.02em;">Three tokens under AA</h1>
+    <p style="margin:8px 0 0;font-size:14px;color:#374151;max-width:70ch;line-height:1.6;">
+      Every other pair in the palette clears 4.5:1. These three sit between 3.58 and 4.44 &mdash; readable,
+      but under the threshold at the sizes they are actually used. The proposed values are the smallest
+      step along the same hue that clears AA with a little headroom.
+    </p>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));padding:0 18px;">
+    <p style="margin:0 0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;color:#6b7280;">Token</p>
+    <p style="margin:0 0 8px 18px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;color:#6b7280;">Current</p>
+    <p style="margin:0 0 8px 18px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;color:#6b7280;">Proposed</p>
+  </div>
+  <div style="padding:0 18px 18px;">
+    <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:0;border-top:1px solid #e6e1d7;">
+      <div style="padding:16px 18px;">
+        <p style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:600;color:#111827;">--color-success</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#6b7280;">Today (:root)</p>
+        <p style="margin:8px 0 0;font-size:12px;color:#6b7280;line-height:1.5;">.macro-status.is-ok &middot; .weight-status.is-saved &middot; paste-meal confirmation</p>
+      </div>
+      <div style="padding:16px 18px;border-left:1px solid #f0ede8;background:#fdfcfa;">
+        <p style="margin:0 0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;color:#9a3412;">Now &mdash; 3.58:1</p>
+        <div style="padding:12px 14px;border-radius:8px;background:#faf9f7;outline:1.5px dashed #fb923c;outline-offset:2px;">
+          <span style="font-size:12px;font-weight:600;color:#059669;">Protein on target</span>
+        </div>
+        <p style="margin:10px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#6b7280;">#059669</p>
+      </div>
+      <div style="padding:16px 18px;border-left:1px solid #f0ede8;background:#fdfcfa;">
+        <p style="margin:0 0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;color:#065f46;">Proposed &mdash; 4.65:1</p>
+        <div style="padding:12px 14px;border-radius:8px;background:#faf9f7;">
+          <span style="font-size:12px;font-weight:600;color:#04815a;">Protein on target</span>
+        </div>
+        <p style="margin:10px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#6b7280;">#04815a</p>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:0;border-top:1px solid #e6e1d7;">
+      <div style="padding:16px 18px;">
+        <p style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:600;color:#111827;">--color-text-faint</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#6b7280;">Past / Future</p>
+        <p style="margin:8px 0 0;font-size:12px;color:#6b7280;line-height:1.5;">64 call sites &mdash; .empty-state, log-row meta, timestamps</p>
+      </div>
+      <div style="padding:16px 18px;border-left:1px solid #f0ede8;background:#fdfcfa;">
+        <p style="margin:0 0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;color:#9a3412;">Now &mdash; 4.26:1</p>
+        <div style="padding:12px 14px;border-radius:8px;background:#3a3d40;outline:1.5px dashed #fb923c;outline-offset:2px;">
+          <span style="font-size:12px;font-weight:400;color:#a1a1aa;">1 serving &middot; 08:15</span>
+        </div>
+        <p style="margin:10px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#6b7280;">#a1a1aa</p>
+      </div>
+      <div style="padding:16px 18px;border-left:1px solid #f0ede8;background:#fdfcfa;">
+        <p style="margin:0 0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;color:#065f46;">Proposed &mdash; 4.63:1</p>
+        <div style="padding:12px 14px;border-radius:8px;background:#3a3d40;">
+          <span style="font-size:12px;font-weight:400;color:#a8a8b0;">1 serving &middot; 08:15</span>
+        </div>
+        <p style="margin:10px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#6b7280;">#a8a8b0</p>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:0;border-top:1px solid #e6e1d7;">
+      <div style="padding:16px 18px;">
+        <p style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:600;color:#111827;">--color-primary</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#6b7280;">Past / Future</p>
+        <p style="margin:8px 0 0;font-size:12px;color:#6b7280;line-height:1.5;">.btn-ghost label (no notebook override exists)</p>
+      </div>
+      <div style="padding:16px 18px;border-left:1px solid #f0ede8;background:#fdfcfa;">
+        <p style="margin:0 0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;color:#9a3412;">Now &mdash; 4.30:1</p>
+        <div style="padding:12px 14px;border-radius:8px;background:#3a3d40;outline:1.5px dashed #fb923c;outline-offset:2px;">
+          <span style="font-size:13px;font-weight:500;color:#60a5fa;">Paste last meal</span>
+        </div>
+        <p style="margin:10px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#6b7280;">#60a5fa</p>
+      </div>
+      <div style="padding:16px 18px;border-left:1px solid #f0ede8;background:#fdfcfa;">
+        <p style="margin:0 0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;color:#065f46;">Proposed &mdash; 4.65:1</p>
+        <div style="padding:12px 14px;border-radius:8px;background:#3a3d40;">
+          <span style="font-size:13px;font-weight:500;color:#6dacfa;">Paste last meal</span>
+        </div>
+        <p style="margin:10px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#6b7280;">#6dacfa</p>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

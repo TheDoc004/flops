@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap">
+  <style>
+    body { margin: 0; }
+    .ab {
+      --bg:#f3ede3; --surface:#faf9f7; --surface-border:#e8e4dc; --input-border:#d1d5db;
+      --border:#e5e7eb; --divider:#f3f4f6; --divider-warm:#f0ede8; --divider-strong:#e6e1d7;
+      --text:#1a1a1a; --strong:#111827; --body:#374151; --muted:#6b7280; --faint:#6b7280;
+      --primary:#1d4ed8; --primary-ink:#1e3a8a; --primary-subtle:#eff6ff; --link:#2563eb;
+      --success:#059669; --secondary-bg:#f3f4f6; --secondary-border:#e5e7eb;
+      --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+      --font-serif:'DM Serif Display',Georgia,serif;
+      width:900px; height:1560px; box-sizing:border-box;
+      background:var(--bg); color:var(--text); font-family:var(--font-sans); font-size:15px;
+      display:flex; flex-direction:column; overflow:hidden;
+    }
+    .card { background:var(--surface); border:1px solid var(--surface-border); border-radius:12px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.07); padding:16px; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:44px;
+           padding:0 16px; border-radius:8px; font-size:15px; font-weight:500;
+           border:1px solid transparent; box-sizing:border-box; }
+    .btn-primary { background:var(--primary); color:#fff; }
+    .btn-secondary { background:var(--secondary-bg); color:var(--primary); border-color:var(--secondary-border); }
+    .btn-ai { background:var(--primary-subtle); color:var(--primary); border-color:var(--border); font-weight:600; }
+    .btn-sm { min-height:34px; padding:0 10px; font-size:13px; }
+    .page-title { margin:0; font-family:var(--font-serif); font-size:28px; font-weight:400;
+                  color:var(--primary-ink); letter-spacing:-0.02em; }
+    .page-subtitle { margin:0 0 20px; font-size:15px; color:var(--muted); }
+    .section-title { margin:0; font-size:16px; font-weight:600; color:var(--primary-ink); }
+    .section-label { font-size:11px; font-weight:600; color:var(--faint); text-transform:uppercase;
+                     letter-spacing:0.07em; margin:0; }
+    .empty-state { text-align:center; color:var(--faint); padding:32px 0; font-size:15px; margin:0; }
+    .field { width:100%; box-sizing:border-box; min-height:44px; padding:0 12px; border-radius:8px;
+             border:1px solid var(--input-border); background:var(--surface); color:var(--muted);
+             font-size:15px; display:flex; align-items:center; }
+    .lede { margin:0; color:var(--muted); font-size:14px; }
+    .prev { margin:0; font-size:12px; color:var(--faint); }
+    .nav { display:flex; align-items:center; gap:20px; padding:0 20px; height:56px; background:var(--surface);
+           border-bottom:1px solid var(--surface-border); flex-shrink:0; }
+    .nav a { font-size:14px; color:var(--body); text-decoration:none; }
+    .nav a.on { color:var(--primary); font-weight:600; }
+    .brand { font-family:var(--font-serif); font-size:20px; color:var(--primary-ink); margin-right:6px; }
+    .body { padding:20px; overflow:hidden; display:flex; flex-direction:column; gap:16px; }
+    .note { display:inline-flex; align-items:center; gap:5px; padding:2px 7px; border-radius:999px;
+            font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600;
+            white-space:nowrap; color:#9a3412; background:#ffedd5; border:1px solid #fdba74; }
+    .note-ok { color:#065f46; background:#d1fae5; border-color:#6ee7b7; }
+    .ring { outline:1.5px dashed #fb923c; outline-offset:3px; border-radius:6px; }
+    /* real sub-nav vocabulary */
+    .plan-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+    .plan-tab { padding:8px 12px; border-radius:999px; border:1px solid var(--border);
+                background:var(--surface); color:var(--body); font-size:13px; font-weight:700; }
+    .plan-tab.is-active { background:var(--strong); color:var(--surface); border-color:var(--strong); }
+    .lib-bar { display:inline-flex; padding:3px; background:var(--divider); border-radius:999px; position:relative; }
+    .lib-tab { padding:8px 18px; border-radius:999px; font-size:14px; color:var(--muted); font-weight:500; }
+    .lib-tab.on { background:var(--surface); color:var(--primary); box-shadow:0 1px 2px rgba(0,0,0,0.06); }
+    .lib-build { display:inline-flex; align-items:center; height:44px; padding:0 20px; border-radius:8px;
+                 background:var(--primary); color:#fff; font-size:15.5px; font-weight:600; }
+    a { color:var(--link); } a:hover { color:var(--primary); }
+  </style>
+</helmet>
+<div class="ab" style="height:auto;min-height:1560px;">
+  <div class="body" style="padding:26px 30px;">
+    <h1 class="page-title">Review findings</h1>
+    <p class="page-subtitle" style="margin:8px 0 0;max-width:78ch;">
+      A pass over all 14 routes and all 5 persistent chrome surfaces. Ordered by how much each one
+      shapes the product, not by how fast it can be fixed. Nothing has been changed in the code.</p>
+    <div style="margin-top:16px;padding:14px 16px;border-radius:10px;background:#fff7ed;border:1px solid #fdba74;">
+      <p style="margin:0;font-size:13px;font-weight:600;color:#9a3412;">Correction to the first version of this canvas</p>
+      <p style="margin:6px 0 0;font-size:13px;color:var(--body);line-height:1.6;">
+        It claimed Training had no page title. It does &mdash; <code>&lt;h1 class="page-title"&gt;Training&lt;/h1&gt;</code> lives in
+        <code>app/layouts/TrainingLayout.jsx</code>, the layout shell. The earlier grep was scoped to
+        <code>features/training-workouts/</code> and missed it. The per-page <code>&lt;h2 class="section-title"&gt;</code>
+        is a correct sub-heading under that h1. That finding is withdrawn.</p></div>
+    <div style="margin-top:6px;"><div style="border-top:1px solid var(--divider-strong);padding:18px 0;display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;">
+      <p style="margin:0;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--muted);">01</p>
+      <div><p style="margin:0;font-size:17px;font-weight:600;color:var(--strong);">Two sub-navs, two active-state metaphors</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;">LibrarySubNav slides a white thumb along a grey track with <code>--color-primary</code> type. <code>.plan-tab.is-active</code> fills the pill with <code>--color-text-strong</code> and inverts. Both are pill-shaped; neither resembles the other in behaviour.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;"><em style="color:var(--muted);">Why it matters &mdash;</em> Recipes &rarr; Plan is two clicks, and the answer to &ldquo;which tab am I on?&rdquo; changes on the way. This is the clearest chrome inconsistency in the app.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--primary-ink);line-height:1.6;"><strong>Proposed &mdash;</strong> Pick one. The sliding thumb is the more distinctive of the two and already handles a two-item set; plan-tabs would need it to handle three.</p></div></div><div style="border-top:1px solid var(--divider-strong);padding:18px 0;display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;">
+      <p style="margin:0;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--muted);">02</p>
+      <div><p style="margin:0;font-size:17px;font-weight:600;color:var(--strong);">The nav says &ldquo;Goals&rdquo;, the section says &ldquo;Plan&rdquo;</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;">Both navs label the destination <code>Goals</code> &rarr; <code>/plan</code>. <code>PlanLayout</code> then renders a <code>.section-label</code> reading <strong>Plan</strong>, with <strong>Goals</strong> as the first of three tabs.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;"><em style="color:var(--muted);">Why it matters &mdash;</em> The word Goals means two different scopes one click apart &mdash; the whole section, then one tab inside it. Report and Profile live under a nav item that does not mention them.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--primary-ink);line-height:1.6;"><strong>Proposed &mdash;</strong> Rename the nav item to <strong>Plan</strong>, matching the section and CLAUDE.md&rsquo;s own route map. One-word change in two files.</p></div></div><div style="border-top:1px solid var(--divider-strong);padding:18px 0;display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;">
+      <p style="margin:0;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--muted);">03</p>
+      <div><p style="margin:0;font-size:17px;font-weight:600;color:var(--strong);">Two styling systems</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;">Nutrition styles through global classes in <code>index.css</code>. Training and the shared navs use CSS modules. Both consume the same tokens, so nothing looks broken.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;"><em style="color:var(--muted);">Why it matters &mdash;</em> A fork with no signpost: every future shared control has to pick a side, and today the answer is &ldquo;whichever domain builds it first&rdquo;.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--primary-ink);line-height:1.6;"><strong>Proposed &mdash;</strong> A deliberate call, not a cleanup. Worth deciding before the Phase 3 bridge adds UI that belongs to both domains.</p></div></div><div style="border-top:1px solid var(--divider-strong);padding:18px 0;display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;">
+      <p style="margin:0;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--muted);">04</p>
+      <div><p style="margin:0;font-size:17px;font-weight:600;color:var(--strong);">Auth and onboarding sit outside the design system</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;"><code>Login.jsx</code> and <code>Onboarding.jsx</code> use bare <code>&lt;h1&gt;</code> with their own modules &mdash; no <code>.page-title</code>, no DM Serif. Onboarding is also the only surface spelling the brand <strong>FLOPS</strong>; the boot screen, Login, Landing and Navbar all say <strong>Flops</strong>.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;"><em style="color:var(--muted);">Why it matters &mdash;</em> These are the first two screens a new person sees, and they do not look like the product behind them.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--primary-ink);line-height:1.6;"><strong>Proposed &mdash;</strong> Adopt <code>.page-title</code> on both, and settle the wordmark on one casing.</p></div></div><div style="border-top:1px solid var(--divider-strong);padding:18px 0;display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;">
+      <p style="margin:0;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--muted);">05</p>
+      <div><p style="margin:0;font-size:17px;font-weight:600;color:var(--strong);">--color-text-faint carries the most sub-AA text</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;">4.26:1 off-today, across <code>.section-label</code> (11px), <code>.empty-state</code> (15px) and gym <code>.prev</code> (12px) &mdash; 64 call sites.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;"><em style="color:var(--muted);">Why it matters &mdash;</em> The smallest type in the app has the least contrast, and it is worst on notebook days.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--primary-ink);line-height:1.6;"><strong>Proposed &mdash;</strong> <code>#a1a1aa</code> &rarr; <code>#a8a8b0</code>. 4.63:1, visually near-identical.</p></div></div><div style="border-top:1px solid var(--divider-strong);padding:18px 0;display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;">
+      <p style="margin:0;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--muted);">06</p>
+      <div><p style="margin:0;font-size:17px;font-weight:600;color:var(--strong);">--color-success at 12px</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;"><code>#059669</code> on cream is 3.58:1 &mdash; the lowest pair in the palette, in <code>.macro-status.is-ok</code>.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;"><em style="color:var(--muted);">Why it matters &mdash;</em> The &ldquo;on target&rdquo; indicator you read every day is the least legible text on the Dashboard.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--primary-ink);line-height:1.6;"><strong>Proposed &mdash;</strong> <code>#059669</code> &rarr; <code>#04815a</code>. 4.65:1.</p></div></div><div style="border-top:1px solid var(--divider-strong);padding:18px 0;display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;">
+      <p style="margin:0;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--muted);">07</p>
+      <div><p style="margin:0;font-size:17px;font-weight:600;color:var(--strong);">.btn-ghost has no notebook override</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;">The other three button variants have <code>html[data-notebook-day]</code> rules. <code>.btn-ghost</code> inherits sky-blue at 4.30:1 on charcoal.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--body);line-height:1.6;"><em style="color:var(--muted);">Why it matters &mdash;</em> A gap in an otherwise complete set.</p>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--primary-ink);line-height:1.6;"><strong>Proposed &mdash;</strong> Add the fourth override, or lift the token to <code>#6dacfa</code>.</p></div></div></div>
+    <p class="prev" style="margin-top:20px;">Read from index.css, Gym.module.css, Navbar.jsx, BottomNav.jsx, LibrarySubNav.module.css, PlanLayout.jsx and App.jsx on 2026-09-04.</p>
+  </div></div>
+</x-dc>
+</body>
+</html>

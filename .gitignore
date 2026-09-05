@@ -9,3 +9,7 @@ client/test-results/
 client/playwright-report/
 client/blob-report/
 client/e2e/reports/
+
+# Design canvas working files: keep .dc.html sources, skip the ~2MB seeded payload
+.design/**/*.html
+!.design/**/*.dc.html

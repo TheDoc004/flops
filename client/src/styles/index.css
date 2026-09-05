@@ -18,7 +18,7 @@
   --color-secondary-bg-hover: #e5e7eb;
   --color-secondary-border: #e5e7eb;
   --color-link: #2563eb;             /* canonical link blue */
-  --color-success: #059669;
+  --color-success: #047a55;
 
   /* ── Color · surfaces ── */
   --color-bg: #f3ede3;               /* app background */
@@ -145,7 +145,7 @@ html[data-notebook-day="future"] {
   --color-text-strong: #fafafa;
   --color-text-body: #e4e4e7;
   --color-text-muted: #c4c4c8;
-  --color-text-faint: #a1a1aa;
+  --color-text-faint: #a8a8b0;
   --color-primary: #60a5fa;
   --color-primary-hover: #93c5fd;
   --color-primary-ink: #dbeafe;
@@ -661,6 +661,16 @@ html[data-notebook-day] .btn-ai:hover:not(:disabled) {
 }
 html[data-notebook-day] .btn-secondary {
   color: var(--color-text-strong);
+}
+/* .btn-ghost sat outside this set: it keeps --color-primary, a sky blue tuned
+   for links, which reads 4.30:1 as label text on the charcoal card. Same blue,
+   lifted to AA. */
+html[data-notebook-day] .btn-ghost {
+  color: #6dacfa;
+}
+html[data-notebook-day] .btn-ghost:hover:not(:disabled) {
+  background: var(--color-primary-subtle);
+  color: #93c5fd;
 }
 
 /* ── Button motion ──
