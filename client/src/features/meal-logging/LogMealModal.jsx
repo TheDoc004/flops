@@ -1,17 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createRecipe, fetchRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
-import { fetchPreppedBatches } from '@shared/api/preppedBatches';
 import { suggestSubstitutes } from '@shared/api/ai';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
-import PreppedIndicator from '@shared/ui/PreppedIndicator';
-import IngredientCombobox from '@features/meal-builder/IngredientCombobox';
 import { canonicalUnit, loggableUnitsFor } from '@shared/utils/unitConvert';
 import { pluralizeUnit } from '@shared/utils/servingBasis';
 import {
   buildReceiptLine,
-  buildReceiptLineFromPreppedBatch,
-  refreshPreppedBatchLine,
   buildRecipeFromReceipt,
   buildUnequalMealPrepRecipes,
   changeLineUnit,
@@ -73,7 +68,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  // Saving the assembled receipt as a reusable recipe — a separate action from
+  // Saving the assembled meal as a reusable recipe — a separate action from
   // logging it, so tweaking a meal and keeping the version that worked doesn't
   // mean rebuilding it in the Meal Builder. Meal prep reuses that panel with a
   // limited-use split (equal by default; optional custom % per container).
@@ -86,9 +81,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const [savingRecipe, setSavingRecipe] = useState(false);
   const [savedRecipeName, setSavedRecipeName] = useState('');
   const [labelIngredients, setLabelIngredients] = useState([]);
-  const [preppedBatches, setPreppedBatches] = useState([]);
   const [receipt, setReceipt] = useState([]);
-  const [addIngredientId, setAddIngredientId] = useState('');
   const [seededFromRecipeId, setSeededFromRecipeId] = useState(null);
   const [subLineId, setSubLineId] = useState(null);
   const [subSuggestions, setSubSuggestions] = useState([]);
@@ -107,22 +100,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     [labelIngredients]
   );
 
-  const batchById = useMemo(
-    () => Object.fromEntries(preppedBatches.map(x => [String(x.id), x])),
-    [preppedBatches]
-  );
-
-  const comboboxItems = useMemo(() => {
-    const batchItems = preppedBatches.map(b => ({
-      id: `pb:${b.id}`,
-      name: b.name,
-      serving_size_text: `${Math.round(Number(b.remaining_weight_g) || 0)}g left`,
-      grams_per_serving: 1,
-      is_prepped_batch: true,
-    }));
-    return [...batchItems, ...labelIngredients];
-  }, [labelIngredients, preppedBatches]);
-
   const receiptTotals = useMemo(() => sumReceiptMacros(receipt), [receipt]);
 
   useEffect(() => {
@@ -133,10 +110,8 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     (async () => {
       try {
         setLabelIngredients(await fetchLabelIngredients());
-        setPreppedBatches(await fetchPreppedBatches());
       } catch {
         setLabelIngredients([]);
-        setPreppedBatches([]);
       }
     })();
   }, []);
@@ -241,29 +216,8 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     setSubSuggestions([]);
   }
 
-  function handlePick(nextId) {
-    setRecipeId(nextId);
-    const recipe = recipes.find(r => String(r.id) === String(nextId));
-    applyRecipeSeed(recipe || null);
-  }
-
   function handleAddIngredient(nextId) {
-    setAddIngredientId('');
-    const idStr = String(nextId);
-    if (idStr.startsWith('pb:')) {
-      const batchId = idStr.slice(3);
-      const batch = batchById[batchId];
-      if (!batch) return;
-      const line = buildReceiptLineFromPreppedBatch(batch, '100', { source: 'library' });
-      if (!line) {
-        setError(`${batch.name} has no weight left.`);
-        return;
-      }
-      setError('');
-      setReceipt(prev => [...prev, line]);
-      return;
-    }
-    const ing = labelById[idStr];
+    const ing = labelById[String(nextId)];
     if (!ing) return;
     const def = defaultAmountForIngredient(ing);
     const line = buildReceiptLine(ing, def.amount, def.unit, { source: 'library' });
@@ -280,6 +234,17 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     }
     setError('');
     setReceipt(prev => [...prev, line]);
+  }
+
+  /** One search: recipes seed the meal; ingredients append a line. */
+  function handleSearchPick(nextId, kind) {
+    if (kind === 'ingredient') {
+      handleAddIngredient(nextId);
+      return;
+    }
+    setRecipeId(nextId);
+    const recipe = recipes.find(r => String(r.id) === String(nextId));
+    applyRecipeSeed(recipe || null);
   }
 
   // Switching a line's unit restates the amount instead of reinterpreting it:
@@ -301,10 +266,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       prev.map(line => {
         if (line.id !== id) return line;
         const next = { ...line, ...patch };
-        if (next.prepped_batch_id) {
-          const batch = batchById[String(next.prepped_batch_id)];
-          return batch ? refreshPreppedBatchLine(next, batch) : next;
-        }
         const ing = labelById[String(next.label_ingredient_id)];
         if (ing) return refreshReceiptLine(next, ing);
         return next;
@@ -473,7 +434,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           setError(
             saveAsMealPrep
               ? 'Pick how many servings to split into (2–50).'
-              : 'Could not save this receipt as a recipe.'
+              : 'Could not save this meal as a recipe.'
           );
           setSavingRecipe(false);
           return;
@@ -597,17 +558,18 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
         <div>
           <RecipeCombobox
             ref={recipeComboboxRef}
-            label="Start from a recipe"
+            label="Add to this meal"
             recipes={recipes}
+            ingredients={labelIngredients}
             value={recipeId}
             valueKind="recipe"
-            onChange={handlePick}
-            placeholder="Search a saved recipe…"
+            onChange={handleSearchPick}
+            placeholder="Search recipes or ingredients…"
           />
           {selectedRecipe && (
             <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Seeded from <strong style={{ color: 'var(--color-text-strong)' }}>{selectedRecipe.name}</strong>
-              {'. Edit the receipt below; the saved recipe stays unchanged.'}
+              Started from <strong style={{ color: 'var(--color-text-strong)' }}>{selectedRecipe.name}</strong>
+              {'. Edit the list below; the saved recipe stays unchanged.'}
             </p>
           )}
         </div>
@@ -629,7 +591,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 28, marginBottom: 8 }}>
             <div>
               <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>
-                Receipt
+                What&apos;s in this meal
               </p>
               {receipt.length > 0 && (
                 <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-text-muted)' }}>
@@ -651,7 +613,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
           {receipt.length === 0 ? (
             <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-              Building a meal from scratch? Add foods below — or pick a saved recipe to start from.
+              Search above for a saved recipe or foods from your library.
             </p>
           ) : (
             <div className="slot-list">
@@ -698,13 +660,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                           >
                             {line.name}
                           </button>
-                          {line.prepped_batch_id ? (
-                            <PreppedIndicator
-                              detail={batchById[String(line.prepped_batch_id)]
-                                ? `${Math.round(Number(batchById[String(line.prepped_batch_id)].remaining_weight_g))}g left`
-                                : undefined}
-                            />
-                          ) : null}
                         </div>
                         {line.calories != null && (
                           <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
@@ -797,17 +752,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
             </div>
           )}
 
-          <div style={{ marginTop: 10 }}>
-            <IngredientCombobox
-              label="Add ingredient"
-              items={comboboxItems}
-              value={addIngredientId}
-              onChange={handleAddIngredient}
-              placeholder="Type to add from your library or prepped batches…"
-              allowCreate={false}
-            />
-          </div>
-
           {receiptTotals && (
             <div
               className="modal-highlight-panel"
@@ -821,7 +765,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                 color: 'var(--color-primary-ink)',
               }}
             >
-              <strong>Receipt total:</strong>{' '}
+              <strong>Meal total:</strong>{' '}
               {Math.round(receiptTotals.calories)} cal · P {receiptTotals.protein_g.toFixed(1)}g · C{' '}
               {receiptTotals.carbs_g.toFixed(1)}g · F {receiptTotals.fat_g.toFixed(1)}g
               {receiptTotals.fiber_g > 0 && ` · Fiber ${receiptTotals.fiber_g.toFixed(1)}g`}

@@ -42,7 +42,7 @@ export const copy = {
       },
       {
         title: 'Write what you ate',
-        body: 'Log a recipe, build a receipt from ingredients, or ask AI to estimate when that is faster. Tick off supplements. Log lifts in Training when you train.',
+        body: 'Log a recipe, add ingredients from your library, or ask AI to estimate when that is faster. Tick off supplements. Log lifts in Training when you train.',
       },
       {
         title: 'Flip the day when you mean to',
@@ -112,7 +112,7 @@ export const copy = {
       },
       {
         title: 'Anota lo que comiste',
-        body: 'Registra una receta, arma un recibo con ingredientes, o pide a la IA una estimación cuando eso sea más rápido. Marca suplementos. En Entrenamiento anota tus series cuando entrenes.',
+        body: 'Registra una receta, añade ingredientes de tu biblioteca, o pide a la IA una estimación cuando eso sea más rápido. Marca suplementos. En Entrenamiento anota tus series cuando entrenes.',
       },
       {
         title: 'Pasa de día cuando tú quieras',

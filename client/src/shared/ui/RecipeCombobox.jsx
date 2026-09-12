@@ -21,8 +21,8 @@ function ingredientMeta(i) {
 
 /**
  * Picker for a saved recipe. Pass `ingredients` to also search the Ingredient
- * Library in the same box (grouped headers). Log Meal uses recipes-only —
- * library foods are added via IngredientCombobox on the receipt.
+ * Library in the same box (grouped headers). Log Meal uses both: recipes seed
+ * the meal; ingredients append a line.
  *
  * @param {object} p
  * @param {Array<{id: number|string, name: string, serving_size?: string}>} p.recipes
@@ -174,7 +174,7 @@ const RecipeCombobox = forwardRef(function RecipeCombobox({
           >
             {poolCount === 0 ? (
               <div className="empty-state" style={{ padding: 10 }}>
-                No recipes yet.
+                {ingredients.length > 0 ? 'No recipes or ingredients yet.' : 'No recipes yet.'}
               </div>
             ) : showEmpty ? (
               <div className="empty-state" style={{ padding: 10 }}>

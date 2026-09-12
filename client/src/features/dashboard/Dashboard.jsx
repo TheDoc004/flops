@@ -844,7 +844,7 @@ export default function Dashboard() {
             className="btn-primary"
             onClick={() => setShowModal(true)}
             style={dashActionStyle}
-            title="Build a receipt from a recipe or ingredients"
+            title="Add a recipe or ingredients to log"
           >
             + Log a Meal
           </button>
