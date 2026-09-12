@@ -6,7 +6,7 @@ import {
   fetchLabelIngredients,
   updateLabelIngredient,
 } from '@shared/api/labelIngredients';
-import { fetchPreppedBatches } from '@shared/api/preppedBatches';
+import { fetchPreppedBatches, markPreppedBatchDepleted } from '@shared/api/preppedBatches';
 import PreppedBatchModal from './PreppedBatchModal';
 import {
   LabelCropModal,
@@ -22,6 +22,11 @@ import FeaturePrompt from '@shared/ui/FeaturePrompt';
 import Reveal from '@shared/ui/Reveal';
 import GrowStack from '@shared/ui/GrowStack';
 import PreppedIndicator from '@shared/ui/PreppedIndicator';
+
+/** Vault cooked-batch create UI until we have a clearer use case. Existing
+ *  batches still list with Remove so leftovers can be cleared. Flip to true
+ *  to remount “Prep a batch”. */
+const SHOW_PREPPED_BATCHES = false;
 
 function filterByName(items, q) {
   const query = String(q ?? '').trim().toLowerCase();
@@ -154,6 +159,16 @@ export default function Ingredients() {
   }
 
   useEffect(() => { void load(); }, []);
+
+  async function removePreppedBatch(batch) {
+    if (!window.confirm(`Remove prepped batch “${batch.name}”?`)) return;
+    try {
+      await markPreppedBatchDepleted(batch.id);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
 
   const filtered = useMemo(() => filterByName(items, search), [items, search]);
 
@@ -711,9 +726,11 @@ export default function Ingredients() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <h3 className="section-title">Your ingredients</h3>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button type="button" className="btn-secondary" onClick={() => setPrepModalOpen(true)}>
-              Prep a batch
-            </button>
+            {SHOW_PREPPED_BATCHES && (
+              <button type="button" className="btn-secondary" onClick={() => setPrepModalOpen(true)}>
+                Prep a batch
+              </button>
+            )}
             <button type="button" className="btn-primary" onClick={() => setFormOpen(true)}>
               + Add ingredient
             </button>
@@ -736,8 +753,18 @@ export default function Ingredients() {
                       <strong>{b.name}</strong>
                       <PreppedIndicator detail={`${Math.round(Number(b.remaining_weight_g))}g left`} />
                     </span>
-                    <span style={{ color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                      {pct}%
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                      <span style={{ color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        {pct}%
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-danger-ghost"
+                        onClick={() => void removePreppedBatch(b)}
+                        style={{ minHeight: 0, padding: '4px 10px', fontSize: 12 }}
+                      >
+                        Remove
+                      </button>
                     </span>
                   </div>
                 );
@@ -778,7 +805,7 @@ export default function Ingredients() {
           items.length === 0 ? (
             <FeaturePrompt
               question="Cook the same protein every week?"
-              answer="Save it once in your library and log by weight — or prep a cooked batch with fixed macros."
+              answer="Save it once in your library and log by weight when you eat it."
             />
           ) : (
             <p className="empty-state">No ingredients match your search.</p>
@@ -876,7 +903,7 @@ export default function Ingredients() {
         }}
       />
 
-      {prepModalOpen && (
+      {SHOW_PREPPED_BATCHES && prepModalOpen && (
         <PreppedBatchModal
           onClose={() => setPrepModalOpen(false)}
           onSaved={() => void load()}
