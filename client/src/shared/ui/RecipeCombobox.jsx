@@ -33,6 +33,7 @@ function ingredientMeta(i) {
  * @param {string} [p.label]
  * @param {string} [p.placeholder]
  * @param {boolean} [p.disabled]
+ * @param {boolean} [p.refocusOnSelect] when false, parent moves focus (e.g. to amount)
  */
 const RecipeCombobox = forwardRef(function RecipeCombobox({
   recipes,
@@ -43,15 +44,18 @@ const RecipeCombobox = forwardRef(function RecipeCombobox({
   label = 'Recipe',
   placeholder = 'Search recipe or meal…',
   disabled = false,
+  refocusOnSelect = true,
 }, ref) {
   const rootRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const [open, setOpen] = useState(false);
 
   useImperativeHandle(ref, () => ({
     focus() { inputRef.current?.focus(); },
-  }), []);
-  const [open, setOpen] = useState(false);
+    isOpen() { return open; },
+    blur() { inputRef.current?.blur(); },
+  }), [open]);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const { openUp, maxHeight } = useDropdownPlacement(inputRef, open, 260);
@@ -93,14 +97,17 @@ const RecipeCombobox = forwardRef(function RecipeCombobox({
   const poolCount = (recipes?.length || 0) + (ingredients?.length || 0);
   const showEmpty = poolCount > 0 && list.length === 0;
 
-  const inputValue = open ? query : (selected ? selected.name : query);
+  /* When value is empty (Log Meal clears after every pick), never stick a
+     previous selection name in the closed field — that was the clog. */
+  const inputValue = open || !selected ? query : selected.name;
 
   function selectOption(opt) {
     onChange(String(opt.item.id), opt.kind);
     setQuery('');
     setOpen(false);
-    // keep focus for fast logging
-    requestAnimationFrame(() => inputRef.current?.focus());
+    if (refocusOnSelect) {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
   }
 
   function onKeyDown(e) {
@@ -110,14 +117,25 @@ const RecipeCombobox = forwardRef(function RecipeCombobox({
       return;
     }
     if (e.key === 'ArrowDown') {
+      if (!open) {
+        // Parent may handle closed ↑/↓ for receipt-row navigation.
+        if (!query.trim()) return;
+        e.preventDefault();
+        setOpen(true);
+        return;
+      }
       e.preventDefault();
-      if (!open) return setOpen(true);
       setActiveIndex(i => clamp(i + 1, 0, Math.max(0, list.length - 1)));
       return;
     }
     if (e.key === 'ArrowUp') {
+      if (!open) {
+        if (!query.trim()) return;
+        e.preventDefault();
+        setOpen(true);
+        return;
+      }
       e.preventDefault();
-      if (!open) return setOpen(true);
       setActiveIndex(i => clamp(i - 1, 0, Math.max(0, list.length - 1)));
       return;
     }

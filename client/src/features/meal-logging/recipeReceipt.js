@@ -143,7 +143,7 @@ export function defaultAmountForIngredient(ing) {
  * Build a live receipt line from a library ingredient + amount.
  * @returns {object|null}
  */
-export function buildReceiptLine(ing, amount, unit, { id, source = 'library' } = {}) {
+export function buildReceiptLine(ing, amount, unit, { id, source = 'library', suggested_amount } = {}) {
   if (!ing) return null;
   const amt = amount != null ? String(amount) : '';
   // Always canonical, so the unit a line is computed in is the unit the picker
@@ -151,7 +151,7 @@ export function buildReceiptLine(ing, amount, unit, { id, source = 'library' } =
   const u = canonicalUnit(unit) || 'g';
   const macros = macrosForLabelServingAmount(ing, amt, u);
   if (!macros) return null;
-  return {
+  const line = {
     id: id || newReceiptLineId(),
     label_ingredient_id: Number(ing.id),
     name: ing.name,
@@ -167,6 +167,71 @@ export function buildReceiptLine(ing, amount, unit, { id, source = 'library' } =
     fiber_g: macros.fiber_g,
     source,
   };
+  if (suggested_amount != null && String(suggested_amount).trim() !== '') {
+    line.suggested_amount = String(suggested_amount);
+  }
+  return line;
+}
+
+/**
+ * Library add with empty amount + gray placeholder suggestion.
+ * Macros preview uses the suggested serving until the user commits.
+ * @returns {object|null}
+ */
+export function buildGhostReceiptLine(ing, { id, source = 'library' } = {}) {
+  if (!ing) return null;
+  if (loggableUnitsFor(ing).length === 0) return null;
+  const def = defaultAmountForIngredient(ing);
+  if (!def.amount || !String(def.amount).trim()) return null;
+  const full = buildReceiptLine(ing, def.amount, def.unit, {
+    id,
+    source,
+    suggested_amount: def.amount,
+  });
+  if (!full) return null;
+  return { ...full, amount: '' };
+}
+
+/** True when the amount field is empty (ghost still pending). */
+export function lineAmountIsEmpty(line) {
+  return !String(line?.amount ?? '').trim();
+}
+
+/**
+ * Commit empty amount → suggested_amount and refresh macros.
+ * Leaves lines with a typed amount unchanged.
+ */
+export function commitLineSuggestedAmount(line, ing) {
+  if (!line || !lineAmountIsEmpty(line)) return line;
+  const suggested = String(line.suggested_amount ?? '').trim();
+  if (!suggested) return line;
+  const next = { ...line, amount: suggested };
+  if (ing) return refreshReceiptLine(next, ing);
+  return next;
+}
+
+/** Commit every empty ghost amount before submit / Cmd+Enter. */
+export function commitAllSuggestedAmounts(lines, labelById = {}) {
+  return (lines || []).map(line => {
+    if (!lineAmountIsEmpty(line)) return line;
+    const ing = line.label_ingredient_id != null
+      ? labelById[String(line.label_ingredient_id)]
+      : null;
+    return commitLineSuggestedAmount(line, ing);
+  });
+}
+
+/** Neighbor line id for arrow / remove navigation. */
+export function adjacentReceiptLineId(lines, currentId, delta) {
+  const list = lines || [];
+  if (list.length === 0) return null;
+  if (currentId == null) {
+    return delta >= 0 ? list[0].id : list[list.length - 1].id;
+  }
+  const idx = list.findIndex(l => l.id === currentId);
+  if (idx < 0) return delta >= 0 ? list[0].id : list[list.length - 1].id;
+  const next = Math.min(list.length - 1, Math.max(0, idx + delta));
+  return list[next].id;
 }
 
 /** Build a receipt line from a prepped batch (grams only). */

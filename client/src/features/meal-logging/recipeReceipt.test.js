@@ -6,6 +6,11 @@ import {
   sumReceiptMacros,
   receiptToApiIngredients,
   buildReceiptLine,
+  buildGhostReceiptLine,
+  commitLineSuggestedAmount,
+  commitAllSuggestedAmounts,
+  adjacentReceiptLineId,
+  lineAmountIsEmpty,
   persistAmountUnit,
   changeLineUnit,
   retargetLineToIngredient,
@@ -120,6 +125,49 @@ describe('sumReceiptMacros + receiptToApiIngredients', () => {
     const empty = { name: 'Skip', amount: 0, calories: 10, protein_g: 0, carbs_g: 0, fat_g: 0 };
     const noCal = { name: 'Notes', amount: 1, calories: null };
     expect(receiptToApiIngredients([empty, noCal])).toEqual([]);
+  });
+});
+
+describe('ghost amounts', () => {
+  it('builds an empty amount with suggested serving and preview macros', () => {
+    const line = buildGhostReceiptLine(oats);
+    expect(line).toMatchObject({
+      amount: '',
+      suggested_amount: '40',
+      unit: 'g',
+      label_ingredient_id: 1,
+    });
+    expect(lineAmountIsEmpty(line)).toBe(true);
+    expect(line.calories).toBeCloseTo(150, 5);
+  });
+
+  it('commits suggested amount on Enter / before submit', () => {
+    const ghost = buildGhostReceiptLine(egg);
+    const committed = commitLineSuggestedAmount(ghost, egg);
+    expect(committed.amount).toBe('1');
+    expect(committed.calories).toBeCloseTo(72, 5);
+    expect(receiptToApiIngredients([ghost])).toEqual([]);
+    expect(receiptToApiIngredients([committed])).toHaveLength(1);
+  });
+
+  it('commitAllSuggestedAmounts leaves typed amounts alone', () => {
+    const ghost = buildGhostReceiptLine(oats);
+    const typed = buildReceiptLine(egg, '2', 'egg');
+    const next = commitAllSuggestedAmounts([ghost, typed], labelById);
+    expect(next[0].amount).toBe('40');
+    expect(next[1].amount).toBe('2');
+  });
+});
+
+describe('adjacentReceiptLineId', () => {
+  const lines = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+  it('moves forward and backward and clamps at ends', () => {
+    expect(adjacentReceiptLineId(lines, null, 1)).toBe('a');
+    expect(adjacentReceiptLineId(lines, 'a', 1)).toBe('b');
+    expect(adjacentReceiptLineId(lines, 'c', 1)).toBe('c');
+    expect(adjacentReceiptLineId(lines, 'b', -1)).toBe('a');
+    expect(adjacentReceiptLineId(lines, 'a', -1)).toBe('a');
   });
 });
 

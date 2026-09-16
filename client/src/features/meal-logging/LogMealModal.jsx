@@ -1,20 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createRecipe, fetchRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
+import { fetchPreppedBatches } from '@shared/api/preppedBatches';
 import { suggestSubstitutes } from '@shared/api/ai';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
 import { canonicalUnit, loggableUnitsFor } from '@shared/utils/unitConvert';
 import { pluralizeUnit } from '@shared/utils/servingBasis';
 import {
+  adjacentReceiptLineId,
+  buildGhostReceiptLine,
   buildReceiptLine,
+  buildReceiptLineFromPreppedBatch,
   buildRecipeFromReceipt,
   buildUnequalMealPrepRecipes,
   changeLineUnit,
-  defaultAmountForIngredient,
+  commitAllSuggestedAmounts,
+  commitLineSuggestedAmount,
   getSuggestedSubstitutes,
+  lineAmountIsEmpty,
   loadLastReceiptAmounts,
   normalizeMealPrepFractions,
   receiptToApiIngredients,
+  refreshPreppedBatchLine,
   refreshReceiptLine,
   retargetLineToIngredient,
   saveLastReceiptAmounts,
@@ -23,11 +30,16 @@ import {
   sumReceiptMacros,
 } from './recipeReceipt';
 
+/** Vaulted: tap-name AI/heuristic swap. Flip true to revive. */
+const SHOW_MEAL_SUBSTITUTES = false;
+
+/** Matches Ingredients.jsx — prep batches stay vaulted until that flag flips. */
+const SHOW_PREPPED_BATCHES = false;
+
 function equalPercents(n) {
   const count = Math.max(2, Math.min(50, Math.floor(Number(n)) || 2));
   const base = Math.floor((100 / count) * 10) / 10;
   const percents = Array.from({ length: count }, () => base);
-  // Fix rounding so the row always sums to 100.
   const drift = Math.round((100 - percents.reduce((a, b) => a + b, 0)) * 10) / 10;
   percents[percents.length - 1] = Math.round((percents[percents.length - 1] + drift) * 10) / 10;
   return percents;
@@ -52,6 +64,8 @@ function lineDisplayName(line) {
 export default function LogMealModal({ onLog, onClose, initialEntry, title, submitLabel }) {
   const ref = useRef(null);
   const recipeComboboxRef = useRef(null);
+  const amountRefs = useRef(new Map());
+  const focusAmountIdRef = useRef(null);
   const [recipes, setRecipes] = useState([]);
   const [recipeId, setRecipeId] = useState(initialEntry?.recipe_id ? String(initialEntry.recipe_id) : '');
   const [servings, setServings] = useState(
@@ -68,10 +82,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  // Saving the assembled meal as a reusable recipe — a separate action from
-  // logging it, so tweaking a meal and keeping the version that worked doesn't
-  // mean rebuilding it in the Meal Builder. Meal prep reuses that panel with a
-  // limited-use split (equal by default; optional custom % per container).
   const [saveRecipeOpen, setSaveRecipeOpen] = useState(false);
   const [saveAsMealPrep, setSaveAsMealPrep] = useState(false);
   const [prepServings, setPrepServings] = useState(4);
@@ -81,13 +91,15 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const [savingRecipe, setSavingRecipe] = useState(false);
   const [savedRecipeName, setSavedRecipeName] = useState('');
   const [labelIngredients, setLabelIngredients] = useState([]);
+  const [preppedBatches, setPreppedBatches] = useState([]);
   const [receipt, setReceipt] = useState([]);
   const [seededFromRecipeId, setSeededFromRecipeId] = useState(null);
+  const [activeLineId, setActiveLineId] = useState(null);
   const [subLineId, setSubLineId] = useState(null);
   const [subSuggestions, setSubSuggestions] = useState([]);
   const [subBusy, setSubBusy] = useState(false);
   const [subError, setSubError] = useState('');
-  const [subSource, setSubSource] = useState(''); // 'ai' | 'heuristic'
+  const [subSource, setSubSource] = useState('');
   const receiptSeededRef = useRef(false);
 
   const selectedRecipe = useMemo(
@@ -100,10 +112,58 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     [labelIngredients]
   );
 
+  const batchById = useMemo(
+    () => Object.fromEntries(preppedBatches.map(x => [String(x.id), x])),
+    [preppedBatches]
+  );
+
+  const searchIngredients = useMemo(() => {
+    if (!SHOW_PREPPED_BATCHES) return labelIngredients;
+    const batchItems = preppedBatches.map(b => ({
+      id: `pb:${b.id}`,
+      name: b.name,
+      serving_size_text: `${Math.round(Number(b.remaining_weight_g) || 0)} g left`,
+      is_prepped_batch: true,
+      calories: b.remaining_calories,
+    }));
+    return [...batchItems, ...labelIngredients];
+  }, [labelIngredients, preppedBatches]);
+
   const receiptTotals = useMemo(() => sumReceiptMacros(receipt), [receipt]);
 
-  useEffect(() => {
+  const showServingsField = useMemo(() => {
+    if (selectedRecipe?.recipe_kind === 'limited') return true;
+    if (initialEntry && Number(initialEntry.servings) !== 1 && Number(initialEntry.servings) > 0) {
+      return true;
+    }
+    return false;
+  }, [selectedRecipe, initialEntry]);
+
+  function resolveLogServings() {
+    if (selectedRecipe?.recipe_kind === 'limited') return Number(servings) || 1;
+    if (initialEntry && Number(initialEntry.servings) !== 1 && Number(initialEntry.servings) > 0) {
+      return Number(servings) || 1;
+    }
+    return 1;
+  }
+
+  function focusSearch() {
     requestAnimationFrame(() => recipeComboboxRef.current?.focus());
+  }
+
+  function focusAmount(lineId) {
+    if (!lineId) return;
+    focusAmountIdRef.current = lineId;
+    setActiveLineId(lineId);
+    requestAnimationFrame(() => {
+      const el = amountRefs.current.get(lineId);
+      el?.focus();
+      el?.select?.();
+    });
+  }
+
+  useEffect(() => {
+    focusSearch();
   }, []);
 
   useEffect(() => {
@@ -114,6 +174,20 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
         setLabelIngredients([]);
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    if (!SHOW_PREPPED_BATCHES) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await fetchPreppedBatches();
+        if (!cancelled) setPreppedBatches(Array.isArray(list) ? list : []);
+      } catch {
+        if (!cancelled) setPreppedBatches([]);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -137,7 +211,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     ref.current?.showModal();
   }, []);
 
-  // Seed receipt once labels + recipes are ready (edit mode or create).
   useEffect(() => {
     if (receiptSeededRef.current) return;
     if (labelIngredients.length === 0 && !initialEntry) return;
@@ -212,18 +285,37 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     const lines = seedReceiptFromRecipe(recipe, labelById, remembered);
     setReceipt(lines);
     setSeededFromRecipeId(String(recipe.id));
+    setActiveLineId(null);
     setSubLineId(null);
     setSubSuggestions([]);
   }
 
   function handleAddIngredient(nextId) {
-    const ing = labelById[String(nextId)];
+    const idStr = String(nextId);
+    if (SHOW_PREPPED_BATCHES && idStr.startsWith('pb:')) {
+      const batch = batchById[idStr.slice(3)];
+      if (!batch) return;
+      const suggested = '100';
+      const preview = buildReceiptLineFromPreppedBatch(batch, suggested);
+      if (!preview) {
+        setError(`${batch.name} has no remaining weight.`);
+        return;
+      }
+      const line = {
+        ...preview,
+        amount: '',
+        suggested_amount: suggested,
+      };
+      setError('');
+      setReceipt(prev => [...prev, line]);
+      focusAmount(line.id);
+      return;
+    }
+
+    const ing = labelById[idStr];
     if (!ing) return;
-    const def = defaultAmountForIngredient(ing);
-    const line = buildReceiptLine(ing, def.amount, def.unit, { source: 'library' });
+    const line = buildGhostReceiptLine(ing, { source: 'library' });
     if (!line) {
-      // Say which piece is actually missing. Blaming grams per serving for
-      // every failure sends the user to edit a field that is already filled in.
       const units = loggableUnitsFor(ing);
       setError(
         units.length === 0
@@ -234,9 +326,10 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     }
     setError('');
     setReceipt(prev => [...prev, line]);
+    focusAmount(line.id);
   }
 
-  /** One search: recipes seed the meal; ingredients append a line. */
+  /** One search: recipes seed the meal; ingredients append a ghost line. */
   function handleSearchPick(nextId, kind) {
     if (kind === 'ingredient') {
       handleAddIngredient(nextId);
@@ -244,19 +337,32 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     }
     setRecipeId(nextId);
     const recipe = recipes.find(r => String(r.id) === String(nextId));
+    if (recipe?.recipe_kind === 'limited') {
+      setServings(prev => (prev && Number(prev) > 0 ? prev : '1'));
+    } else {
+      setServings('1');
+    }
     applyRecipeSeed(recipe || null);
+    focusSearch();
   }
 
-  // Switching a line's unit restates the amount instead of reinterpreting it:
-  // 1 cup of milk becomes 236.59 ml, never 1 ml.
   function updateLineUnit(id, nextUnit) {
     setReceipt(prev =>
       prev.map(line => {
         if (line.id !== id) return line;
+        if (line.prepped_batch_id) return line;
         const ing = labelById[String(line.label_ingredient_id)];
         const patch = ing ? changeLineUnit(line, ing, nextUnit) : null;
         if (!patch) return line;
-        return refreshReceiptLine({ ...line, ...patch }, ing);
+        const next = { ...line, ...patch };
+        if (lineAmountIsEmpty(next) && next.suggested_amount) {
+          const preview = refreshReceiptLine(
+            { ...next, amount: next.suggested_amount },
+            ing
+          );
+          return { ...preview, amount: '' };
+        }
+        return refreshReceiptLine(next, ing);
       })
     );
   }
@@ -266,7 +372,25 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       prev.map(line => {
         if (line.id !== id) return line;
         const next = { ...line, ...patch };
+        if (line.prepped_batch_id) {
+          const batch = batchById[String(line.prepped_batch_id)];
+          if (lineAmountIsEmpty(next) && next.suggested_amount) {
+            const preview = refreshPreppedBatchLine(
+              { ...next, amount: next.suggested_amount },
+              batch
+            );
+            return { ...preview, amount: '' };
+          }
+          return refreshPreppedBatchLine(next, batch);
+        }
         const ing = labelById[String(next.label_ingredient_id)];
+        if (lineAmountIsEmpty(next) && next.suggested_amount && ing) {
+          const preview = refreshReceiptLine(
+            { ...next, amount: next.suggested_amount },
+            ing
+          );
+          return { ...preview, amount: '' };
+        }
         if (ing) return refreshReceiptLine(next, ing);
         return next;
       })
@@ -274,11 +398,36 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   }
 
   function removeLine(id) {
-    setReceipt(prev => prev.filter(l => l.id !== id));
+    setReceipt(prev => {
+      const idx = prev.findIndex(l => l.id === id);
+      const next = prev.filter(l => l.id !== id);
+      const neighbor = next[Math.min(idx, next.length - 1)] || null;
+      setActiveLineId(neighbor?.id ?? null);
+      if (neighbor) {
+        requestAnimationFrame(() => focusAmount(neighbor.id));
+      } else {
+        focusSearch();
+      }
+      return next;
+    });
     if (subLineId === id) {
       setSubLineId(null);
       setSubSuggestions([]);
     }
+  }
+
+  function removeActiveOrLast() {
+    if (receipt.length === 0) return;
+    const id = activeLineId && receipt.some(l => l.id === activeLineId)
+      ? activeLineId
+      : receipt[receipt.length - 1].id;
+    removeLine(id);
+  }
+
+  function moveActiveRow(delta) {
+    if (receipt.length === 0) return;
+    const nextId = adjacentReceiptLineId(receipt, activeLineId, delta);
+    if (nextId) focusAmount(nextId);
   }
 
   function resetToRecipeAmounts() {
@@ -289,6 +438,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   }
 
   async function openSubstitutes(line) {
+    if (!SHOW_MEAL_SUBSTITUTES) return;
     setSubLineId(line.id);
     setSubError('');
     setSubSuggestions([]);
@@ -377,9 +527,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     setPrepPercents(equalPercents(v));
   }
 
-  // Save the receipt as a reusable recipe (or limited meal-prep pack).
-  // Deliberately separate from logging: keeping a version and eating it are
-  // different decisions.
   async function handleSaveRecipe() {
     if (savingRecipe) return;
     setError('');
@@ -394,6 +541,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
     setSavingRecipe(true);
     try {
+      const committed = commitAllSuggestedAmounts(receipt, labelById);
       if (saveAsMealPrep && prepAdvancedOpen) {
         const fractions = normalizeMealPrepFractions(prepPercents);
         if (!fractions) {
@@ -407,7 +555,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           setSavingRecipe(false);
           return;
         }
-        const bodies = buildUnequalMealPrepRecipes(receipt, recipeName, prepPercents);
+        const bodies = buildUnequalMealPrepRecipes(committed, recipeName, prepPercents);
         if (!bodies?.length) {
           setError('Could not build the meal-prep containers.');
           setSavingRecipe(false);
@@ -426,7 +574,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
         );
       } else {
         const body = buildRecipeFromReceipt(
-          receipt,
+          committed,
           recipeName,
           saveAsMealPrep ? { mealPrepServings: prepServings } : undefined
         );
@@ -456,57 +604,55 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   }
 
   async function handleSubmit(e) {
-    e.preventDefault();
+    e?.preventDefault?.();
     if (submitting) return;
     setError('');
 
-    const apiIngredients = receiptToApiIngredients(receipt);
+    const committed = commitAllSuggestedAmounts(receipt, labelById);
+    setReceipt(committed);
+    const apiIngredients = receiptToApiIngredients(committed);
     const time_min = parseHHMMToTimeMin(timeHHMM);
     const notesVal = notes.trim() || undefined;
+    const logServings = resolveLogServings();
 
     try {
       setSubmitting(true);
 
-      // Recipe with a built receipt (library lines).
       if (recipeId && seededFromRecipeId && String(recipeId) === String(seededFromRecipeId) && apiIngredients.length > 0) {
-        if (receipt.some(l => l.label_ingredient_id && l.calories == null)) {
+        if (committed.some(l => l.label_ingredient_id && l.calories == null)) {
           setSubmitting(false);
           return setError('One or more ingredients need grams per serving. Edit them in the Ingredient Library.');
         }
         const payload = {
           recipe_id: Number(recipeId),
-          servings: Number(servings) || 1,
+          servings: logServings,
           notes: notesVal,
           time_min,
           ingredients: apiIngredients,
         };
         await onLog(payload);
         const amounts = {};
-        for (const l of receipt) {
+        for (const l of committed) {
           const n = Number(l.amount);
           if (l.label_ingredient_id && Number.isFinite(n) && n > 0) {
-            // Remember the unit actually used. Collapsing it to g/oz here meant
-            // reopening a meal logged in ml re-seeded the amount against a
-            // different unit entirely.
             amounts[String(l.label_ingredient_id)] = { amount: String(n), unit: l.unit };
           }
         }
         if (Object.keys(amounts).length) saveLastReceiptAmounts(Number(recipeId), amounts);
       } else if (recipeId && apiIngredients.length === 0) {
-        // Manual / known-macro recipe with no library lines — servings only.
         await onLog({
           recipe_id: Number(recipeId),
-          servings: Number(servings) || 1,
+          servings: logServings,
           notes: notesVal,
           time_min,
         });
       } else if (apiIngredients.length > 0) {
-        if (receipt.some(l => l.label_ingredient_id && l.calories == null)) {
+        if (committed.some(l => l.label_ingredient_id && l.calories == null)) {
           setSubmitting(false);
           return setError('One or more ingredients need grams per serving. Edit them in the Ingredient Library.');
         }
         const name = selectedRecipe?.name || apiIngredients.map(x => x.name).slice(0, 3).join(' + ') || 'Custom meal';
-        const totals = sumReceiptMacros(receipt);
+        const totals = sumReceiptMacros(committed);
         await onLog({
           custom: {
             name,
@@ -534,16 +680,62 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     }
   }
 
+  function onAmountKeyDown(e, line) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (lineAmountIsEmpty(line) && line.suggested_amount) {
+      const ing = labelById[String(line.label_ingredient_id)];
+      if (line.prepped_batch_id) {
+        const batch = batchById[String(line.prepped_batch_id)];
+        const committed = commitLineSuggestedAmount(line, null);
+        setReceipt(prev => prev.map(l => (
+          l.id === line.id ? refreshPreppedBatchLine(committed, batch) : l
+        )));
+      } else {
+        setReceipt(prev => prev.map(l => (
+          l.id === line.id ? commitLineSuggestedAmount(l, ing) : l
+        )));
+      }
+    }
+    focusSearch();
+  }
+
+  function onDialogKeyDown(e) {
+    if (saveRecipeOpen || submitting) return;
+    if (recipeComboboxRef.current?.isOpen?.()) return;
+
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key === 'Enter') {
+      e.preventDefault();
+      void handleSubmit(e);
+      return;
+    }
+    if (mod && e.key === 'Backspace') {
+      e.preventDefault();
+      removeActiveOrLast();
+      return;
+    }
+
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    if (receipt.length === 0) return;
+    if (e.target?.tagName === 'SELECT') return;
+    e.preventDefault();
+    moveActiveRow(e.key === 'ArrowDown' ? 1 : -1);
+  }
+
   function close() {
     if (submitting) return;
     ref.current?.close();
     onClose();
   }
 
+  const logServingsDisplay = resolveLogServings();
+
   return (
     <dialog
       ref={ref}
       onClose={onClose}
+      onKeyDown={onDialogKeyDown}
       style={{ width: 'min(560px, 94vw)', maxHeight: '92vh', overflowY: 'auto' }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
@@ -560,11 +752,12 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
             ref={recipeComboboxRef}
             label="Add to this meal"
             recipes={recipes}
-            ingredients={labelIngredients}
-            value={recipeId}
+            ingredients={searchIngredients}
+            value=""
             valueKind="recipe"
             onChange={handleSearchPick}
             placeholder="Search recipes or ingredients…"
+            refocusOnSelect={false}
           />
           {selectedRecipe && (
             <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
@@ -574,7 +767,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           )}
         </div>
 
-        {recipeId && (
+        {showServingsField && (
           <div>
             <label>Servings</label>
             <input
@@ -595,7 +788,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               </p>
               {receipt.length > 0 && (
                 <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-text-muted)' }}>
-                  Tap a name to swap from your library.
+                  ↑↓ move · ⌘⌫ remove · ⌘↵ log
                 </p>
               )}
             </div>
@@ -625,65 +818,88 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               </div>
               {receipt.map(line => {
                 const lineIng = labelById[String(line.label_ingredient_id)];
-                // Only units this ingredient can actually be measured in are
-                // offered — see loggableUnitsFor. A line whose unit is not among
-                // them (stale data) shows that unit as plain text rather than a
-                // dropdown claiming some other unit is selected.
                 const lineUnit = canonicalUnit(line.unit);
                 const options = lineIng ? loggableUnitsFor(lineIng) : [];
                 const unitOptions = options.includes(lineUnit) ? options : [];
                 const unitLabel = line.unit || line.unit_name || 'unit';
-                const open = subLineId === line.id;
+                const open = SHOW_MEAL_SUBSTITUTES && subLineId === line.id;
+                const isActive = activeLineId === line.id;
+                const ghost = lineAmountIsEmpty(line);
                 return (
                   <div key={line.id} className="slot-list__line">
-                    <div className="slot-row">
+                    <div
+                      className={`slot-row${isActive ? ' is-active' : ''}`}
+                      onPointerDown={() => setActiveLineId(line.id)}
+                    >
                       <div className="slot-row__name" title={lineDisplayName(line)}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <button
-                            type="button"
-                            onClick={() => (open ? setSubLineId(null) : openSubstitutes(line))}
-                            aria-expanded={open}
-                            aria-label={`Find substitutes for ${line.name}`}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              padding: 0,
-                              margin: 0,
-                              textAlign: 'left',
-                              cursor: 'pointer',
-                              color: 'var(--color-text-strong)',
-                              font: 'inherit',
-                              textDecoration: 'underline',
-                              textDecorationStyle: 'dotted',
-                            }}
-                            title="Find substitutes from your library"
-                          >
-                            {line.name}
-                          </button>
+                          {SHOW_MEAL_SUBSTITUTES ? (
+                            <button
+                              type="button"
+                              onClick={() => (open ? setSubLineId(null) : openSubstitutes(line))}
+                              aria-expanded={open}
+                              aria-label={`Find substitutes for ${line.name}`}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                padding: 0,
+                                margin: 0,
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                color: 'var(--color-text-strong)',
+                                font: 'inherit',
+                                textDecoration: 'underline',
+                                textDecorationStyle: 'dotted',
+                              }}
+                              title="Find substitutes from your library"
+                            >
+                              {line.name}
+                            </button>
+                          ) : (
+                            <span style={{ color: 'var(--color-text-strong)', font: 'inherit' }}>
+                              {line.name}
+                            </span>
+                          )}
                         </div>
                         {line.calories != null && (
-                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: 'var(--color-text-muted)',
+                              marginTop: 2,
+                              opacity: ghost ? 0.65 : 1,
+                            }}
+                          >
                             {Math.round(line.calories)} cal · P {Number(line.protein_g).toFixed(1)} · C{' '}
                             {Number(line.carbs_g).toFixed(1)} · F {Number(line.fat_g).toFixed(1)}
+                            {ghost ? ' · suggested' : ''}
                           </div>
                         )}
                       </div>
                       <input
+                        ref={el => {
+                          if (el) amountRefs.current.set(line.id, el);
+                          else amountRefs.current.delete(line.id);
+                        }}
                         type="text"
                         inputMode="decimal"
                         aria-label={`Amount for ${line.name}`}
                         value={line.amount}
+                        placeholder={line.suggested_amount ? String(line.suggested_amount) : undefined}
                         onChange={e => updateLine(line.id, { amount: e.target.value })}
+                        onFocus={() => setActiveLineId(line.id)}
+                        onKeyDown={e => onAmountKeyDown(e, line)}
                       />
                       {unitOptions.length > 1 ? (
                         <select
                           aria-label={`Unit for ${line.name}`}
                           value={lineUnit}
                           onChange={e => updateLineUnit(line.id, e.target.value)}
+                          onFocus={() => setActiveLineId(line.id)}
                         >
                           {unitOptions.map(u => (
                             <option key={u} value={u}>
-                              {pluralizeUnit(u, line.amount)}
+                              {pluralizeUnit(u, line.amount || line.suggested_amount)}
                             </option>
                           ))}
                         </select>
@@ -769,11 +985,11 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               {Math.round(receiptTotals.calories)} cal · P {receiptTotals.protein_g.toFixed(1)}g · C{' '}
               {receiptTotals.carbs_g.toFixed(1)}g · F {receiptTotals.fat_g.toFixed(1)}g
               {receiptTotals.fiber_g > 0 && ` · Fiber ${receiptTotals.fiber_g.toFixed(1)}g`}
-              {recipeId && Number(servings) !== 1 && (
+              {showServingsField && logServingsDisplay !== 1 && (
                 <span style={{ color: 'var(--color-text-muted)' }}>
-                  {'. This log '}({Number(servings) || 1} servings):{' '}
+                  {'. This log '}({logServingsDisplay} servings):{' '}
                   <strong style={{ color: 'var(--color-text-strong)' }}>
-                    {Math.round(receiptTotals.calories * (Number(servings) || 1))} cal
+                    {Math.round(receiptTotals.calories * logServingsDisplay)} cal
                   </strong>
                 </span>
               )}
@@ -823,7 +1039,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               placeholder={saveAsMealPrep ? 'e.g. Chicken rice prep' : 'e.g. Morning oats v2'}
               autoFocus
               onKeyDown={e => {
-                // Enter inside the form would submit the log instead of saving.
                 if (e.key === 'Enter') { e.preventDefault(); void handleSaveRecipe(); }
               }}
             />
@@ -1027,9 +1242,6 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           >
             {submitting ? (<><span className="btn-spinner" aria-hidden="true" />Logging…</>) : (submitLabel || 'Log Meal')}
           </button>
-          {/* Keeping a tweaked meal shouldn't mean rebuilding it in the Meal
-              Builder — but it stays secondary to logging, which is why you
-              opened this modal. */}
           {!saveRecipeOpen && receipt.length > 0 && (
             <>
               <button

@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-09-04_
+_Last updated: 2026-09-16_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -22,21 +22,17 @@ _current-state_ companion to it.
 
 ## Where Diego left off (read this first)
 
-**Status:** Diego is **happy with FLOPS for daily use** (school starting back up; using it for
-everything he needs). He is **taking a break from active development** as of late August 2026.
+**Status:** Back from a late-August pause. Active again as of **2026-09** with Log Meal UX work.
 
-**Last active work stream:** **Today dashboard layout customization** (`?editLayout=1`) —
-drag/resize cards, show/hide toggles, per-card scaling and readable resize floors. Multiple PRs
-landed (#4–#11, Aug 2026). The editor is **usable and shipped**, but Diego felt it was **not
-quite where he wanted visually** (scaling/reflow still fights the user in edge cases). He chose
-to **park further polish** rather than keep iterating.
+**Last active work stream:** **Log a Meal keyboard / search flow** (Sept 2026) — clear-after-pick
+search, ghost serving amounts, ↑↓ / ⌘⌫ / ⌘↵ shortcuts, vaulted substitutes, Servings only for
+limited meal prep. Prior parked stream: Today dashboard layout editor (usable, polish deferred).
 
-**When you return:** The app is production-stable. Unless you explicitly want to reopen layout
-editor UX, there is **no blocking work**. Good next picks (optional, not urgent):
+**When you return / next picks (optional):**
 
-1. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026) below.
-2. **Gym UX polish** — Setgraph-like refinements on `/training`.
-3. **Notebook-day modal contrast** — deeper AI review panels if opened off-today.
+1. **Exercise Log Meal keyboard UX** on live after deploy (ghost amounts, shortcuts).
+2. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
+3. **Gym UX polish** — Setgraph-like refinements on `/training`.
 4. **Ops:** Resend domain verification for production OTP email (if not done yet).
 
 ---
@@ -127,6 +123,11 @@ log receipt lines. Entry: Ingredients → "Prep a batch".
 
 **Augment meal prep:** Recipe Library → **Add to prep** on equal-split limited recipes. Fixed Aug 2026:
 `AugmentMealPrepModal` passes `items=` (not `ingredients=`) to `IngredientCombobox`.
+
+**Log Meal (Sept 2026):** One search for recipes + ingredients; search **clears after every pick**
+(no sticky recipe name). Library adds use a **ghost** suggested amount (placeholder); Enter on an
+empty amount commits it, then focus returns to search. Keyboard: **↑↓** rows · **⌘⌫** remove ·
+**⌘↵** log. Substitutes vaulted; Servings UI only for limited meal prep (see Parked).
 
 **Units & save-as-recipe:** See prior handoff detail in git history; `unitConvert.js` twin files,
 Save as Recipe / Meal Prep from log modal and meal ⋯ menu. Still accurate.
@@ -235,19 +236,14 @@ needs domain verification for prod delivery), DSLD supplement lookup, barcode vi
 
 ## 4. Git state
 
-**Branch:** `main` · **Remote:** `origin/main` (GitHub `TheDoc004/flops`) · **in sync**
+**Branch:** `main` · **Remote:** `origin/main` (GitHub `TheDoc004/flops`)
 
-Recent production commits (newest first, Aug 2026 dashboard editor sprint):
+Recent production commits (newest first):
 
 ```
-0f1585a Merge PR #11 — per-card readability rules + meals edit preview
-6cdf3b4 Merge PR #10 — edit scaling, resize floors, toolbar in banner
-439c0ce Merge PR #9  — minimum readable size when compressing cards
-a02e766 Merge PR #8  — center layout-editor exit dialog
-9897921 Merge PR #7  — Prepped badge for active cooked batches
-da98a67 Merge PR #6  — fix Add to prep IngredientCombobox prop
-cbbf087 Merge PR #4  — stop RGL mount inflating edit-mode card sizes
-e1d192e chore — layout editor verify harness (Playwright)
+62d1cb4 feat(ingredients): vault prep batches and allow remove
+2edef3d feat(log-meal): one search for recipes and ingredients
+… (dashboard layout editor sprint Aug 2026 — PRs #4–#11)
 ```
 
 Working tree should be clean before starting new work. **One topic per commit**; push to `main`
@@ -275,6 +271,12 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 ## 6. Parked / deliberately deferred
 
 - **Dashboard layout editor visual polish** — Diego paused here; app is usable without it.
+- **Log Meal substitutes** — tap-name AI/heuristic swap vaulted via `SHOW_MEAL_SUBSTITUTES = false`
+  in `LogMealModal.jsx`. Helpers + API remain. Swap path: ↑↓ row → ⌘⌫ remove → search add.
+- **Everyday Servings field** — hidden except for limited-use meal prep (`recipe_kind === 'limited'`)
+  and when editing an old log that already had `servings !== 1`. New permanent-recipe / custom logs
+  always send `servings: 1`. Can rebuild later if needed.
+- **Prepped batches UI** — still vaulted (`SHOW_PREPPED_BATCHES = false` in Ingredients + Log Meal).
 - Goals & Profile restructure (Plan shell organization).
 - Phase 3 nutrition↔training bridge — do not start until both domains feel solid independently.
 - Nutrition refactors — opportunistic when touching files.
