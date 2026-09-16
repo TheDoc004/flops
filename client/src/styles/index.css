@@ -1613,6 +1613,77 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
   background: color-mix(in srgb, var(--color-primary-subtle) 70%, #fff);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 28%, transparent);
 }
+.slot-row--add {
+  margin-top: 8px;
+  border: 1px dashed color-mix(in srgb, var(--color-primary) 28%, var(--color-surface-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface) 88%, var(--color-primary-subtle));
+}
+.slot-row--add:hover,
+.slot-row--add:focus-within {
+  background: color-mix(in srgb, var(--color-surface) 80%, var(--color-primary-subtle));
+}
+.slot-row--add__search {
+  min-width: 0;
+}
+.slot-row--add__search input {
+  min-height: 40px;
+  font-size: 13px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.slot-row--add__search input:focus {
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+}
+.slot-row--add__ghost {
+  font-size: 13px;
+  color: var(--color-text-faint);
+  text-align: center;
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+.slot-row--add__ghost-unit {
+  text-align: left;
+  padding-left: 8px;
+}
+.slot-row--add__spacer {
+  width: 36px;
+  height: 36px;
+}
+.log-meal-recipe-chip {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-secondary-bg);
+}
+.log-meal-recipe-chip__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.log-meal-recipe-chip__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.log-meal-recipe-chip__name {
+  font-size: 15px;
+  color: var(--color-text-strong);
+}
+.log-meal-recipe-chip__hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
 /* One name, one line: a wrapped ingredient name makes its row taller than its
    neighbours and the list stops scanning as a column of portions. */
 .slot-row__name {

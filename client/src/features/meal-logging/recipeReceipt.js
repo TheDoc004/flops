@@ -352,6 +352,18 @@ export function sumReceiptMacros(lines) {
   return any ? tot : null;
 }
 
+/** Auto title for an ingredient-built meal when the user leaves the name blank. */
+export function generateMealName(lines, { max = 3 } = {}) {
+  const names = (lines || [])
+    .map(l => String(l?.name ?? '').trim())
+    .filter(Boolean);
+  if (names.length === 0) return '';
+  const head = names.slice(0, Math.max(1, max));
+  const extra = names.length - head.length;
+  const base = head.join(' + ');
+  return extra > 0 ? `${base} + ${extra} more` : base;
+}
+
 const r2 = n => Math.round(Number(n) * 100) / 100;
 
 /**

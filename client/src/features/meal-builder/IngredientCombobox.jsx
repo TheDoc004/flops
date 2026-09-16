@@ -96,13 +96,14 @@ const IngredientCombobox = forwardRef(function IngredientCombobox({
   const rootRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
-
-  useImperativeHandle(ref, () => ({
-    focus() { inputRef.current?.focus(); },
-  }), []);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+
+  useImperativeHandle(ref, () => ({
+    focus() { inputRef.current?.focus(); },
+    isOpen() { return open; },
+  }), [open]);
   const { openUp, maxHeight } = useDropdownPlacement(inputRef, open, 280);
 
   const selected = useMemo(

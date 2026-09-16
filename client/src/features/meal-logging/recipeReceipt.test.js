@@ -10,6 +10,7 @@ import {
   commitLineSuggestedAmount,
   commitAllSuggestedAmounts,
   adjacentReceiptLineId,
+  generateMealName,
   lineAmountIsEmpty,
   persistAmountUnit,
   changeLineUnit,
@@ -168,6 +169,30 @@ describe('adjacentReceiptLineId', () => {
     expect(adjacentReceiptLineId(lines, 'c', 1)).toBe('c');
     expect(adjacentReceiptLineId(lines, 'b', -1)).toBe('a');
     expect(adjacentReceiptLineId(lines, 'a', -1)).toBe('a');
+  });
+});
+
+describe('generateMealName', () => {
+  it('joins up to three ingredient names', () => {
+    expect(generateMealName([
+      { name: 'Oats' },
+      { name: 'Egg' },
+      { name: 'Milk' },
+    ])).toBe('Oats + Egg + Milk');
+  });
+
+  it('summarizes longer lists', () => {
+    expect(generateMealName([
+      { name: 'A' },
+      { name: 'B' },
+      { name: 'C' },
+      { name: 'D' },
+    ])).toBe('A + B + C + 1 more');
+  });
+
+  it('returns empty when there are no names', () => {
+    expect(generateMealName([])).toBe('');
+    expect(generateMealName([{ name: '  ' }])).toBe('');
   });
 });
 

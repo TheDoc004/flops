@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-09-16_
+_Last updated: 2026-09-16 (Log Meal dual-bar UX)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -124,10 +124,11 @@ log receipt lines. Entry: Ingredients → "Prep a batch".
 **Augment meal prep:** Recipe Library → **Add to prep** on equal-split limited recipes. Fixed Aug 2026:
 `AugmentMealPrepModal` passes `items=` (not `ingredients=`) to `IngredientCombobox`.
 
-**Log Meal (Sept 2026):** One search for recipes + ingredients; search **clears after every pick**
-(no sticky recipe name). Library adds use a **ghost** suggested amount (placeholder); Enter on an
-empty amount commits it, then focus returns to search. Keyboard: **↑↓** rows · **⌘⌫** remove ·
-**⌘↵** log. Substitutes vaulted; Servings UI only for limited meal prep (see Parked).
+**Log Meal (Sept 2026):** Dual-bar flow. Top starts as recipe/ingredient search, then
+**transforms** — recipe chip (with Clear) if seeded from a recipe, or editable **meal name**
+if built from ingredients (empty → auto `generateMealName`). Bottom ghost row adds more
+ingredients only. Ghost suggested amounts + keyboard shortcuts remain. Substitutes vaulted;
+Servings UI only for limited meal prep (see Parked).
 
 **Units & save-as-recipe:** See prior handoff detail in git history; `unitConvert.js` twin files,
 Save as Recipe / Meal Prep from log modal and meal ⋯ menu. Still accurate.

@@ -4,6 +4,7 @@ import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import { fetchPreppedBatches } from '@shared/api/preppedBatches';
 import { suggestSubstitutes } from '@shared/api/ai';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
+import IngredientCombobox from '@features/meal-builder/IngredientCombobox';
 import { canonicalUnit, loggableUnitsFor } from '@shared/utils/unitConvert';
 import { pluralizeUnit } from '@shared/utils/servingBasis';
 import {
@@ -16,6 +17,7 @@ import {
   changeLineUnit,
   commitAllSuggestedAmounts,
   commitLineSuggestedAmount,
+  generateMealName,
   getSuggestedSubstitutes,
   lineAmountIsEmpty,
   loadLastReceiptAmounts,
@@ -64,10 +66,16 @@ function lineDisplayName(line) {
 export default function LogMealModal({ onLog, onClose, initialEntry, title, submitLabel }) {
   const ref = useRef(null);
   const recipeComboboxRef = useRef(null);
+  const addComboboxRef = useRef(null);
   const amountRefs = useRef(new Map());
   const focusAmountIdRef = useRef(null);
   const [recipes, setRecipes] = useState([]);
   const [recipeId, setRecipeId] = useState(initialEntry?.recipe_id ? String(initialEntry.recipe_id) : '');
+  const [mealName, setMealName] = useState(() => {
+    if (initialEntry?.recipe_id) return '';
+    return initialEntry?.recipe_name ? String(initialEntry.recipe_name) : '';
+  });
+  const [addIngredientId, setAddIngredientId] = useState('');
   const [servings, setServings] = useState(
     initialEntry?.servings != null ? String(initialEntry.servings) : '1'
   );
@@ -130,6 +138,16 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   }, [labelIngredients, preppedBatches]);
 
   const receiptTotals = useMemo(() => sumReceiptMacros(receipt), [receipt]);
+  const generatedMealName = useMemo(() => generateMealName(receipt), [receipt]);
+
+  /** empty | recipe | name — transformative top bar */
+  const topMode = useMemo(() => {
+    if (recipeId) return 'recipe';
+    if (receipt.length > 0) return 'name';
+    return 'empty';
+  }, [recipeId, receipt.length]);
+
+  const mealStarted = topMode !== 'empty';
 
   const showServingsField = useMemo(() => {
     if (selectedRecipe?.recipe_kind === 'limited') return true;
@@ -147,8 +165,12 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     return 1;
   }
 
-  function focusSearch() {
+  function focusTopSearch() {
     requestAnimationFrame(() => recipeComboboxRef.current?.focus());
+  }
+
+  function focusAddBar() {
+    requestAnimationFrame(() => addComboboxRef.current?.focus());
   }
 
   function focusAmount(lineId) {
@@ -163,7 +185,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   }
 
   useEffect(() => {
-    focusSearch();
+    focusTopSearch();
   }, []);
 
   useEffect(() => {
@@ -275,6 +297,18 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     }
   }, [selectedRecipe, labelById, labelIngredients.length, initialEntry]);
 
+  function clearRecipeSeed() {
+    setRecipeId('');
+    setSeededFromRecipeId(null);
+    setReceipt([]);
+    setMealName('');
+    setServings('1');
+    setActiveLineId(null);
+    setSubLineId(null);
+    setSubSuggestions([]);
+    focusTopSearch();
+  }
+
   function applyRecipeSeed(recipe) {
     if (!recipe) {
       setReceipt([]);
@@ -285,6 +319,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     const lines = seedReceiptFromRecipe(recipe, labelById, remembered);
     setReceipt(lines);
     setSeededFromRecipeId(String(recipe.id));
+    setMealName('');
     setActiveLineId(null);
     setSubLineId(null);
     setSubSuggestions([]);
@@ -307,6 +342,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
         suggested_amount: suggested,
       };
       setError('');
+      setAddIngredientId('');
       setReceipt(prev => [...prev, line]);
       focusAmount(line.id);
       return;
@@ -325,13 +361,16 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       return;
     }
     setError('');
+    setAddIngredientId('');
     setReceipt(prev => [...prev, line]);
     focusAmount(line.id);
   }
 
-  /** One search: recipes seed the meal; ingredients append a ghost line. */
-  function handleSearchPick(nextId, kind) {
+  /** Top search: recipes seed the meal; first ingredients start a custom meal. */
+  function handleTopSearchPick(nextId, kind) {
     if (kind === 'ingredient') {
+      setRecipeId('');
+      setSeededFromRecipeId(null);
       handleAddIngredient(nextId);
       return;
     }
@@ -343,7 +382,11 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       setServings('1');
     }
     applyRecipeSeed(recipe || null);
-    focusSearch();
+    focusAddBar();
+  }
+
+  function handleBottomAddPick(nextId) {
+    handleAddIngredient(nextId);
   }
 
   function updateLineUnit(id, nextUnit) {
@@ -405,8 +448,10 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       setActiveLineId(neighbor?.id ?? null);
       if (neighbor) {
         requestAnimationFrame(() => focusAmount(neighbor.id));
+      } else if (recipeId) {
+        focusAddBar();
       } else {
-        focusSearch();
+        focusTopSearch();
       }
       return next;
     });
@@ -651,7 +696,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           setSubmitting(false);
           return setError('One or more ingredients need grams per serving. Edit them in the Ingredient Library.');
         }
-        const name = selectedRecipe?.name || apiIngredients.map(x => x.name).slice(0, 3).join(' + ') || 'Custom meal';
+        const name = mealName.trim() || generateMealName(committed) || 'Custom meal';
         const totals = sumReceiptMacros(committed);
         await onLog({
           custom: {
@@ -697,12 +742,13 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
         )));
       }
     }
-    focusSearch();
+    focusAddBar();
   }
 
   function onDialogKeyDown(e) {
     if (saveRecipeOpen || submitting) return;
     if (recipeComboboxRef.current?.isOpen?.()) return;
+    if (addComboboxRef.current?.isOpen?.()) return;
 
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key === 'Enter') {
@@ -748,22 +794,53 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       </div>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>
-          <RecipeCombobox
-            ref={recipeComboboxRef}
-            label="Add to this meal"
-            recipes={recipes}
-            ingredients={searchIngredients}
-            value=""
-            valueKind="recipe"
-            onChange={handleSearchPick}
-            placeholder="Search recipes or ingredients…"
-            refocusOnSelect={false}
-          />
-          {selectedRecipe && (
-            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Started from <strong style={{ color: 'var(--color-text-strong)' }}>{selectedRecipe.name}</strong>
-              {'. Edit the list below; the saved recipe stays unchanged.'}
-            </p>
+          {topMode === 'empty' && (
+            <RecipeCombobox
+              ref={recipeComboboxRef}
+              label="Start with a recipe or ingredient"
+              recipes={recipes}
+              ingredients={searchIngredients}
+              value=""
+              valueKind="recipe"
+              onChange={handleTopSearchPick}
+              placeholder="Search recipes or ingredients…"
+              refocusOnSelect={false}
+            />
+          )}
+          {topMode === 'recipe' && (
+            <div className="log-meal-recipe-chip">
+              <div className="log-meal-recipe-chip__body">
+                <span className="log-meal-recipe-chip__label">Recipe</span>
+                <strong className="log-meal-recipe-chip__name">
+                  {selectedRecipe?.name || 'Selected recipe'}
+                </strong>
+                <span className="log-meal-recipe-chip__hint">
+                  Edit the list below; the saved recipe stays unchanged.
+                </span>
+              </div>
+              <button
+                type="button"
+                className="slot-row__remove"
+                aria-label="Clear recipe"
+                title="Clear recipe"
+                onClick={clearRecipeSeed}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {topMode === 'name' && (
+            <div>
+              <label htmlFor="log-meal-name">Meal name</label>
+              <input
+                id="log-meal-name"
+                type="text"
+                value={mealName}
+                onChange={e => setMealName(e.target.value)}
+                placeholder={generatedMealName || 'Name this meal'}
+                autoComplete="off"
+              />
+            </div>
           )}
         </div>
 
@@ -786,7 +863,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>
                 What&apos;s in this meal
               </p>
-              {receipt.length > 0 && (
+              {mealStarted && (
                 <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-text-muted)' }}>
                   ↑↓ move · ⌘⌫ remove · ⌘↵ log
                 </p>
@@ -806,7 +883,9 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
           {receipt.length === 0 ? (
             <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-              Search above for a saved recipe or foods from your library.
+              {mealStarted
+                ? 'Add foods with the row below.'
+                : 'Search above to start, then add more below.'}
             </p>
           ) : (
             <div className="slot-list">
@@ -965,6 +1044,25 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {mealStarted && (
+            <div className="slot-row slot-row--add" aria-label="Add another ingredient">
+              <div className="slot-row__name slot-row--add__search">
+                <IngredientCombobox
+                  ref={addComboboxRef}
+                  items={searchIngredients}
+                  value={addIngredientId}
+                  onChange={handleBottomAddPick}
+                  onSelect={() => { /* parent focuses amount */ }}
+                  label=""
+                  placeholder="Add another food…"
+                />
+              </div>
+              <div className="slot-row--add__ghost" aria-hidden="true">40</div>
+              <div className="slot-row--add__ghost slot-row--add__ghost-unit" aria-hidden="true">g</div>
+              <div className="slot-row--add__spacer" aria-hidden="true" />
             </div>
           )}
 
