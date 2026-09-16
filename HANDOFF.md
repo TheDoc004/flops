@@ -24,9 +24,9 @@ _current-state_ companion to it.
 
 **Status:** Back from a late-August pause. Active again as of **2026-09** with Log Meal UX work.
 
-**Last active work stream:** **Log a Meal keyboard / search flow** (Sept 2026) — clear-after-pick
-search, ghost serving amounts, ↑↓ / ⌘⌫ / ⌘↵ shortcuts, vaulted substitutes, Servings only for
-limited meal prep. Prior parked stream: Today dashboard layout editor (usable, polish deferred).
+**Last active work stream:** **Log a Meal dual-bar UX** (Sept 2026) — transformative top
+(recipe chip / meal name) + bottom ghost add row; prior keyboard/ghost-amount work. Dashboard
+layout editor polish remains parked.
 
 **When you return / next picks (optional):**
 
