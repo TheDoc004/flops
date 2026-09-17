@@ -942,6 +942,8 @@ export default function Dashboard() {
         <LogMealModal
           onLog={handleLog}
           onClose={() => setShowModal(false)}
+          dayTotals={combinedTotals}
+          targets={targets}
         />
       )}
 
@@ -952,6 +954,8 @@ export default function Dashboard() {
           initialEntry={editEntry}
           onLog={handleEditMeal}
           onClose={() => setEditEntry(null)}
+          dayTotals={combinedTotals}
+          targets={targets}
         />
       )}
 

@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { computeEntryMacros, sumMacros, sumSupplementMacros, addMacroTotals, groupByDate, macroCaloriesFromGrams, mealMacroCalorieBreakdown } from './macros';
+import {
+  computeEntryMacros,
+  sumMacros,
+  sumSupplementMacros,
+  addMacroTotals,
+  subtractMacroTotals,
+  scaleMacroTotals,
+  macroGoalStatus,
+  groupByDate,
+  macroCaloriesFromGrams,
+  mealMacroCalorieBreakdown,
+} from './macros';
 
 const makeEntry = (overrides = {}) => ({
   recipe_calories: 200,
@@ -96,6 +107,38 @@ describe('addMacroTotals', () => {
       { calories: 240, protein_g: 50, carbs_g: 6, fat_g: 3 }
     );
     expect(result).toEqual({ calories: 2240, protein_g: 200, carbs_g: 206, fat_g: 63 });
+  });
+});
+
+describe('subtractMacroTotals', () => {
+  it('subtracts b from a', () => {
+    expect(subtractMacroTotals(
+      { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 60 },
+      { calories: 400, protein_g: 30, carbs_g: 40, fat_g: 10 }
+    )).toEqual({ calories: 1600, protein_g: 120, carbs_g: 160, fat_g: 50 });
+  });
+});
+
+describe('scaleMacroTotals', () => {
+  it('scales by servings factor', () => {
+    expect(scaleMacroTotals(
+      { calories: 200, protein_g: 10, carbs_g: 30, fat_g: 5 },
+      2
+    )).toEqual({ calories: 400, protein_g: 20, carbs_g: 60, fat_g: 10 });
+  });
+});
+
+describe('macroGoalStatus', () => {
+  const target = { min: 1800, max: 2200 };
+
+  it('reports below / ok / over', () => {
+    expect(macroGoalStatus(1500, target)).toEqual({ mod: 'muted', kind: 'below', delta: 300 });
+    expect(macroGoalStatus(2000, target)).toEqual({ mod: 'ok', kind: 'ok', delta: 0 });
+    expect(macroGoalStatus(2500, target)).toEqual({ mod: 'over', kind: 'over', delta: 300 });
+  });
+
+  it('reports none when no goal', () => {
+    expect(macroGoalStatus(100, null).kind).toBe('none');
   });
 });
 

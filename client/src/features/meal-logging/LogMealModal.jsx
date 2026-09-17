@@ -8,6 +8,15 @@ import IngredientCombobox from '@features/meal-builder/IngredientCombobox';
 import { canonicalUnit, loggableUnitsFor } from '@shared/utils/unitConvert';
 import { pluralizeUnit } from '@shared/utils/servingBasis';
 import {
+  addMacroTotals,
+  computeEntryMacros,
+  macroGoalStatus,
+  scaleMacroTotals,
+  subtractMacroTotals,
+} from '@shared/utils/macros';
+import { formatMacroMass } from '@shared/utils/macroUnits';
+import { useMacroUnits } from '@shared/context/MacroUnitsContext';
+import {
   adjacentReceiptLineId,
   buildGhostReceiptLine,
   buildReceiptLine,
@@ -38,6 +47,27 @@ const SHOW_MEAL_SUBSTITUTES = false;
 /** Matches Ingredients.jsx — prep batches stay vaulted until that flag flips. */
 const SHOW_PREPPED_BATCHES = false;
 
+const DAY_PREVIEW_MACROS = [
+  { key: 'calories', label: 'Cal', targetKey: 'calories', isCalories: true },
+  { key: 'protein_g', label: 'P', targetKey: 'protein_g', isCalories: false },
+  { key: 'carbs_g', label: 'C', targetKey: 'carbs_g', isCalories: false },
+  { key: 'fat_g', label: 'F', targetKey: 'fat_g', isCalories: false },
+];
+
+function formatDayPreviewValue(n, isCalories, macroUnits) {
+  if (isCalories) return Math.round(n).toLocaleString('en-US');
+  return formatMacroMass(n, macroUnits);
+}
+
+function dayPreviewStatusText(status, isCalories, macroUnits) {
+  if (status.kind === 'none') return 'No goal';
+  if (status.kind === 'ok') return 'In range';
+  if (status.kind === 'over') {
+    return `${formatDayPreviewValue(status.delta, isCalories, macroUnits)} over`;
+  }
+  return `${formatDayPreviewValue(status.delta, isCalories, macroUnits)} to range`;
+}
+
 function equalPercents(n) {
   const count = Math.max(2, Math.min(50, Math.floor(Number(n)) || 2));
   const base = Math.floor((100 / count) * 10) / 10;
@@ -63,12 +93,13 @@ function lineDisplayName(line) {
   return line.brand_name ? `${line.name} (${line.brand_name})` : line.name;
 }
 
-export default function LogMealModal({ onLog, onClose, initialEntry, title, submitLabel }) {
+export default function LogMealModal({ onLog, onClose, initialEntry, title, submitLabel, dayTotals, targets }) {
   const ref = useRef(null);
   const recipeComboboxRef = useRef(null);
   const addComboboxRef = useRef(null);
   const amountRefs = useRef(new Map());
   const focusAmountIdRef = useRef(null);
+  const { macroUnits } = useMacroUnits();
   const [recipes, setRecipes] = useState([]);
   const [recipeId, setRecipeId] = useState(initialEntry?.recipe_id ? String(initialEntry.recipe_id) : '');
   const [mealName, setMealName] = useState(() => {
@@ -139,6 +170,11 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
   const receiptTotals = useMemo(() => sumReceiptMacros(receipt), [receipt]);
   const generatedMealName = useMemo(() => generateMealName(receipt), [receipt]);
+
+  const editBaseline = useMemo(
+    () => (initialEntry ? computeEntryMacros(initialEntry) : null),
+    [initialEntry]
+  );
 
   /** empty | recipe | name — transformative top bar */
   const topMode = useMemo(() => {
@@ -777,6 +813,15 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
   const logServingsDisplay = resolveLogServings();
 
+  const projectedDay = useMemo(() => {
+    if (!dayTotals || !targets || !receiptTotals) return null;
+    const mealLogged = scaleMacroTotals(receiptTotals, logServingsDisplay);
+    const dayWithoutEdit = editBaseline
+      ? subtractMacroTotals(dayTotals, editBaseline)
+      : dayTotals;
+    return addMacroTotals(dayWithoutEdit, mealLogged);
+  }, [dayTotals, targets, receiptTotals, logServingsDisplay, editBaseline]);
+
   return (
     <dialog
       ref={ref}
@@ -1090,6 +1135,50 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                     {Math.round(receiptTotals.calories * logServingsDisplay)} cal
                   </strong>
                 </span>
+              )}
+              {projectedDay && (
+                <div
+                  className="log-meal-day-preview"
+                  style={{
+                    marginTop: 8,
+                    paddingTop: 8,
+                    borderTop: '1px solid color-mix(in srgb, var(--color-primary) 22%, var(--color-border))',
+                  }}
+                >
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>After this meal</div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr',
+                      gap: 3,
+                    }}
+                  >
+                    {DAY_PREVIEW_MACROS.map(({ key, label, targetKey, isCalories }) => {
+                      const value = projectedDay[key];
+                      const status = macroGoalStatus(value, targets?.[targetKey]);
+                      return (
+                        <div
+                          key={key}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'baseline',
+                            justifyContent: 'space-between',
+                            gap: 10,
+                          }}
+                        >
+                          <span>
+                            <span style={{ fontWeight: 600, minWidth: 28, display: 'inline-block' }}>{label}</span>
+                            {' '}
+                            {formatDayPreviewValue(value, isCalories, macroUnits)}
+                          </span>
+                          <span className={`macro-status is-${status.mod}`} style={{ fontSize: 11 }}>
+                            {dayPreviewStatusText(status, isCalories, macroUnits)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
           )}

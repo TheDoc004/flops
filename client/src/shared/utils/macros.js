@@ -75,6 +75,42 @@ export function addMacroTotals(...totals) {
   );
 }
 
+/** Subtract one macro total from another (e.g. remove an entry being edited). */
+export function subtractMacroTotals(a, b) {
+  return {
+    calories: (Number(a?.calories) || 0) - (Number(b?.calories) || 0),
+    protein_g: (Number(a?.protein_g) || 0) - (Number(b?.protein_g) || 0),
+    carbs_g: (Number(a?.carbs_g) || 0) - (Number(b?.carbs_g) || 0),
+    fat_g: (Number(a?.fat_g) || 0) - (Number(b?.fat_g) || 0),
+  };
+}
+
+/** Scale a macro total by a factor (e.g. recipe servings being logged). */
+export function scaleMacroTotals(t, factor) {
+  const f = Number(factor);
+  const n = Number.isFinite(f) ? f : 1;
+  return {
+    calories: (Number(t?.calories) || 0) * n,
+    protein_g: (Number(t?.protein_g) || 0) * n,
+    carbs_g: (Number(t?.carbs_g) || 0) * n,
+    fat_g: (Number(t?.fat_g) || 0) * n,
+  };
+}
+
+/**
+ * Goal-range status for a single macro — same rules as MacroTotals rings.
+ * @returns {{ mod: 'muted'|'ok'|'over', kind: 'none'|'below'|'ok'|'over', delta: number }}
+ */
+export function macroGoalStatus(value, target) {
+  if (target?.max == null) return { mod: 'muted', kind: 'none', delta: 0 };
+  const v = Number(value) || 0;
+  const min = Number(target.min);
+  const max = Number(target.max);
+  if (v > max) return { mod: 'over', kind: 'over', delta: v - max };
+  if (Number.isFinite(min) && v < min) return { mod: 'muted', kind: 'below', delta: min - v };
+  return { mod: 'ok', kind: 'ok', delta: 0 };
+}
+
 /**
  * Parse a log entry's stored per-ingredient breakdown (Phase 1). Returns an
  * array of rows or null when absent/invalid. Old entries (no ingredients_json)
