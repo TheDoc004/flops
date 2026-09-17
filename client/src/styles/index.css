@@ -1618,10 +1618,16 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
   border: 1px dashed color-mix(in srgb, var(--color-primary) 28%, var(--color-surface-border));
   border-radius: 10px;
   background: color-mix(in srgb, var(--color-surface) 88%, var(--color-primary-subtle));
+  /* Keep the add-row combobox above sibling rows while open. */
+  overflow: visible;
 }
 .slot-row--add:hover,
 .slot-row--add:focus-within {
   background: color-mix(in srgb, var(--color-surface) 80%, var(--color-primary-subtle));
+}
+.slot-row--add:focus-within {
+  position: relative;
+  z-index: 5;
 }
 .slot-row--add__search {
   min-width: 0;
@@ -1693,6 +1699,12 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
   color: var(--color-text-strong);
   overflow: hidden;
   transition: color var(--dur-fast) var(--ease-out);
+}
+/* Add-row search reuses .slot-row__name for grid alignment, but overflow:hidden
+   clips IngredientCombobox's absolute smart-fill list. Keep ellipsis on real
+   ingredient name cells only. */
+.slot-row__name.slot-row--add__search {
+  overflow: visible;
 }
 .slot-row:hover .slot-row__name,
 .slot-row:focus-within .slot-row__name { color: var(--color-primary-ink); }
