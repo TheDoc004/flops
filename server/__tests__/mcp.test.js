@@ -47,6 +47,25 @@ describe('MCP /mcp auth', () => {
     expect(res.status).toBe(401);
   });
 
+  it('accepts initialize with x-api-key header', async () => {
+    const res = await request(app)
+      .post('/mcp')
+      .set('x-api-key', 'test-mcp-secret-token')
+      .set('Accept', 'application/json, text/event-stream')
+      .send({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: 'jest', version: '1.0.0' },
+        },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.result?.serverInfo?.name).toBe('flops');
+  });
+
   it('accepts initialize with valid token', async () => {
     const res = await request(app)
       .post('/mcp')
