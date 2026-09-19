@@ -1,0 +1,228 @@
+const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+const { z } = require('zod');
+const reads = require('./reads');
+
+const READ_ONLY =
+  'Read-only FLOPS data tool. Does not write meals or change settings. Logging stays in the FLOPS app.';
+
+function createFlopsMcpServer(db, userId) {
+  const server = new McpServer({
+    name: 'flops',
+    version: '1.0.0',
+  });
+
+  server.registerTool(
+    'get_day',
+    {
+      title: 'Get day summary',
+      description:
+        `${READ_ONLY} One calendar day: meals (macros + micros), meal totals, supplements taken, combined totals, goals for that weekday, vs-goal status, and body weight if logged.`,
+      inputSchema: {
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+          .describe('YYYY-MM-DD (defaults to today, server local date)'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ date }) => reads.textResult(reads.getDay(db, userId, date))
+  );
+
+  server.registerTool(
+    'get_log_range',
+    {
+      title: 'Get log range',
+      description:
+        `${READ_ONLY} Meal log over a date range (max 90 days). By default returns daily macro summaries; set include_entries true for per-meal detail (keep ranges short).`,
+      inputSchema: {
+        start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date YYYY-MM-DD'),
+        end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date YYYY-MM-DD'),
+        include_entries: z
+          .boolean()
+          .optional()
+          .describe('If true, include every meal entry (default false)'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ start, end, include_entries }) => {
+      const range = reads.normalizeRange(start, end, { maxDays: 90 });
+      if (range.error) return reads.errorResult(range.error);
+      const days = reads.getDailySummaries(db, userId, range.start, range.end);
+      const payload = { start: range.start, end: range.end, days };
+      if (include_entries) {
+        payload.entries = reads.getLogEntries(db, userId, {
+          start: range.start,
+          end: range.end,
+        });
+      }
+      return reads.textResult(payload);
+    }
+  );
+
+  server.registerTool(
+    'get_goals',
+    {
+      title: 'Get macro goals',
+      description: `${READ_ONLY} Versioned weekly macro min/max goals resolved for a date, plus that weekday's row.`,
+      inputSchema: {
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+          .describe('YYYY-MM-DD (defaults to today)'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ date }) => reads.textResult(reads.getGoalsForDate(db, userId, date))
+  );
+
+  server.registerTool(
+    'get_body_weights',
+    {
+      title: 'Get body weights',
+      description: `${READ_ONLY} Body weight history. Optional start/end (max 365 days when both set).`,
+      inputSchema: {
+        start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ start, end }) => {
+      if ((start && !end) || (!start && end)) {
+        return reads.errorResult('Provide both start and end, or neither');
+      }
+      if (start && end) {
+        const range = reads.normalizeRange(start, end, { maxDays: 365 });
+        if (range.error) return reads.errorResult(range.error);
+        return reads.textResult({
+          start: range.start,
+          end: range.end,
+          weights: reads.getBodyWeights(db, userId, range.start, range.end),
+        });
+      }
+      return reads.textResult({ weights: reads.getBodyWeights(db, userId) });
+    }
+  );
+
+  server.registerTool(
+    'get_profile',
+    {
+      title: 'Get profile',
+      description: `${READ_ONLY} User profile: height, weight, units, activity prefs (no auth secrets).`,
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async () => reads.textResult(reads.getProfile(db, userId))
+  );
+
+  server.registerTool(
+    'get_supplements_range',
+    {
+      title: 'Get supplements range',
+      description:
+        `${READ_ONLY} Taken supplements over a date range with dose-scaled macros/micros (max 90 days).`,
+      inputSchema: {
+        start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ start, end }) => {
+      const range = reads.normalizeRange(start, end, { maxDays: 90 });
+      if (range.error) return reads.errorResult(range.error);
+      return reads.textResult(
+        reads.getSupplementsRange(db, userId, range.start, range.end)
+      );
+    }
+  );
+
+  server.registerTool(
+    'get_micronutrient_totals',
+    {
+      title: 'Get micronutrient totals',
+      description:
+        `${READ_ONLY} Sum micronutrients over a range from meal micros_json (scaled by servings) plus optional taken supplements (max 90 days).`,
+      inputSchema: {
+        start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        include_supplements: z
+          .boolean()
+          .optional()
+          .describe('Include taken supplement micros (default true)'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ start, end, include_supplements }) => {
+      const range = reads.normalizeRange(start, end, { maxDays: 90 });
+      if (range.error) return reads.errorResult(range.error);
+      return reads.textResult(
+        reads.getMicronutrientTotals(db, userId, range.start, range.end, {
+          includeSupplements: include_supplements !== false,
+        })
+      );
+    }
+  );
+
+  server.registerTool(
+    'search_recipes',
+    {
+      title: 'Search recipes',
+      description: `${READ_ONLY} Search the recipe library by name substring (excludes quick-food backing recipes).`,
+      inputSchema: {
+        query: z.string().optional().describe('Name substring (empty = first page of library)'),
+        limit: z.number().int().min(1).max(50).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ query, limit }) =>
+      reads.textResult({
+        recipes: reads.searchRecipes(db, userId, query, { limit }),
+      })
+  );
+
+  server.registerTool(
+    'get_gym_today',
+    {
+      title: 'Get gym day',
+      description:
+        `${READ_ONLY} Gym schedule + session/sets for a date (when workouts are logged). Progressive-overload analysis is up to the agent.`,
+      inputSchema: {
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+          .describe('YYYY-MM-DD (defaults to today)'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ date }) => reads.textResult(reads.getGymToday(db, userId, date))
+  );
+
+  server.registerTool(
+    'get_gym_progress',
+    {
+      title: 'Get gym progress',
+      description:
+        `${READ_ONLY} Working-set history and daily aggregates for one exercise (by id or name). Optional window W|2W|M|3M|6M|ALL.`,
+      inputSchema: {
+        exercise_id: z.number().int().positive().optional(),
+        exercise_name: z.string().optional().describe('Fuzzy name match if id omitted'),
+        window: z.enum(['W', '2W', 'M', '3M', '6M', 'ALL']).optional(),
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        last_sessions: z.number().int().min(1).max(50).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async (args) => {
+      const result = reads.getGymProgress(db, userId, args);
+      if (result.error) return reads.errorResult(result.error);
+      return reads.textResult(result);
+    }
+  );
+
+  return server;
+}
+
+module.exports = { createFlopsMcpServer };

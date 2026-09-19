@@ -1,11 +1,26 @@
 # Deployment + MCP Connector — Plan
 
-_Written 2026-08-02. Not started. Supersedes the paused "Render + Vercel" deploy note._
+_Written 2026-08-02. **Updated 2026-09-19:** deploy + auth are live; analyze-only MCP shipped
+(see `docs/mcp-connector.md`). Meal-write tools (`log_meal`) still future._
 
-## The goal, in one sentence
+## Status (2026-09)
+
+| Step | Status |
+|---|---|
+| 1 Auth + rate limiting | **Done** (Bearer sessions, not shared-secret) |
+| 2 Render + Vercel deploy | **Done** (`useflops.com` + `flops-c6ic.onrender.com`) |
+| 3 MCP server | **Partial** — read-only analyze tools at `/mcp`; write tools not started |
+
+---
+
+## The original goal, in one sentence
 
 Log meals into FLOPS from the Claude app on the phone, so the copy-paste step through the
 AI Logger disappears.
+
+**Pivot (Sept 2026):** first ship was **analyze-only** — Claude reads macros/micros/weight/
+supplements/gym so agents can reason without an in-app AI coach. Logging from Claude remains
+optional follow-up.
 
 ## Why this shape
 
@@ -140,16 +155,17 @@ Milestone: FLOPS works from the phone's browser.
 
 ### Step 3 — MCP server (~half a day)
 
-- Mount at `/mcp` **inside the existing Express app** — same service, same disk, no second
-  Render bill.
-- Streamable HTTP transport.
-- Tools: `log_meal` (the main one, wraps `/api/log/custom`), `get_today` (totals vs goals so
-  Claude can say "that puts you at 2,180 / 2,600"), `search_recipes`, `log_recipe`.
-- Tool descriptions written so Claude states the macros before calling.
-- Add as a custom connector in Claude on the phone; try `static_headers`; restrict the route
-  to `160.79.104.0/21`.
+**Done (analyze-only, 2026-09):** `/mcp` Streamable HTTP on the Express API; tools
+`get_day`, `get_log_range`, `get_goals`, `get_body_weights`, `get_profile`,
+`get_supplements_range`, `get_micronutrient_totals`, `search_recipes`, `get_gym_today`,
+`get_gym_progress`. Auth via `MCP_API_TOKEN` static Bearer. Setup: `docs/mcp-connector.md`.
 
-Milestone: "log this" on the phone → Claude shows macros → approve → it appears in FLOPS.
+**Still open (write path):**
+
+- Tools: `log_meal` (wraps `POST /api/log/custom`), `log_recipe` — confirm-first descriptions.
+- Optional: firewall `/mcp` to Anthropic egress `160.79.104.0/21`.
+
+Milestone (writes): "log this" on the phone → Claude shows macros → approve → it appears in FLOPS.
 
 ---
 

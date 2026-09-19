@@ -17,6 +17,7 @@ const { createAiRouter } = require('./routes/ai');
 const { createBarcodeRouter } = require('./routes/barcode');
 const { createPrepRouter } = require('./routes/prep');
 const { createPreppedBatchesRouter } = require('./routes/preppedBatches');
+const { createMcpRouter } = require('./mcp/createMcpRouter');
 
 /**
  * Build the Express app (used by index.js and tests).
@@ -49,6 +50,9 @@ function createApp(db = createDb(process.env.DB_PATH || './nutrition.db'), opts 
   app.use(attachUser);
 
   app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
+
+  // Analyze-only MCP (Streamable HTTP). Own Bearer token — not session auth.
+  app.use('/mcp', createMcpRouter(db));
 
   app.use('/api/auth', createAuthRouter(db));
 

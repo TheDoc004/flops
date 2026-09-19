@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-09-16 (Log Meal dual-bar UX)_
+_Last updated: 2026-09-19 (analyze-only MCP connector)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -22,18 +22,19 @@ _current-state_ companion to it.
 
 ## Where Diego left off (read this first)
 
-**Status:** Back from a late-August pause. Active again as of **2026-09** with Log Meal UX work.
+**Status:** Active. Nutrition daily driver + Log Meal UX; **analyze-only MCP** shipped Sept 2026.
 
-**Last active work stream:** **Log a Meal dual-bar UX** (Sept 2026) — transformative top
-(recipe chip / meal name) + bottom ghost add row; prior keyboard/ghost-amount work. Dashboard
-layout editor polish remains parked.
+**Last active work stream:** **FLOPS MCP connector** (read-only `/mcp` for Claude / agents) — see
+[`docs/mcp-connector.md`](docs/mcp-connector.md). Set `MCP_API_TOKEN` on Render to enable.
+Prior: Log Meal dual-bar + day macro preview. Dashboard layout editor polish remains parked.
 
 **When you return / next picks (optional):**
 
-1. **Exercise Log Meal keyboard UX** on live after deploy (ghost amounts, shortcuts).
-2. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
-3. **Gym UX polish** — Setgraph-like refinements on `/training`.
-4. **Ops:** Resend domain verification for production OTP email (if not done yet).
+1. **Enable MCP on Render** — set `MCP_API_TOKEN` (+ optional `MCP_USER_ID`), redeploy, add Claude custom connector.
+2. **Gym UX / progressive overload** — agent can already call `get_gym_progress`; richer logger later.
+3. **MCP write tools** (`log_meal`) — only if Claude logging becomes desirable (confirm-first).
+4. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
+5. **Ops:** Resend domain verification for production OTP email (if not done yet).
 
 ---
 
