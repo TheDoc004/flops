@@ -1,6 +1,7 @@
 # Deployment + MCP Connector — Plan
 
-_Written 2026-08-02. **Updated 2026-09-19:** deploy + auth are live; analyze-only MCP shipped
+_Written 2026-08-02. **Updated 2026-09-24:** deploy + auth are live; analyze-only MCP includes
+`get_intake_weight_trend`; write tools still pending._
 (see `docs/mcp-connector.md`). Meal-write tools (`log_meal`) still future._
 
 ## Status (2026-09)
@@ -156,9 +157,10 @@ Milestone: FLOPS works from the phone's browser.
 ### Step 3 — MCP server (~half a day)
 
 **Done (analyze-only, 2026-09):** `/mcp` Streamable HTTP on the Express API; tools
-`get_day`, `get_log_range`, `get_goals`, `get_body_weights`, `get_profile`,
-`get_supplements_range`, `get_micronutrient_totals`, `search_recipes`, `get_gym_today`,
-`get_gym_progress`. Auth via `MCP_API_TOKEN` static Bearer. Setup: `docs/mcp-connector.md`.
+`get_day`, `get_log_range`, `get_goals`, `get_body_weights`, `get_intake_weight_trend`,
+`get_profile`, `get_supplements_range`, `get_micronutrient_totals`, `search_recipes`,
+`get_gym_today`, `get_gym_progress`. Auth via `MCP_API_TOKEN` (Bearer or `x-api-key`).
+Setup: `docs/mcp-connector.md`.
 
 **Still open (write path):**
 

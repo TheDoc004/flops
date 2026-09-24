@@ -10,6 +10,13 @@ const {
   isoWeekdayFromDate,
   normalizeRange,
 } = require('./dates');
+const {
+  LB_PER_KG,
+  kgToLb,
+  linearTrendWithSe,
+  confidenceLabel,
+  round: trendRound,
+} = require('./weightTrend');
 
 const WEEKDAY_LABELS = {
   1: 'Monday',
@@ -624,6 +631,200 @@ function getDay(db, userId, dateRaw) {
   };
 }
 
+function filterBySegment(rows, start, end, { exclusiveEnd = false } = {}) {
+  return (rows || []).filter(r => {
+    if (!r?.date) return false;
+    if (r.date < start) return false;
+    if (exclusiveEnd) return r.date < end;
+    return r.date <= end;
+  });
+}
+
+function summarizeIntakeWeightSegment(summaries, weights, { start, end, energyDensity }) {
+  const daysInRange = (() => {
+    const a = new Date(`${start}T12:00:00`);
+    const b = new Date(`${end}T12:00:00`);
+    return Math.floor((b - a) / 86400000) + 1;
+  })();
+
+  const logged = summaries || [];
+  const daysWithFoodLog = logged.length;
+  let sumCal = 0;
+  let sumP = 0;
+  let sumC = 0;
+  let sumF = 0;
+  for (const d of logged) {
+    sumCal += Number(d.calories) || 0;
+    sumP += Number(d.protein_g) || 0;
+    sumC += Number(d.carbs_g) || 0;
+    sumF += Number(d.fat_g) || 0;
+  }
+  const avgCalories = daysWithFoodLog ? sumCal / daysWithFoodLog : null;
+  const avgProteinG = daysWithFoodLog ? sumP / daysWithFoodLog : null;
+  const avgCarbsG = daysWithFoodLog ? sumC / daysWithFoodLog : null;
+  const avgFatG = daysWithFoodLog ? sumF / daysWithFoodLog : null;
+
+  const weighIns = weights || [];
+  const weighInCount = weighIns.length;
+  let avgKg = null;
+  let avgLb = null;
+  if (weighInCount) {
+    const sumKg = weighIns.reduce((s, w) => s + (Number(w.weight_kg) || 0), 0);
+    avgKg = sumKg / weighInCount;
+    avgLb = kgToLb(avgKg);
+  }
+
+  const pointsLb = weighIns.map(w => ({ date: w.date, value: kgToLb(w.weight_kg) }));
+  const trend = linearTrendWithSe(pointsLb);
+  let slopeLbPerWeek = null;
+  let slopeSeLbPerWeek = null;
+  if (trend) {
+    slopeLbPerWeek = trend.slopePerDay * 7;
+    slopeSeLbPerWeek =
+      trend.slopeSePerDay != null ? trend.slopeSePerDay * 7 : null;
+  }
+
+  const conf = confidenceLabel(weighInCount, slopeLbPerWeek, slopeSeLbPerWeek);
+
+  let estimatedMaintenance = null;
+  if (avgCalories != null && slopeLbPerWeek != null) {
+    estimatedMaintenance = avgCalories - (slopeLbPerWeek * energyDensity) / 7;
+  }
+
+  return {
+    start,
+    end,
+    days_in_range: daysInRange,
+    days_with_food_log: daysWithFoodLog,
+    weigh_in_count: weighInCount,
+    avg_daily_calories: trendRound(avgCalories, 1),
+    avg_daily_protein_g: trendRound(avgProteinG, 1),
+    avg_daily_carbs_g: trendRound(avgCarbsG, 1),
+    avg_daily_fat_g: trendRound(avgFatG, 1),
+    avg_weight_kg: trendRound(avgKg, 2),
+    avg_weight_lb: trendRound(avgLb, 2),
+    slope_lb_per_week: trendRound(slopeLbPerWeek, 3),
+    slope_se_lb_per_week: trendRound(slopeSeLbPerWeek, 3),
+    confidence: conf.confidence,
+    confidence_reason: conf.reason,
+    estimated_maintenance_kcal: trendRound(estimatedMaintenance, 0),
+    estimated_maintenance_note:
+      'Inference, not a measurement. Uses avg intake − (slope_lb/week × energy_density / 7). '
+      + `energy_density defaults to ${energyDensity} kcal/lb (≈fat tissue); mixed lean/fat gain differs.`,
+  };
+}
+
+/**
+ * Intake vs weight trend over a window, optional split into baseline/current.
+ */
+function getIntakeWeightTrend(
+  db,
+  userId,
+  { start, end, split_at, energy_density_cal_per_lb } = {}
+) {
+  const range = normalizeRange(start, end, { maxDays: 90 });
+  if (range.error) return { error: range.error };
+
+  const energyDensity =
+    energy_density_cal_per_lb != null && Number.isFinite(Number(energy_density_cal_per_lb))
+      ? Number(energy_density_cal_per_lb)
+      : 3500;
+  if (energyDensity <= 0) {
+    return { error: 'energy_density_cal_per_lb must be a positive number' };
+  }
+
+  const splitAt = split_at ? isoDateOrNull(split_at) : null;
+  if (split_at && !splitAt) {
+    return { error: 'split_at must be YYYY-MM-DD' };
+  }
+  if (splitAt && (splitAt < range.start || splitAt > range.end)) {
+    return { error: 'split_at must fall within start..end' };
+  }
+
+  const allSummaries = getDailySummaries(db, userId, range.start, range.end);
+  const allWeights = getBodyWeights(db, userId, range.start, range.end);
+  const profile = getProfile(db, userId);
+
+  const meta = {
+    start: range.start,
+    end: range.end,
+    energy_density_cal_per_lb: energyDensity,
+    body_units: profile.body_units || 'metric',
+    lb_per_kg: LB_PER_KG,
+  };
+
+  if (!splitAt) {
+    const segment = summarizeIntakeWeightSegment(allSummaries, allWeights, {
+      start: range.start,
+      end: range.end,
+      energyDensity,
+    });
+    return { ...meta, split_at: null, window: segment };
+  }
+
+  // Baseline: start → split_at exclusive; current: split_at → end inclusive.
+  const baselineEndExclusive = splitAt;
+  const baselineLastDay = (() => {
+    const d = new Date(`${splitAt}T12:00:00`);
+    d.setDate(d.getDate() - 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  })();
+
+  if (baselineLastDay < range.start) {
+    return { error: 'split_at leaves an empty baseline segment' };
+  }
+
+  const baselineSummaries = filterBySegment(allSummaries, range.start, baselineEndExclusive, {
+    exclusiveEnd: true,
+  });
+  const baselineWeights = filterBySegment(allWeights, range.start, baselineEndExclusive, {
+    exclusiveEnd: true,
+  });
+  const currentSummaries = filterBySegment(allSummaries, splitAt, range.end);
+  const currentWeights = filterBySegment(allWeights, splitAt, range.end);
+
+  const baseline = summarizeIntakeWeightSegment(baselineSummaries, baselineWeights, {
+    start: range.start,
+    end: baselineLastDay,
+    energyDensity,
+  });
+  const current = summarizeIntakeWeightSegment(currentSummaries, currentWeights, {
+    start: splitAt,
+    end: range.end,
+    energyDensity,
+  });
+
+  const delta = {
+    avg_daily_calories: trendRound(
+      (current.avg_daily_calories ?? 0) - (baseline.avg_daily_calories ?? 0),
+      1
+    ),
+    avg_weight_lb: trendRound(
+      (current.avg_weight_lb ?? 0) - (baseline.avg_weight_lb ?? 0),
+      2
+    ),
+    avg_weight_kg: trendRound(
+      (current.avg_weight_kg ?? 0) - (baseline.avg_weight_kg ?? 0),
+      2
+    ),
+    slope_lb_per_week: trendRound(
+      (current.slope_lb_per_week ?? 0) - (baseline.slope_lb_per_week ?? 0),
+      3
+    ),
+  };
+
+  return {
+    ...meta,
+    split_at: splitAt,
+    baseline,
+    current,
+    delta,
+  };
+}
+
 function textResult(payload) {
   return {
     content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
@@ -653,6 +854,7 @@ module.exports = {
   searchRecipes,
   getGymToday,
   getGymProgress,
+  getIntakeWeightTrend,
   textResult,
   errorResult,
 };

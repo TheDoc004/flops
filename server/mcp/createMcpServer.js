@@ -106,6 +106,46 @@ function createFlopsMcpServer(db, userId) {
   );
 
   server.registerTool(
+    'get_intake_weight_trend',
+    {
+      title: 'Get intake vs weight trend',
+      description:
+        `${READ_ONLY} Combines meal intake and body weights over a window (max 90 days). `
+        + 'Averages macros over logged days only (reports coverage). Weight slope uses '
+        + 'least-squares vs date with standard error + confidence. Optional split_at for '
+        + 'baseline vs current + delta. estimated_maintenance_kcal is an inference '
+        + '(avg intake − slope×energy_density/7), not a measurement.',
+      inputSchema: {
+        start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date YYYY-MM-DD'),
+        end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date YYYY-MM-DD'),
+        split_at: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+          .describe(
+            'Optional YYYY-MM-DD: baseline is start→split_at exclusive; current is split_at→end inclusive'
+          ),
+        energy_density_cal_per_lb: z
+          .number()
+          .positive()
+          .optional()
+          .describe('kcal per lb of tissue for maintenance inference (default 3500)'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ start, end, split_at, energy_density_cal_per_lb }) => {
+      const result = reads.getIntakeWeightTrend(db, userId, {
+        start,
+        end,
+        split_at,
+        energy_density_cal_per_lb,
+      });
+      if (result.error) return reads.errorResult(result.error);
+      return reads.textResult(result);
+    }
+  );
+
+  server.registerTool(
     'get_profile',
     {
       title: 'Get profile',

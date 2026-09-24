@@ -58,6 +58,7 @@ Optional hardening later: restrict `/mcp` to Anthropic egress `160.79.104.0/21` 
 | `get_log_range` | Daily summaries (optional full entries); max 90 days |
 | `get_goals` | Weekly min/max macros for a date |
 | `get_body_weights` | Weight history |
+| `get_intake_weight_trend` | Intake averages + OLS weight slope/SE + inferred maintenance (max 90 days; optional `split_at`) |
 | `get_profile` | Profile / units |
 | `get_supplements_range` | Taken supplements with dose-scaled macros/micros |
 | `get_micronutrient_totals` | Summed micros over a range |
@@ -69,6 +70,7 @@ Example prompts:
 
 - “Using FLOPS, how did yesterday’s macros sit vs my goals?”
 - “Summarize my micronutrients for the last 7 days.”
+- “Using `get_intake_weight_trend`, start 2026-08-20 end 2026-09-19 split_at 2026-09-11 — am I gaining and what’s my maintenance?”
 - “What’s my weight trend over the last 30 days?”
 - “Show progressive overload signals for bench press from gym progress.”
 

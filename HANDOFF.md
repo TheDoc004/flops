@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-09-19 (analyze-only MCP connector)_
+_Last updated: 2026-09-24 (`get_intake_weight_trend` MCP tool)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -22,17 +22,19 @@ _current-state_ companion to it.
 
 ## Where Diego left off (read this first)
 
-**Status:** Active. Nutrition daily driver + Log Meal UX; **analyze-only MCP** shipped Sept 2026.
+**Status:** Active. Nutrition daily driver + Log Meal UX; **analyze-only MCP** with
+`get_intake_weight_trend` (intake vs weight OLS + maintenance inference).
 
-**Last active work stream:** **FLOPS MCP connector** (read-only `/mcp` for Claude / agents) — see
-[`docs/mcp-connector.md`](docs/mcp-connector.md). Set `MCP_API_TOKEN` on Render to enable.
+**Last active work stream:** **FLOPS MCP** — read-only `/mcp` for Claude; newest tool
+`get_intake_weight_trend` (see [`docs/mcp-connector.md`](docs/mcp-connector.md)).
 Prior: Log Meal dual-bar + day macro preview. Dashboard layout editor polish remains parked.
 
 **When you return / next picks (optional):**
 
-1. **Enable MCP on Render** — set `MCP_API_TOKEN` (+ optional `MCP_USER_ID`), redeploy, add Claude custom connector.
+1. **Claude connector** — after Render redeploy, ask Claude to use `get_intake_weight_trend`
+   (same URL + `x-api-key`; no re-auth).
 2. **Gym UX / progressive overload** — agent can already call `get_gym_progress`; richer logger later.
-3. **MCP write tools** (`log_meal`) — only if Claude logging becomes desirable (confirm-first).
+3. **MCP write tools** (Phase 2: propose/commit) — only after Phase 1 is live and useful.
 4. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
 5. **Ops:** Resend domain verification for production OTP email (if not done yet).
 
