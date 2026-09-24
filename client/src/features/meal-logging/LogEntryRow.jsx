@@ -232,6 +232,9 @@ export default function LogEntryRow({
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div className="meal-name" style={{ flex: 1, minWidth: 0 }}>
             {entry.recipe_name}
+            {entry.source === 'mcp' && (
+              <span className="mcp-source-badge" title="Logged via MCP assistant">MCP</span>
+            )}
           </div>
 
           {/* Actions — always top-right (panels open via ⋯ menu) */}
@@ -361,6 +364,9 @@ export default function LogEntryRow({
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <strong>{entry.recipe_name}</strong>
+          {entry.source === 'mcp' && (
+            <span className="mcp-source-badge" title="Logged via MCP assistant">MCP</span>
+          )}
           <span style={{ color: 'var(--color-text-muted)', fontSize: 13, marginLeft: 8 }}>
             {entry.servings}x {entry.serving_size}
           </span>

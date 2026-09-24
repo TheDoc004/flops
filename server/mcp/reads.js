@@ -31,6 +31,8 @@ const WEEKDAY_LABELS = {
 const ENTRY_JOIN = `
   SELECT le.id, le.recipe_id, le.date, le.time_min, le.servings, le.notes,
          le.slot_selections_json, le.micros_json, le.ingredients_json,
+         COALESCE(le.source, 'app') AS source,
+         le.weight_basis, le.nutrition_source,
          COALESCE(le.recipe_name, r.name, 'Deleted recipe') AS recipe_name,
          COALESCE(le.serving_size, r.serving_size, '') AS serving_size,
          COALESCE(le.recipe_calories, r.calories, 0) AS recipe_calories,
@@ -131,6 +133,9 @@ function shapeEntry(row) {
     recipe_name: row.recipe_name,
     serving_size: row.serving_size,
     is_quick_food: row.recipe_is_quick_food,
+    source: row.source || 'app',
+    weight_basis: row.weight_basis || null,
+    nutrition_source: row.nutrition_source || null,
     per_serving: {
       calories: row.recipe_calories,
       protein_g: row.recipe_protein_g,

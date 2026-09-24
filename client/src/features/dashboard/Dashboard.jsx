@@ -26,6 +26,7 @@ import DashboardWeightRow from './DashboardWeightRow';
 import PrepStrip from './PrepStrip';
 import { SupplementStrip } from '@features/supplements';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
+import McpWritesBanner from './McpWritesBanner';
 
 const MEAL_CLIPBOARD_KEY = 'flops_meal_clipboard';
 
@@ -787,6 +788,9 @@ export default function Dashboard() {
         </div>
       )}
       {/* ── Day ← / → row stays fixed in Y; banner animates below and may push the greeting ── */}
+      {!editLayout && (
+        <McpWritesBanner onChanged={() => load()} />
+      )}
       <Reveal className="dash-toolbar">
         <div className="dash-day">
           <button

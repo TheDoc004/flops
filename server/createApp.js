@@ -18,6 +18,7 @@ const { createBarcodeRouter } = require('./routes/barcode');
 const { createPrepRouter } = require('./routes/prep');
 const { createPreppedBatchesRouter } = require('./routes/preppedBatches');
 const { createMcpRouter } = require('./mcp/createMcpRouter');
+const { createMcpWritesRouter } = require('./routes/mcpWrites');
 
 /**
  * Build the Express app (used by index.js and tests).
@@ -78,6 +79,7 @@ function createApp(db = createDb(process.env.DB_PATH || './nutrition.db'), opts 
   app.use('/api/coach', createCoachRouter(db));
   app.use('/api/prep', createPrepRouter(db));
   app.use('/api/prepped-batches', createPreppedBatchesRouter(db));
+  app.use('/api/mcp-writes', createMcpWritesRouter(db));
 
   const ai = createAiRouter();
   app.use('/api/ai', rateLimit({ windowMs: 60_000, max: 40 }), aiGuard, ai);

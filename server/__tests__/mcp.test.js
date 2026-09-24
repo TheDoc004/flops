@@ -108,6 +108,13 @@ describe('MCP /mcp auth', () => {
         'search_recipes',
         'get_gym_today',
         'get_gym_progress',
+        'propose_meal_entry',
+        'propose_food_item',
+        'propose_supplement_correction',
+        'commit_proposal',
+        'list_proposals',
+        'discard_proposal',
+        'list_recent_mcp_writes',
       ])
     );
   });

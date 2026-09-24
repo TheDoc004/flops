@@ -3306,6 +3306,98 @@ html[data-notebook-day] .dashboard-card--edit {
   word-break: break-word;
 }
 
+.mcp-source-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  color: #1e3a5f;
+  background: #e8eef7;
+  border: 1px solid #c5d4e8;
+}
+
+.mcp-writes-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #eef4fb;
+  border: 1px solid #d0ddee;
+}
+
+.mcp-writes-banner__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.mcp-writes-banner__copy strong {
+  color: var(--color-primary-ink);
+  font-size: 14px;
+}
+
+.mcp-writes-banner__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mcp-writes-dialog {
+  border: 1px solid var(--color-surface-border);
+  border-radius: 14px;
+  padding: 20px;
+  max-width: min(520px, calc(100vw - 32px));
+  width: 100%;
+  background: var(--color-surface);
+  color: var(--color-text-body);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+}
+
+.mcp-writes-dialog::backdrop {
+  background: rgba(17, 24, 39, 0.4);
+}
+
+.mcp-writes-dialog__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(360px, 50vh);
+  overflow: auto;
+  border: 1px solid var(--color-divider);
+  border-radius: 10px;
+}
+
+.mcp-writes-dialog__list li {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.mcp-writes-dialog__list li:last-child {
+  border-bottom: none;
+}
+
+html[data-notebook-day] .mcp-writes-banner {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-notebook-day] .mcp-source-badge {
+  color: #dbeafe;
+  background: rgba(147, 197, 253, 0.15);
+  border-color: rgba(147, 197, 253, 0.35);
+}
+
 /* Macro summary: one compact row that never wraps to a second (orphan) line */
 .meal-macros {
   display: flex;

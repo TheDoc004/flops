@@ -1,9 +1,36 @@
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { z } = require('zod');
 const reads = require('./reads');
+const writes = require('./writes');
 
 const READ_ONLY =
-  'Read-only FLOPS data tool. Does not write meals or change settings. Logging stays in the FLOPS app.';
+  'Read-only FLOPS data tool. Does not write meals or change settings. Logging stays in the FLOPS app unless you use a separate write/propose tool.';
+
+const WRITE_CONFIRM =
+  'WRITE tool. Call commit_proposal only after the user has approved in their own message, '
+  + 'and never in the same turn as the matching propose_* call. '
+  + 'Proposals expire after 1 hour. Bad writes are flagged source=mcp and can be bulk-undone in the app.';
+
+const mealItemSchema = z.object({
+  label_ingredient_id: z.number().int().positive().optional(),
+  recipe_id: z.number().int().positive().optional(),
+  name: z.string().optional(),
+  quantity_g: z.number().positive().optional(),
+  servings: z.number().positive().optional(),
+  calories_per_100g: z.number().nonnegative().optional(),
+  protein_g_per_100g: z.number().nonnegative().optional(),
+  carbs_g_per_100g: z.number().nonnegative().optional(),
+  fat_g_per_100g: z.number().nonnegative().optional(),
+  fiber_g_per_100g: z.number().nonnegative().optional(),
+  nutrition_source: z.enum(['label', 'database', 'estimate']),
+  weight_basis: z.enum(['raw', 'cooked']).optional(),
+  micros_per_100g: z.record(z.string(), z.number()).optional(),
+});
+
+function wrapWrite(result) {
+  if (result?.error) return reads.errorResult(result.error);
+  return reads.textResult(result);
+}
 
 function createFlopsMcpServer(db, userId) {
   const server = new McpServer({
@@ -260,6 +287,136 @@ function createFlopsMcpServer(db, userId) {
       if (result.error) return reads.errorResult(result.error);
       return reads.textResult(result);
     }
+  );
+
+  server.registerTool(
+    'propose_meal_entry',
+    {
+      title: 'Propose meal entry',
+      description:
+        `${WRITE_CONFIRM} Build a pending meal log proposal (does not write yet). `
+        + 'Items: existing label_ingredient_id + quantity_g, recipe_id + servings, or new food with per-100g macros. '
+        + 'Requires weight_basis raw|cooked and per-item nutrition_source label|database|estimate.',
+      inputSchema: {
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        name: z.string().optional(),
+        meal_slot: z.string().optional().describe('e.g. breakfast, lunch, dinner, snack'),
+        time_min: z.number().int().min(0).max(1439).optional(),
+        weight_basis: z.enum(['raw', 'cooked']).describe('Raw vs cooked weight for the meal'),
+        items: z.array(mealItemSchema).min(1),
+        operation_id: z.string().optional().describe('Client idempotency key'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.proposeMealEntry(db, userId, args))
+  );
+
+  server.registerTool(
+    'propose_food_item',
+    {
+      title: 'Propose food item',
+      description:
+        `${WRITE_CONFIRM} Propose a new ingredient-library food (does not write yet). `
+        + 'Returns similar existing names so duplicates can be caught before commit.',
+      inputSchema: {
+        name: z.string().min(1),
+        brand_name: z.string().optional(),
+        serving_size_text: z.string().optional(),
+        grams_per_serving: z.number().positive().optional(),
+        calories_per_100g: z.number().nonnegative(),
+        protein_g_per_100g: z.number().nonnegative(),
+        carbs_g_per_100g: z.number().nonnegative(),
+        fat_g_per_100g: z.number().nonnegative(),
+        fiber_g_per_100g: z.number().nonnegative().optional(),
+        nutrition_source: z.enum(['label', 'database', 'estimate']),
+        weight_basis: z.enum(['raw', 'cooked']),
+        micros_per_100g: z.record(z.string(), z.number()).optional(),
+        operation_id: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.proposeFoodItem(db, userId, args))
+  );
+
+  server.registerTool(
+    'propose_supplement_correction',
+    {
+      title: 'Propose supplement dose correction',
+      description:
+        `${WRITE_CONFIRM} Propose fixing dose_text / dose_qty / label serving on an existing supplement. Preview includes before/after.`,
+      inputSchema: {
+        supplement_id: z.number().int().positive(),
+        dose_text: z.string().optional(),
+        dose_qty: z.number().positive().optional(),
+        label_serving_qty: z.number().positive().optional(),
+        label_serving_unit: z.string().optional(),
+        operation_id: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.proposeSupplementCorrection(db, userId, args))
+  );
+
+  server.registerTool(
+    'commit_proposal',
+    {
+      title: 'Commit proposal',
+      description:
+        `${WRITE_CONFIRM} Writes the real row for a pending proposal. `
+        + 'Requires proposal_id, confirmation_code from the propose response, and user_confirmation_text '
+        + '(the user\'s verbatim approval message). Never call in the same turn as propose_*.',
+      inputSchema: {
+        proposal_id: z.string().min(1),
+        confirmation_code: z.string().min(1),
+        user_confirmation_text: z
+          .string()
+          .min(1)
+          .describe("User's verbatim approval text from chat"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.commitProposal(db, userId, args))
+  );
+
+  server.registerTool(
+    'list_proposals',
+    {
+      title: 'List proposals',
+      description: `${WRITE_CONFIRM} List recent pending/committed (and optionally expired) MCP proposals.`,
+      inputSchema: {
+        include_expired: z.boolean().optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ include_expired }) =>
+      wrapWrite(writes.listProposals(db, userId, { include_expired }))
+  );
+
+  server.registerTool(
+    'discard_proposal',
+    {
+      title: 'Discard proposal',
+      description: `${WRITE_CONFIRM} Discard a pending proposal without writing.`,
+      inputSchema: {
+        proposal_id: z.string().min(1),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ proposal_id }) => wrapWrite(writes.discardProposal(db, userId, proposal_id))
+  );
+
+  server.registerTool(
+    'list_recent_mcp_writes',
+    {
+      title: 'List recent MCP writes',
+      description:
+        `${READ_ONLY} Meals, foods, and audit rows written via MCP in the last N days (default 7).`,
+      inputSchema: {
+        days: z.number().int().min(1).max(90).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ days }) => wrapWrite(writes.listRecentMcpWrites(db, userId, days))
   );
 
   return server;

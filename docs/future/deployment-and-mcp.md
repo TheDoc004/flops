@@ -1,8 +1,7 @@
 # Deployment + MCP Connector — Plan
 
-_Written 2026-08-02. **Updated 2026-09-24:** deploy + auth are live; analyze-only MCP includes
-`get_intake_weight_trend`; write tools still pending._
-(see `docs/mcp-connector.md`). Meal-write tools (`log_meal`) still future._
+_Written 2026-08-02. **Updated 2026-09-24:** deploy + auth live; MCP reads + Phase 2
+propose/commit writes shipped (`source=mcp`, audit, bulk undo). See `docs/mcp-connector.md`._
 
 ## Status (2026-09)
 
@@ -10,7 +9,7 @@ _Written 2026-08-02. **Updated 2026-09-24:** deploy + auth are live; analyze-onl
 |---|---|
 | 1 Auth + rate limiting | **Done** (Bearer sessions, not shared-secret) |
 | 2 Render + Vercel deploy | **Done** (`useflops.com` + `flops-c6ic.onrender.com`) |
-| 3 MCP server | **Partial** — read-only analyze tools at `/mcp`; write tools not started |
+| 3 MCP server | **Done** — reads + propose/commit writes at `/mcp` |
 
 ---
 
@@ -19,9 +18,8 @@ _Written 2026-08-02. **Updated 2026-09-24:** deploy + auth are live; analyze-onl
 Log meals into FLOPS from the Claude app on the phone, so the copy-paste step through the
 AI Logger disappears.
 
-**Pivot (Sept 2026):** first ship was **analyze-only** — Claude reads macros/micros/weight/
-supplements/gym so agents can reason without an in-app AI coach. Logging from Claude remains
-optional follow-up.
+**Pivot (Sept 2026):** analyze-only shipped first; Phase 2 adds confirm-first writes
+(`propose_*` → chat approve → `commit_proposal`) with permanent `source=mcp` flags.
 
 ## Why this shape
 
@@ -156,18 +154,24 @@ Milestone: FLOPS works from the phone's browser.
 
 ### Step 3 — MCP server (~half a day)
 
-**Done (analyze-only, 2026-09):** `/mcp` Streamable HTTP on the Express API; tools
-`get_day`, `get_log_range`, `get_goals`, `get_body_weights`, `get_intake_weight_trend`,
+**Done (2026-09):** `/mcp` Streamable HTTP on the Express API.
+
+**Reads:** `get_day`, `get_log_range`, `get_goals`, `get_body_weights`, `get_intake_weight_trend`,
 `get_profile`, `get_supplements_range`, `get_micronutrient_totals`, `search_recipes`,
-`get_gym_today`, `get_gym_progress`. Auth via `MCP_API_TOKEN` (Bearer or `x-api-key`).
-Setup: `docs/mcp-connector.md`.
+`get_gym_today`, `get_gym_progress`, `list_recent_mcp_writes`.
 
-**Still open (write path):**
+**Writes (propose → chat confirm → commit):** `propose_meal_entry`, `propose_food_item`,
+`propose_supplement_correction`, `commit_proposal`, `list_proposals`, `discard_proposal`.
+Rows permanently flagged `source`/`created_via` = `mcp`; audit table; UI badge + bulk undo.
 
-- Tools: `log_meal` (wraps `POST /api/log/custom`), `log_recipe` — confirm-first descriptions.
+Auth via `MCP_API_TOKEN` (Bearer or `x-api-key`). Setup: `docs/mcp-connector.md`.
+
+**Still open:**
+
 - Optional: firewall `/mcp` to Anthropic egress `160.79.104.0/21`.
+- Per-user MCP tokens when multi-user traffic arrives.
 
-Milestone (writes): "log this" on the phone → Claude shows macros → approve → it appears in FLOPS.
+Milestone: "log this" on the phone → Claude shows macros + code → you approve in chat → it appears in FLOPS with an MCP badge.
 
 ---
 

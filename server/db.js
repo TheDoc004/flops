@@ -722,6 +722,73 @@ function createDb(dbPath) {
     db.exec(`ALTER TABLE user_profile ADD COLUMN dash_weight_chart_card_enabled INTEGER DEFAULT 0`);
   }
 
+  // MCP Phase 2: permanent source flags + proposal/audit trail.
+  // `source` / `created_via` are never cleared; UI uses them for badges and bulk undo.
+  const logColsMcp = db.prepare('PRAGMA table_info(log_entries)').all().map(c => c.name);
+  if (logColsMcp.length && !logColsMcp.includes('source')) {
+    db.exec(`ALTER TABLE log_entries ADD COLUMN source TEXT NOT NULL DEFAULT 'app'`);
+  }
+  if (logColsMcp.length && !logColsMcp.includes('weight_basis')) {
+    db.exec(`ALTER TABLE log_entries ADD COLUMN weight_basis TEXT`);
+  }
+  if (logColsMcp.length && !logColsMcp.includes('nutrition_source')) {
+    db.exec(`ALTER TABLE log_entries ADD COLUMN nutrition_source TEXT`);
+  }
+
+  const labelColsMcp = db.prepare('PRAGMA table_info(label_ingredients)').all().map(c => c.name);
+  if (labelColsMcp.length && !labelColsMcp.includes('created_via')) {
+    db.exec(`ALTER TABLE label_ingredients ADD COLUMN created_via TEXT NOT NULL DEFAULT 'app'`);
+  }
+  if (labelColsMcp.length && !labelColsMcp.includes('weight_basis')) {
+    db.exec(`ALTER TABLE label_ingredients ADD COLUMN weight_basis TEXT`);
+  }
+  if (labelColsMcp.length && !labelColsMcp.includes('nutrition_source')) {
+    db.exec(`ALTER TABLE label_ingredients ADD COLUMN nutrition_source TEXT`);
+  }
+
+  const supplementColsMcp = db.prepare('PRAGMA table_info(supplements)').all().map(c => c.name);
+  if (supplementColsMcp.length && !supplementColsMcp.includes('created_via')) {
+    db.exec(`ALTER TABLE supplements ADD COLUMN created_via TEXT NOT NULL DEFAULT 'app'`);
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mcp_proposals (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      operation_id TEXT,
+      kind TEXT NOT NULL,
+      confirmation_code TEXT NOT NULL,
+      preview_json TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      warnings_json TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      committed_at TEXT,
+      result_row_ids_json TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_proposals_user_op
+      ON mcp_proposals(user_id, operation_id)
+      WHERE operation_id IS NOT NULL AND operation_id != '';
+    CREATE INDEX IF NOT EXISTS idx_mcp_proposals_user_status
+      ON mcp_proposals(user_id, status, expires_at);
+
+    CREATE TABLE IF NOT EXISTS mcp_write_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      proposal_id TEXT,
+      kind TEXT NOT NULL,
+      confirmation_code TEXT NOT NULL,
+      user_confirmation_text TEXT NOT NULL,
+      preview_json TEXT NOT NULL,
+      result_row_ids_json TEXT NOT NULL,
+      operation_id TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_mcp_write_audit_user_created
+      ON mcp_write_audit(user_id, created_at);
+  `);
+
   // Supplements may predate micronutrient tracking — add the exact-micros column.
   const supplementCols = db.prepare('PRAGMA table_info(supplements)').all().map(c => c.name);
   if (supplementCols.length && !supplementCols.includes('micros_json')) {
