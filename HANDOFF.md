@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-09-25 (MCP lookup gaps + soft-delete meals)_
+_Last updated: 2026-09-25 (Part A: grams_per_serving placeholders)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -22,18 +22,19 @@ _current-state_ companion to it.
 
 ## Where Diego left off (read this first)
 
-**Status:** Active. Nutrition daily driver + Log Meal UX; **MCP Phase 3** direct writes
-plus ingredient/supplement lookup, weight_basis rules, and soft-deleted meals.
+**Status:** Active. Nutrition daily driver + Log Meal UX; MCP Phase 3 + lookup tools.
+**Part A shipped:** placeholder `grams_per_serving` (&lt;3g) no longer derives `per_100g`;
+writes reject those values; boot repair nulls unit cosmetic ids and flips rice cakes/
+onion bagel (11/22/34) to unit tracking. **Part B (derive meal micros from ingredients)
+not started.**
 
-**Last active work stream:** **MCP lookup + soft-delete gaps** — `search_ingredients`,
-`list_supplements`, extended `update_supplement` nutrition, weight_basis conflict refuse,
-`log_entries.is_deleted` soft-delete (MCP + app). See [`docs/mcp-connector.md`](docs/mcp-connector.md).
+**Last active work stream:** micronutrient provenance — Part A done; Part B next.
 
 **When you return / next picks (optional):**
 
-1. **Claude connector** — after Render redeploy, exercise `search_ingredients` → `log_meal`, soft-delete revert.
-2. **Gym UX / progressive overload** — agent can already call `get_gym_progress`.
-3. **Multi-user MCP tokens** — when more than one FLOPS account needs the connector.
+1. **Part B** — meal micros from ingredient library (live scale), purge meal `micros_json`, coverage in `get_micronutrient_totals`.
+2. **Claude connector** — after Render redeploy, confirm `search_ingredients` no longer shows absurd per_100g for bagels/rice cakes.
+3. **Gym UX / progressive overload** — agent can already call `get_gym_progress`.
 4. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
 5. **Ops:** Resend domain verification for production OTP email (if not done yet).
 

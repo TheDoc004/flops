@@ -65,7 +65,7 @@ Optional hardening later: restrict `/mcp` to Anthropic egress `160.79.104.0/21` 
 | `list_supplements` | Full supplement library (IDs + per-label-serving macros/micros); optional `include_deleted` |
 | `get_micronutrient_totals` | Summed micros over a range |
 | `search_recipes` | Recipe library name search |
-| `search_ingredients` | Ingredient library by name/brand — use these IDs in `log_meal` |
+| `search_ingredients` | Ingredient library by name/brand — use these IDs in `log_meal`. `per_100g` is null when `grams_per_serving` is missing or &lt; 3g (placeholders are never derived). |
 | `get_gym_today` | Schedule + session/sets for a date |
 | `get_gym_progress` | Working-set history for an exercise (id or name) |
 | `list_recent_mcp_writes` | Meals/foods/audit (with `audit_id`) written via MCP |
