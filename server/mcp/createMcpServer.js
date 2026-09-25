@@ -14,27 +14,30 @@ const WRITE_NOW =
   + 'Rows are permanently flagged source=mcp (visible in the app). '
   + 'Meal deletes soft-delete (is_deleted=1) and are undoable via revert_mcp_write(audit_id). '
   + 'weight_basis: item-level overrides meal-level; conflict with a library ingredient\'s '
-  + 'stored weight_basis is refused (no raw↔cooked conversion).';
+  + 'stored weight_basis is refused (no raw↔cooked conversion). '
+  + 'Unknown parameters are refused (never silently ignored).';
 
-const mealItemSchema = z.object({
-  ref: z.string().optional().describe('Local batch ref from a prior add_food_item in write_batch'),
-  label_ingredient_id: z.number().int().positive().optional(),
-  recipe_id: z.number().int().positive().optional(),
-  name: z.string().optional(),
-  quantity_g: z.number().positive().optional(),
-  servings: z.number().positive().optional(),
-  calories_per_100g: z.number().nonnegative().optional(),
-  protein_g_per_100g: z.number().nonnegative().optional(),
-  carbs_g_per_100g: z.number().nonnegative().optional(),
-  fat_g_per_100g: z.number().nonnegative().optional(),
-  fiber_g_per_100g: z.number().nonnegative().optional(),
-  nutrition_source: z.enum(['label', 'database', 'estimate']),
-  weight_basis: z
-    .enum(['raw', 'cooked'])
-    .optional()
-    .describe('Overrides meal weight_basis for this item. Must match library ingredient if set.'),
-  micros_per_100g: z.record(z.string(), z.number()).optional(),
-});
+const mealItemSchema = z
+  .object({
+    ref: z.string().optional().describe('Local batch ref from a prior add_food_item in write_batch'),
+    label_ingredient_id: z.number().int().positive().optional(),
+    recipe_id: z.number().int().positive().optional(),
+    name: z.string().optional(),
+    quantity_g: z.number().positive().optional(),
+    servings: z.number().positive().optional(),
+    calories_per_100g: z.number().nonnegative().optional(),
+    protein_g_per_100g: z.number().nonnegative().optional(),
+    carbs_g_per_100g: z.number().nonnegative().optional(),
+    fat_g_per_100g: z.number().nonnegative().optional(),
+    fiber_g_per_100g: z.number().nonnegative().optional(),
+    nutrition_source: z.enum(['label', 'database', 'estimate']),
+    weight_basis: z
+      .enum(['raw', 'cooked'])
+      .optional()
+      .describe('Overrides meal weight_basis for this item. Must match library ingredient if set.'),
+    micros_per_100g: z.record(z.string(), z.number()).optional(),
+  })
+  .strict();
 
 function wrapWrite(result) {
   if (result?.error) {
@@ -361,15 +364,17 @@ function createFlopsMcpServer(db, userId) {
         + 'If an item cites a library ingredient whose stored weight_basis disagrees, the write is refused. '
         + 'Requires per-item nutrition_source. Returns the entry, resolved_weight_basis per item, and day totals/vs_goals. '
         + 'Discover ingredient IDs with search_ingredients.',
-      inputSchema: {
-        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-        name: z.string().optional(),
-        meal_slot: z.string().optional(),
-        time_min: z.number().int().min(0).max(1439).optional(),
-        weight_basis: z.enum(['raw', 'cooked']),
-        items: z.array(mealItemSchema).min(1),
-        operation_id: z.string().optional(),
-      },
+      inputSchema: z
+        .object({
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          name: z.string().optional(),
+          meal_slot: z.string().optional(),
+          time_min: z.number().int().min(0).max(1439).optional(),
+          weight_basis: z.enum(['raw', 'cooked']),
+          items: z.array(mealItemSchema).min(1),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async (args) => wrapWrite(writes.logMeal(db, userId, args))
@@ -381,31 +386,37 @@ function createFlopsMcpServer(db, userId) {
       title: 'Add food item',
       description:
         `${WRITE_NOW} Create an ingredient-library food immediately. `
+        + 'Macros are per-100g; optional micros_per_100g are scaled to the serving and stored in micros_json (per label serving). '
         + 'If a library name is highly similar, the call is REFUSED unless allow_duplicate=true '
         + '(returns matching rows). Warnings may flag missing fiber/micros; they never block the write.',
-      inputSchema: {
-        name: z.string().min(1),
-        brand_name: z.string().optional(),
-        serving_size_text: z.string().optional(),
-        grams_per_serving: z
-          .number()
-          .min(3)
-          .optional()
-          .describe('Label serving weight in grams (min 3). Omit to default 100g when creating from per-100g macros.'),
-        calories_per_100g: z.number().nonnegative(),
-        protein_g_per_100g: z.number().nonnegative(),
-        carbs_g_per_100g: z.number().nonnegative(),
-        fat_g_per_100g: z.number().nonnegative(),
-        fiber_g_per_100g: z.number().nonnegative().optional(),
-        nutrition_source: z.enum(['label', 'database', 'estimate']),
-        weight_basis: z.enum(['raw', 'cooked']),
-        micros_per_100g: z.record(z.string(), z.number()).optional(),
-        allow_duplicate: z
-          .boolean()
-          .optional()
-          .describe('Required true to create when a highly similar name already exists'),
-        operation_id: z.string().optional(),
-      },
+      inputSchema: z
+        .object({
+          name: z.string().min(1),
+          brand_name: z.string().optional(),
+          serving_size_text: z.string().optional(),
+          grams_per_serving: z
+            .number()
+            .min(3)
+            .optional()
+            .describe('Label serving weight in grams (min 3). Omit to default 100g when creating from per-100g macros.'),
+          calories_per_100g: z.number().nonnegative(),
+          protein_g_per_100g: z.number().nonnegative(),
+          carbs_g_per_100g: z.number().nonnegative(),
+          fat_g_per_100g: z.number().nonnegative(),
+          fiber_g_per_100g: z.number().nonnegative().optional(),
+          nutrition_source: z.enum(['label', 'database', 'estimate']),
+          weight_basis: z.enum(['raw', 'cooked']),
+          micros_per_100g: z
+            .record(z.string(), z.number())
+            .optional()
+            .describe('Micronutrients per 100g; scaled to grams_per_serving and stored as micros_json (per serving).'),
+          allow_duplicate: z
+            .boolean()
+            .optional()
+            .describe('Required true to create when a highly similar name already exists'),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async (args) => wrapWrite(writes.addFoodItem(db, userId, args))
@@ -415,27 +426,41 @@ function createFlopsMcpServer(db, userId) {
     'update_food_item',
     {
       title: 'Update food item',
-      description: `${WRITE_NOW} Patch an existing label ingredient. Returns before/after.`,
-      inputSchema: {
-        label_ingredient_id: z.number().int().positive(),
-        name: z.string().optional(),
-        brand_name: z.string().nullable().optional(),
-        serving_size_text: z.string().optional(),
-        grams_per_serving: z
-          .number()
-          .min(3)
-          .nullable()
-          .optional()
-          .describe('Label serving weight in grams (min 3), or null to clear a placeholder.'),
-        calories: z.number().nonnegative().optional(),
-        protein_g: z.number().nonnegative().optional(),
-        carbs_g: z.number().nonnegative().optional(),
-        fat_g: z.number().nonnegative().optional(),
-        fiber_g: z.number().nonnegative().nullable().optional(),
-        nutrition_source: z.enum(['label', 'database', 'estimate']).optional(),
-        weight_basis: z.enum(['raw', 'cooked']).optional(),
-        operation_id: z.string().optional(),
-      },
+      description:
+        `${WRITE_NOW} Patch an existing label ingredient. Returns before/after. `
+        + 'Pass micros (per label serving) OR micros_per_100g (scaled using grams_per_serving ≥ 3); not both. '
+        + 'Both write label_ingredients.micros_json in the standard per-serving blob shape Part B will read.',
+      inputSchema: z
+        .object({
+          label_ingredient_id: z.number().int().positive(),
+          name: z.string().optional(),
+          brand_name: z.string().nullable().optional(),
+          serving_size_text: z.string().optional(),
+          grams_per_serving: z
+            .number()
+            .min(3)
+            .nullable()
+            .optional()
+            .describe('Label serving weight in grams (min 3), or null to clear a placeholder.'),
+          calories: z.number().nonnegative().optional(),
+          protein_g: z.number().nonnegative().optional(),
+          carbs_g: z.number().nonnegative().optional(),
+          fat_g: z.number().nonnegative().optional(),
+          fiber_g: z.number().nonnegative().nullable().optional(),
+          nutrition_source: z.enum(['label', 'database', 'estimate']).optional(),
+          weight_basis: z.enum(['raw', 'cooked']).optional(),
+          micros: z
+            .record(z.string(), z.number())
+            .nullable()
+            .optional()
+            .describe('Micronutrients per label serving (stored as micros_json). Pass null to clear. Mutually exclusive with micros_per_100g.'),
+          micros_per_100g: z
+            .record(z.string(), z.number())
+            .optional()
+            .describe('Micronutrients per 100g; scaled to grams_per_serving and stored as micros_json. Requires usable grams_per_serving. Mutually exclusive with micros.'),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async (args) => wrapWrite(writes.updateFoodItem(db, userId, args))
@@ -449,16 +474,18 @@ function createFlopsMcpServer(db, userId) {
         `${WRITE_NOW} Change date/slot/name or replace items on a log entry (use id from get_day / get_log_range). `
         + 'Returns before/after plus day_before/day_after totals. '
         + 'Replacing items soft-deletes the old row and inserts a new log_entry_id (revert restores the old id).',
-      inputSchema: {
-        log_entry_id: z.number().int().positive(),
-        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-        name: z.string().optional(),
-        meal_slot: z.string().optional(),
-        time_min: z.number().int().min(0).max(1439).optional(),
-        weight_basis: z.enum(['raw', 'cooked']).optional(),
-        items: z.array(mealItemSchema).optional(),
-        operation_id: z.string().optional(),
-      },
+      inputSchema: z
+        .object({
+          log_entry_id: z.number().int().positive(),
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          name: z.string().optional(),
+          meal_slot: z.string().optional(),
+          time_min: z.number().int().min(0).max(1439).optional(),
+          weight_basis: z.enum(['raw', 'cooked']).optional(),
+          items: z.array(mealItemSchema).optional(),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async (args) => wrapWrite(writes.updateMealEntry(db, userId, args))
@@ -471,10 +498,12 @@ function createFlopsMcpServer(db, userId) {
       description:
         `${WRITE_NOW} Soft-delete a log entry (is_deleted=1). Row stays for undo; day totals exclude it. `
         + 'Revert with revert_mcp_write(audit_id). Returns day_before/day_after.',
-      inputSchema: {
-        log_entry_id: z.number().int().positive(),
-        operation_id: z.string().optional(),
-      },
+      inputSchema: z
+        .object({
+          log_entry_id: z.number().int().positive(),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (args) => wrapWrite(writes.deleteMealEntry(db, userId, args))
@@ -490,25 +519,27 @@ function createFlopsMcpServer(db, userId) {
         + 'Changing macros/micros recalculates historical day totals for days that took this supplement '
         + '(live scaling on read — meal logs are unchanged). Returns before/after; '
         + 'historical_totals_recalculate flags nutrition edits. Use list_supplements for IDs.',
-      inputSchema: {
-        supplement_id: z.number().int().positive(),
-        dose_text: z.string().optional(),
-        dose_qty: z.number().positive().optional(),
-        label_serving_qty: z.number().positive().optional(),
-        label_serving_unit: z.string().optional(),
-        calories: z.number().nonnegative().optional().describe('Per label serving'),
-        protein_g: z.number().nonnegative().optional().describe('Per label serving'),
-        carbs_g: z.number().nonnegative().optional().describe('Per label serving'),
-        fat_g: z.number().nonnegative().optional().describe('Per label serving'),
-        micros: z
-          .record(z.string(), z.number())
-          .nullable()
-          .optional()
-          .describe('Per label serving micros object, or null to clear'),
-        taken: z.boolean().optional(),
-        taken_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-        operation_id: z.string().optional(),
-      },
+      inputSchema: z
+        .object({
+          supplement_id: z.number().int().positive(),
+          dose_text: z.string().optional(),
+          dose_qty: z.number().positive().optional(),
+          label_serving_qty: z.number().positive().optional(),
+          label_serving_unit: z.string().optional(),
+          calories: z.number().nonnegative().optional().describe('Per label serving'),
+          protein_g: z.number().nonnegative().optional().describe('Per label serving'),
+          carbs_g: z.number().nonnegative().optional().describe('Per label serving'),
+          fat_g: z.number().nonnegative().optional().describe('Per label serving'),
+          micros: z
+            .record(z.string(), z.number())
+            .nullable()
+            .optional()
+            .describe('Per label serving micros object, or null to clear'),
+          taken: z.boolean().optional(),
+          taken_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async (args) => wrapWrite(writes.updateSupplement(db, userId, args))
@@ -521,10 +552,12 @@ function createFlopsMcpServer(db, userId) {
       description:
         `${WRITE_NOW} Run multiple write ops in one all-or-nothing transaction. `
         + 'add_food_item may set ref; later log_meal items can use that ref. Any failure rolls back all.',
-      inputSchema: {
-        operations: z.array(z.record(z.string(), z.any())).min(1),
-        operation_id: z.string().optional(),
-      },
+      inputSchema: z
+        .object({
+          operations: z.array(z.record(z.string(), z.any())).min(1),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (args) => wrapWrite(writes.writeBatch(db, userId, args))
@@ -538,10 +571,12 @@ function createFlopsMcpServer(db, userId) {
         `${WRITE_NOW} Undo a prior MCP write by audit_id from list_recent_mcp_writes. `
         + 'Creates are soft-removed; updates restore the before snapshot; soft-deleted meals are restored. '
         + 'Legacy hard deletes (if any predate soft-delete) return NOT_REVERTIBLE.',
-      inputSchema: {
-        audit_id: z.number().int().positive(),
-        operation_id: z.string().optional(),
-      },
+      inputSchema: z
+        .object({
+          audit_id: z.number().int().positive(),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (args) => wrapWrite(writes.revertMcpWrite(db, userId, args))

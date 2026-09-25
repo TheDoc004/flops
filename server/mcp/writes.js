@@ -12,7 +12,12 @@ const {
   nameSimilarity,
 } = require('./similarity');
 const { warningsForFoodMacros, warningsForMealTotals } = require('./warnings');
-const { normalizeGramsPerServingInput, MIN_GRAMS_PER_SERVING } = require('../gramsPerServing');
+const {
+  normalizeGramsPerServingInput,
+  MIN_GRAMS_PER_SERVING,
+  isUsableGramsPerServing,
+} = require('../gramsPerServing');
+const { buildMicrosBlob } = require('../microNutrients');
 
 const NUTRITION_SOURCES = new Set(['label', 'database', 'estimate']);
 const WEIGHT_BASES = new Set(['raw', 'cooked']);
@@ -28,6 +33,47 @@ const OPS = {
   revert_mcp_write: 'revert_mcp_write',
 };
 
+/** Keys each write op may accept. Unknown keys must refuse — never silent-drop. */
+const WRITE_ALLOWED_KEYS = {
+  [OPS.log_meal]: new Set([
+    'op', 'date', 'name', 'meal_slot', 'time_min', 'weight_basis', 'items', 'operation_id', 'ref',
+  ]),
+  [OPS.add_food_item]: new Set([
+    'op', 'ref', 'name', 'brand_name', 'serving_size_text', 'grams_per_serving',
+    'calories_per_100g', 'protein_g_per_100g', 'carbs_g_per_100g', 'fat_g_per_100g', 'fiber_g_per_100g',
+    'nutrition_source', 'weight_basis', 'micros_per_100g', 'allow_duplicate', 'operation_id',
+  ]),
+  [OPS.update_food_item]: new Set([
+    'op', 'label_ingredient_id', 'name', 'brand_name', 'serving_size_text', 'grams_per_serving',
+    'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'nutrition_source', 'weight_basis',
+    'micros', 'micros_per_100g', 'operation_id',
+  ]),
+  [OPS.update_meal_entry]: new Set([
+    'op', 'log_entry_id', 'date', 'name', 'meal_slot', 'time_min', 'weight_basis', 'items', 'operation_id',
+  ]),
+  [OPS.delete_meal_entry]: new Set(['op', 'log_entry_id', 'operation_id']),
+  [OPS.update_supplement]: new Set([
+    'op', 'supplement_id', 'dose_text', 'dose_qty', 'label_serving_qty', 'label_serving_unit',
+    'calories', 'protein_g', 'carbs_g', 'fat_g', 'micros', 'taken', 'taken_date', 'operation_id',
+  ]),
+  [OPS.write_batch]: new Set(['operations', 'operation_id']),
+  [OPS.revert_mcp_write]: new Set(['audit_id', 'operation_id']),
+};
+
+function rejectUnknownArgs(args, opName) {
+  const allowed = WRITE_ALLOWED_KEYS[opName];
+  if (!allowed) return null;
+  const unknown = Object.keys(args || {}).filter(k => !allowed.has(k));
+  if (!unknown.length) return null;
+  return {
+    error:
+      `${opName} does not accept parameter(s): ${unknown.join(', ')}. ` +
+      `Unknown fields are refused (not ignored) so a write cannot look successful while dropping data.`,
+    code: 'UNKNOWN_PARAM',
+    unknown,
+  };
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -36,6 +82,58 @@ function round(n, digits = 1) {
   if (n == null || !Number.isFinite(Number(n))) return null;
   const f = 10 ** digits;
   return Math.round(Number(n) * f) / f;
+}
+
+function microsJsonFromPerServing(raw) {
+  if (raw === null) return { micros_json: null };
+  if (raw == null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { error: 'micros must be an object of nutrient → amount (per label serving), or null to clear' };
+  }
+  const blob = buildMicrosBlob(raw, {
+    confidence: 'high',
+    notes: 'Updated via MCP (per label serving)',
+  });
+  if (!blob) {
+    return {
+      error:
+        'micros contained no recognized nutrient keys with positive values ' +
+        '(keys must match the FLOPS micro set, e.g. sodium_mg, vitamin_d_mcg)',
+    };
+  }
+  return { micros_json: JSON.stringify(blob) };
+}
+
+function microsJsonFromPer100g(raw, gramsPerServing, { confidence = 'high', notes } = {}) {
+  if (raw == null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { error: 'micros_per_100g must be an object of nutrient → amount' };
+  }
+  if (!isUsableGramsPerServing(gramsPerServing)) {
+    return {
+      error:
+        `micros_per_100g requires grams_per_serving ≥ ${MIN_GRAMS_PER_SERVING} on the food to scale to per-serving storage. ` +
+        `Set grams_per_serving first, or pass micros (per label serving) instead.`,
+    };
+  }
+  const scale = Number(gramsPerServing) / 100;
+  const scaled = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const n = Number(v);
+    if (Number.isFinite(n)) scaled[k] = round(n * scale, 3);
+  }
+  const blob = buildMicrosBlob(scaled, {
+    confidence,
+    notes: notes || 'Updated via MCP (per_100g scaled to serving)',
+  });
+  if (!blob) {
+    return {
+      error:
+        'micros_per_100g contained no recognized nutrient keys with positive values ' +
+        '(keys must match the FLOPS micro set, e.g. sodium_mg, vitamin_d_mcg)',
+    };
+  }
+  return { micros_json: JSON.stringify(blob) };
 }
 
 function normalizeNutritionSource(raw) {
@@ -311,6 +409,16 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
   if (similar.length) {
     warnings.push(`Similar library items found for "${name}".`);
   }
+  let micros_per_100g = null;
+  if (Object.prototype.hasOwnProperty.call(working, 'micros_per_100g')) {
+    // Validate now (100g serving for inline new foods) so a bad blob refuses the meal write.
+    const m = microsJsonFromPer100g(working.micros_per_100g, 100, {
+      confidence: 'medium',
+      notes: 'Created via MCP log_meal (per_100g)',
+    });
+    if (m.error) return { error: `items[${index}]: ${m.error}` };
+    micros_per_100g = working.micros_per_100g;
+  }
   return {
     item: {
       kind: 'new_food',
@@ -322,7 +430,7 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
       per_100g: per100,
       macros: scalePer100g(per100, quantity_g),
       similar_library_items: similar,
-      micros_per_100g: working?.micros_per_100g || null,
+      micros_per_100g,
     },
     warnings,
   };
@@ -374,10 +482,16 @@ function ensureQuickFoodRecipe(db, userId, name, macros) {
 
 function createLabelFromNewFood(db, userId, item) {
   const per100 = item.per_100g;
-  const micros =
-    item.micros_per_100g && typeof item.micros_per_100g === 'object'
-      ? JSON.stringify({ micros: item.micros_per_100g, confidence: 'medium' })
-      : null;
+  // New meal foods use a 100g serving, so per-100g micros equal per-serving storage.
+  let microsJson = null;
+  if (item.micros_per_100g != null) {
+    const m = microsJsonFromPer100g(item.micros_per_100g, 100, {
+      confidence: 'medium',
+      notes: 'Created via MCP log_meal (per_100g)',
+    });
+    if (m.error) throw Object.assign(new Error(m.error), { code: 'BAD_MICROS' });
+    microsJson = m.micros_json;
+  }
   const r = db
     .prepare(
       `INSERT INTO label_ingredients (
@@ -390,7 +504,7 @@ function createLabelFromNewFood(db, userId, item) {
     )
     .run(
       userId, item.name, per100.calories, per100.protein_g, per100.carbs_g, per100.fat_g,
-      per100.fiber_g, micros, item.weight_basis, item.nutrition_source
+      per100.fiber_g, microsJson, item.weight_basis, item.nutrition_source
     );
   return r.lastInsertRowid;
 }
@@ -575,6 +689,8 @@ function daySlice(day) {
 }
 
 function logMeal(db, userId, args = {}, { refMap = null, skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.log_meal);
+  if (badKeys) return badKeys;
   const operationId = args.operation_id ? String(args.operation_id).trim() : null;
   return withIdempotency(db, userId, operationId, () => {
     const built = buildMealPayload(db, userId, args, refMap);
@@ -617,6 +733,8 @@ function getFoodRow(db, userId, id) {
 }
 
 function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.add_food_item);
+  if (badKeys) return badKeys;
   const operationId = args.operation_id ? String(args.operation_id).trim() : null;
   return withIdempotency(db, userId, operationId, () => {
     const name = String(args.name || '').trim();
@@ -696,15 +814,15 @@ function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null }
       fat_g: round(per100.fat_g * scale, 2),
       fiber_g: per100.fiber_g == null ? null : round(per100.fiber_g * scale, 2),
     };
-    const micros =
-      args.micros_per_100g && typeof args.micros_per_100g === 'object'
-        ? JSON.stringify({
-            micros: Object.fromEntries(
-              Object.entries(args.micros_per_100g).map(([k, v]) => [k, round(Number(v) * scale, 3)])
-            ),
-            confidence: 'medium',
-          })
-        : null;
+    let microsJson = null;
+    if (Object.prototype.hasOwnProperty.call(args, 'micros_per_100g')) {
+      const m = microsJsonFromPer100g(args.micros_per_100g, grams_per_serving, {
+        confidence: 'medium',
+        notes: 'Created via MCP add_food_item (per_100g scaled to serving)',
+      });
+      if (m.error) return { error: m.error };
+      microsJson = m.micros_json;
+    }
 
     const doWrite = () => {
       const r = db
@@ -720,7 +838,7 @@ function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null }
         .run(
           userId, name, brand_name, serving_size_text, grams_per_serving,
           servingMacros.calories, servingMacros.protein_g, servingMacros.carbs_g,
-          servingMacros.fat_g, servingMacros.fiber_g, micros, weight_basis, nutrition_source
+          servingMacros.fat_g, servingMacros.fiber_g, microsJson, weight_basis, nutrition_source
         );
       const id = r.lastInsertRowid;
       if (refMap && args.ref) refMap.set(String(args.ref), id);
@@ -748,6 +866,8 @@ function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null }
 }
 
 function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.update_food_item);
+  if (badKeys) return badKeys;
   const operationId = args.operation_id ? String(args.operation_id).trim() : null;
   return withIdempotency(db, userId, operationId, () => {
     const id = Number(args.label_ingredient_id);
@@ -781,6 +901,23 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
       if (!ns) return { error: 'nutrition_source must be label|database|estimate' };
       patch.nutrition_source = ns;
     }
+
+    const hasMicros = Object.prototype.hasOwnProperty.call(args, 'micros');
+    const hasMicros100 = Object.prototype.hasOwnProperty.call(args, 'micros_per_100g');
+    if (hasMicros && hasMicros100) {
+      return { error: 'Pass either micros (per label serving) or micros_per_100g, not both' };
+    }
+    let microsJson = before.micros_json ?? null;
+    if (hasMicros) {
+      const m = microsJsonFromPerServing(args.micros);
+      if (m.error) return { error: m.error };
+      microsJson = m.micros_json;
+    } else if (hasMicros100) {
+      const m = microsJsonFromPer100g(args.micros_per_100g, patch.grams_per_serving);
+      if (m.error) return { error: m.error };
+      microsJson = m.micros_json;
+    }
+
     if (!patch.name || !patch.serving_size_text) return { error: 'name and serving_size_text cannot be empty' };
 
     const doWrite = () => {
@@ -788,16 +925,23 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
         `UPDATE label_ingredients
             SET name = ?, brand_name = ?, serving_size_text = ?, grams_per_serving = ?,
                 calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
-                weight_basis = ?, nutrition_source = ?
+                weight_basis = ?, nutrition_source = ?, micros_json = ?
           WHERE id = ? AND user_id = ?`
       ).run(
         patch.name, patch.brand_name, patch.serving_size_text, patch.grams_per_serving,
         patch.calories, patch.protein_g, patch.carbs_g, patch.fat_g, patch.fiber_g,
-        patch.weight_basis, patch.nutrition_source, id, userId
+        patch.weight_basis, patch.nutrition_source, microsJson, id, userId
       );
       const after = getFoodRow(db, userId, id);
       const result_row_ids = { label_ingredient_ids: [id] };
-      const response = { op: OPS.update_food_item, before, after, result_row_ids, warnings: [] };
+      const response = {
+        op: OPS.update_food_item,
+        before,
+        after,
+        result_row_ids,
+        warnings: [],
+        has_micros: !!(after?.micros_json),
+      };
       if (!skipAudit) {
         response.audit_id = recordAudit(db, userId, {
           op: OPS.update_food_item, operationId, before, after, result_row_ids, warnings: [], response,
@@ -810,6 +954,8 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
 }
 
 function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.update_meal_entry);
+  if (badKeys) return badKeys;
   const operationId = args.operation_id ? String(args.operation_id).trim() : null;
   return withIdempotency(db, userId, operationId, () => {
     const id = Number(args.log_entry_id);
@@ -922,6 +1068,8 @@ function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
 }
 
 function deleteMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.delete_meal_entry);
+  if (badKeys) return badKeys;
   const operationId = args.operation_id ? String(args.operation_id).trim() : null;
   return withIdempotency(db, userId, operationId, () => {
     const id = Number(args.log_entry_id);
@@ -1002,15 +1150,23 @@ function normalizeMicrosPatch(raw) {
   if (typeof raw !== 'object' || Array.isArray(raw)) {
     return { error: 'micros must be an object of nutrient → amount, or null to clear' };
   }
-  const { buildMicrosBlob } = require('../microNutrients');
   const blob = buildMicrosBlob(raw, {
     confidence: 'high',
     notes: 'Updated via MCP (label data)',
   });
-  return { micros_json: blob ? JSON.stringify(blob) : null };
+  if (!blob) {
+    return {
+      error:
+        'micros contained no recognized nutrient keys with positive values ' +
+        '(keys must match the FLOPS micro set, e.g. sodium_mg, vitamin_d_mcg)',
+    };
+  }
+  return { micros_json: JSON.stringify(blob) };
 }
 
 function updateSupplement(db, userId, args = {}, { skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.update_supplement);
+  if (badKeys) return badKeys;
   const operationId = args.operation_id ? String(args.operation_id).trim() : null;
   return withIdempotency(db, userId, operationId, () => {
     const id = Number(args.supplement_id);
@@ -1144,6 +1300,8 @@ function updateSupplement(db, userId, args = {}, { skipAudit = false } = {}) {
 }
 
 function writeBatch(db, userId, args = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.write_batch);
+  if (badKeys) return badKeys;
   const operationId = args.operation_id ? String(args.operation_id).trim() : null;
   return withIdempotency(db, userId, operationId, () => {
     const ops = Array.isArray(args.operations) ? args.operations : null;
@@ -1157,6 +1315,12 @@ function writeBatch(db, userId, args = {}) {
           const step = { ...(ops[i] || {}) };
           delete step.operation_id; // batch-level idempotency only
           const op = String(step.op || '').trim();
+          const stepBad = rejectUnknownArgs(step, op);
+          if (stepBad) {
+            throw Object.assign(new Error(`operations[${i}]: ${stepBad.error}`), {
+              code: stepBad.code || 'UNKNOWN_PARAM',
+            });
+          }
           let result;
           if (op === OPS.add_food_item) {
             result = addFoodItem(db, userId, step, { skipAudit: true, refMap });
@@ -1174,7 +1338,10 @@ function writeBatch(db, userId, args = {}) {
             throw Object.assign(new Error(`operations[${i}]: unsupported op "${op}"`), { code: 'BAD_OP' });
           }
           if (result?.error) {
-            throw Object.assign(new Error(`operations[${i}]: ${result.error}`), { code: 'OP_FAILED' });
+            throw Object.assign(new Error(`operations[${i}]: ${result.error}`), {
+              code: result.code || 'OP_FAILED',
+              unknown: result.unknown,
+            });
           }
           results.push(result);
         }
@@ -1205,7 +1372,10 @@ function writeBatch(db, userId, args = {}) {
       });
       return run();
     } catch (e) {
-      return { error: e.message || 'write_batch failed' };
+      const out = { error: e.message || 'write_batch failed' };
+      if (e.code) out.code = e.code;
+      if (e.unknown) out.unknown = e.unknown;
+      return out;
     }
   });
 }
@@ -1285,12 +1455,12 @@ function revertOneResult(db, userId, result) {
       `UPDATE label_ingredients
           SET name = ?, brand_name = ?, serving_size_text = ?, grams_per_serving = ?,
               calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
-              weight_basis = ?, nutrition_source = ?
+              weight_basis = ?, nutrition_source = ?, micros_json = ?
         WHERE id = ? AND user_id = ?`
     ).run(
       b.name, b.brand_name, b.serving_size_text, b.grams_per_serving,
       b.calories, b.protein_g, b.carbs_g, b.fat_g, b.fiber_g,
-      b.weight_basis, b.nutrition_source, b.id, userId
+      b.weight_basis, b.nutrition_source, b.micros_json ?? null, b.id, userId
     );
     return;
   }
@@ -1373,6 +1543,8 @@ function revertOneResult(db, userId, result) {
 }
 
 function revertMcpWrite(db, userId, args = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.revert_mcp_write);
+  if (badKeys) return badKeys;
   const auditId = Number(args.audit_id);
   if (!Number.isInteger(auditId) || auditId <= 0) return { error: 'audit_id is required' };
 

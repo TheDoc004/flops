@@ -89,7 +89,7 @@ Writes **commit immediately**. Safety is undo, not a handshake: every MCP row is
 |---|---|
 | `log_meal` | Log a meal now; returns entry + day totals/`vs_goals`. Prefer `search_ingredients` IDs. |
 | `add_food_item` | Create a library food. Highly similar names are **refused** unless `allow_duplicate: true`. |
-| `update_food_item` | Patch a food; before/after. |
+| `update_food_item` | Patch a food (incl. `micros` per serving or `micros_per_100g`); before/after. Writes `label_ingredients.micros_json`. |
 | `update_meal_entry` | Change date/slot/items; before/after + day totals. Item replace soft-deletes old id. |
 | `delete_meal_entry` | Soft-delete a log row (revertible via `revert_mcp_write`). |
 | `update_supplement` | Dose fields and/or per-label-serving macros/micros; `historical_totals_recalculate` when nutrition changes (past taken days recalculate on read). |
@@ -97,6 +97,10 @@ Writes **commit immediately**. Safety is undo, not a handshake: every MCP row is
 | `revert_mcp_write` | Undo a prior MCP write by `audit_id` (creates soft-removed, updates restored, soft-deletes undeleted). |
 
 Warnings (fiber missing, micros missing, 4/4/9 mismatch, wild quantities) come back in the response and never block a write.
+
+**Unknown parameters are refused** (`code: "UNKNOWN_PARAM"`) — write tools never silently drop fields. Zod schemas are `.strict()`, and handlers also reject keys outside each op’s allowlist (including nested `write_batch` steps).
+
+**Ingredient micros:** `update_food_item` / `add_food_item` store the standard per-serving blob on `label_ingredients.micros_json` (`{ micros, confidence, notes, version, estimatedAt }`). `micros_per_100g` is scaled by `grams_per_serving/100` (requires usable gps ≥ 3). That column is the Part B read target — no restructure planned.
 
 Idempotency: pass `operation_id`; retries return the prior result without duplicating.
 

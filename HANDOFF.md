@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-09-25 (Part A: grams_per_serving placeholders)_
+_Last updated: 2026-09-25 (MCP: persist ingredient micros + refuse unknown write params)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -25,19 +25,23 @@ _current-state_ companion to it.
 **Status:** Active. Nutrition daily driver + Log Meal UX; MCP Phase 3 + lookup tools.
 **Part A shipped:** placeholder `grams_per_serving` (&lt;3g) no longer derives `per_100g`;
 writes reject those values; boot repair nulls unit cosmetic ids and flips rice cakes/
-onion bagel (11/22/34) to unit tracking. **Part B (derive meal micros from ingredients)
-not started.**
+onion bagel (11/22/34) to unit tracking.
+**MCP micros write path shipped:** `update_food_item` / `add_food_item` persist
+`micros` / `micros_per_100g` → `label_ingredients.micros_json` (per-serving blob).
+Unknown write params refuse with `UNKNOWN_PARAM` (no silent drop).
+**Part B (derive meal micros from ingredients) not started** — it will read that same
+`micros_json` column (no restructure).
 
-**Last active work stream:** micronutrient provenance — Part A done; Part B next.
+**Last active work stream:** micronutrient provenance — Part A + ingredient micros write done; Part B next.
 
 **When you return / next picks (optional):**
 
-1. **Part B** — meal micros from ingredient library (live scale), purge meal `micros_json`, coverage in `get_micronutrient_totals`.
-2. **Claude connector** — after Render redeploy, confirm `search_ingredients` no longer shows absurd per_100g for bagels/rice cakes.
-3. **Gym UX / progressive overload** — agent can already call `get_gym_progress`.
-4. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
-5. **Ops:** Resend domain verification for production OTP email (if not done yet).
-
+1. **Part B** — meal micros from ingredient library `micros_json` (live scale), purge meal `micros_json`, coverage in `get_micronutrient_totals`.
+2. **Backfill** — after Render redeploy, use `update_food_item` + `micros_per_100g` (or `micros`) to populate library micros.
+3. **Claude connector** — confirm `search_ingredients` no longer shows absurd per_100g for bagels/rice cakes.
+4. **Gym UX / progressive overload** — agent can already call `get_gym_progress`.
+5. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
+6. **Ops:** Resend domain verification for production OTP email (if not done yet).
 
 ---
 

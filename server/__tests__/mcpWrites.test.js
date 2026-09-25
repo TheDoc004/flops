@@ -293,6 +293,109 @@ describe('MCP Phase 3 direct writes', () => {
     expect(r.food.created_via).toBe('mcp');
   });
 
+  it('update_food_item persists micros_per_100g into micros_json (scaled to serving)', () => {
+    const r = writes.updateFoodItem(db, userId, {
+      label_ingredient_id: ingredientId,
+      micros_per_100g: { sodium_mg: 200, potassium_mg: 400 },
+    });
+    expect(r.error).toBeUndefined();
+    expect(r.has_micros).toBe(true);
+    const blob = JSON.parse(r.after.micros_json);
+    // gps=100 → scale 1.0
+    expect(blob.micros.sodium_mg).toBe(200);
+    expect(blob.micros.potassium_mg).toBe(400);
+    expect(blob.confidence).toBe('high');
+    expect(blob.version).toBe('v2');
+
+    const row = db
+      .prepare('SELECT micros_json FROM label_ingredients WHERE id = ?')
+      .get(ingredientId);
+    expect(JSON.parse(row.micros_json).micros.sodium_mg).toBe(200);
+  });
+
+  it('update_food_item scales micros_per_100g when grams_per_serving ≠ 100', () => {
+    db.prepare(
+      `UPDATE label_ingredients SET grams_per_serving = 50, serving_size_text = '50 g' WHERE id = ?`
+    ).run(ingredientId);
+    const r = writes.updateFoodItem(db, userId, {
+      label_ingredient_id: ingredientId,
+      micros_per_100g: { sodium_mg: 200 },
+    });
+    expect(r.error).toBeUndefined();
+    const blob = JSON.parse(r.after.micros_json);
+    expect(blob.micros.sodium_mg).toBe(100); // 200 * 50/100
+  });
+
+  it('update_food_item accepts micros per serving and clears with null', () => {
+    const set = writes.updateFoodItem(db, userId, {
+      label_ingredient_id: ingredientId,
+      micros: { vitamin_d_mcg: 10 },
+    });
+    expect(set.error).toBeUndefined();
+    expect(JSON.parse(set.after.micros_json).micros.vitamin_d_mcg).toBe(10);
+
+    const cleared = writes.updateFoodItem(db, userId, {
+      label_ingredient_id: ingredientId,
+      micros: null,
+    });
+    expect(cleared.error).toBeUndefined();
+    expect(cleared.after.micros_json).toBeNull();
+    expect(cleared.has_micros).toBe(false);
+  });
+
+  it('update_food_item refuses micros_per_100g without usable grams_per_serving', () => {
+    db.prepare(
+      `UPDATE label_ingredients SET grams_per_serving = NULL WHERE id = ?`
+    ).run(ingredientId);
+    const r = writes.updateFoodItem(db, userId, {
+      label_ingredient_id: ingredientId,
+      micros_per_100g: { sodium_mg: 100 },
+    });
+    expect(r.error).toMatch(/grams_per_serving/);
+    expect(r.after).toBeUndefined();
+  });
+
+  it('update_food_item refuses unrecognized micros keys rather than storing null', () => {
+    const r = writes.updateFoodItem(db, userId, {
+      label_ingredient_id: ingredientId,
+      micros_per_100g: { not_a_real_nutrient: 99 },
+    });
+    expect(r.error).toMatch(/no recognized nutrient/);
+    const row = db
+      .prepare('SELECT micros_json FROM label_ingredients WHERE id = ?')
+      .get(ingredientId);
+    expect(row.micros_json).toBeNull();
+  });
+
+  it('write tools refuse unknown parameters (UNKNOWN_PARAM)', () => {
+    const r = writes.updateFoodItem(db, userId, {
+      label_ingredient_id: ingredientId,
+      micros_per_100g: { sodium_mg: 50 },
+      fake_field_that_looks_real: 123,
+    });
+    expect(r.error).toMatch(/does not accept parameter/);
+    expect(r.code).toBe('UNKNOWN_PARAM');
+    expect(r.unknown).toContain('fake_field_that_looks_real');
+    const row = db
+      .prepare('SELECT micros_json FROM label_ingredients WHERE id = ?')
+      .get(ingredientId);
+    expect(row.micros_json).toBeNull();
+  });
+
+  it('write_batch refuses unknown params inside nested ops', () => {
+    const r = writes.writeBatch(db, userId, {
+      operations: [
+        {
+          op: 'update_food_item',
+          label_ingredient_id: ingredientId,
+          calories_per_100g: 999, // not a valid update_food_item field
+        },
+      ],
+    });
+    expect(r.error).toMatch(/does not accept parameter/);
+    expect(r.code).toBe('UNKNOWN_PARAM');
+  });
+
   it('proposals table is gone', () => {
     const row = db
       .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='mcp_proposals'`)
