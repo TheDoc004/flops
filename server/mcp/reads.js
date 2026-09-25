@@ -113,8 +113,24 @@ function addMacros(a, b) {
   };
 }
 
-function shapeEntry(row) {
-  const micros = parseMicrosBlob(row.micros_json);
+function shapeEntry(row, db = null, userId = null) {
+  let micros = parseMicrosBlob(row.micros_json);
+  let microsSource = micros ? 'frozen' : null;
+  if (db && userId != null) {
+    const { resolveEntryMicros } = require('../entryMicros');
+    const resolved = resolveEntryMicros(db, userId, row);
+    if (resolved.blob?.micros) {
+      micros = {
+        micros: resolved.blob.micros,
+        confidence: resolved.blob.confidence || null,
+        notes: resolved.blob.notes || null,
+      };
+      microsSource = resolved.source;
+    } else {
+      micros = null;
+      microsSource = null;
+    }
+  }
   let ingredients = null;
   if (row.ingredients_json) {
     try {
@@ -150,6 +166,7 @@ function shapeEntry(row) {
     logged: macros,
     micros: micros?.micros || null,
     micros_confidence: micros?.confidence || null,
+    micros_source: microsSource,
     ingredients,
   };
 }
@@ -159,14 +176,14 @@ function getLogEntries(db, userId, { date, start, end } = {}) {
     return db
       .prepare(`${ENTRY_JOIN} WHERE le.user_id = ? AND le.date = ? AND ${LOG_ALIVE} ORDER BY le.id`)
       .all(userId, date)
-      .map(shapeEntry);
+      .map(row => shapeEntry(row, db, userId));
   }
   return db
     .prepare(
       `${ENTRY_JOIN} WHERE le.user_id = ? AND le.date >= ? AND le.date <= ? AND ${LOG_ALIVE} ORDER BY le.date, le.id`
     )
     .all(userId, start, end)
-    .map(shapeEntry);
+    .map(row => shapeEntry(row, db, userId));
 }
 
 function getDailySummaries(db, userId, start, end) {
@@ -347,19 +364,30 @@ function accumulateMicros(into, micros, scale = 1) {
 }
 
 function getMicronutrientTotals(db, userId, start, end, { includeSupplements = true } = {}) {
+  const { resolveEntryMicros } = require('../entryMicros');
+  const { MICRO_DAILY_TARGETS } = require('../microNutrients');
+
   const entries = db
     .prepare(
-      `SELECT servings, micros_json FROM log_entries
+      `SELECT servings, micros_json, ingredients_json FROM log_entries
         WHERE user_id = ? AND date >= ? AND date <= ? AND ${LOG_ALIVE_BARE}`
     )
     .all(userId, start, end);
   const totals = {};
   let mealsWithMicros = 0;
+  let mealsFromIngredients = 0;
+  let mealsFromFrozen = 0;
+  let ingredientRowsTotal = 0;
+  let ingredientRowsCovered = 0;
   for (const e of entries) {
-    const blob = parseMicrosBlob(e.micros_json);
-    if (!blob?.micros) continue;
+    const resolved = resolveEntryMicros(db, userId, e);
+    if (!resolved.blob?.micros) continue;
     mealsWithMicros += 1;
-    accumulateMicros(totals, blob.micros, Number(e.servings) || 1);
+    if (resolved.source === 'ingredients') mealsFromIngredients += 1;
+    if (resolved.source === 'frozen') mealsFromFrozen += 1;
+    ingredientRowsTotal += resolved.coverage.ingredient_rows;
+    ingredientRowsCovered += resolved.coverage.covered;
+    accumulateMicros(totals, resolved.blob.micros, Number(e.servings) || 1);
   }
   let supplementDays = 0;
   if (includeSupplements) {
@@ -380,12 +408,47 @@ function getMicronutrientTotals(db, userId, start, end, { includeSupplements = t
   for (const [k, v] of Object.entries(totals)) {
     rounded[k] = Math.round(v * 1000) / 1000;
   }
+
+  const startMs = Date.parse(`${start}T00:00:00Z`);
+  const endMs = Date.parse(`${end}T00:00:00Z`);
+  const dayCount =
+    Number.isFinite(startMs) && Number.isFinite(endMs)
+      ? Math.max(1, Math.round((endMs - startMs) / 86400000) + 1)
+      : 1;
+
+  const pct_of_daily_target = {};
+  const avg_daily = {};
+  for (const k of MICRO_KEYS) {
+    const total = rounded[k] || 0;
+    const avg = total / dayCount;
+    avg_daily[k] = Math.round(avg * 1000) / 1000;
+    const target = MICRO_DAILY_TARGETS[k];
+    if (target > 0) {
+      pct_of_daily_target[k] = Math.round((avg / target) * 1000) / 10; // one decimal %
+    }
+  }
+
   return {
     start,
     end,
+    days: dayCount,
     include_supplements: includeSupplements,
+    meals_total: entries.length,
     meals_with_micros: mealsWithMicros,
+    meals_from_ingredients: mealsFromIngredients,
+    meals_from_frozen: mealsFromFrozen,
     supplement_days_with_micros: supplementDays,
+    coverage: {
+      meals_with_micros: mealsWithMicros,
+      meals_total: entries.length,
+      meals_from_ingredients: mealsFromIngredients,
+      meals_from_frozen: mealsFromFrozen,
+      ingredient_rows_with_micros: ingredientRowsCovered,
+      ingredient_rows_total: ingredientRowsTotal,
+    },
+    daily_targets: { ...MICRO_DAILY_TARGETS },
+    avg_daily,
+    pct_of_daily_target,
     totals: rounded,
   };
 }

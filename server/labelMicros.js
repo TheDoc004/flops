@@ -25,7 +25,7 @@ function servingsMultiplier(ingRow, amount, unit) {
   return servingsForIngredientAmount(ingRow, amount, unit);
 }
 
-/** Stored blob -> flat { key: amount }, or null when absent/unusable. */
+/** Stored blob -> { values, confidence }, or null when absent/unusable. */
 function storedMicros(micros_json) {
   if (!micros_json) return null;
   try {
@@ -37,7 +37,11 @@ function storedMicros(micros_json) {
       const value = Number(micros[key]);
       if (Number.isFinite(value) && value > 0) out[key] = value;
     }
-    return Object.keys(out).length ? out : null;
+    if (!Object.keys(out).length) return null;
+    const confidence = ['low', 'medium', 'high'].includes(parsed?.confidence)
+      ? parsed.confidence
+      : null;
+    return { values: out, confidence };
   } catch {
     return null;
   }
@@ -49,16 +53,17 @@ function storedMicros(micros_json) {
  * @param {object} db
  * @param {Array<{label_ingredient_id?: number, amount?: number, unit?: string}>} rows
  * @param {number} userId authenticated owner of label_ingredients rows
- * @returns {{micros: object, covered: Array, uncovered: Array}}
+ * @returns {{micros: object, covered: Array, uncovered: Array, confidences: string[]}}
  *   `micros` is the summed label contribution; `uncovered` is what still needs
- *   estimating.
+ *   estimating; `confidences` are per covered ingredient blob.
  */
 function labelMicrosForRows(db, rows, userId) {
   const list = Array.isArray(rows) ? rows : [];
   const micros = {};
   const covered = [];
   const uncovered = [];
-  if (list.length === 0) return { micros, covered, uncovered };
+  const confidences = [];
+  if (list.length === 0) return { micros, covered, uncovered, confidences };
 
   const get = db.prepare(
     'SELECT id, micros_json, tracking_type, serving_quantity, grams_per_serving, unit_name, grams_per_unit FROM label_ingredients WHERE id = ? AND user_id = ?'
@@ -83,16 +88,17 @@ function labelMicrosForRows(db, rows, userId) {
       uncovered.push(row);
       continue;
     }
-    for (const [key, value] of Object.entries(stored)) {
+    for (const [key, value] of Object.entries(stored.values)) {
       micros[key] = (micros[key] || 0) + value * multiplier;
     }
+    if (stored.confidence) confidences.push(stored.confidence);
     covered.push(row);
   }
 
   for (const key of Object.keys(micros)) {
     micros[key] = Math.round(micros[key] * 100) / 100;
   }
-  return { micros, covered, uncovered };
+  return { micros, covered, uncovered, confidences };
 }
 
 /**

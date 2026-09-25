@@ -44,7 +44,14 @@ describe('servingsMultiplier', () => {
 
 describe('storedMicros', () => {
   it('reads the flat values out of a stored blob', () => {
-    expect(storedMicros(JSON.stringify({ micros: { iron_mg: 4.5, sodium_mg: 0 } }))).toEqual({ iron_mg: 4.5 });
+    expect(storedMicros(JSON.stringify({ micros: { iron_mg: 4.5, sodium_mg: 0 } }))).toEqual({
+      values: { iron_mg: 4.5 },
+      confidence: null,
+    });
+    expect(storedMicros(JSON.stringify({ micros: { iron_mg: 4.5 }, confidence: 'medium' }))).toEqual({
+      values: { iron_mg: 4.5 },
+      confidence: 'medium',
+    });
   });
   it('returns null for anything unusable', () => {
     expect(storedMicros(null)).toBeNull();
@@ -118,6 +125,11 @@ describe('labelMicrosForRows', () => {
 
   it('handles an empty list', () => {
     const db = createDb(':memory:');
-    expect(labelMicrosForRows(db, [], 1)).toEqual({ micros: {}, covered: [], uncovered: [] });
+    expect(labelMicrosForRows(db, [], 1)).toEqual({
+      micros: {},
+      covered: [],
+      uncovered: [],
+      confidences: [],
+    });
   });
 });

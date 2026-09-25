@@ -230,7 +230,9 @@ function createFlopsMcpServer(db, userId) {
     {
       title: 'Get micronutrient totals',
       description:
-        `${READ_ONLY} Sum micronutrients over a range from meal micros_json (scaled by servings) plus optional taken supplements (max 90 days).`,
+        `${READ_ONLY} Sum micronutrients over a range. Prefers live-scaled values from `
+        + 'ingredient-library micros_json (Part B); falls back to legacy frozen meal blobs. '
+        + 'Includes optional taken supplements. Returns coverage + avg_daily + pct_of_daily_target (max 90 days).',
       inputSchema: {
         start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

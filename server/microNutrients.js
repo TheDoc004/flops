@@ -44,6 +44,43 @@ const MICRO_KEYS = Object.keys(MICRO_UNITS);
 const MICRO_ESTIMATE_VERSION = 'v2'; // v2 = expanded key set (2026-07-30)
 
 /**
+ * Adult-male daily targets (mirror of client MICRO_NUTRIENTS). Used by MCP
+ * get_micronutrient_totals for %-of-target. Keep in sync with
+ * client/src/shared/config/microNutrients.js ADULT_MALE.
+ */
+const MICRO_DAILY_TARGETS = {
+  vitamin_a_mcg: 900,
+  thiamin_mg: 1.2,
+  riboflavin_mg: 1.3,
+  niacin_mg: 16,
+  pantothenic_acid_mg: 5,
+  vitamin_b6_mg: 1.3,
+  biotin_mcg: 30,
+  folate_mcg: 400,
+  vitamin_b12_mcg: 2.4,
+  vitamin_c_mg: 90,
+  vitamin_d_mcg: 20,
+  vitamin_e_mg: 15,
+  vitamin_k_mcg: 120,
+  calcium_mg: 1000,
+  copper_mg: 0.9,
+  iodine_mcg: 150,
+  iron_mg: 8,
+  magnesium_mg: 420,
+  manganese_mg: 2.3,
+  phosphorus_mg: 700,
+  potassium_mg: 3400,
+  selenium_mcg: 55,
+  sodium_mg: 2300,
+  zinc_mg: 11,
+  fiber_g: 38,
+  choline_mg: 550,
+  omega3_ala_g: 1.6,
+  omega3_epa_mg: 250,
+  omega3_dha_mg: 250,
+};
+
+/**
  * Build the structured micros blob to store on a log entry, or null. Whitelists
  * to known keys, clamps to finite non-negatives, and — crucially — returns null
  * unless at least one nutrient is > 0 (an empty/all-zero object is not a real
@@ -62,4 +99,10 @@ function buildMicrosBlob(microsRaw, { confidence, notes } = {}) {
   return { micros, confidence: conf, notes: safeNotes, version: MICRO_ESTIMATE_VERSION, estimatedAt: new Date().toISOString() };
 }
 
-module.exports = { MICRO_KEYS, MICRO_UNITS, MICRO_ESTIMATE_VERSION, buildMicrosBlob };
+module.exports = {
+  MICRO_KEYS,
+  MICRO_UNITS,
+  MICRO_ESTIMATE_VERSION,
+  MICRO_DAILY_TARGETS,
+  buildMicrosBlob,
+};

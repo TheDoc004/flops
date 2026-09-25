@@ -8,19 +8,8 @@ const {
   listRecipeIngredientLines,
   resolveReceiptForLog,
 } = require('../recipeIngredients');
-const { buildMicrosBlob } = require('../microNutrients');
-const {
-  microsJsonFromIngredients,
-  microsJsonPreferringLabels,
-  normalizedIngredientsFromRecipe,
-} = require('../mealMicros');
+const { withResolvedMicros } = require('../entryMicros');
 const { applyUsageMap, usageFromIngredientsJson, extractPreppedUsageFromRows } = require('../preppedBatchLib');
-
-/** Client-sent micros object (back-compat) -> micros_json string, or null. */
-function microsJsonFromClientMicros(body) {
-  const blob = buildMicrosBlob(body?.micros, { confidence: body?.micros_confidence, notes: body?.micros_notes });
-  return blob ? JSON.stringify(blob) : null;
-}
 
 /**
  * Normalize client-provided per-ingredient rows (AI Logger / Meal Builder) into
@@ -74,28 +63,9 @@ function ingredientsJsonFromRows(rows) {
 }
 
 /**
- * Resolve micros_json for a log entry (best-effort, synchronous-with-timeout).
- * Precedence — always the actual logged ingredients, never recipe defaults
- * once a resolved list exists:
- *   1. request ingredients (AI Logger / Meal Builder reviewed rows)
- *   2. resolvedRows (recipe log AFTER substitutions / edited amounts / removals)
- *   3. recipe default ingredients (fallback only when no resolved rows exist,
- *      e.g. a manual name-only recipe)
- *   4. client-sent micros object
+ * Part B — meal micros are live-derived on read from label_ingredients.micros_json.
+ * Writes no longer freeze AI estimates onto log_entries.micros_json.
  */
-async function resolveMicrosJson(db, body, recipe, resolvedRows = null, userId) {
-  if (Array.isArray(body?.ingredients) && body.ingredients.length) {
-    return microsJsonPreferringLabels(db, body.ingredients, userId);
-  }
-  if (Array.isArray(resolvedRows) && resolvedRows.length) {
-    return microsJsonPreferringLabels(db, resolvedRows, userId);
-  }
-  if (recipe && !recipe.is_quick_food) {
-    const ings = normalizedIngredientsFromRecipe(db, recipe);
-    if (ings.length) return microsJsonFromIngredients(ings);
-  }
-  return microsJsonFromClientMicros(body);
-}
 
 const ENTRY_JOIN = `
   SELECT le.id, le.recipe_id, le.date, le.time_min, le.servings, le.notes,
@@ -115,6 +85,15 @@ const ENTRY_JOIN = `
 `;
 
 const LOG_ALIVE = `COALESCE(le.is_deleted, 0) = 0`;
+
+function logEntryResponse(db, userId, id) {
+  const row = db.prepare(`${ENTRY_JOIN} WHERE le.id = ? AND le.user_id = ?`).get(id, userId);
+  return withResolvedMicros(db, userId, row);
+}
+
+function logEntriesResponse(db, userId, rows) {
+  return (rows || []).map(r => withResolvedMicros(db, userId, r));
+}
 
 function hasSlotPayload(body) {
   return !!(
@@ -292,7 +271,7 @@ function createLogRouter(db) {
       return res.status(500).json({ error: 'Failed to quick-log food' });
     }
 
-    res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ? AND le.user_id = ?`).get(entryId, userId));
+    res.status(201).json(logEntryResponse(db, userId, entryId));
   });
 
   /**
@@ -400,14 +379,9 @@ function createLogRouter(db) {
       return res.status(500).json({ error: 'Failed to log custom meal' });
     }
 
-    // Optional micronutrient estimate — ingredients (AI Logger / Meal Builder)
-    // or a client-sent micros object. Best-effort; never blocks the log.
-    const microsJson = await resolveMicrosJson(db, req.body, null, null, userId);
-    if (microsJson) {
-      db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ? AND user_id = ?').run(microsJson, entryId, userId);
-    }
-
-    res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ? AND le.user_id = ?`).get(entryId, userId));
+    // Part B: do not freeze micros onto the meal — History/MCP live-scale from
+    // ingredient library micros_json on read.
+    res.status(201).json(logEntryResponse(db, userId, entryId));
   });
 
   router.get('/days', (req, res) => {
@@ -458,16 +432,24 @@ function createLogRouter(db) {
     const { date, start, end } = req.query;
     if (date) {
       return res.json(
-        db.prepare(`${ENTRY_JOIN} WHERE le.user_id = ? AND le.date = ? AND ${LOG_ALIVE} ORDER BY le.id`).all(userId, date)
+        logEntriesResponse(
+          db,
+          userId,
+          db.prepare(`${ENTRY_JOIN} WHERE le.user_id = ? AND le.date = ? AND ${LOG_ALIVE} ORDER BY le.id`).all(userId, date)
+        )
       );
     }
     if (start && end) {
       return res.json(
-        db
-          .prepare(
-            `${ENTRY_JOIN} WHERE le.user_id = ? AND le.date >= ? AND le.date <= ? AND ${LOG_ALIVE} ORDER BY le.date, le.id`
-          )
-          .all(userId, start, end)
+        logEntriesResponse(
+          db,
+          userId,
+          db
+            .prepare(
+              `${ENTRY_JOIN} WHERE le.user_id = ? AND le.date >= ? AND le.date <= ? AND ${LOG_ALIVE} ORDER BY le.date, le.id`
+            )
+            .all(userId, start, end)
+        )
       );
     }
     res.status(400).json({ error: 'Provide ?date=YYYY-MM-DD or ?start=YYYY-MM-DD&end=YYYY-MM-DD' });
@@ -617,12 +599,7 @@ function createLogRouter(db) {
       throw e;
     }
 
-    const microsJson = await resolveMicrosJson(db, req.body, recipe, recipeRows, userId);
-    if (microsJson) {
-      db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ? AND user_id = ?').run(microsJson, entryId, userId);
-    }
-
-    res.status(201).json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ? AND le.user_id = ?`).get(entryId, userId));
+    res.status(201).json(logEntryResponse(db, userId, entryId));
   });
 
   /**
@@ -819,12 +796,8 @@ function createLogRouter(db) {
         throw e;
       }
 
-      const microsJson = await resolveMicrosJson(db, req.body, fullRecipe, recipeRows, userId);
-      if (microsJson) {
-        db.prepare('UPDATE log_entries SET micros_json = ? WHERE id = ? AND user_id = ?').run(microsJson, id, userId);
-      } else if (!recipeRows.length && !(Array.isArray(req.body?.ingredients) && req.body.ingredients.length)) {
-        db.prepare('UPDATE log_entries SET micros_json = NULL WHERE id = ? AND user_id = ?').run(id, userId);
-      }
+      // Part B: clear any legacy frozen meal micros; reads live-scale from ingredients.
+      db.prepare('UPDATE log_entries SET micros_json = NULL WHERE id = ? AND user_id = ?').run(id, userId);
     } else {
       try {
         db.transaction(() => {
@@ -856,7 +829,7 @@ function createLogRouter(db) {
       }
     }
 
-    res.json(db.prepare(`${ENTRY_JOIN} WHERE le.id = ? AND le.user_id = ?`).get(id, userId));
+    res.json(logEntryResponse(db, userId, id));
   });
 
   router.delete('/:id', (req, res) => {
