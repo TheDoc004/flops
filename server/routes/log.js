@@ -114,6 +114,8 @@ const ENTRY_JOIN = `
   LEFT JOIN recipes r ON le.recipe_id = r.id
 `;
 
+const LOG_ALIVE = `COALESCE(le.is_deleted, 0) = 0`;
+
 function hasSlotPayload(body) {
   return !!(
     (body?.slot_selections && typeof body.slot_selections === 'object' && !Array.isArray(body.slot_selections)) ||
@@ -432,7 +434,7 @@ function createLogRouter(db) {
                COUNT(*) AS entries_count
           FROM log_entries le
           LEFT JOIN recipes r ON r.id = le.recipe_id
-         WHERE le.user_id = ?
+         WHERE le.user_id = ? AND COALESCE(le.is_deleted, 0) = 0
          GROUP BY le.date
          ORDER BY le.date DESC
          LIMIT ? OFFSET ?
@@ -455,12 +457,16 @@ function createLogRouter(db) {
     const userId = uid(req);
     const { date, start, end } = req.query;
     if (date) {
-      return res.json(db.prepare(`${ENTRY_JOIN} WHERE le.user_id = ? AND le.date = ? ORDER BY le.id`).all(userId, date));
+      return res.json(
+        db.prepare(`${ENTRY_JOIN} WHERE le.user_id = ? AND le.date = ? AND ${LOG_ALIVE} ORDER BY le.id`).all(userId, date)
+      );
     }
     if (start && end) {
       return res.json(
         db
-          .prepare(`${ENTRY_JOIN} WHERE le.user_id = ? AND le.date >= ? AND le.date <= ? ORDER BY le.date, le.id`)
+          .prepare(
+            `${ENTRY_JOIN} WHERE le.user_id = ? AND le.date >= ? AND le.date <= ? AND ${LOG_ALIVE} ORDER BY le.date, le.id`
+          )
           .all(userId, start, end)
       );
     }
@@ -629,7 +635,9 @@ function createLogRouter(db) {
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: 'Invalid id' });
     }
-    const existing = db.prepare('SELECT * FROM log_entries WHERE id = ? AND user_id = ?').get(id, userId);
+    const existing = db
+      .prepare('SELECT * FROM log_entries WHERE id = ? AND user_id = ? AND COALESCE(is_deleted, 0) = 0')
+      .get(id, userId);
     if (!existing) {
       return res.status(404).json({ error: 'Log entry not found' });
     }
@@ -853,7 +861,9 @@ function createLogRouter(db) {
 
   router.delete('/:id', (req, res) => {
     const userId = uid(req);
-    const entry = db.prepare('SELECT * FROM log_entries WHERE id = ? AND user_id = ?').get(req.params.id, userId);
+    const entry = db
+      .prepare('SELECT * FROM log_entries WHERE id = ? AND user_id = ? AND COALESCE(is_deleted, 0) = 0')
+      .get(req.params.id, userId);
     if (!entry) {
       return res.status(404).json({ error: 'Log entry not found' });
     }
@@ -875,7 +885,9 @@ function createLogRouter(db) {
 
     db.transaction(() => {
       applyUsageMap(db, userId, usageFromEntry(entry), -1);
-      db.prepare('DELETE FROM log_entries WHERE id = ? AND user_id = ?').run(entry.id, userId);
+      db.prepare(
+        `UPDATE log_entries SET is_deleted = 1 WHERE id = ? AND user_id = ?`
+      ).run(entry.id, userId);
       if (entry.recipe_id != null) {
         const uses = Math.max(1, Math.ceil(Number(entry.servings) || 1));
         restoreLimited.run(uses, uses, entry.recipe_id, userId);

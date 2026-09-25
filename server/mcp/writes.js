@@ -210,13 +210,24 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
     const id = Number(working.label_ingredient_id);
     const row = db
       .prepare(
-        `SELECT id, name, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, micros_json
+        `SELECT id, name, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
+                micros_json, weight_basis
            FROM label_ingredients WHERE id = ? AND user_id = ?`
       )
       .get(id, userId);
     if (!row) return { error: `items[${index}]: label_ingredient_id ${id} not found` };
     if (!Number.isFinite(quantity_g) || quantity_g <= 0) {
       return { error: `items[${index}].quantity_g must be a positive number` };
+    }
+    const storedBasis = normalizeWeightBasis(row.weight_basis);
+    if (storedBasis && storedBasis !== weight_basis) {
+      return {
+        error:
+          `items[${index}]: weight_basis "${weight_basis}" conflicts with library ingredient ` +
+          `#${id} ("${row.name}") stored as "${storedBasis}". ` +
+          `Use the matching weight_basis (item overrides meal), or update_food_item first. ` +
+          `No raw↔cooked conversion is applied.`,
+      };
     }
     const macros = scaleFromServing(row, quantity_g);
     if (!macros) {
@@ -229,6 +240,8 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
         name: row.name,
         quantity_g,
         weight_basis,
+        resolved_weight_basis: weight_basis,
+        library_weight_basis: storedBasis || null,
         nutrition_source,
         macros,
         micros: parseJson(row.micros_json, null),
@@ -258,6 +271,7 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
         servings: s,
         quantity_g: Number.isFinite(quantity_g) ? quantity_g : null,
         weight_basis,
+        resolved_weight_basis: weight_basis,
         nutrition_source: 'database',
         macros: {
           calories: round((Number(recipe.calories) || 0) * s, 1),
@@ -302,6 +316,7 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
       name,
       quantity_g,
       weight_basis,
+      resolved_weight_basis: weight_basis,
       nutrition_source,
       per_100g: per100,
       macros: scalePer100g(per100, quantity_g),
@@ -379,12 +394,13 @@ function createLabelFromNewFood(db, userId, item) {
   return r.lastInsertRowid;
 }
 
-function fetchLogEntryById(db, userId, id) {
+function fetchLogEntryById(db, userId, id, { includeDeleted = false } = {}) {
   const raw = db
     .prepare(
       `SELECT le.id, le.recipe_id, le.date, le.time_min, le.servings, le.notes,
               le.ingredients_json, COALESCE(le.source, 'app') AS source,
               le.weight_basis, le.nutrition_source,
+              COALESCE(le.is_deleted, 0) AS is_deleted,
               COALESCE(le.recipe_name, r.name, 'Deleted recipe') AS recipe_name,
               COALESCE(le.serving_size, r.serving_size, '') AS serving_size,
               COALESCE(le.recipe_calories, r.calories, 0) AS recipe_calories,
@@ -395,13 +411,16 @@ function fetchLogEntryById(db, userId, id) {
               COALESCE(le.recipe_is_quick_food, r.is_quick_food, 0) AS recipe_is_quick_food
          FROM log_entries le
          LEFT JOIN recipes r ON le.recipe_id = r.id
-        WHERE le.id = ? AND le.user_id = ?`
+        WHERE le.id = ? AND le.user_id = ?
+          AND (? = 1 OR COALESCE(le.is_deleted, 0) = 0)`
     )
-    .get(id, userId);
+    .get(id, userId, includeDeleted ? 1 : 0);
   if (!raw) return null;
-  const day = reads.getDay(db, userId, raw.date);
-  const shaped = (day.meals || []).find(m => Number(m.id) === Number(id));
-  if (shaped) return shaped;
+  if (!raw.is_deleted) {
+    const day = reads.getDay(db, userId, raw.date);
+    const shaped = (day.meals || []).find(m => Number(m.id) === Number(id));
+    if (shaped) return shaped;
+  }
   return {
     id: raw.id,
     date: raw.date,
@@ -413,6 +432,8 @@ function fetchLogEntryById(db, userId, id) {
     source: raw.source,
     weight_basis: raw.weight_basis,
     nutrition_source: raw.nutrition_source,
+    is_deleted: Number(raw.is_deleted) === 1,
+    is_quick_food: raw.recipe_is_quick_food,
     per_serving: {
       calories: raw.recipe_calories,
       protein_g: raw.recipe_protein_g,
@@ -806,12 +827,16 @@ function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
       if (built.error) return { error: built.error };
       resolved = built.resolved;
       totals = built.totals;
-      warnings = built.warnings;
+      warnings = collectMealWarnings(built);
     }
+
+    const dayBefore = daySlice(reads.getDay(db, userId, before.date));
 
     const doWrite = () => {
       if (hasItems) {
-        db.prepare('DELETE FROM log_entries WHERE id = ? AND user_id = ?').run(id, userId);
+        db.prepare(
+          `UPDATE log_entries SET is_deleted = 1 WHERE id = ? AND user_id = ?`
+        ).run(id, userId);
         const ids = insertMealFromResolved(db, userId, {
           date, name, meal_slot, time_min, weight_basis, resolved, totals,
         });
@@ -821,9 +846,28 @@ function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
           replaced_log_entry_id: id,
           label_ingredient_ids: ids.label_ingredient_ids,
         };
+        const dayAfter = daySlice(reads.getDay(db, userId, date));
         const response = {
-          op: OPS.update_meal_entry, before, after, result_row_ids, warnings,
-          note: 'Item changes create a new log_entry_id; previous id was removed.',
+          op: OPS.update_meal_entry,
+          before,
+          after,
+          day_before: dayBefore,
+          day_after: dayAfter,
+          items_resolved: resolved.map(it => ({
+            kind: it.kind,
+            name: it.name,
+            label_ingredient_id: it.label_ingredient_id || null,
+            recipe_id: it.recipe_id || null,
+            quantity_g: it.quantity_g ?? null,
+            servings: it.servings ?? null,
+            resolved_weight_basis: it.resolved_weight_basis || it.weight_basis,
+            macros: it.macros,
+          })),
+          result_row_ids,
+          warnings,
+          note:
+            'Item changes soft-delete the previous log_entry_id and insert a new row; ' +
+            'revert_mcp_write restores the old id.',
         };
         if (!skipAudit) {
           response.audit_id = recordAudit(db, userId, {
@@ -835,11 +879,20 @@ function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
 
       db.prepare(
         `UPDATE log_entries SET date = ?, time_min = ?, notes = ?, recipe_name = ?, weight_basis = ?
-          WHERE id = ? AND user_id = ?`
+          WHERE id = ? AND user_id = ? AND COALESCE(is_deleted, 0) = 0`
       ).run(date, time_min, meal_slot ? `slot:${meal_slot}` : null, name, weight_basis, id, userId);
       const after = fetchLogEntryById(db, userId, id);
       const result_row_ids = { log_entry_ids: [id] };
-      const response = { op: OPS.update_meal_entry, before, after, result_row_ids, warnings: [] };
+      const dayAfter = daySlice(reads.getDay(db, userId, date));
+      const response = {
+        op: OPS.update_meal_entry,
+        before,
+        after,
+        day_before: dayBefore,
+        day_after: dayAfter,
+        result_row_ids,
+        warnings: [],
+      };
       if (!skipAudit) {
         response.audit_id = recordAudit(db, userId, {
           op: OPS.update_meal_entry, operationId, before, after, result_row_ids, warnings: [], response,
@@ -859,12 +912,24 @@ function deleteMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
     const before = fetchLogEntryById(db, userId, id);
     if (!before) return { error: `log_entry_id ${id} not found` };
 
+    const dayBefore = daySlice(reads.getDay(db, userId, before.date));
+
     const doWrite = () => {
-      db.prepare('DELETE FROM log_entries WHERE id = ? AND user_id = ?').run(id, userId);
+      db.prepare(
+        `UPDATE log_entries SET is_deleted = 1 WHERE id = ? AND user_id = ?`
+      ).run(id, userId);
       const result_row_ids = { deleted_log_entry_ids: [id] };
+      const dayAfter = daySlice(reads.getDay(db, userId, before.date));
       const response = {
-        op: OPS.delete_meal_entry, before, after: null, result_row_ids, warnings: [],
-        permanent: true, message: 'Hard delete — not revertible.',
+        op: OPS.delete_meal_entry,
+        before,
+        after: null,
+        day_before: dayBefore,
+        day_after: dayAfter,
+        result_row_ids,
+        warnings: [],
+        soft_deleted: true,
+        message: 'Soft-deleted. Use revert_mcp_write(audit_id) to restore.',
       };
       if (!skipAudit) {
         response.audit_id = recordAudit(db, userId, {
@@ -881,18 +946,51 @@ function shapeSupplement(db, userId, id) {
   const row = db
     .prepare(
       `SELECT id, name, dose_text, label_serving_qty, label_serving_unit, dose_qty,
-              calories, protein_g, carbs_g, fat_g, created_via
+              calories, protein_g, carbs_g, fat_g, micros_json, counts_toward_macros,
+              is_deleted, created_via
          FROM supplements WHERE id = ? AND user_id = ?`
     )
     .get(id, userId);
   if (!row) return null;
+  let micros = null;
+  if (row.micros_json) {
+    try {
+      const p = typeof row.micros_json === 'string' ? JSON.parse(row.micros_json) : row.micros_json;
+      if (p?.micros && typeof p.micros === 'object') micros = p.micros;
+    } catch {
+      micros = null;
+    }
+  }
+  const { micros_json, ...rest } = row;
   return {
-    ...row,
+    ...rest,
+    is_deleted: Number(row.is_deleted) === 1,
     dose_multiplier: doseMultiplier({
       label_serving_qty: row.label_serving_qty,
       dose_qty: row.dose_qty,
     }),
+    per_label_serving: {
+      calories: row.calories,
+      protein_g: row.protein_g,
+      carbs_g: row.carbs_g,
+      fat_g: row.fat_g,
+      micros,
+    },
   };
+}
+
+function normalizeMicrosPatch(raw) {
+  if (raw === null) return { micros_json: null };
+  if (raw == null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { error: 'micros must be an object of nutrient → amount, or null to clear' };
+  }
+  const { buildMicrosBlob } = require('../microNutrients');
+  const blob = buildMicrosBlob(raw, {
+    confidence: 'high',
+    notes: 'Updated via MCP (label data)',
+  });
+  return { micros_json: blob ? JSON.stringify(blob) : null };
 }
 
 function updateSupplement(db, userId, args = {}, { skipAudit = false } = {}) {
@@ -923,19 +1021,75 @@ function updateSupplement(db, userId, args = {}, { skipAudit = false } = {}) {
       return { error: 'label_serving_qty must be a positive number' };
     }
 
+    const nutritionPatch = {
+      calories: args.calories !== undefined ? Number(args.calories) : before.calories,
+      protein_g: args.protein_g !== undefined ? Number(args.protein_g) : before.protein_g,
+      carbs_g: args.carbs_g !== undefined ? Number(args.carbs_g) : before.carbs_g,
+      fat_g: args.fat_g !== undefined ? Number(args.fat_g) : before.fat_g,
+    };
+    for (const [k, v] of Object.entries(nutritionPatch)) {
+      if (args[k] !== undefined && (!Number.isFinite(v) || v < 0)) {
+        return { error: `${k} must be a non-negative number` };
+      }
+    }
+
+    let microsJson = null;
+    let microsTouched = false;
+    if (Object.prototype.hasOwnProperty.call(args, 'micros')) {
+      microsTouched = true;
+      const m = normalizeMicrosPatch(args.micros);
+      if (m.error) return { error: m.error };
+      microsJson = m.micros_json;
+    }
+
+    const nutritionTouched =
+      args.calories !== undefined ||
+      args.protein_g !== undefined ||
+      args.carbs_g !== undefined ||
+      args.fat_g !== undefined ||
+      microsTouched;
+
     const takenDate = args.taken_date ? isoDateOrNull(args.taken_date) : null;
     if (args.taken_date && !takenDate) return { error: 'taken_date must be YYYY-MM-DD' };
     const hasTaken = Object.prototype.hasOwnProperty.call(args, 'taken');
 
     const doWrite = () => {
-      db.prepare(
-        `UPDATE supplements
-            SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?
-          WHERE id = ? AND user_id = ?`
-      ).run(
-        afterDose.dose_text, afterDose.dose_qty, afterDose.label_serving_qty,
-        afterDose.label_serving_unit, id, userId
-      );
+      if (nutritionTouched) {
+        if (microsTouched) {
+          db.prepare(
+            `UPDATE supplements
+                SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?,
+                    calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, micros_json = ?
+              WHERE id = ? AND user_id = ?`
+          ).run(
+            afterDose.dose_text, afterDose.dose_qty, afterDose.label_serving_qty,
+            afterDose.label_serving_unit,
+            nutritionPatch.calories, nutritionPatch.protein_g, nutritionPatch.carbs_g, nutritionPatch.fat_g,
+            microsJson, id, userId
+          );
+        } else {
+          db.prepare(
+            `UPDATE supplements
+                SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?,
+                    calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?
+              WHERE id = ? AND user_id = ?`
+          ).run(
+            afterDose.dose_text, afterDose.dose_qty, afterDose.label_serving_qty,
+            afterDose.label_serving_unit,
+            nutritionPatch.calories, nutritionPatch.protein_g, nutritionPatch.carbs_g, nutritionPatch.fat_g,
+            id, userId
+          );
+        }
+      } else {
+        db.prepare(
+          `UPDATE supplements
+              SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?
+            WHERE id = ? AND user_id = ?`
+        ).run(
+          afterDose.dose_text, afterDose.dose_qty, afterDose.label_serving_qty,
+          afterDose.label_serving_unit, id, userId
+        );
+      }
 
       let taken = null;
       if (hasTaken && takenDate) {
@@ -949,7 +1103,18 @@ function updateSupplement(db, userId, args = {}, { skipAudit = false } = {}) {
 
       const after = shapeSupplement(db, userId, id);
       const result_row_ids = { supplement_ids: [id] };
-      const response = { op: OPS.update_supplement, before, after, taken, result_row_ids, warnings: [] };
+      const response = {
+        op: OPS.update_supplement,
+        before,
+        after,
+        taken,
+        result_row_ids,
+        warnings: [],
+        historical_totals_recalculate: nutritionTouched,
+        note: nutritionTouched
+          ? 'Per-label-serving macros/micros changed. Past days that took this supplement recalculate on read (live dose scaling) — meal logs are unaffected.'
+          : undefined,
+      };
       if (!skipAudit) {
         response.audit_id = recordAudit(db, userId, {
           op: OPS.update_supplement, operationId, before, after, result_row_ids, warnings: [], response,
@@ -1080,7 +1245,12 @@ function revertOneResult(db, userId, result) {
   const op = result?.op;
   const ids = result?.result_row_ids || {};
   if (op === OPS.delete_meal_entry) {
-    throw Object.assign(new Error('Hard deletes are not revertible'), { code: 'NOT_REVERTIBLE' });
+    for (const id of ids.deleted_log_entry_ids || []) {
+      db.prepare(
+        `UPDATE log_entries SET is_deleted = 0 WHERE id = ? AND user_id = ?`
+      ).run(id, userId);
+    }
+    return;
   }
   if (op === OPS.add_food_item) {
     for (const id of ids.label_ingredient_ids || [result.label_ingredient_id]) {
@@ -1109,30 +1279,73 @@ function revertOneResult(db, userId, result) {
   }
   if (op === OPS.update_supplement && result.before) {
     const b = result.before;
+    const microsJson =
+      b.per_label_serving?.micros != null
+        ? JSON.stringify({
+            micros: b.per_label_serving.micros,
+            confidence: 'high',
+            notes: 'Restored via MCP revert',
+          })
+        : null;
     db.prepare(
       `UPDATE supplements
-          SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?
+          SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?,
+              calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, micros_json = ?
         WHERE id = ? AND user_id = ?`
-    ).run(b.dose_text, b.dose_qty, b.label_serving_qty, b.label_serving_unit, b.id, userId);
+    ).run(
+      b.dose_text,
+      b.dose_qty,
+      b.label_serving_qty,
+      b.label_serving_unit,
+      b.calories ?? b.per_label_serving?.calories ?? 0,
+      b.protein_g ?? b.per_label_serving?.protein_g ?? 0,
+      b.carbs_g ?? b.per_label_serving?.carbs_g ?? 0,
+      b.fat_g ?? b.per_label_serving?.fat_g ?? 0,
+      microsJson,
+      b.id,
+      userId
+    );
     return;
   }
   if (op === OPS.update_meal_entry) {
     for (const id of ids.log_entry_ids || []) {
-      db.prepare('DELETE FROM log_entries WHERE id = ? AND user_id = ?').run(id, userId);
+      db.prepare(
+        `UPDATE log_entries SET is_deleted = 1 WHERE id = ? AND user_id = ?`
+      ).run(id, userId);
     }
     for (const id of ids.label_ingredient_ids || []) {
       db.prepare(
         `DELETE FROM label_ingredients WHERE id = ? AND user_id = ? AND created_via = 'mcp'`
       ).run(id, userId);
     }
-    if (ids.replaced_log_entry_id || result.before) {
-      if (result.before) restoreMealFromBefore(db, userId, result.before);
+    if (ids.replaced_log_entry_id) {
+      db.prepare(
+        `UPDATE log_entries SET is_deleted = 0 WHERE id = ? AND user_id = ?`
+      ).run(ids.replaced_log_entry_id, userId);
+    } else if (result.before && !ids.replaced_log_entry_id) {
+      // Metadata-only update: restore fields on the same id
+      const b = result.before;
+      db.prepare(
+        `UPDATE log_entries
+            SET date = ?, time_min = ?, notes = ?, recipe_name = ?, weight_basis = ?, is_deleted = 0
+          WHERE id = ? AND user_id = ?`
+      ).run(
+        b.date,
+        b.time_min ?? null,
+        b.notes ?? null,
+        b.recipe_name,
+        b.weight_basis || null,
+        b.id,
+        userId
+      );
     }
     return;
   }
   if (op === OPS.log_meal) {
     for (const id of ids.log_entry_ids || []) {
-      db.prepare('DELETE FROM log_entries WHERE id = ? AND user_id = ?').run(id, userId);
+      db.prepare(
+        `UPDATE log_entries SET is_deleted = 1 WHERE id = ? AND user_id = ?`
+      ).run(id, userId);
     }
     for (const id of ids.label_ingredient_ids || []) {
       db.prepare(
@@ -1155,23 +1368,30 @@ function revertMcpWrite(db, userId, args = {}) {
   }
 
   const op = row.op || row.kind;
-  if (op === OPS.delete_meal_entry) {
-    return {
-      error: 'Hard deletes are not revertible — the meal row is gone.',
-      code: 'NOT_REVERTIBLE',
-    };
-  }
-
   const before = parseJson(row.before_json, null);
   const after = parseJson(row.after_json, null);
   const result_row_ids = parseJson(row.result_row_ids_json, {});
   const storedResponse = parseJson(row.response_json, null);
 
+  // Legacy hard-delete audits (pre soft-delete) cannot be restored.
+  if (op === OPS.delete_meal_entry) {
+    const ids = result_row_ids.deleted_log_entry_ids || [];
+    const stillThere = ids.filter(id =>
+      db.prepare('SELECT id FROM log_entries WHERE id = ? AND user_id = ?').get(id, userId)
+    );
+    if (!stillThere.length && before) {
+      return {
+        error:
+          'This delete was a hard delete (pre soft-delete). The meal row is gone and cannot be restored.',
+        code: 'NOT_REVERTIBLE',
+      };
+    }
+  }
+
   try {
     const run = db.transaction(() => {
       if (op === OPS.write_batch) {
         const results = storedResponse?.results || [];
-        // Reverse in reverse order
         for (let i = results.length - 1; i >= 0; i--) {
           revertOneResult(db, userId, results[i]);
         }
@@ -1228,6 +1448,7 @@ function listRecentMcpWrites(db, userId, daysRaw = 7) {
               source, weight_basis, nutrition_source, servings
          FROM log_entries
         WHERE user_id = ? AND source = 'mcp' AND date >= ?
+          AND COALESCE(is_deleted, 0) = 0
         ORDER BY date DESC, id DESC`
     )
     .all(userId, since);
@@ -1271,13 +1492,19 @@ function bulkDeleteMcpLogEntries(db, userId, ids) {
   if (!list.length) return { deleted: 0 };
   const placeholders = list.map(() => '?').join(',');
   const owned = db
-    .prepare(`SELECT id FROM log_entries WHERE user_id = ? AND source = 'mcp' AND id IN (${placeholders})`)
+    .prepare(
+      `SELECT id FROM log_entries
+        WHERE user_id = ? AND source = 'mcp' AND COALESCE(is_deleted, 0) = 0
+          AND id IN (${placeholders})`
+    )
     .all(userId, ...list)
     .map(r => r.id);
   if (!owned.length) return { deleted: 0, skipped: list.length };
   const ph2 = owned.map(() => '?').join(',');
-  const r = db.prepare(`DELETE FROM log_entries WHERE user_id = ? AND id IN (${ph2})`).run(userId, ...owned);
-  return { deleted: r.changes, ids: owned };
+  const r = db
+    .prepare(`UPDATE log_entries SET is_deleted = 1 WHERE user_id = ? AND id IN (${ph2})`)
+    .run(userId, ...owned);
+  return { deleted: r.changes, ids: owned, soft_deleted: true };
 }
 
 function bulkDeleteMcpFoods(db, userId, ids) {

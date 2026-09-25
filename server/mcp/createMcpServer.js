@@ -12,7 +12,9 @@ const WRITE_NOW =
   + 'After writing, show the user what changed. '
   + 'If nutrition_source is "estimate", say plainly that the numbers were inferred. '
   + 'Rows are permanently flagged source=mcp (visible in the app). '
-  + 'Deletes via delete_meal_entry are permanent and NOT revertible; other writes can use revert_mcp_write(audit_id).';
+  + 'Meal deletes soft-delete (is_deleted=1) and are undoable via revert_mcp_write(audit_id). '
+  + 'weight_basis: item-level overrides meal-level; conflict with a library ingredient\'s '
+  + 'stored weight_basis is refused (no raw↔cooked conversion).';
 
 const mealItemSchema = z.object({
   ref: z.string().optional().describe('Local batch ref from a prior add_food_item in write_batch'),
@@ -27,7 +29,10 @@ const mealItemSchema = z.object({
   fat_g_per_100g: z.number().nonnegative().optional(),
   fiber_g_per_100g: z.number().nonnegative().optional(),
   nutrition_source: z.enum(['label', 'database', 'estimate']),
-  weight_basis: z.enum(['raw', 'cooked']).optional(),
+  weight_basis: z
+    .enum(['raw', 'cooked'])
+    .optional()
+    .describe('Overrides meal weight_basis for this item. Must match library ingredient if set.'),
   micros_per_100g: z.record(z.string(), z.number()).optional(),
 });
 
@@ -55,7 +60,8 @@ function createFlopsMcpServer(db, userId) {
     {
       title: 'Get day summary',
       description:
-        `${READ_ONLY} One calendar day: meals (macros + micros), meal totals, supplements taken, combined totals, goals for that weekday, vs-goal status, and body weight if logged.`,
+        `${READ_ONLY} One calendar day: meals (each with id + ingredients including label_ingredient_id when present), `
+        + 'meal totals, supplements taken, combined totals, goals for that weekday, vs-goal status, and body weight if logged.',
       inputSchema: {
         date: z
           .string()
@@ -73,7 +79,7 @@ function createFlopsMcpServer(db, userId) {
     {
       title: 'Get log range',
       description:
-        `${READ_ONLY} Meal log over a date range (max 90 days). By default returns daily macro summaries; set include_entries true for per-meal detail (keep ranges short).`,
+        `${READ_ONLY} Meal log over a date range (max 90 days). By default returns daily macro summaries; set include_entries true for per-meal detail with ids (keep ranges short).`,
       inputSchema: {
         start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date YYYY-MM-DD'),
         end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date YYYY-MM-DD'),
@@ -261,6 +267,50 @@ function createFlopsMcpServer(db, userId) {
   );
 
   server.registerTool(
+    'search_ingredients',
+    {
+      title: 'Search ingredients',
+      description:
+        `${READ_ONLY} Search the ingredient library by name or brand substring. `
+        + 'Returns label_ingredient_id, serving macros, derived per_100g when possible, '
+        + 'weight_basis, nutrition_source, and whether micros exist. Prefer these IDs in log_meal '
+        + 'instead of creating duplicate foods.',
+      inputSchema: {
+        query: z.string().optional().describe('Name or brand substring (case-insensitive)'),
+        limit: z.number().int().min(1).max(50).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ query, limit }) =>
+      reads.textResult({
+        query: query || '',
+        ingredients: reads.searchIngredients(db, userId, query, { limit }),
+      })
+  );
+
+  server.registerTool(
+    'list_supplements',
+    {
+      title: 'List supplements',
+      description:
+        `${READ_ONLY} Full supplement library (not just taken days): IDs, dose fields, `
+        + 'per-label-serving macros/micros, active/archived (is_deleted). '
+        + 'Use supplement_id with update_supplement.',
+      inputSchema: {
+        include_deleted: z
+          .boolean()
+          .optional()
+          .describe('Include soft-deleted/archived supplements (default false)'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ include_deleted }) =>
+      reads.textResult({
+        supplements: reads.listSupplements(db, userId, { include_deleted: !!include_deleted }),
+      })
+  );
+
+  server.registerTool(
     'get_gym_today',
     {
       title: 'Get gym day',
@@ -307,8 +357,10 @@ function createFlopsMcpServer(db, userId) {
       title: 'Log meal',
       description:
         `${WRITE_NOW} Log a meal immediately. Items: label_ingredient_id+quantity_g, recipe_id+servings, `
-        + 'or new per-100g food. Requires weight_basis and per-item nutrition_source. '
-        + 'Returns the created entry plus the day\'s updated totals and vs_goals.',
+        + 'or new per-100g food. Requires meal weight_basis; item weight_basis overrides it. '
+        + 'If an item cites a library ingredient whose stored weight_basis disagrees, the write is refused. '
+        + 'Requires per-item nutrition_source. Returns the entry, resolved_weight_basis per item, and day totals/vs_goals. '
+        + 'Discover ingredient IDs with search_ingredients.',
       inputSchema: {
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         name: z.string().optional(),
@@ -385,8 +437,9 @@ function createFlopsMcpServer(db, userId) {
     {
       title: 'Update meal entry',
       description:
-        `${WRITE_NOW} Change date/slot/name or replace items on a log entry. Returns before/after. `
-        + 'Replacing items may assign a new log_entry_id.',
+        `${WRITE_NOW} Change date/slot/name or replace items on a log entry (use id from get_day / get_log_range). `
+        + 'Returns before/after plus day_before/day_after totals. '
+        + 'Replacing items soft-deletes the old row and inserts a new log_entry_id (revert restores the old id).',
       inputSchema: {
         log_entry_id: z.number().int().positive(),
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -407,7 +460,8 @@ function createFlopsMcpServer(db, userId) {
     {
       title: 'Delete meal entry',
       description:
-        `${WRITE_NOW} HARD delete a log entry. Permanent and not revertible — the row is gone.`,
+        `${WRITE_NOW} Soft-delete a log entry (is_deleted=1). Row stays for undo; day totals exclude it. `
+        + 'Revert with revert_mcp_write(audit_id). Returns day_before/day_after.',
       inputSchema: {
         log_entry_id: z.number().int().positive(),
         operation_id: z.string().optional(),
@@ -422,14 +476,26 @@ function createFlopsMcpServer(db, userId) {
     {
       title: 'Update supplement',
       description:
-        `${WRITE_NOW} Update dose_text / dose_qty / label serving (dose_multiplier = dose_qty/label_serving_qty). `
-        + 'Optional taken + taken_date for the checklist. Returns before/after including dose_multiplier.',
+        `${WRITE_NOW} Update dose fields and/or per-label-serving macros/micros. `
+        + 'dose_multiplier = dose_qty/label_serving_qty. '
+        + 'Changing macros/micros recalculates historical day totals for days that took this supplement '
+        + '(live scaling on read — meal logs are unchanged). Returns before/after; '
+        + 'historical_totals_recalculate flags nutrition edits. Use list_supplements for IDs.',
       inputSchema: {
         supplement_id: z.number().int().positive(),
         dose_text: z.string().optional(),
         dose_qty: z.number().positive().optional(),
         label_serving_qty: z.number().positive().optional(),
         label_serving_unit: z.string().optional(),
+        calories: z.number().nonnegative().optional().describe('Per label serving'),
+        protein_g: z.number().nonnegative().optional().describe('Per label serving'),
+        carbs_g: z.number().nonnegative().optional().describe('Per label serving'),
+        fat_g: z.number().nonnegative().optional().describe('Per label serving'),
+        micros: z
+          .record(z.string(), z.number())
+          .nullable()
+          .optional()
+          .describe('Per label serving micros object, or null to clear'),
         taken: z.boolean().optional(),
         taken_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         operation_id: z.string().optional(),
@@ -461,8 +527,8 @@ function createFlopsMcpServer(db, userId) {
       title: 'Revert MCP write',
       description:
         `${WRITE_NOW} Undo a prior MCP write by audit_id from list_recent_mcp_writes. `
-        + 'Creates are removed; updates restore the before snapshot. '
-        + 'Hard deletes (delete_meal_entry) cannot be reverted — returns a clear error.',
+        + 'Creates are soft-removed; updates restore the before snapshot; soft-deleted meals are restored. '
+        + 'Legacy hard deletes (if any predate soft-delete) return NOT_REVERTIBLE.',
       inputSchema: {
         audit_id: z.number().int().positive(),
         operation_id: z.string().optional(),

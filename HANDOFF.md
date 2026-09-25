@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-09-25 (MCP Phase 3 B+C: guards, revert, descriptions)_
+_Last updated: 2026-09-25 (MCP lookup gaps + soft-delete meals)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -22,15 +22,16 @@ _current-state_ companion to it.
 
 ## Where Diego left off (read this first)
 
-**Status:** Active. Nutrition daily driver + Log Meal UX; **MCP reads + direct writes**
-with duplicate refuse, warnings, and `revert_mcp_write`.
+**Status:** Active. Nutrition daily driver + Log Meal UX; **MCP Phase 3** direct writes
+plus ingredient/supplement lookup, weight_basis rules, and soft-deleted meals.
 
-**Last active work stream:** **FLOPS MCP Phase 3 complete** — direct writes + guards +
-revert. See [`docs/mcp-connector.md`](docs/mcp-connector.md).
+**Last active work stream:** **MCP lookup + soft-delete gaps** — `search_ingredients`,
+`list_supplements`, extended `update_supplement` nutrition, weight_basis conflict refuse,
+`log_entries.is_deleted` soft-delete (MCP + app). See [`docs/mcp-connector.md`](docs/mcp-connector.md).
 
 **When you return / next picks (optional):**
 
-1. **Claude connector** — after Render redeploy, exercise `log_meal` / `write_batch` / revert.
+1. **Claude connector** — after Render redeploy, exercise `search_ingredients` → `log_meal`, soft-delete revert.
 2. **Gym UX / progressive overload** — agent can already call `get_gym_progress`.
 3. **Multi-user MCP tokens** — when more than one FLOPS account needs the connector.
 4. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).

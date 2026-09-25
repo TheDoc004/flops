@@ -734,6 +734,19 @@ function createDb(dbPath) {
   if (logColsMcp.length && !logColsMcp.includes('nutrition_source')) {
     db.exec(`ALTER TABLE log_entries ADD COLUMN nutrition_source TEXT`);
   }
+  // Soft-delete for meal log rows (MCP + app). Reads must filter is_deleted = 0.
+  if (logColsMcp.length && !logColsMcp.includes('is_deleted')) {
+    db.exec(`ALTER TABLE log_entries ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0`);
+  }
+  // user_id is added by auth migrations; only index when present.
+  const logColsAfterSoft = db.prepare('PRAGMA table_info(log_entries)').all().map(c => c.name);
+  if (logColsAfterSoft.includes('user_id') && logColsAfterSoft.includes('is_deleted')) {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_log_entries_user_date_alive
+        ON log_entries(user_id, date)
+        WHERE COALESCE(is_deleted, 0) = 0
+    `);
+  }
 
   const labelColsMcp = db.prepare('PRAGMA table_info(label_ingredients)').all().map(c => c.name);
   if (labelColsMcp.length && !labelColsMcp.includes('created_via')) {

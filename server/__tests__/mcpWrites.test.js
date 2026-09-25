@@ -104,7 +104,7 @@ describe('MCP Phase 3 direct writes', () => {
         {
           op: 'log_meal',
           date: '2026-09-25',
-          weight_basis: 'cooked',
+          weight_basis: 'raw',
           name: 'Movie snacks',
           items: [
             { ref: 'popcorn', quantity_g: 40, nutrition_source: 'database' },
@@ -193,7 +193,7 @@ describe('MCP Phase 3 direct writes', () => {
     );
   });
 
-  it('delete_meal_entry hard-deletes', () => {
+  it('delete_meal_entry soft-deletes and is revertible', () => {
     const logged = writes.logMeal(db, userId, {
       date: '2026-09-28',
       weight_basis: 'cooked',
@@ -207,8 +207,76 @@ describe('MCP Phase 3 direct writes', () => {
     });
     const id = logged.entry.id;
     const del = writes.deleteMealEntry(db, userId, { log_entry_id: id });
-    expect(del.permanent).toBe(true);
-    expect(db.prepare('SELECT id FROM log_entries WHERE id = ?').get(id)).toBeUndefined();
+    expect(del.soft_deleted).toBe(true);
+    expect(del.permanent).toBeUndefined();
+    const row = db.prepare('SELECT is_deleted FROM log_entries WHERE id = ?').get(id);
+    expect(row.is_deleted).toBe(1);
+    expect(reads.getDay(db, userId, '2026-09-28').meals).toHaveLength(0);
+
+    const rev = writes.revertMcpWrite(db, userId, { audit_id: del.audit_id });
+    expect(rev.ok).toBe(true);
+    expect(reads.getDay(db, userId, '2026-09-28').meals[0].id).toBe(id);
+  });
+
+  it('weight_basis item overrides meal; library conflict is refused', () => {
+    db.prepare('UPDATE label_ingredients SET weight_basis = ? WHERE id = ?').run('raw', ingredientId);
+    const ok = writes.logMeal(db, userId, {
+      date: '2026-09-26',
+      weight_basis: 'cooked',
+      items: [
+        {
+          label_ingredient_id: ingredientId,
+          quantity_g: 100,
+          nutrition_source: 'database',
+          weight_basis: 'raw',
+        },
+      ],
+    });
+    expect(ok.error).toBeUndefined();
+    expect(ok.entry.ingredients[0].weight_basis).toBe('raw');
+
+    const bad = writes.logMeal(db, userId, {
+      date: '2026-09-26',
+      weight_basis: 'cooked',
+      items: [
+        {
+          label_ingredient_id: ingredientId,
+          quantity_g: 50,
+          nutrition_source: 'database',
+        },
+      ],
+    });
+    expect(bad.error).toMatch(/conflicts with library/);
+  });
+
+  it('search_ingredients and list_supplements return library rows', () => {
+    const foods = reads.searchIngredients(db, userId, 'chicken');
+    expect(foods.some(f => f.id === ingredientId)).toBe(true);
+    expect(foods[0].per_serving).toBeTruthy();
+    expect(foods[0].per_100g).toBeTruthy();
+
+    const sups = reads.listSupplements(db, userId);
+    expect(sups.some(s => s.id === supplementId)).toBe(true);
+    expect(sups[0].per_label_serving).toBeTruthy();
+  });
+
+  it('update_supplement can patch per-serving macros/micros with historical flag', () => {
+    const r = writes.updateSupplement(db, userId, {
+      supplement_id: supplementId,
+      calories: 10,
+      micros: { vitamin_d_mcg: 25 },
+    });
+    expect(r.error).toBeUndefined();
+    expect(r.historical_totals_recalculate).toBe(true);
+    expect(r.after.calories).toBe(10);
+    expect(r.after.per_label_serving.micros.vitamin_d_mcg).toBe(25);
+
+    const rev = writes.revertMcpWrite(db, userId, { audit_id: r.audit_id });
+    expect(rev.ok).toBe(true);
+    const restored = writes.updateSupplement
+      ? db.prepare('SELECT calories FROM supplements WHERE id = ?').get(supplementId)
+      : null;
+    expect(restored.calories).toBe(0);
   });
 
   it('add_food_item writes immediately', () => {

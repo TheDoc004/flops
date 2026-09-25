@@ -45,6 +45,10 @@ const ENTRY_JOIN = `
   LEFT JOIN recipes r ON le.recipe_id = r.id
 `;
 
+/** Soft-deleted meals stay in the row but must never appear in day/history totals. */
+const LOG_ALIVE = `COALESCE(le.is_deleted, 0) = 0`;
+const LOG_ALIVE_BARE = `COALESCE(is_deleted, 0) = 0`;
+
 function parseMicrosBlob(micros_json) {
   if (!micros_json) return null;
   try {
@@ -153,13 +157,13 @@ function shapeEntry(row) {
 function getLogEntries(db, userId, { date, start, end } = {}) {
   if (date) {
     return db
-      .prepare(`${ENTRY_JOIN} WHERE le.user_id = ? AND le.date = ? ORDER BY le.id`)
+      .prepare(`${ENTRY_JOIN} WHERE le.user_id = ? AND le.date = ? AND ${LOG_ALIVE} ORDER BY le.id`)
       .all(userId, date)
       .map(shapeEntry);
   }
   return db
     .prepare(
-      `${ENTRY_JOIN} WHERE le.user_id = ? AND le.date >= ? AND le.date <= ? ORDER BY le.date, le.id`
+      `${ENTRY_JOIN} WHERE le.user_id = ? AND le.date >= ? AND le.date <= ? AND ${LOG_ALIVE} ORDER BY le.date, le.id`
     )
     .all(userId, start, end)
     .map(shapeEntry);
@@ -176,7 +180,7 @@ function getDailySummaries(db, userId, start, end) {
               ROUND(SUM(le.servings * COALESCE(le.recipe_fat_g, r.fat_g, 0)), 2) AS fat_g
          FROM log_entries le
          LEFT JOIN recipes r ON le.recipe_id = r.id
-        WHERE le.user_id = ? AND le.date >= ? AND le.date <= ?
+        WHERE le.user_id = ? AND le.date >= ? AND le.date <= ? AND ${LOG_ALIVE}
         GROUP BY le.date
         ORDER BY le.date`
     )
@@ -346,7 +350,7 @@ function getMicronutrientTotals(db, userId, start, end, { includeSupplements = t
   const entries = db
     .prepare(
       `SELECT servings, micros_json FROM log_entries
-        WHERE user_id = ? AND date >= ? AND date <= ?`
+        WHERE user_id = ? AND date >= ? AND date <= ? AND ${LOG_ALIVE_BARE}`
     )
     .all(userId, start, end);
   const totals = {};
@@ -442,6 +446,116 @@ function searchRecipes(db, userId, query, { limit = 25 } = {}) {
     ? rows.filter(r => String(r.name || '').toLowerCase().includes(q))
     : rows;
   return filtered.slice(0, lim);
+}
+
+function per100FromServing(row) {
+  const g = Number(row.grams_per_serving);
+  if (!Number.isFinite(g) || g <= 0) return null;
+  const scale = 100 / g;
+  return {
+    calories: Math.round((Number(row.calories) || 0) * scale * 10) / 10,
+    protein_g: Math.round((Number(row.protein_g) || 0) * scale * 100) / 100,
+    carbs_g: Math.round((Number(row.carbs_g) || 0) * scale * 100) / 100,
+    fat_g: Math.round((Number(row.fat_g) || 0) * scale * 100) / 100,
+    fiber_g:
+      row.fiber_g == null ? null : Math.round((Number(row.fiber_g) || 0) * scale * 100) / 100,
+  };
+}
+
+/**
+ * Search the ingredient library by name/brand substring.
+ * Macros on the row are per label serving; per_100g is derived when grams_per_serving is set.
+ */
+function searchIngredients(db, userId, query, { limit = 25 } = {}) {
+  const lim = Math.min(50, Math.max(1, Number(limit) || 25));
+  const q = String(query || '').trim().toLowerCase();
+  const rows = db
+    .prepare(
+      `SELECT id, name, brand_name, serving_size_text, grams_per_serving,
+              calories, protein_g, carbs_g, fat_g, fiber_g, micros_json,
+              weight_basis, nutrition_source, source_type, tracking_type, created_via, barcode
+         FROM label_ingredients
+        WHERE user_id = ?
+        ORDER BY use_count DESC, name COLLATE NOCASE`
+    )
+    .all(userId);
+  const filtered = q
+    ? rows.filter(r => {
+        const name = String(r.name || '').toLowerCase();
+        const brand = String(r.brand_name || '').toLowerCase();
+        return name.includes(q) || brand.includes(q);
+      })
+    : rows;
+  return filtered.slice(0, lim).map(r => {
+    const micros = parseMicrosBlob(r.micros_json);
+    return {
+      id: r.id,
+      name: r.name,
+      brand_name: r.brand_name || null,
+      serving_size_text: r.serving_size_text,
+      grams_per_serving: r.grams_per_serving,
+      weight_basis: r.weight_basis || null,
+      nutrition_source: r.nutrition_source || null,
+      source_type: r.source_type || null,
+      tracking_type: r.tracking_type || null,
+      barcode: r.barcode || null,
+      created_via: r.created_via || 'app',
+      per_serving: {
+        calories: r.calories,
+        protein_g: r.protein_g,
+        carbs_g: r.carbs_g,
+        fat_g: r.fat_g,
+        fiber_g: r.fiber_g,
+      },
+      per_100g: per100FromServing(r),
+      has_micros: !!(micros?.micros && Object.keys(micros.micros).length),
+      micros_confidence: micros?.confidence || null,
+    };
+  });
+}
+
+/**
+ * Full supplement library (not just taken days).
+ * Macros/micros are per label serving — same storage the dose multiplier scales at read time.
+ */
+function listSupplements(db, userId, { include_deleted = false } = {}) {
+  const rows = db
+    .prepare(
+      `SELECT id, name, dose_text, label_serving_qty, label_serving_unit, dose_qty,
+              calories, protein_g, carbs_g, fat_g, counts_toward_macros, micros_json,
+              sort_order, is_deleted, created_via
+         FROM supplements
+        WHERE user_id = ?
+          AND (? = 1 OR COALESCE(is_deleted, 0) = 0)
+        ORDER BY sort_order, name COLLATE NOCASE`
+    )
+    .all(userId, include_deleted ? 1 : 0);
+  return rows.map(r => {
+    const micros = parseMicrosBlob(r.micros_json)?.micros || null;
+    const multiplier = doseMultiplier({
+      label_serving_qty: r.label_serving_qty,
+      dose_qty: r.dose_qty,
+    });
+    return {
+      id: r.id,
+      name: r.name,
+      dose_text: r.dose_text || null,
+      label_serving_qty: r.label_serving_qty,
+      label_serving_unit: r.label_serving_unit || null,
+      dose_qty: r.dose_qty,
+      dose_multiplier: Math.round(multiplier * 1000) / 1000,
+      counts_toward_macros: Number(r.counts_toward_macros) === 1,
+      is_deleted: Number(r.is_deleted) === 1,
+      created_via: r.created_via || 'app',
+      per_label_serving: {
+        calories: r.calories,
+        protein_g: r.protein_g,
+        carbs_g: r.carbs_g,
+        fat_g: r.fat_g,
+        micros,
+      },
+    };
+  });
 }
 
 function getGymToday(db, userId, date) {
@@ -857,6 +971,8 @@ module.exports = {
   getSupplementsRange,
   getMicronutrientTotals,
   searchRecipes,
+  searchIngredients,
+  listSupplements,
   getGymToday,
   getGymProgress,
   getIntakeWeightTrend,

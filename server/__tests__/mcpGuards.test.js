@@ -6,6 +6,7 @@ const {
 const { warningsForFoodMacros, warningsForMealTotals } = require('../mcp/warnings');
 const { buildTestApp, createUser } = require('./helpers');
 const writes = require('../mcp/writes');
+const reads = require('../mcp/reads');
 
 describe('MCP similarity', () => {
   it('scores near-duplicate names highly', () => {
@@ -140,7 +141,7 @@ describe('MCP Phase 3 B guards + revert', () => {
     expect(row.dose_qty).toBe(3);
   });
 
-  it('revert_mcp_write on delete returns not revertible', () => {
+  it('revert_mcp_write restores soft-deleted meal', () => {
     const oilId = db.prepare('SELECT id FROM label_ingredients WHERE user_id = ?').get(userId).id;
     const meal = writes.logMeal(db, userId, {
       date: '2026-09-25',
@@ -148,7 +149,12 @@ describe('MCP Phase 3 B guards + revert', () => {
       items: [{ label_ingredient_id: oilId, quantity_g: 10, nutrition_source: 'database' }],
     });
     const del = writes.deleteMealEntry(db, userId, { log_entry_id: meal.entry.id });
+    expect(del.soft_deleted).toBe(true);
+    expect(reads.getDay(db, userId, '2026-09-25').meals).toHaveLength(0);
+
     const rev = writes.revertMcpWrite(db, userId, { audit_id: del.audit_id });
-    expect(rev.code).toBe('NOT_REVERTIBLE');
+    expect(rev.ok).toBe(true);
+    expect(reads.getDay(db, userId, '2026-09-25').meals).toHaveLength(1);
+    expect(reads.getDay(db, userId, '2026-09-25').meals[0].id).toBe(meal.entry.id);
   });
 });

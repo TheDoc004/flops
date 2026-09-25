@@ -99,7 +99,9 @@ function createCoachRouter(db) {
       if (link.scope_nutrition) {
         const last = db
           .prepare(
-            `SELECT date FROM log_entries WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1`
+            `SELECT date FROM log_entries
+              WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0
+              ORDER BY date DESC, id DESC LIMIT 1`
           )
           .get(clientId);
         last_logged = last?.date || null;
@@ -112,6 +114,7 @@ function createCoachRouter(db) {
                     SUM(servings * COALESCE(recipe_fat_g, 0)) AS fat_g
              FROM log_entries
              WHERE user_id = ? AND date >= date('now', '-6 days')
+               AND COALESCE(is_deleted, 0) = 0
              GROUP BY date
              ORDER BY date DESC`
           )
@@ -163,6 +166,7 @@ function createCoachRouter(db) {
                 recipe_carbs_g, recipe_fat_g, recipe_fiber_g, ingredients_json
          FROM log_entries
          WHERE user_id = ? AND date >= ? AND date <= ?
+           AND COALESCE(is_deleted, 0) = 0
          ORDER BY date, id`
       )
       .all(clientId, start, end);
@@ -189,6 +193,7 @@ function createCoachRouter(db) {
                 SUM(servings * COALESCE(recipe_protein_g, 0)) AS protein_g
          FROM log_entries
          WHERE user_id = ? AND date >= date('now', '-6 days')
+           AND COALESCE(is_deleted, 0) = 0
          GROUP BY date`
       )
       .all(clientId);
