@@ -78,17 +78,20 @@ Example prompts:
 
 ## 4. Write tools (direct — no propose/commit)
 
-Writes **commit immediately**. Safety is undo, not a handshake: every MCP row is permanently `source: "mcp"` / `created_via: "mcp"`, audited, and bulk-undoable in the app. `delete_meal_entry` is a hard delete (not revertible).
+Writes **commit immediately**. Safety is undo, not a handshake: every MCP row is permanently `source: "mcp"` / `created_via: "mcp"`, audited (with `audit_id`), and bulk-undoable in the app. `delete_meal_entry` is a hard delete (not revertible). Other writes can be undone with `revert_mcp_write(audit_id)`.
 
 | Tool | Use |
 |---|---|
 | `log_meal` | Log a meal now; returns entry + day totals/`vs_goals`. Requires `weight_basis` and per-item `nutrition_source`. |
-| `add_food_item` | Create a library food; returns `label_ingredient_id`. |
+| `add_food_item` | Create a library food. Highly similar names are **refused** unless `allow_duplicate: true`. |
 | `update_food_item` | Patch a food; before/after. |
 | `update_meal_entry` | Change date/slot/items; before/after. |
-| `delete_meal_entry` | Hard delete a log row (permanent). |
+| `delete_meal_entry` | Hard delete a log row (permanent, not revertible). |
 | `update_supplement` | Fix dose fields (multiplier = `dose_qty` / `label_serving_qty`); before/after. |
 | `write_batch` | Multiple ops in one transaction. `add_food_item` can set `ref`; later `log_meal` items use that `ref`. Failure rolls back all. |
+| `revert_mcp_write` | Undo a prior MCP write by `audit_id` (creates removed, updates restored). |
+
+Warnings (fiber missing, micros missing, 4/4/9 mismatch, wild quantities) come back in the response and never block a write.
 
 Idempotency: pass `operation_id`; retries return the prior result without duplicating.
 
@@ -116,7 +119,6 @@ You should see `serverInfo.name: "flops"`.
 
 ## 6. Future
 
-- Part B: duplicate refuse, richer warnings, `revert_mcp_write`.
 - Richer gym progressive-overload helpers.
 - IP allowlist for Anthropic egress.
 - Multi-user MCP tokens when more than one person uses FLOPS.

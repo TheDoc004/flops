@@ -1,10 +1,17 @@
 /**
- * MCP direct writes (Phase 3 Part A).
- * Writes commit immediately. Propose/commit handshake removed.
+ * MCP direct writes (Phase 3).
+ * Writes commit immediately. Bad writes are obvious (source=mcp), audited,
+ * and cheap to undo — including revert_mcp_write for non-delete ops.
  */
 const { isoDateOrNull, getLocalDateISO } = require('./dates');
 const { doseMultiplier } = require('../supplementDose');
 const reads = require('./reads');
+const {
+  findDuplicateMatches,
+  DUPLICATE_SIMILARITY_THRESHOLD,
+  nameSimilarity,
+} = require('./similarity');
+const { warningsForFoodMacros, warningsForMealTotals } = require('./warnings');
 
 const NUTRITION_SOURCES = new Set(['label', 'database', 'estimate']);
 const WEIGHT_BASES = new Set(['raw', 'cooked']);
@@ -17,6 +24,7 @@ const OPS = {
   delete_meal_entry: 'delete_meal_entry',
   update_supplement: 'update_supplement',
   write_batch: 'write_batch',
+  revert_mcp_write: 'revert_mcp_write',
 };
 
 function nowIso() {
@@ -52,17 +60,37 @@ function parseJson(raw, fallback = null) {
 function searchSimilarIngredients(db, userId, name, { limit = 8 } = {}) {
   const q = String(name || '').trim();
   if (!q) return [];
-  const like = `%${q.replace(/[%_]/g, '')}%`;
-  return db
+  const all = db
     .prepare(
       `SELECT id, name, brand_name, serving_size_text, grams_per_serving,
               calories, protein_g, carbs_g, fat_g, created_via, nutrition_source
          FROM label_ingredients
-        WHERE user_id = ? AND lower(name) LIKE lower(?)
+        WHERE user_id = ?
         ORDER BY use_count DESC, id DESC
-        LIMIT ?`
+        LIMIT 500`
     )
-    .all(userId, like, limit);
+    .all(userId);
+  return all
+    .map(row => ({ ...row, similarity: nameSimilarity(name, row.name) }))
+    .filter(r => r.similarity >= 0.45 || (q.length >= 3 && normalizeLooseIncludes(name, r.name)))
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, limit);
+}
+
+function normalizeLooseIncludes(a, b) {
+  const s = String(a || '').toLowerCase();
+  const t = String(b || '').toLowerCase();
+  return s.includes(t) || t.includes(s);
+}
+
+function loadLibraryForDupCheck(db, userId) {
+  return db
+    .prepare(
+      `SELECT id, name, brand_name, serving_size_text, grams_per_serving,
+              calories, protein_g, carbs_g, fat_g, created_via, nutrition_source
+         FROM label_ingredients WHERE user_id = ? LIMIT 500`
+    )
+    .all(userId);
 }
 
 function scalePer100g(macros, quantityG) {
@@ -507,6 +535,13 @@ function buildMealPayload(db, userId, args, refMap) {
   return { date, name, meal_slot, time_min, weight_basis, resolved, totals, warnings };
 }
 
+function collectMealWarnings(built) {
+  const base = [...(built.warnings || [])];
+  base.push(...warningsForMealTotals(built.totals, built.resolved));
+  // de-dupe
+  return [...new Set(base)];
+}
+
 function daySlice(day) {
   return {
     date: day.date,
@@ -522,6 +557,7 @@ function logMeal(db, userId, args = {}, { refMap = null, skipAudit = false } = {
   return withIdempotency(db, userId, operationId, () => {
     const built = buildMealPayload(db, userId, args, refMap);
     if (built.error) return { error: built.error };
+    const mealWarnings = collectMealWarnings(built);
 
     const doWrite = () => {
       const ids = insertMealFromResolved(db, userId, built);
@@ -532,13 +568,13 @@ function logMeal(db, userId, args = {}, { refMap = null, skipAudit = false } = {
         entry,
         day: daySlice(day),
         result_row_ids: ids,
-        warnings: built.warnings,
+        warnings: mealWarnings,
         source: 'mcp',
       };
       if (!skipAudit) {
         response.audit_id = recordAudit(db, userId, {
           op: OPS.log_meal, operationId, before: null, after: entry,
-          result_row_ids: ids, warnings: built.warnings, response,
+          result_row_ids: ids, warnings: mealWarnings, response,
         });
       }
       return response;
@@ -585,8 +621,39 @@ function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null }
         ? Number(args.grams_per_serving)
         : 100;
     const brand_name = args.brand_name ? String(args.brand_name).trim() : null;
+    const library = loadLibraryForDupCheck(db, userId);
+    const duplicates = findDuplicateMatches(library, name, {
+      threshold: DUPLICATE_SIMILARITY_THRESHOLD,
+    });
+    if (duplicates.length && !args.allow_duplicate) {
+      return {
+        error:
+          `Refusing to create "${name}" — ${duplicates.length} similar library item(s) ` +
+          `(similarity ≥ ${DUPLICATE_SIMILARITY_THRESHOLD}). Pass allow_duplicate: true to force, ` +
+          `or reuse an existing label_ingredient_id.`,
+        code: 'DUPLICATE_FOOD',
+        matching: duplicates.slice(0, 5),
+      };
+    }
     const similar = searchSimilarIngredients(db, userId, name);
-    const warnings = similar.length ? [`Found ${similar.length} similar library item(s) for "${name}".`] : [];
+    const warnings = [
+      ...warningsForFoodMacros({
+        name,
+        calories: per100.calories,
+        protein_g: per100.protein_g,
+        carbs_g: per100.carbs_g,
+        fat_g: per100.fat_g,
+        fiber_g: per100.fiber_g,
+        micros: args.micros_per_100g,
+        nutrition_source,
+        basis: 'per_100g',
+      }),
+    ];
+    if (duplicates.length && args.allow_duplicate) {
+      warnings.push(`Created despite ${duplicates.length} similar name(s) (allow_duplicate=true).`);
+    } else if (similar.length) {
+      warnings.push(`Found ${similar.length} somewhat similar library item(s) for "${name}".`);
+    }
     const scale = grams_per_serving / 100;
     const servingMacros = {
       calories: round(per100.calories * scale, 1),
@@ -961,6 +1028,194 @@ function writeBatch(db, userId, args = {}) {
   });
 }
 
+function restoreMealFromBefore(db, userId, before) {
+  if (!before || !before.date) {
+    throw Object.assign(new Error('Cannot restore meal — before snapshot incomplete'), { code: 'NO_BEFORE' });
+  }
+  const macros = before.per_serving || before.logged || {};
+  const calories = Number(macros.calories) || 0;
+  const protein_g = Number(macros.protein_g) || 0;
+  const carbs_g = Number(macros.carbs_g) || 0;
+  const fat_g = Number(macros.fat_g) || 0;
+  const fiber_g = macros.fiber_g == null ? null : Number(macros.fiber_g);
+  const name = before.recipe_name || 'Restored meal';
+  const recipeId = before.recipe_id
+    ? before.recipe_id
+    : ensureQuickFoodRecipe(db, userId, name, { calories, protein_g, carbs_g, fat_g, fiber_g });
+  const servings = Number(before.servings) || 1;
+  const ingredients_json = before.ingredients ? JSON.stringify(before.ingredients) : null;
+  const ins = db
+    .prepare(
+      `INSERT INTO log_entries (
+         user_id, recipe_id, date, time_min, servings, notes,
+         recipe_name, serving_size, recipe_calories, recipe_protein_g, recipe_carbs_g,
+         recipe_fat_g, recipe_fiber_g, recipe_is_quick_food, slot_selections_json,
+         ingredients_json, source, weight_basis, nutrition_source
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`
+    )
+    .run(
+      userId,
+      recipeId,
+      before.date,
+      before.time_min ?? null,
+      servings,
+      before.notes ?? null,
+      name,
+      before.serving_size || '1 serving',
+      calories,
+      protein_g,
+      carbs_g,
+      fat_g,
+      fiber_g,
+      before.is_quick_food ? 1 : 0,
+      ingredients_json,
+      before.source || 'mcp',
+      before.weight_basis || null,
+      before.nutrition_source || null
+    );
+  return ins.lastInsertRowid;
+}
+
+function revertOneResult(db, userId, result) {
+  const op = result?.op;
+  const ids = result?.result_row_ids || {};
+  if (op === OPS.delete_meal_entry) {
+    throw Object.assign(new Error('Hard deletes are not revertible'), { code: 'NOT_REVERTIBLE' });
+  }
+  if (op === OPS.add_food_item) {
+    for (const id of ids.label_ingredient_ids || [result.label_ingredient_id]) {
+      if (id) {
+        db.prepare(
+          `DELETE FROM label_ingredients WHERE id = ? AND user_id = ? AND created_via = 'mcp'`
+        ).run(id, userId);
+      }
+    }
+    return;
+  }
+  if (op === OPS.update_food_item && result.before) {
+    const b = result.before;
+    db.prepare(
+      `UPDATE label_ingredients
+          SET name = ?, brand_name = ?, serving_size_text = ?, grams_per_serving = ?,
+              calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
+              weight_basis = ?, nutrition_source = ?
+        WHERE id = ? AND user_id = ?`
+    ).run(
+      b.name, b.brand_name, b.serving_size_text, b.grams_per_serving,
+      b.calories, b.protein_g, b.carbs_g, b.fat_g, b.fiber_g,
+      b.weight_basis, b.nutrition_source, b.id, userId
+    );
+    return;
+  }
+  if (op === OPS.update_supplement && result.before) {
+    const b = result.before;
+    db.prepare(
+      `UPDATE supplements
+          SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?
+        WHERE id = ? AND user_id = ?`
+    ).run(b.dose_text, b.dose_qty, b.label_serving_qty, b.label_serving_unit, b.id, userId);
+    return;
+  }
+  if (op === OPS.update_meal_entry) {
+    for (const id of ids.log_entry_ids || []) {
+      db.prepare('DELETE FROM log_entries WHERE id = ? AND user_id = ?').run(id, userId);
+    }
+    for (const id of ids.label_ingredient_ids || []) {
+      db.prepare(
+        `DELETE FROM label_ingredients WHERE id = ? AND user_id = ? AND created_via = 'mcp'`
+      ).run(id, userId);
+    }
+    if (ids.replaced_log_entry_id || result.before) {
+      if (result.before) restoreMealFromBefore(db, userId, result.before);
+    }
+    return;
+  }
+  if (op === OPS.log_meal) {
+    for (const id of ids.log_entry_ids || []) {
+      db.prepare('DELETE FROM log_entries WHERE id = ? AND user_id = ?').run(id, userId);
+    }
+    for (const id of ids.label_ingredient_ids || []) {
+      db.prepare(
+        `DELETE FROM label_ingredients WHERE id = ? AND user_id = ? AND created_via = 'mcp'`
+      ).run(id, userId);
+    }
+  }
+}
+
+function revertMcpWrite(db, userId, args = {}) {
+  const auditId = Number(args.audit_id);
+  if (!Number.isInteger(auditId) || auditId <= 0) return { error: 'audit_id is required' };
+
+  const row = db
+    .prepare('SELECT * FROM mcp_write_audit WHERE id = ? AND user_id = ?')
+    .get(auditId, userId);
+  if (!row) return { error: `audit_id ${auditId} not found` };
+  if (row.reverted_at) {
+    return { error: 'This audit entry was already reverted', code: 'ALREADY_REVERTED', reverted_at: row.reverted_at };
+  }
+
+  const op = row.op || row.kind;
+  if (op === OPS.delete_meal_entry) {
+    return {
+      error: 'Hard deletes are not revertible — the meal row is gone.',
+      code: 'NOT_REVERTIBLE',
+    };
+  }
+
+  const before = parseJson(row.before_json, null);
+  const after = parseJson(row.after_json, null);
+  const result_row_ids = parseJson(row.result_row_ids_json, {});
+  const storedResponse = parseJson(row.response_json, null);
+
+  try {
+    const run = db.transaction(() => {
+      if (op === OPS.write_batch) {
+        const results = storedResponse?.results || [];
+        // Reverse in reverse order
+        for (let i = results.length - 1; i >= 0; i--) {
+          revertOneResult(db, userId, results[i]);
+        }
+      } else {
+        revertOneResult(db, userId, {
+          op,
+          before,
+          after,
+          result_row_ids,
+          label_ingredient_id: storedResponse?.label_ingredient_id,
+        });
+      }
+
+      db.prepare(
+        `UPDATE mcp_write_audit SET reverted_at = ? WHERE id = ? AND user_id = ?`
+      ).run(nowIso(), auditId, userId);
+
+      const response = {
+        op: OPS.revert_mcp_write,
+        reverted_audit_id: auditId,
+        reverted_op: op,
+        ok: true,
+        message: `Reverted ${op} (audit_id ${auditId}).`,
+      };
+      response.audit_id = recordAudit(db, userId, {
+        op: OPS.revert_mcp_write,
+        operationId: args.operation_id ? String(args.operation_id).trim() : null,
+        before: { audit_id: auditId, op, before, after },
+        after: { reverted: true },
+        result_row_ids: { reverted_audit_ids: [auditId] },
+        warnings: [],
+        response,
+      });
+      return response;
+    });
+    return run();
+  } catch (e) {
+    if (e.code === 'NOT_REVERTIBLE') {
+      return { error: e.message, code: 'NOT_REVERTIBLE' };
+    }
+    return { error: e.message || 'Revert failed' };
+  }
+}
+
 function listRecentMcpWrites(db, userId, daysRaw = 7) {
   const days = Math.min(90, Math.max(1, Number(daysRaw) || 7));
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
@@ -989,7 +1244,7 @@ function listRecentMcpWrites(db, userId, daysRaw = 7) {
 
   const audits = db
     .prepare(
-      `SELECT id AS audit_id, kind, op, operation_id, created_at,
+      `SELECT id AS audit_id, kind, op, operation_id, created_at, reverted_at,
               before_json, after_json, result_row_ids_json, warnings_json, preview_json
          FROM mcp_write_audit
         WHERE user_id = ? AND created_at >= ?
@@ -1001,6 +1256,7 @@ function listRecentMcpWrites(db, userId, daysRaw = 7) {
       op: a.op || a.kind,
       operation_id: a.operation_id || null,
       created_at: a.created_at,
+      reverted_at: a.reverted_at || null,
       before: parseJson(a.before_json, null),
       after: parseJson(a.after_json, parseJson(a.preview_json, null)),
       result_row_ids: parseJson(a.result_row_ids_json, {}),
@@ -1047,6 +1303,7 @@ module.exports = {
   deleteMealEntry,
   updateSupplement,
   writeBatch,
+  revertMcpWrite,
   listRecentMcpWrites,
   bulkDeleteMcpLogEntries,
   bulkDeleteMcpFoods,

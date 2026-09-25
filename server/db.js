@@ -792,6 +792,9 @@ function createDb(dbPath) {
   if (auditCols.length && !auditCols.includes('warnings_json')) {
     db.exec(`ALTER TABLE mcp_write_audit ADD COLUMN warnings_json TEXT`);
   }
+  if (auditCols.length && !auditCols.includes('reverted_at')) {
+    db.exec(`ALTER TABLE mcp_write_audit ADD COLUMN reverted_at TEXT`);
+  }
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_write_audit_user_op
       ON mcp_write_audit(user_id, operation_id)

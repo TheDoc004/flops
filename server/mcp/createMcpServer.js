@@ -4,12 +4,15 @@ const reads = require('./reads');
 const writes = require('./writes');
 
 const READ_ONLY =
-  'Read-only FLOPS data tool. Does not write meals or change settings.';
+  'Read-only FLOPS data tool. Does not write meals, change foods, or alter settings. '
+  + 'Logging and edits use the separate write tools.';
 
 const WRITE_NOW =
-  'WRITE tool — commits immediately. Show the user what you wrote afterward. '
-  + 'Rows are flagged source=mcp and appear in list_recent_mcp_writes / the Today undo banner. '
-  + 'If nutrition_source is estimate, say so plainly. Deletes are permanent and not revertible.';
+  'WRITE tool — commits immediately (no propose/commit handshake). '
+  + 'After writing, show the user what changed. '
+  + 'If nutrition_source is "estimate", say plainly that the numbers were inferred. '
+  + 'Rows are permanently flagged source=mcp (visible in the app). '
+  + 'Deletes via delete_meal_entry are permanent and NOT revertible; other writes can use revert_mcp_write(audit_id).';
 
 const mealItemSchema = z.object({
   ref: z.string().optional().describe('Local batch ref from a prior add_food_item in write_batch'),
@@ -29,7 +32,15 @@ const mealItemSchema = z.object({
 });
 
 function wrapWrite(result) {
-  if (result?.error) return reads.errorResult(result.error);
+  if (result?.error) {
+    if (result.code || result.matching) {
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        isError: true,
+      };
+    }
+    return reads.errorResult(result.error);
+  }
   return reads.textResult(result);
 }
 
@@ -317,7 +328,9 @@ function createFlopsMcpServer(db, userId) {
     {
       title: 'Add food item',
       description:
-        `${WRITE_NOW} Create an ingredient-library food immediately. Returns similar names for awareness.`,
+        `${WRITE_NOW} Create an ingredient-library food immediately. `
+        + 'If a library name is highly similar, the call is REFUSED unless allow_duplicate=true '
+        + '(returns matching rows). Warnings may flag missing fiber/micros; they never block the write.',
       inputSchema: {
         name: z.string().min(1),
         brand_name: z.string().optional(),
@@ -331,6 +344,10 @@ function createFlopsMcpServer(db, userId) {
         nutrition_source: z.enum(['label', 'database', 'estimate']),
         weight_basis: z.enum(['raw', 'cooked']),
         micros_per_100g: z.record(z.string(), z.number()).optional(),
+        allow_duplicate: z
+          .boolean()
+          .optional()
+          .describe('Required true to create when a highly similar name already exists'),
         operation_id: z.string().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
@@ -439,11 +456,28 @@ function createFlopsMcpServer(db, userId) {
   );
 
   server.registerTool(
+    'revert_mcp_write',
+    {
+      title: 'Revert MCP write',
+      description:
+        `${WRITE_NOW} Undo a prior MCP write by audit_id from list_recent_mcp_writes. `
+        + 'Creates are removed; updates restore the before snapshot. '
+        + 'Hard deletes (delete_meal_entry) cannot be reverted — returns a clear error.',
+      inputSchema: {
+        audit_id: z.number().int().positive(),
+        operation_id: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.revertMcpWrite(db, userId, args))
+  );
+
+  server.registerTool(
     'list_recent_mcp_writes',
     {
       title: 'List recent MCP writes',
       description:
-        `${READ_ONLY} Meals, foods, and audit rows (with audit_id) written via MCP in the last N days.`,
+        `${READ_ONLY} Meals, foods, and audit rows (with audit_id for revert_mcp_write) from MCP in the last N days.`,
       inputSchema: {
         days: z.number().int().min(1).max(90).optional(),
       },

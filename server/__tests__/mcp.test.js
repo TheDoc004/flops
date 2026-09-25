@@ -115,6 +115,7 @@ describe('MCP /mcp auth', () => {
         'delete_meal_entry',
         'update_supplement',
         'write_batch',
+        'revert_mcp_write',
         'list_recent_mcp_writes',
       ])
     );
