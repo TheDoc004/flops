@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-09-24 (MCP Phase 2 writes: propose/commit)_
+_Last updated: 2026-09-25 (MCP Phase 3 Part A: direct writes)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -22,18 +22,18 @@ _current-state_ companion to it.
 
 ## Where Diego left off (read this first)
 
-**Status:** Active. Nutrition daily driver + Log Meal UX; **MCP analyze + confirm-first writes**.
+**Status:** Active. Nutrition daily driver + Log Meal UX; **MCP reads + direct writes**
+(`log_meal`, `add_food_item`, `write_batch`, etc.). Propose/commit handshake removed.
 
-**Last active work stream:** **FLOPS MCP Phase 2** — propose/commit meal, food, and
-supplement-dose tools with audit + `source=mcp` badges + Today bulk-undo banner.
-See [`docs/mcp-connector.md`](docs/mcp-connector.md). Reads still include
-`get_intake_weight_trend`. Dashboard layout editor polish remains parked.
+**Last active work stream:** **FLOPS MCP Phase 3 Part A** — direct writes with audit +
+`source=mcp` + Today bulk-undo banner. Part B (duplicate refuse, warnings, revert) still open.
+See [`docs/mcp-connector.md`](docs/mcp-connector.md).
 
 **When you return / next picks (optional):**
 
-1. **Claude connector** — after Render redeploy, try propose → approve in chat → commit.
-2. **Gym UX / progressive overload** — agent can already call `get_gym_progress`; richer logger later.
-3. **Multi-user MCP tokens** — when more than one FLOPS account needs the connector.
+1. **MCP Part B** — duplicate guard, fiber/macros warnings, `revert_mcp_write`.
+2. **Claude connector** — after Render redeploy, try `log_meal` / `write_batch` directly.
+3. **Gym UX / progressive overload** — agent can already call `get_gym_progress`.
 4. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
 5. **Ops:** Resend domain verification for production OTP email (if not done yet).
 

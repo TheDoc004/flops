@@ -1,7 +1,7 @@
 # FLOPS MCP connector
 
 Model Context Protocol endpoint so Claude (or another agent) can analyze FLOPS data
-and — with in-chat confirmation — write meals, foods, and supplement dose fixes.
+and write meals, foods, and supplement dose fixes directly (low-volume convenience).
 
 **URL:** `https://flops-c6ic.onrender.com/mcp`  
 **Auth (either):** `Authorization: Bearer <MCP_API_TOKEN>` **or** `x-api-key: <MCP_API_TOKEN>`  
@@ -66,7 +66,7 @@ Optional hardening later: restrict `/mcp` to Anthropic egress `160.79.104.0/21` 
 | `search_recipes` | Recipe library name search |
 | `get_gym_today` | Schedule + session/sets for a date |
 | `get_gym_progress` | Working-set history for an exercise (id or name) |
-| `list_recent_mcp_writes` | Meals/foods/audit written via MCP in the last N days |
+| `list_recent_mcp_writes` | Meals/foods/audit (with `audit_id`) written via MCP |
 
 Example prompts:
 
@@ -76,25 +76,21 @@ Example prompts:
 
 ---
 
-## 4. Write tools (propose → chat approve → commit)
+## 4. Write tools (direct — no propose/commit)
 
-Writes are **not** auto-applied. Flow:
-
-1. Assistant calls `propose_*` → returns `proposal_id`, `confirmation_code` (e.g. `M-7F3A`), preview, warnings.
-2. You approve in your own chat message.
-3. Assistant calls `commit_proposal` with that code + your verbatim approval text — **never in the same turn as propose**.
-
-The server cannot prove a human approved. Safety is: every MCP row is permanently `source: "mcp"` / `created_via: "mcp"`, audited, and bulk-undoable in the app.
+Writes **commit immediately**. Safety is undo, not a handshake: every MCP row is permanently `source: "mcp"` / `created_via: "mcp"`, audited, and bulk-undoable in the app. `delete_meal_entry` is a hard delete (not revertible).
 
 | Tool | Use |
 |---|---|
-| `propose_meal_entry` | Pending meal: items by `label_ingredient_id`+grams, `recipe_id`+servings, or new per-100g food. Requires `weight_basis` (`raw`\|`cooked`) and per-item `nutrition_source` (`label`\|`database`\|`estimate`). |
-| `propose_food_item` | Pending ingredient-library food; returns similar names for duplicate catch. |
-| `propose_supplement_correction` | Pending dose_text / dose_qty / label serving fix (before/after in preview). |
-| `commit_proposal` | Write the row; needs `proposal_id`, `confirmation_code`, `user_confirmation_text`. |
-| `list_proposals` / `discard_proposal` | Inspect or drop pending proposals (expire after **1 hour**). |
+| `log_meal` | Log a meal now; returns entry + day totals/`vs_goals`. Requires `weight_basis` and per-item `nutrition_source`. |
+| `add_food_item` | Create a library food; returns `label_ingredient_id`. |
+| `update_food_item` | Patch a food; before/after. |
+| `update_meal_entry` | Change date/slot/items; before/after. |
+| `delete_meal_entry` | Hard delete a log row (permanent). |
+| `update_supplement` | Fix dose fields (multiplier = `dose_qty` / `label_serving_qty`); before/after. |
+| `write_batch` | Multiple ops in one transaction. `add_food_item` can set `ref`; later `log_meal` items use that `ref`. Failure rolls back all. |
 
-Idempotency: pass `operation_id` on propose; retries reuse the same proposal / committed result.
+Idempotency: pass `operation_id`; retries return the prior result without duplicating.
 
 **In the app:** MCP meals show an **MCP** badge. A dismissible Today banner appears when MCP wrote meals in the last 24h, with multi-select bulk undo (manual entries are never deleted).
 
@@ -120,6 +116,7 @@ You should see `serverInfo.name: "flops"`.
 
 ## 6. Future
 
-- Richer gym progressive-overload helpers once the workout logger is your daily driver.
+- Part B: duplicate refuse, richer warnings, `revert_mcp_write`.
+- Richer gym progressive-overload helpers.
 - IP allowlist for Anthropic egress.
 - Multi-user MCP tokens when more than one person uses FLOPS.
