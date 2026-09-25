@@ -387,6 +387,7 @@ function createFlopsMcpServer(db, userId) {
       description:
         `${WRITE_NOW} Create an ingredient-library food immediately. `
         + 'Macros are per-100g; optional micros_per_100g are scaled to the serving and stored in micros_json (per label serving). '
+        + 'When writing micros_per_100g, micros_confidence is required (high|medium|low). '
         + 'If a library name is highly similar, the call is REFUSED unless allow_duplicate=true '
         + '(returns matching rows). Warnings may flag missing fiber/micros; they never block the write.',
       inputSchema: z
@@ -410,6 +411,12 @@ function createFlopsMcpServer(db, userId) {
             .record(z.string(), z.number())
             .optional()
             .describe('Micronutrients per 100g; scaled to grams_per_serving and stored as micros_json (per serving).'),
+          micros_confidence: z
+            .enum(['high', 'medium', 'low'])
+            .optional()
+            .describe(
+              'Required when micros_per_100g is set. high = label-exact panel; medium = USDA/database; low = guess. Blob confidence is scalar (not per-nutrient).'
+            ),
           allow_duplicate: z
             .boolean()
             .optional()
@@ -429,6 +436,7 @@ function createFlopsMcpServer(db, userId) {
       description:
         `${WRITE_NOW} Patch an existing label ingredient. Returns before/after. `
         + 'Pass micros (per label serving) OR micros_per_100g (scaled using grams_per_serving ≥ 3); not both. '
+        + 'When writing micros, micros_confidence is required (high|medium|low) — not hardcoded. '
         + 'Both write label_ingredients.micros_json in the standard per-serving blob shape Part B will read.',
       inputSchema: z
         .object({
@@ -458,6 +466,13 @@ function createFlopsMcpServer(db, userId) {
             .record(z.string(), z.number())
             .optional()
             .describe('Micronutrients per 100g; scaled to grams_per_serving and stored as micros_json. Requires usable grams_per_serving. Mutually exclusive with micros.'),
+          micros_confidence: z
+            .enum(['high', 'medium', 'low'])
+            .optional()
+            .describe(
+              'Required when writing micros or micros_per_100g (not when clearing with micros:null). ' +
+                'high = label-exact; medium = USDA/database; low = guess. Scalar on the blob — not per-nutrient.'
+            ),
           operation_id: z.string().optional(),
         })
         .strict(),

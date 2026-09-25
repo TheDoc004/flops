@@ -100,7 +100,7 @@ Warnings (fiber missing, micros missing, 4/4/9 mismatch, wild quantities) come b
 
 **Unknown parameters are refused** (`code: "UNKNOWN_PARAM"`) — write tools never silently drop fields. Zod schemas are `.strict()`, and handlers also reject keys outside each op’s allowlist (including nested `write_batch` steps).
 
-**Ingredient micros:** `update_food_item` / `add_food_item` store the standard per-serving blob on `label_ingredients.micros_json` (`{ micros, confidence, notes, version, estimatedAt }`). `micros_per_100g` is scaled by `grams_per_serving/100` (requires usable gps ≥ 3). That column is the Part B read target — no restructure planned.
+**Ingredient micros:** `update_food_item` / `add_food_item` store the standard per-serving blob on `label_ingredients.micros_json` (`{ micros, confidence, notes, version, estimatedAt }`). `micros_per_100g` is scaled by `grams_per_serving/100` (requires usable gps ≥ 3). **`micros_confidence` is required** when writing micros (`high` = label-exact, `medium` = USDA/database, `low` = guess) — not hardcoded. Confidence is **scalar per ingredient blob** today (day UI takes the lowest across meals); a per-nutrient map would need a schema bump + merge/UI work. That column is the Part B read target — no restructure planned.
 
 Idempotency: pass `operation_id`; retries return the prior result without duplicating.
 

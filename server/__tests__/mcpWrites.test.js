@@ -297,6 +297,7 @@ describe('MCP Phase 3 direct writes', () => {
     const r = writes.updateFoodItem(db, userId, {
       label_ingredient_id: ingredientId,
       micros_per_100g: { sodium_mg: 200, potassium_mg: 400 },
+      micros_confidence: 'medium',
     });
     expect(r.error).toBeUndefined();
     expect(r.has_micros).toBe(true);
@@ -304,7 +305,7 @@ describe('MCP Phase 3 direct writes', () => {
     // gps=100 → scale 1.0
     expect(blob.micros.sodium_mg).toBe(200);
     expect(blob.micros.potassium_mg).toBe(400);
-    expect(blob.confidence).toBe('high');
+    expect(blob.confidence).toBe('medium');
     expect(blob.version).toBe('v2');
 
     const row = db
@@ -320,19 +321,23 @@ describe('MCP Phase 3 direct writes', () => {
     const r = writes.updateFoodItem(db, userId, {
       label_ingredient_id: ingredientId,
       micros_per_100g: { sodium_mg: 200 },
+      micros_confidence: 'high',
     });
     expect(r.error).toBeUndefined();
     const blob = JSON.parse(r.after.micros_json);
     expect(blob.micros.sodium_mg).toBe(100); // 200 * 50/100
+    expect(blob.confidence).toBe('high');
   });
 
   it('update_food_item accepts micros per serving and clears with null', () => {
     const set = writes.updateFoodItem(db, userId, {
       label_ingredient_id: ingredientId,
       micros: { vitamin_d_mcg: 10 },
+      micros_confidence: 'high',
     });
     expect(set.error).toBeUndefined();
     expect(JSON.parse(set.after.micros_json).micros.vitamin_d_mcg).toBe(10);
+    expect(JSON.parse(set.after.micros_json).confidence).toBe('high');
 
     const cleared = writes.updateFoodItem(db, userId, {
       label_ingredient_id: ingredientId,
@@ -343,6 +348,40 @@ describe('MCP Phase 3 direct writes', () => {
     expect(cleared.has_micros).toBe(false);
   });
 
+  it('update_food_item requires micros_confidence when writing micros', () => {
+    const missing = writes.updateFoodItem(db, userId, {
+      label_ingredient_id: ingredientId,
+      micros_per_100g: { sodium_mg: 100 },
+    });
+    expect(missing.error).toMatch(/micros_confidence/);
+    expect(missing.after).toBeUndefined();
+
+    const bad = writes.updateFoodItem(db, userId, {
+      label_ingredient_id: ingredientId,
+      micros_per_100g: { sodium_mg: 100 },
+      micros_confidence: 'super-high',
+    });
+    expect(bad.error).toMatch(/high\|medium\|low/);
+  });
+
+  it('add_food_item stores caller micros_confidence', () => {
+    const r = writes.addFoodItem(db, userId, {
+      name: 'USDA Broccoli Unique',
+      calories_per_100g: 34,
+      protein_g_per_100g: 2.8,
+      carbs_g_per_100g: 7,
+      fat_g_per_100g: 0.4,
+      nutrition_source: 'database',
+      weight_basis: 'raw',
+      micros_per_100g: { vitamin_c_mg: 89, iron_mg: 0.7 },
+      micros_confidence: 'medium',
+    });
+    expect(r.error).toBeUndefined();
+    const blob = JSON.parse(r.food.micros_json);
+    expect(blob.confidence).toBe('medium');
+    expect(blob.micros.vitamin_c_mg).toBe(89);
+  });
+
   it('update_food_item refuses micros_per_100g without usable grams_per_serving', () => {
     db.prepare(
       `UPDATE label_ingredients SET grams_per_serving = NULL WHERE id = ?`
@@ -350,6 +389,7 @@ describe('MCP Phase 3 direct writes', () => {
     const r = writes.updateFoodItem(db, userId, {
       label_ingredient_id: ingredientId,
       micros_per_100g: { sodium_mg: 100 },
+      micros_confidence: 'medium',
     });
     expect(r.error).toMatch(/grams_per_serving/);
     expect(r.after).toBeUndefined();
@@ -359,6 +399,7 @@ describe('MCP Phase 3 direct writes', () => {
     const r = writes.updateFoodItem(db, userId, {
       label_ingredient_id: ingredientId,
       micros_per_100g: { not_a_real_nutrient: 99 },
+      micros_confidence: 'medium',
     });
     expect(r.error).toMatch(/no recognized nutrient/);
     const row = db
@@ -371,6 +412,7 @@ describe('MCP Phase 3 direct writes', () => {
     const r = writes.updateFoodItem(db, userId, {
       label_ingredient_id: ingredientId,
       micros_per_100g: { sodium_mg: 50 },
+      micros_confidence: 'medium',
       fake_field_that_looks_real: 123,
     });
     expect(r.error).toMatch(/does not accept parameter/);

@@ -41,12 +41,12 @@ const WRITE_ALLOWED_KEYS = {
   [OPS.add_food_item]: new Set([
     'op', 'ref', 'name', 'brand_name', 'serving_size_text', 'grams_per_serving',
     'calories_per_100g', 'protein_g_per_100g', 'carbs_g_per_100g', 'fat_g_per_100g', 'fiber_g_per_100g',
-    'nutrition_source', 'weight_basis', 'micros_per_100g', 'allow_duplicate', 'operation_id',
+    'nutrition_source', 'weight_basis', 'micros_per_100g', 'micros_confidence', 'allow_duplicate', 'operation_id',
   ]),
   [OPS.update_food_item]: new Set([
     'op', 'label_ingredient_id', 'name', 'brand_name', 'serving_size_text', 'grams_per_serving',
     'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'nutrition_source', 'weight_basis',
-    'micros', 'micros_per_100g', 'operation_id',
+    'micros', 'micros_per_100g', 'micros_confidence', 'operation_id',
   ]),
   [OPS.update_meal_entry]: new Set([
     'op', 'log_entry_id', 'date', 'name', 'meal_slot', 'time_min', 'weight_basis', 'items', 'operation_id',
@@ -84,15 +84,25 @@ function round(n, digits = 1) {
   return Math.round(Number(n) * f) / f;
 }
 
-function microsJsonFromPerServing(raw) {
+function normalizeMicrosConfidence(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'high' || s === 'medium' || s === 'low') return { confidence: s };
+  return {
+    error:
+      'micros_confidence is required when writing micros and must be high|medium|low. ' +
+      'Use high for label-exact panels, medium for USDA/database tables, low for guesses.',
+  };
+}
+
+function microsJsonFromPerServing(raw, { confidence = 'medium', notes } = {}) {
   if (raw === null) return { micros_json: null };
   if (raw == null) return null;
   if (typeof raw !== 'object' || Array.isArray(raw)) {
     return { error: 'micros must be an object of nutrient → amount (per label serving), or null to clear' };
   }
   const blob = buildMicrosBlob(raw, {
-    confidence: 'high',
-    notes: 'Updated via MCP (per label serving)',
+    confidence,
+    notes: notes || 'Updated via MCP (per label serving)',
   });
   if (!blob) {
     return {
@@ -104,7 +114,7 @@ function microsJsonFromPerServing(raw) {
   return { micros_json: JSON.stringify(blob) };
 }
 
-function microsJsonFromPer100g(raw, gramsPerServing, { confidence = 'high', notes } = {}) {
+function microsJsonFromPer100g(raw, gramsPerServing, { confidence = 'medium', notes } = {}) {
   if (raw == null) return null;
   if (typeof raw !== 'object' || Array.isArray(raw)) {
     return { error: 'micros_per_100g must be an object of nutrient → amount' };
@@ -816,12 +826,18 @@ function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null }
     };
     let microsJson = null;
     if (Object.prototype.hasOwnProperty.call(args, 'micros_per_100g')) {
+      const conf = normalizeMicrosConfidence(args.micros_confidence);
+      if (conf.error) return { error: conf.error };
       const m = microsJsonFromPer100g(args.micros_per_100g, grams_per_serving, {
-        confidence: 'medium',
+        confidence: conf.confidence,
         notes: 'Created via MCP add_food_item (per_100g scaled to serving)',
       });
       if (m.error) return { error: m.error };
       microsJson = m.micros_json;
+    } else if (Object.prototype.hasOwnProperty.call(args, 'micros_confidence')) {
+      return {
+        error: 'micros_confidence only applies when writing micros_per_100g (or micros on update_food_item)',
+      };
     }
 
     const doWrite = () => {
@@ -907,15 +923,35 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
     if (hasMicros && hasMicros100) {
       return { error: 'Pass either micros (per label serving) or micros_per_100g, not both' };
     }
+    const writingMicros =
+      (hasMicros && args.micros !== null) || hasMicros100;
+    const clearingMicros = hasMicros && args.micros === null;
+    if (Object.prototype.hasOwnProperty.call(args, 'micros_confidence') && !writingMicros && !clearingMicros) {
+      return {
+        error: 'micros_confidence only applies when writing micros or micros_per_100g',
+      };
+    }
     let microsJson = before.micros_json ?? null;
-    if (hasMicros) {
-      const m = microsJsonFromPerServing(args.micros);
-      if (m.error) return { error: m.error };
-      microsJson = m.micros_json;
-    } else if (hasMicros100) {
-      const m = microsJsonFromPer100g(args.micros_per_100g, patch.grams_per_serving);
-      if (m.error) return { error: m.error };
-      microsJson = m.micros_json;
+    if (clearingMicros) {
+      microsJson = null;
+    } else if (writingMicros) {
+      const conf = normalizeMicrosConfidence(args.micros_confidence);
+      if (conf.error) return { error: conf.error };
+      if (hasMicros) {
+        const m = microsJsonFromPerServing(args.micros, {
+          confidence: conf.confidence,
+          notes: 'Updated via MCP (per label serving)',
+        });
+        if (m.error) return { error: m.error };
+        microsJson = m.micros_json;
+      } else {
+        const m = microsJsonFromPer100g(args.micros_per_100g, patch.grams_per_serving, {
+          confidence: conf.confidence,
+          notes: 'Updated via MCP (per_100g scaled to serving)',
+        });
+        if (m.error) return { error: m.error };
+        microsJson = m.micros_json;
+      }
     }
 
     if (!patch.name || !patch.serving_size_text) return { error: 'name and serving_size_text cannot be empty' };
