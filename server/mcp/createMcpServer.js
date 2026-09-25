@@ -387,7 +387,11 @@ function createFlopsMcpServer(db, userId) {
         name: z.string().min(1),
         brand_name: z.string().optional(),
         serving_size_text: z.string().optional(),
-        grams_per_serving: z.number().positive().optional(),
+        grams_per_serving: z
+          .number()
+          .min(3)
+          .optional()
+          .describe('Label serving weight in grams (min 3). Omit to default 100g when creating from per-100g macros.'),
         calories_per_100g: z.number().nonnegative(),
         protein_g_per_100g: z.number().nonnegative(),
         carbs_g_per_100g: z.number().nonnegative(),
@@ -417,7 +421,12 @@ function createFlopsMcpServer(db, userId) {
         name: z.string().optional(),
         brand_name: z.string().nullable().optional(),
         serving_size_text: z.string().optional(),
-        grams_per_serving: z.number().positive().optional(),
+        grams_per_serving: z
+          .number()
+          .min(3)
+          .nullable()
+          .optional()
+          .describe('Label serving weight in grams (min 3), or null to clear a placeholder.'),
         calories: z.number().nonnegative().optional(),
         protein_g: z.number().nonnegative().optional(),
         carbs_g: z.number().nonnegative().optional(),

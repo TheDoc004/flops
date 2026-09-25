@@ -2,6 +2,7 @@ const express = require('express');
 const { uid } = require('../userId');
 const { normalizeBarcode } = require('../openFoodFactsService');
 const { buildMicrosBlob } = require('../microNutrients');
+const { normalizeGramsPerServingInput } = require('../gramsPerServing');
 
 /**
  * Micros supplied with an ingredient come off the manufacturer's panel (barcode
@@ -42,8 +43,8 @@ function normalizeRequiredNumber(v, { min = 0 } = {}) {
  */
 function resolveTrackingType(body) {
   if (['weight', 'unit'].includes(body?.tracking_type)) return body.tracking_type;
-  const grams = Number(body?.grams_per_serving);
-  if (Number.isFinite(grams) && grams > 0) return 'weight';
+  const { isUsableGramsPerServing } = require('../gramsPerServing');
+  if (isUsableGramsPerServing(body?.grams_per_serving)) return 'weight';
   const hasUnitShape =
     (typeof body?.unit_name === 'string' && body.unit_name.trim()) ||
     Number(body?.serving_quantity) > 0;
@@ -92,7 +93,9 @@ function createLabelIngredientsRouter(db) {
     if (!name || !serving_size_text) {
       return res.status(400).json({ error: 'name and serving_size_text are required' });
     }
-    const grams_per_serving = normalizeOptionalNumber(req.body?.grams_per_serving, { min: 0.0001 });
+    const gpsNorm = normalizeGramsPerServingInput(req.body?.grams_per_serving);
+    if (gpsNorm.error) return res.status(400).json({ error: gpsNorm.error });
+    const grams_per_serving = gpsNorm.value;
     const calories = normalizeRequiredNumber(req.body?.calories);
     const protein_g = normalizeRequiredNumber(req.body?.protein_g);
     const carbs_g = normalizeRequiredNumber(req.body?.carbs_g);
@@ -177,7 +180,9 @@ function createLabelIngredientsRouter(db) {
     if (!name || !serving_size_text) {
       return res.status(400).json({ error: 'name and serving_size_text are required' });
     }
-    const grams_per_serving = normalizeOptionalNumber(req.body?.grams_per_serving, { min: 0.0001 });
+    const gpsNorm = normalizeGramsPerServingInput(req.body?.grams_per_serving);
+    if (gpsNorm.error) return res.status(400).json({ error: gpsNorm.error });
+    const grams_per_serving = gpsNorm.value;
     const calories = normalizeRequiredNumber(req.body?.calories);
     const protein_g = normalizeRequiredNumber(req.body?.protein_g);
     const carbs_g = normalizeRequiredNumber(req.body?.carbs_g);

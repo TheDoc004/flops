@@ -16,6 +16,59 @@ const { parseServingText } = require('./supplementDose');
  * Rows with no unit information are genuinely incomplete and are left alone for
  * the user to fix. Idempotent.
  */
+/**
+ * Placeholder grams_per_serving = 1 (or other < 3g) blew up MCP per_100g derivation.
+ * Diego's library: null cosmetic gps on unit-tracked ids; flip weight-tracked
+ * rice cakes / bagel (eaten by piece) to unit + null gps. Idempotent. No invented weights.
+ */
+function repairPlaceholderGramsPerServing(db) {
+  const nullUnitCosmetic = db
+    .prepare(
+      `UPDATE label_ingredients
+          SET grams_per_serving = NULL
+        WHERE id IN (13, 27, 28, 29, 31)
+          AND grams_per_serving IS NOT NULL
+          AND grams_per_serving > 0
+          AND grams_per_serving < 3`
+    )
+    .run();
+
+  const flipIds = [11, 22, 34];
+  const get = db.prepare(
+    `SELECT id, tracking_type, grams_per_serving, unit_name, serving_quantity
+       FROM label_ingredients WHERE id = ?`
+  );
+  const upd = db.prepare(
+    `UPDATE label_ingredients
+        SET tracking_type = 'unit',
+            grams_per_serving = NULL,
+            unit_name = ?,
+            serving_quantity = ?
+      WHERE id = ?`
+  );
+  let flipped = 0;
+  const run = db.transaction(() => {
+    for (const id of flipIds) {
+      const row = get.get(id);
+      if (!row) continue;
+      const gps = Number(row.grams_per_serving);
+      const stillPlaceholder =
+        row.tracking_type === 'weight' ||
+        (Number.isFinite(gps) && gps > 0 && gps < 3);
+      if (!stillPlaceholder && row.grams_per_serving == null && row.tracking_type === 'unit') {
+        continue;
+      }
+      if (!stillPlaceholder) continue;
+      const unit = String(row.unit_name || '').trim() || 'piece';
+      const qty = Number(row.serving_quantity) > 0 ? Number(row.serving_quantity) : 1;
+      upd.run(unit, qty, id);
+      flipped += 1;
+    }
+  });
+  run();
+  return { nulled: nullUnitCosmetic.changes, flipped };
+}
+
 function repairHybridIngredientTracking(db) {
   const rows = db
     .prepare(
@@ -647,6 +700,7 @@ function createDb(dbPath) {
   }
   repairHybridIngredientTracking(db);
   repairLoggedIngredientUnits(db);
+  repairPlaceholderGramsPerServing(db);
 
   // Supplements: separate the label's serving from the amount actually taken.
   // Stored macros/micros are per LABEL serving (that's what every capture path
@@ -870,4 +924,9 @@ function createDb(dbPath) {
   return db;
 }
 
-module.exports = { createDb, repairLoggedIngredientUnits, repairHybridIngredientTracking };
+module.exports = {
+  createDb,
+  repairLoggedIngredientUnits,
+  repairHybridIngredientTracking,
+  repairPlaceholderGramsPerServing,
+};

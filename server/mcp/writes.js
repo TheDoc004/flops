@@ -12,6 +12,7 @@ const {
   nameSimilarity,
 } = require('./similarity');
 const { warningsForFoodMacros, warningsForMealTotals } = require('./warnings');
+const { normalizeGramsPerServingInput, MIN_GRAMS_PER_SERVING } = require('../gramsPerServing');
 
 const NUTRITION_SOURCES = new Set(['label', 'database', 'estimate']);
 const WEIGHT_BASES = new Set(['raw', 'cooked']);
@@ -637,10 +638,22 @@ function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null }
     }
 
     const serving_size_text = String(args.serving_size_text || '').trim() || '100 g';
-    const grams_per_serving =
-      args.grams_per_serving != null && Number.isFinite(Number(args.grams_per_serving))
-        ? Number(args.grams_per_serving)
-        : 100;
+    let grams_per_serving;
+    if (args.grams_per_serving != null && args.grams_per_serving !== '') {
+      const gps = normalizeGramsPerServingInput(args.grams_per_serving);
+      if (gps.error) return { error: gps.error };
+      grams_per_serving = gps.value;
+    } else {
+      // Creating from per-100g macros: default to a 100g serving (always valid).
+      grams_per_serving = 100;
+    }
+    if (grams_per_serving == null) {
+      return {
+        error:
+          `grams_per_serving is required when creating from per-100g macros ` +
+          `(minimum ${MIN_GRAMS_PER_SERVING}g), or pass a real label serving weight.`,
+      };
+    }
     const brand_name = args.brand_name ? String(args.brand_name).trim() : null;
     const library = loadLibraryForDupCheck(db, userId);
     const duplicates = findDuplicateMatches(library, name, {
@@ -746,7 +759,11 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
     if (args.name != null) patch.name = String(args.name).trim();
     if (args.brand_name !== undefined) patch.brand_name = args.brand_name ? String(args.brand_name).trim() : null;
     if (args.serving_size_text != null) patch.serving_size_text = String(args.serving_size_text).trim();
-    if (args.grams_per_serving != null) patch.grams_per_serving = Number(args.grams_per_serving);
+    if (Object.prototype.hasOwnProperty.call(args, 'grams_per_serving')) {
+      const gps = normalizeGramsPerServingInput(args.grams_per_serving);
+      if (gps.error) return { error: gps.error };
+      patch.grams_per_serving = gps.value;
+    }
     if (args.calories != null) patch.calories = Number(args.calories);
     if (args.protein_g != null) patch.protein_g = Number(args.protein_g);
     if (args.carbs_g != null) patch.carbs_g = Number(args.carbs_g);

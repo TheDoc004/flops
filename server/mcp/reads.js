@@ -449,8 +449,10 @@ function searchRecipes(db, userId, query, { limit = 25 } = {}) {
 }
 
 function per100FromServing(row) {
+  // Tiny placeholders (e.g. 1g) are not real serving weights — treat as unknown.
+  const { isUsableGramsPerServing } = require('../gramsPerServing');
+  if (!isUsableGramsPerServing(row.grams_per_serving)) return null;
   const g = Number(row.grams_per_serving);
-  if (!Number.isFinite(g) || g <= 0) return null;
   const scale = 100 / g;
   return {
     calories: Math.round((Number(row.calories) || 0) * scale * 10) / 10,
