@@ -4,14 +4,15 @@ const reads = require('./reads');
 const writes = require('./writes');
 
 const READ_ONLY =
-  'Read-only FLOPS data tool. Does not write meals or change settings. Logging stays in the FLOPS app unless you use a separate write/propose tool.';
+  'Read-only FLOPS data tool. Does not write meals or change settings.';
 
-const WRITE_CONFIRM =
-  'WRITE tool. Call commit_proposal only after the user has approved in their own message, '
-  + 'and never in the same turn as the matching propose_* call. '
-  + 'Proposals expire after 1 hour. Bad writes are flagged source=mcp and can be bulk-undone in the app.';
+const WRITE_NOW =
+  'WRITE tool — commits immediately. Show the user what you wrote afterward. '
+  + 'Rows are flagged source=mcp and appear in list_recent_mcp_writes / the Today undo banner. '
+  + 'If nutrition_source is estimate, say so plainly. Deletes are permanent and not revertible.';
 
 const mealItemSchema = z.object({
+  ref: z.string().optional().describe('Local batch ref from a prior add_food_item in write_batch'),
   label_ingredient_id: z.number().int().positive().optional(),
   recipe_id: z.number().int().positive().optional(),
   name: z.string().optional(),
@@ -290,34 +291,33 @@ function createFlopsMcpServer(db, userId) {
   );
 
   server.registerTool(
-    'propose_meal_entry',
+    'log_meal',
     {
-      title: 'Propose meal entry',
+      title: 'Log meal',
       description:
-        `${WRITE_CONFIRM} Build a pending meal log proposal (does not write yet). `
-        + 'Items: existing label_ingredient_id + quantity_g, recipe_id + servings, or new food with per-100g macros. '
-        + 'Requires weight_basis raw|cooked and per-item nutrition_source label|database|estimate.',
+        `${WRITE_NOW} Log a meal immediately. Items: label_ingredient_id+quantity_g, recipe_id+servings, `
+        + 'or new per-100g food. Requires weight_basis and per-item nutrition_source. '
+        + 'Returns the created entry plus the day\'s updated totals and vs_goals.',
       inputSchema: {
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         name: z.string().optional(),
-        meal_slot: z.string().optional().describe('e.g. breakfast, lunch, dinner, snack'),
+        meal_slot: z.string().optional(),
         time_min: z.number().int().min(0).max(1439).optional(),
-        weight_basis: z.enum(['raw', 'cooked']).describe('Raw vs cooked weight for the meal'),
+        weight_basis: z.enum(['raw', 'cooked']),
         items: z.array(mealItemSchema).min(1),
-        operation_id: z.string().optional().describe('Client idempotency key'),
+        operation_id: z.string().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async (args) => wrapWrite(writes.proposeMealEntry(db, userId, args))
+    async (args) => wrapWrite(writes.logMeal(db, userId, args))
   );
 
   server.registerTool(
-    'propose_food_item',
+    'add_food_item',
     {
-      title: 'Propose food item',
+      title: 'Add food item',
       description:
-        `${WRITE_CONFIRM} Propose a new ingredient-library food (does not write yet). `
-        + 'Returns similar existing names so duplicates can be caught before commit.',
+        `${WRITE_NOW} Create an ingredient-library food immediately. Returns similar names for awareness.`,
       inputSchema: {
         name: z.string().min(1),
         brand_name: z.string().optional(),
@@ -335,74 +335,107 @@ function createFlopsMcpServer(db, userId) {
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async (args) => wrapWrite(writes.proposeFoodItem(db, userId, args))
+    async (args) => wrapWrite(writes.addFoodItem(db, userId, args))
   );
 
   server.registerTool(
-    'propose_supplement_correction',
+    'update_food_item',
     {
-      title: 'Propose supplement dose correction',
+      title: 'Update food item',
+      description: `${WRITE_NOW} Patch an existing label ingredient. Returns before/after.`,
+      inputSchema: {
+        label_ingredient_id: z.number().int().positive(),
+        name: z.string().optional(),
+        brand_name: z.string().nullable().optional(),
+        serving_size_text: z.string().optional(),
+        grams_per_serving: z.number().positive().optional(),
+        calories: z.number().nonnegative().optional(),
+        protein_g: z.number().nonnegative().optional(),
+        carbs_g: z.number().nonnegative().optional(),
+        fat_g: z.number().nonnegative().optional(),
+        fiber_g: z.number().nonnegative().nullable().optional(),
+        nutrition_source: z.enum(['label', 'database', 'estimate']).optional(),
+        weight_basis: z.enum(['raw', 'cooked']).optional(),
+        operation_id: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.updateFoodItem(db, userId, args))
+  );
+
+  server.registerTool(
+    'update_meal_entry',
+    {
+      title: 'Update meal entry',
       description:
-        `${WRITE_CONFIRM} Propose fixing dose_text / dose_qty / label serving on an existing supplement. Preview includes before/after.`,
+        `${WRITE_NOW} Change date/slot/name or replace items on a log entry. Returns before/after. `
+        + 'Replacing items may assign a new log_entry_id.',
+      inputSchema: {
+        log_entry_id: z.number().int().positive(),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        name: z.string().optional(),
+        meal_slot: z.string().optional(),
+        time_min: z.number().int().min(0).max(1439).optional(),
+        weight_basis: z.enum(['raw', 'cooked']).optional(),
+        items: z.array(mealItemSchema).optional(),
+        operation_id: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.updateMealEntry(db, userId, args))
+  );
+
+  server.registerTool(
+    'delete_meal_entry',
+    {
+      title: 'Delete meal entry',
+      description:
+        `${WRITE_NOW} HARD delete a log entry. Permanent and not revertible — the row is gone.`,
+      inputSchema: {
+        log_entry_id: z.number().int().positive(),
+        operation_id: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.deleteMealEntry(db, userId, args))
+  );
+
+  server.registerTool(
+    'update_supplement',
+    {
+      title: 'Update supplement',
+      description:
+        `${WRITE_NOW} Update dose_text / dose_qty / label serving (dose_multiplier = dose_qty/label_serving_qty). `
+        + 'Optional taken + taken_date for the checklist. Returns before/after including dose_multiplier.',
       inputSchema: {
         supplement_id: z.number().int().positive(),
         dose_text: z.string().optional(),
         dose_qty: z.number().positive().optional(),
         label_serving_qty: z.number().positive().optional(),
         label_serving_unit: z.string().optional(),
+        taken: z.boolean().optional(),
+        taken_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         operation_id: z.string().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async (args) => wrapWrite(writes.proposeSupplementCorrection(db, userId, args))
+    async (args) => wrapWrite(writes.updateSupplement(db, userId, args))
   );
 
   server.registerTool(
-    'commit_proposal',
+    'write_batch',
     {
-      title: 'Commit proposal',
+      title: 'Write batch',
       description:
-        `${WRITE_CONFIRM} Writes the real row for a pending proposal. `
-        + 'Requires proposal_id, confirmation_code from the propose response, and user_confirmation_text '
-        + '(the user\'s verbatim approval message). Never call in the same turn as propose_*.',
+        `${WRITE_NOW} Run multiple write ops in one all-or-nothing transaction. `
+        + 'add_food_item may set ref; later log_meal items can use that ref. Any failure rolls back all.',
       inputSchema: {
-        proposal_id: z.string().min(1),
-        confirmation_code: z.string().min(1),
-        user_confirmation_text: z
-          .string()
-          .min(1)
-          .describe("User's verbatim approval text from chat"),
+        operations: z.array(z.record(z.string(), z.any())).min(1),
+        operation_id: z.string().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
-    async (args) => wrapWrite(writes.commitProposal(db, userId, args))
-  );
-
-  server.registerTool(
-    'list_proposals',
-    {
-      title: 'List proposals',
-      description: `${WRITE_CONFIRM} List recent pending/committed (and optionally expired) MCP proposals.`,
-      inputSchema: {
-        include_expired: z.boolean().optional(),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    async ({ include_expired }) =>
-      wrapWrite(writes.listProposals(db, userId, { include_expired }))
-  );
-
-  server.registerTool(
-    'discard_proposal',
-    {
-      title: 'Discard proposal',
-      description: `${WRITE_CONFIRM} Discard a pending proposal without writing.`,
-      inputSchema: {
-        proposal_id: z.string().min(1),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    },
-    async ({ proposal_id }) => wrapWrite(writes.discardProposal(db, userId, proposal_id))
+    async (args) => wrapWrite(writes.writeBatch(db, userId, args))
   );
 
   server.registerTool(
@@ -410,7 +443,7 @@ function createFlopsMcpServer(db, userId) {
     {
       title: 'List recent MCP writes',
       description:
-        `${READ_ONLY} Meals, foods, and audit rows written via MCP in the last N days (default 7).`,
+        `${READ_ONLY} Meals, foods, and audit rows (with audit_id) written via MCP in the last N days.`,
       inputSchema: {
         days: z.number().int().min(1).max(90).optional(),
       },

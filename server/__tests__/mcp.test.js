@@ -108,15 +108,22 @@ describe('MCP /mcp auth', () => {
         'search_recipes',
         'get_gym_today',
         'get_gym_progress',
-        'propose_meal_entry',
-        'propose_food_item',
-        'propose_supplement_correction',
-        'commit_proposal',
-        'list_proposals',
-        'discard_proposal',
+        'log_meal',
+        'add_food_item',
+        'update_food_item',
+        'update_meal_entry',
+        'delete_meal_entry',
+        'update_supplement',
+        'write_batch',
         'list_recent_mcp_writes',
       ])
     );
+    expect(names).not.toEqual(expect.arrayContaining([
+      'propose_meal_entry',
+      'commit_proposal',
+      'list_proposals',
+      'discard_proposal',
+    ]));
   });
 });
 

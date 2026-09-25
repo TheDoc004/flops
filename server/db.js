@@ -722,7 +722,7 @@ function createDb(dbPath) {
     db.exec(`ALTER TABLE user_profile ADD COLUMN dash_weight_chart_card_enabled INTEGER DEFAULT 0`);
   }
 
-  // MCP Phase 2: permanent source flags + proposal/audit trail.
+  // MCP Phase 2/3: permanent source flags + audit trail.
   // `source` / `created_via` are never cleared; UI uses them for badges and bulk undo.
   const logColsMcp = db.prepare('PRAGMA table_info(log_entries)').all().map(c => c.name);
   if (logColsMcp.length && !logColsMcp.includes('source')) {
@@ -751,42 +751,51 @@ function createDb(dbPath) {
     db.exec(`ALTER TABLE supplements ADD COLUMN created_via TEXT NOT NULL DEFAULT 'app'`);
   }
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS mcp_proposals (
-      id TEXT PRIMARY KEY,
-      user_id INTEGER NOT NULL,
-      operation_id TEXT,
-      kind TEXT NOT NULL,
-      confirmation_code TEXT NOT NULL,
-      preview_json TEXT NOT NULL,
-      payload_json TEXT NOT NULL,
-      warnings_json TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_at TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
-      committed_at TEXT,
-      result_row_ids_json TEXT
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_proposals_user_op
-      ON mcp_proposals(user_id, operation_id)
-      WHERE operation_id IS NOT NULL AND operation_id != '';
-    CREATE INDEX IF NOT EXISTS idx_mcp_proposals_user_status
-      ON mcp_proposals(user_id, status, expires_at);
+  // Phase 3: proposals handshake removed — drop leftover Phase 2 table.
+  db.exec(`DROP TABLE IF EXISTS mcp_proposals`);
 
+  db.exec(`
     CREATE TABLE IF NOT EXISTS mcp_write_audit (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
       proposal_id TEXT,
       kind TEXT NOT NULL,
-      confirmation_code TEXT NOT NULL,
-      user_confirmation_text TEXT NOT NULL,
-      preview_json TEXT NOT NULL,
-      result_row_ids_json TEXT NOT NULL,
+      confirmation_code TEXT NOT NULL DEFAULT '',
+      user_confirmation_text TEXT NOT NULL DEFAULT '',
+      preview_json TEXT NOT NULL DEFAULT '{}',
+      result_row_ids_json TEXT NOT NULL DEFAULT '{}',
       operation_id TEXT,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      op TEXT,
+      before_json TEXT,
+      after_json TEXT,
+      response_json TEXT,
+      warnings_json TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_mcp_write_audit_user_created
       ON mcp_write_audit(user_id, created_at);
+  `);
+
+  const auditCols = db.prepare('PRAGMA table_info(mcp_write_audit)').all().map(c => c.name);
+  if (auditCols.length && !auditCols.includes('op')) {
+    db.exec(`ALTER TABLE mcp_write_audit ADD COLUMN op TEXT`);
+  }
+  if (auditCols.length && !auditCols.includes('before_json')) {
+    db.exec(`ALTER TABLE mcp_write_audit ADD COLUMN before_json TEXT`);
+  }
+  if (auditCols.length && !auditCols.includes('after_json')) {
+    db.exec(`ALTER TABLE mcp_write_audit ADD COLUMN after_json TEXT`);
+  }
+  if (auditCols.length && !auditCols.includes('response_json')) {
+    db.exec(`ALTER TABLE mcp_write_audit ADD COLUMN response_json TEXT`);
+  }
+  if (auditCols.length && !auditCols.includes('warnings_json')) {
+    db.exec(`ALTER TABLE mcp_write_audit ADD COLUMN warnings_json TEXT`);
+  }
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_write_audit_user_op
+      ON mcp_write_audit(user_id, operation_id)
+      WHERE operation_id IS NOT NULL AND operation_id != '';
   `);
 
   // Supplements may predate micronutrient tracking — add the exact-micros column.

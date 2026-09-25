@@ -1,38 +1,26 @@
 /**
- * MCP write path: propose → (chat confirmation) → commit.
- *
- * Server cannot verify a human approved the write. Safety is: bad writes are
- * obvious (source=mcp), audited, and cheap to undo — not impossible.
+ * MCP direct writes (Phase 3 Part A).
+ * Writes commit immediately. Propose/commit handshake removed.
  */
-const crypto = require('crypto');
 const { isoDateOrNull, getLocalDateISO } = require('./dates');
+const { doseMultiplier } = require('../supplementDose');
+const reads = require('./reads');
 
-const PROPOSAL_TTL_MS = 60 * 60 * 1000;
 const NUTRITION_SOURCES = new Set(['label', 'database', 'estimate']);
 const WEIGHT_BASES = new Set(['raw', 'cooked']);
-const KINDS = {
-  meal_entry: 'meal_entry',
-  food_item: 'food_item',
-  supplement_correction: 'supplement_correction',
+
+const OPS = {
+  log_meal: 'log_meal',
+  add_food_item: 'add_food_item',
+  update_food_item: 'update_food_item',
+  update_meal_entry: 'update_meal_entry',
+  delete_meal_entry: 'delete_meal_entry',
+  update_supplement: 'update_supplement',
+  write_batch: 'write_batch',
 };
 
 function nowIso() {
   return new Date().toISOString();
-}
-
-function plusMsIso(ms) {
-  return new Date(Date.now() + ms).toISOString();
-}
-
-function makeId() {
-  return crypto.randomBytes(16).toString('hex');
-}
-
-function makeConfirmationCode(kind) {
-  const prefix =
-    kind === KINDS.meal_entry ? 'M' : kind === KINDS.food_item ? 'F' : 'S';
-  const hex = crypto.randomBytes(2).toString('hex').toUpperCase();
-  return `${prefix}-${hex}`;
 }
 
 function round(n, digits = 1) {
@@ -59,105 +47,6 @@ function parseJson(raw, fallback = null) {
   } catch {
     return fallback;
   }
-}
-
-function shapeProposalRow(row) {
-  if (!row) return null;
-  return {
-    proposal_id: row.id,
-    kind: row.kind,
-    confirmation_code: row.confirmation_code,
-    status: row.status,
-    operation_id: row.operation_id || null,
-    created_at: row.created_at,
-    expires_at: row.expires_at,
-    committed_at: row.committed_at || null,
-    preview: parseJson(row.preview_json, {}),
-    warnings: parseJson(row.warnings_json, []),
-    result_row_ids: parseJson(row.result_row_ids_json, null),
-  };
-}
-
-function findByOperationId(db, userId, operationId) {
-  if (!operationId) return null;
-  return db
-    .prepare(
-      `SELECT * FROM mcp_proposals
-        WHERE user_id = ? AND operation_id = ?
-        ORDER BY created_at DESC LIMIT 1`
-    )
-    .get(userId, String(operationId));
-}
-
-function expireIfNeeded(db, row) {
-  if (!row || row.status !== 'pending') return row;
-  if (row.expires_at && row.expires_at < nowIso()) {
-    db.prepare(
-      `UPDATE mcp_proposals SET status = 'expired' WHERE id = ? AND status = 'pending'`
-    ).run(row.id);
-    return { ...row, status: 'expired' };
-  }
-  return row;
-}
-
-function insertProposal(db, userId, {
-  kind,
-  operationId,
-  preview,
-  payload,
-  warnings = [],
-}) {
-  const id = makeId();
-  const confirmation_code = makeConfirmationCode(kind);
-  const created_at = nowIso();
-  const expires_at = plusMsIso(PROPOSAL_TTL_MS);
-  db.prepare(
-    `INSERT INTO mcp_proposals (
-       id, user_id, operation_id, kind, confirmation_code,
-       preview_json, payload_json, warnings_json, status, created_at, expires_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
-  ).run(
-    id,
-    userId,
-    operationId || null,
-    kind,
-    confirmation_code,
-    JSON.stringify(preview),
-    JSON.stringify(payload),
-    JSON.stringify(warnings),
-    created_at,
-    expires_at
-  );
-  return shapeProposalRow(
-    db.prepare('SELECT * FROM mcp_proposals WHERE id = ?').get(id)
-  );
-}
-
-function idempotentOrCreate(db, userId, operationId, createFn) {
-  if (operationId) {
-    const existing = expireIfNeeded(db, findByOperationId(db, userId, operationId));
-    if (existing) {
-      const shaped = shapeProposalRow(existing);
-      if (existing.status === 'committed') {
-        return {
-          ...shaped,
-          idempotent: true,
-          message: 'This operation_id was already committed; returning prior result.',
-        };
-      }
-      if (existing.status === 'pending') {
-        return {
-          ...shaped,
-          idempotent: true,
-          message: 'Reusing existing pending proposal for this operation_id.',
-        };
-      }
-      db.prepare(
-        `UPDATE mcp_proposals SET operation_id = NULL WHERE id = ?`
-      ).run(existing.id);
-    }
-  }
-  return createFn();
 }
 
 function searchSimilarIngredients(db, userId, name, { limit = 8 } = {}) {
@@ -199,34 +88,101 @@ function scaleFromServing(row, quantityG) {
     protein_g: round((Number(row.protein_g) || 0) * f, 2),
     carbs_g: round((Number(row.carbs_g) || 0) * f, 2),
     fat_g: round((Number(row.fat_g) || 0) * f, 2),
-    fiber_g:
-      row.fiber_g == null ? null : round((Number(row.fiber_g) || 0) * f, 2),
+    fiber_g: row.fiber_g == null ? null : round((Number(row.fiber_g) || 0) * f, 2),
   };
 }
 
-function resolveMealItem(db, userId, item, mealWeightBasis, index) {
+function findIdempotent(db, userId, operationId) {
+  if (!operationId) return null;
+  const row = db
+    .prepare(
+      `SELECT * FROM mcp_write_audit
+        WHERE user_id = ? AND operation_id = ?
+        ORDER BY id DESC LIMIT 1`
+    )
+    .get(userId, String(operationId));
+  if (!row) return null;
+  const response = parseJson(row.response_json, null);
+  if (response) return { ...response, idempotent: true, audit_id: row.id };
+  return {
+    idempotent: true,
+    audit_id: row.id,
+    op: row.op || row.kind,
+    result_row_ids: parseJson(row.result_row_ids_json, {}),
+    before: parseJson(row.before_json, null),
+    after: parseJson(row.after_json, null),
+  };
+}
+
+function recordAudit(db, userId, {
+  op,
+  operationId,
+  before,
+  after,
+  result_row_ids,
+  warnings = [],
+  response,
+}) {
+  const info = db
+    .prepare(
+      `INSERT INTO mcp_write_audit (
+         user_id, proposal_id, kind, confirmation_code, user_confirmation_text,
+         preview_json, result_row_ids_json, operation_id, created_at,
+         op, before_json, after_json, response_json, warnings_json
+       ) VALUES (?, NULL, ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      userId,
+      op,
+      JSON.stringify(after ?? {}),
+      JSON.stringify(result_row_ids ?? {}),
+      operationId || null,
+      nowIso(),
+      op,
+      before == null ? null : JSON.stringify(before),
+      after == null ? null : JSON.stringify(after),
+      JSON.stringify(response ?? {}),
+      JSON.stringify(warnings || [])
+    );
+  return info.lastInsertRowid;
+}
+
+function withIdempotency(db, userId, operationId, runFn) {
+  const existing = findIdempotent(db, userId, operationId);
+  if (existing) return existing;
+  return runFn();
+}
+
+function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
   const warnings = [];
-  const nutrition_source = normalizeNutritionSource(item?.nutrition_source);
-  if (!nutrition_source) {
-    return {
-      error: `items[${index}].nutrition_source must be label|database|estimate`,
+  let working = item;
+  if (working?.ref && refMap) {
+    const resolvedId = refMap.get(String(working.ref));
+    if (!resolvedId) return { error: `items[${index}]: unknown ref "${working.ref}"` };
+    working = {
+      ...working,
+      label_ingredient_id: resolvedId,
+      nutrition_source: working.nutrition_source || 'database',
     };
   }
-  const weight_basis =
-    normalizeWeightBasis(item?.weight_basis) || mealWeightBasis;
+
+  const nutrition_source = normalizeNutritionSource(working?.nutrition_source);
+  if (!nutrition_source) {
+    return { error: `items[${index}].nutrition_source must be label|database|estimate` };
+  }
+  const weight_basis = normalizeWeightBasis(working?.weight_basis) || mealWeightBasis;
   if (!weight_basis) {
     return { error: `items[${index}].weight_basis (or meal weight_basis) must be raw|cooked` };
   }
 
-  const quantity_g = Number(item?.quantity_g);
-  const servings = item?.servings != null ? Number(item.servings) : null;
+  const quantity_g = Number(working?.quantity_g);
+  const servings = working?.servings != null ? Number(working.servings) : null;
 
-  if (item?.label_ingredient_id != null) {
-    const id = Number(item.label_ingredient_id);
+  if (working?.label_ingredient_id != null) {
+    const id = Number(working.label_ingredient_id);
     const row = db
       .prepare(
-        `SELECT id, name, brand_name, serving_size_text, grams_per_serving,
-                calories, protein_g, carbs_g, fat_g, fiber_g, micros_json
+        `SELECT id, name, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, micros_json
            FROM label_ingredients WHERE id = ? AND user_id = ?`
       )
       .get(id, userId);
@@ -236,9 +192,7 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index) {
     }
     const macros = scaleFromServing(row, quantity_g);
     if (!macros) {
-      return {
-        error: `items[${index}]: ingredient "${row.name}" needs grams_per_serving to scale by grams`,
-      };
+      return { error: `items[${index}]: ingredient "${row.name}" needs grams_per_serving` };
     }
     return {
       item: {
@@ -247,7 +201,7 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index) {
         name: row.name,
         quantity_g,
         weight_basis,
-        nutrition_source: nutrition_source === 'database' ? 'database' : nutrition_source,
+        nutrition_source,
         macros,
         micros: parseJson(row.micros_json, null),
       },
@@ -255,26 +209,19 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index) {
     };
   }
 
-  if (item?.recipe_id != null) {
-    const id = Number(item.recipe_id);
+  if (working?.recipe_id != null) {
+    const id = Number(working.recipe_id);
     const recipe = db
       .prepare(
-        `SELECT id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, is_archived, is_deleted
+        `SELECT id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, is_deleted
            FROM recipes WHERE id = ? AND user_id = ?`
       )
       .get(id, userId);
     if (!recipe || recipe.is_deleted) {
       return { error: `items[${index}]: recipe_id ${id} not found` };
     }
-    if (recipe.is_archived) {
-      warnings.push(`Recipe "${recipe.name}" is archived; logging anyway if committed.`);
-    }
     const s = Number.isFinite(servings) && servings > 0 ? servings : null;
-    if (s == null) {
-      return {
-        error: `items[${index}]: recipe items need servings (positive number)`,
-      };
-    }
+    if (s == null) return { error: `items[${index}]: recipe items need servings` };
     return {
       item: {
         kind: 'recipe',
@@ -289,10 +236,7 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index) {
           protein_g: round((Number(recipe.protein_g) || 0) * s, 2),
           carbs_g: round((Number(recipe.carbs_g) || 0) * s, 2),
           fat_g: round((Number(recipe.fat_g) || 0) * s, 2),
-          fiber_g:
-            recipe.fiber_g == null
-              ? null
-              : round((Number(recipe.fiber_g) || 0) * s, 2),
+          fiber_g: recipe.fiber_g == null ? null : round((Number(recipe.fiber_g) || 0) * s, 2),
         },
         serving_size: recipe.serving_size,
       },
@@ -300,39 +244,29 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index) {
     };
   }
 
-  const name = String(item?.name || '').trim();
+  const name = String(working?.name || '').trim();
   if (!name) {
-    return {
-      error: `items[${index}]: provide label_ingredient_id, recipe_id, or name (+ per-100g macros)`,
-    };
+    return { error: `items[${index}]: provide label_ingredient_id, recipe_id, ref, or new-food fields` };
   }
   if (!Number.isFinite(quantity_g) || quantity_g <= 0) {
     return { error: `items[${index}].quantity_g must be a positive number` };
   }
   const per100 = {
-    calories: Number(item?.calories_per_100g),
-    protein_g: Number(item?.protein_g_per_100g),
-    carbs_g: Number(item?.carbs_g_per_100g),
-    fat_g: Number(item?.fat_g_per_100g),
+    calories: Number(working?.calories_per_100g),
+    protein_g: Number(working?.protein_g_per_100g),
+    carbs_g: Number(working?.carbs_g_per_100g),
+    fat_g: Number(working?.fat_g_per_100g),
     fiber_g:
-      item?.fiber_g_per_100g == null || item?.fiber_g_per_100g === ''
+      working?.fiber_g_per_100g == null || working?.fiber_g_per_100g === ''
         ? null
-        : Number(item.fiber_g_per_100g),
+        : Number(working.fiber_g_per_100g),
   };
-  if (
-    ![per100.calories, per100.protein_g, per100.carbs_g, per100.fat_g].every(
-      Number.isFinite
-    )
-  ) {
-    return {
-      error: `items[${index}]: new items need calories_per_100g, protein_g_per_100g, carbs_g_per_100g, fat_g_per_100g`,
-    };
+  if (![per100.calories, per100.protein_g, per100.carbs_g, per100.fat_g].every(Number.isFinite)) {
+    return { error: `items[${index}]: new items need per-100g macros` };
   }
   const similar = searchSimilarIngredients(db, userId, name);
   if (similar.length) {
-    warnings.push(
-      `Similar library items found for "${name}" — prefer linking label_ingredient_id to avoid duplicates.`
-    );
+    warnings.push(`Similar library items found for "${name}".`);
   }
   return {
     item: {
@@ -344,238 +278,27 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index) {
       per_100g: per100,
       macros: scalePer100g(per100, quantity_g),
       similar_library_items: similar,
-      micros_per_100g: item?.micros_per_100g || null,
+      micros_per_100g: working?.micros_per_100g || null,
     },
     warnings,
   };
 }
 
-function proposeMealEntry(db, userId, args = {}) {
-  const date = isoDateOrNull(args.date) || getLocalDateISO();
-  const weight_basis = normalizeWeightBasis(args.weight_basis);
-  if (!weight_basis) {
-    return { error: 'weight_basis is required (raw|cooked)' };
+function sumItemMacros(resolved) {
+  const totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: null };
+  for (const it of resolved) {
+    totals.calories += it.macros.calories || 0;
+    totals.protein_g += it.macros.protein_g || 0;
+    totals.carbs_g += it.macros.carbs_g || 0;
+    totals.fat_g += it.macros.fat_g || 0;
+    if (it.macros.fiber_g != null) totals.fiber_g = (totals.fiber_g || 0) + it.macros.fiber_g;
   }
-  const itemsIn = Array.isArray(args.items) ? args.items : null;
-  if (!itemsIn || !itemsIn.length) {
-    return { error: 'items must be a non-empty array' };
-  }
-
-  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
-  return idempotentOrCreate(db, userId, operationId, () => {
-    const resolved = [];
-    const warnings = [];
-    for (let i = 0; i < itemsIn.length; i++) {
-      const r = resolveMealItem(db, userId, itemsIn[i], weight_basis, i);
-      if (r.error) return { error: r.error };
-      resolved.push(r.item);
-      warnings.push(...(r.warnings || []));
-    }
-
-    const totals = resolved.reduce(
-      (acc, it) => {
-        acc.calories += it.macros.calories || 0;
-        acc.protein_g += it.macros.protein_g || 0;
-        acc.carbs_g += it.macros.carbs_g || 0;
-        acc.fat_g += it.macros.fat_g || 0;
-        if (it.macros.fiber_g != null) {
-          acc.fiber_g = (acc.fiber_g || 0) + it.macros.fiber_g;
-        }
-        return acc;
-      },
-      { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: null }
-    );
-    totals.calories = round(totals.calories, 1);
-    totals.protein_g = round(totals.protein_g, 2);
-    totals.carbs_g = round(totals.carbs_g, 2);
-    totals.fat_g = round(totals.fat_g, 2);
-    if (totals.fiber_g != null) totals.fiber_g = round(totals.fiber_g, 2);
-
-    const meal_slot = args.meal_slot ? String(args.meal_slot).trim() : null;
-    const name =
-      String(args.name || '').trim() ||
-      (meal_slot ? `${meal_slot} meal` : 'MCP meal');
-    const time_min =
-      args.time_min == null || args.time_min === ''
-        ? null
-        : Number(args.time_min);
-    if (time_min != null && (!Number.isFinite(time_min) || time_min < 0 || time_min > 24 * 60 - 1)) {
-      return { error: 'time_min must be minutes from midnight (0–1439)' };
-    }
-
-    const preview = {
-      kind: KINDS.meal_entry,
-      date,
-      name,
-      meal_slot,
-      time_min,
-      weight_basis,
-      source: 'mcp',
-      items: resolved,
-      totals,
-    };
-
-    return insertProposal(db, userId, {
-      kind: KINDS.meal_entry,
-      operationId,
-      preview,
-      payload: preview,
-      warnings,
-    });
-  });
-}
-
-function proposeFoodItem(db, userId, args = {}) {
-  const name = String(args.name || '').trim();
-  if (!name) return { error: 'name is required' };
-  const weight_basis = normalizeWeightBasis(args.weight_basis);
-  if (!weight_basis) return { error: 'weight_basis is required (raw|cooked)' };
-  const nutrition_source = normalizeNutritionSource(args.nutrition_source);
-  if (!nutrition_source) {
-    return { error: 'nutrition_source must be label|database|estimate' };
-  }
-
-  const per100 = {
-    calories: Number(args.calories_per_100g),
-    protein_g: Number(args.protein_g_per_100g),
-    carbs_g: Number(args.carbs_g_per_100g),
-    fat_g: Number(args.fat_g_per_100g),
-    fiber_g:
-      args.fiber_g_per_100g == null || args.fiber_g_per_100g === ''
-        ? null
-        : Number(args.fiber_g_per_100g),
-  };
-  if (
-    ![per100.calories, per100.protein_g, per100.carbs_g, per100.fat_g].every(
-      Number.isFinite
-    )
-  ) {
-    return {
-      error:
-        'calories_per_100g, protein_g_per_100g, carbs_g_per_100g, fat_g_per_100g are required',
-    };
-  }
-
-  const serving_size_text =
-    String(args.serving_size_text || '').trim() || '100 g';
-  const grams_per_serving =
-    args.grams_per_serving != null && Number.isFinite(Number(args.grams_per_serving))
-      ? Number(args.grams_per_serving)
-      : 100;
-  const brand_name = args.brand_name ? String(args.brand_name).trim() : null;
-  const similar = searchSimilarIngredients(db, userId, name);
-  const warnings = similar.length
-    ? [
-        `Found ${similar.length} similar library item(s). Prefer reusing an existing id unless you intend a new food.`,
-      ]
-    : [];
-
-  const scale = grams_per_serving / 100;
-  const servingMacros = {
-    calories: round(per100.calories * scale, 1),
-    protein_g: round(per100.protein_g * scale, 2),
-    carbs_g: round(per100.carbs_g * scale, 2),
-    fat_g: round(per100.fat_g * scale, 2),
-    fiber_g:
-      per100.fiber_g == null ? null : round(per100.fiber_g * scale, 2),
-  };
-
-  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
-  return idempotentOrCreate(db, userId, operationId, () => {
-    const preview = {
-      kind: KINDS.food_item,
-      name,
-      brand_name,
-      serving_size_text,
-      grams_per_serving,
-      weight_basis,
-      nutrition_source,
-      per_100g: per100,
-      per_serving: servingMacros,
-      similar_library_items: similar,
-      source: 'mcp',
-      micros_per_100g: args.micros_per_100g || null,
-    };
-    return insertProposal(db, userId, {
-      kind: KINDS.food_item,
-      operationId,
-      preview,
-      payload: preview,
-      warnings,
-    });
-  });
-}
-
-function proposeSupplementCorrection(db, userId, args = {}) {
-  const id = Number(args.supplement_id);
-  if (!Number.isInteger(id) || id <= 0) {
-    return { error: 'supplement_id is required' };
-  }
-  const row = db
-    .prepare(
-      `SELECT id, name, dose_text, label_serving_qty, label_serving_unit, dose_qty,
-              calories, protein_g, carbs_g, fat_g
-         FROM supplements WHERE id = ? AND user_id = ?`
-    )
-    .get(id, userId);
-  if (!row) return { error: `supplement_id ${id} not found` };
-
-  const hasDoseText = Object.prototype.hasOwnProperty.call(args, 'dose_text');
-  const hasDoseQty = Object.prototype.hasOwnProperty.call(args, 'dose_qty');
-  const hasLabelQty = Object.prototype.hasOwnProperty.call(args, 'label_serving_qty');
-  const hasLabelUnit = Object.prototype.hasOwnProperty.call(args, 'label_serving_unit');
-  if (!hasDoseText && !hasDoseQty && !hasLabelQty && !hasLabelUnit) {
-    return {
-      error:
-        'Provide at least one of dose_text, dose_qty, label_serving_qty, label_serving_unit',
-    };
-  }
-
-  const after = {
-    dose_text: hasDoseText
-      ? String(args.dose_text || '').trim() || null
-      : row.dose_text,
-    dose_qty: hasDoseQty ? Number(args.dose_qty) : row.dose_qty,
-    label_serving_qty: hasLabelQty
-      ? Number(args.label_serving_qty)
-      : row.label_serving_qty,
-    label_serving_unit: hasLabelUnit
-      ? String(args.label_serving_unit || '').trim() || null
-      : row.label_serving_unit,
-  };
-  if (hasDoseQty && (!Number.isFinite(after.dose_qty) || after.dose_qty <= 0)) {
-    return { error: 'dose_qty must be a positive number' };
-  }
-  if (
-    hasLabelQty &&
-    (!Number.isFinite(after.label_serving_qty) || after.label_serving_qty <= 0)
-  ) {
-    return { error: 'label_serving_qty must be a positive number' };
-  }
-
-  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
-  return idempotentOrCreate(db, userId, operationId, () => {
-    const preview = {
-      kind: KINDS.supplement_correction,
-      supplement_id: row.id,
-      name: row.name,
-      before: {
-        dose_text: row.dose_text,
-        dose_qty: row.dose_qty,
-        label_serving_qty: row.label_serving_qty,
-        label_serving_unit: row.label_serving_unit,
-      },
-      after,
-      source: 'mcp',
-    };
-    return insertProposal(db, userId, {
-      kind: KINDS.supplement_correction,
-      operationId,
-      preview,
-      payload: preview,
-      warnings: [],
-    });
-  });
+  totals.calories = round(totals.calories, 1);
+  totals.protein_g = round(totals.protein_g, 2);
+  totals.carbs_g = round(totals.carbs_g, 2);
+  totals.fat_g = round(totals.fat_g, 2);
+  if (totals.fiber_g != null) totals.fiber_g = round(totals.fiber_g, 2);
+  return totals;
 }
 
 function ensureQuickFoodRecipe(db, userId, name, macros) {
@@ -588,20 +311,10 @@ function ensureQuickFoodRecipe(db, userId, name, macros) {
     .get(userId, name);
   if (existing?.id) {
     db.prepare(
-      `UPDATE recipes
-          SET calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
-              ingredients = '[]', recipe_kind = 'permanent', is_archived = 0,
-              meal_builder_meta = NULL, is_quick_food = 1
+      `UPDATE recipes SET calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
+              ingredients = '[]', recipe_kind = 'permanent', is_archived = 0, meal_builder_meta = NULL, is_quick_food = 1
         WHERE id = ? AND user_id = ?`
-    ).run(
-      macros.calories,
-      macros.protein_g,
-      macros.carbs_g,
-      macros.fat_g,
-      macros.fiber_g,
-      existing.id,
-      userId
-    );
+    ).run(macros.calories, macros.protein_g, macros.carbs_g, macros.fat_g, macros.fiber_g, existing.id, userId);
     return existing.id;
   }
   const r = db
@@ -611,15 +324,7 @@ function ensureQuickFoodRecipe(db, userId, name, macros) {
          ingredients, recipe_kind, remaining_uses, max_uses, is_archived, meal_builder_meta, is_quick_food
        ) VALUES (?, ?, '1 serving', ?, ?, ?, ?, ?, '[]', 'permanent', NULL, NULL, 0, NULL, 1)`
     )
-    .run(
-      userId,
-      name,
-      macros.calories,
-      macros.protein_g,
-      macros.carbs_g,
-      macros.fat_g,
-      macros.fiber_g
-    );
+    .run(userId, name, macros.calories, macros.protein_g, macros.carbs_g, macros.fat_g, macros.fiber_g);
   return r.lastInsertRowid;
 }
 
@@ -640,77 +345,89 @@ function createLabelFromNewFood(db, userId, item) {
                  0, NULL, 'weight', NULL, NULL, NULL, NULL, ?, 'mcp', ?, ?)`
     )
     .run(
-      userId,
-      item.name,
-      per100.calories,
-      per100.protein_g,
-      per100.carbs_g,
-      per100.fat_g,
-      per100.fiber_g,
-      micros,
-      item.weight_basis,
-      item.nutrition_source
+      userId, item.name, per100.calories, per100.protein_g, per100.carbs_g, per100.fat_g,
+      per100.fiber_g, micros, item.weight_basis, item.nutrition_source
     );
   return r.lastInsertRowid;
 }
 
-function commitMealEntry(db, userId, payload) {
+function fetchLogEntryById(db, userId, id) {
+  const raw = db
+    .prepare(
+      `SELECT le.id, le.recipe_id, le.date, le.time_min, le.servings, le.notes,
+              le.ingredients_json, COALESCE(le.source, 'app') AS source,
+              le.weight_basis, le.nutrition_source,
+              COALESCE(le.recipe_name, r.name, 'Deleted recipe') AS recipe_name,
+              COALESCE(le.serving_size, r.serving_size, '') AS serving_size,
+              COALESCE(le.recipe_calories, r.calories, 0) AS recipe_calories,
+              COALESCE(le.recipe_protein_g, r.protein_g, 0) AS recipe_protein_g,
+              COALESCE(le.recipe_carbs_g, r.carbs_g, 0) AS recipe_carbs_g,
+              COALESCE(le.recipe_fat_g, r.fat_g, 0) AS recipe_fat_g,
+              COALESCE(le.recipe_fiber_g, r.fiber_g) AS recipe_fiber_g,
+              COALESCE(le.recipe_is_quick_food, r.is_quick_food, 0) AS recipe_is_quick_food
+         FROM log_entries le
+         LEFT JOIN recipes r ON le.recipe_id = r.id
+        WHERE le.id = ? AND le.user_id = ?`
+    )
+    .get(id, userId);
+  if (!raw) return null;
+  const day = reads.getDay(db, userId, raw.date);
+  const shaped = (day.meals || []).find(m => Number(m.id) === Number(id));
+  if (shaped) return shaped;
+  return {
+    id: raw.id,
+    date: raw.date,
+    time_min: raw.time_min,
+    servings: raw.servings,
+    notes: raw.notes,
+    recipe_name: raw.recipe_name,
+    serving_size: raw.serving_size,
+    source: raw.source,
+    weight_basis: raw.weight_basis,
+    nutrition_source: raw.nutrition_source,
+    per_serving: {
+      calories: raw.recipe_calories,
+      protein_g: raw.recipe_protein_g,
+      carbs_g: raw.recipe_carbs_g,
+      fat_g: raw.recipe_fat_g,
+      fiber_g: raw.recipe_fiber_g,
+    },
+    ingredients: parseJson(raw.ingredients_json, null),
+  };
+}
+
+function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, weight_basis, resolved, totals }) {
   const result = { log_entry_ids: [], label_ingredient_ids: [] };
   const ingredientRows = [];
 
-  for (const item of payload.items) {
+  for (const item of resolved) {
     if (item.kind === 'new_food') {
       const lid = createLabelFromNewFood(db, userId, item);
       result.label_ingredient_ids.push(lid);
       ingredientRows.push({
-        name: item.name,
-        amount: item.quantity_g,
-        unit: 'g',
-        label_ingredient_id: lid,
-        calories: item.macros.calories,
-        protein_g: item.macros.protein_g,
-        carbs_g: item.macros.carbs_g,
-        fat_g: item.macros.fat_g,
-        fiber_g: item.macros.fiber_g,
-        weight_basis: item.weight_basis,
+        name: item.name, amount: item.quantity_g, unit: 'g', label_ingredient_id: lid,
+        calories: item.macros.calories, protein_g: item.macros.protein_g, carbs_g: item.macros.carbs_g,
+        fat_g: item.macros.fat_g, fiber_g: item.macros.fiber_g, weight_basis: item.weight_basis,
         nutrition_source: item.nutrition_source,
       });
     } else if (item.kind === 'label_ingredient') {
       ingredientRows.push({
-        name: item.name,
-        amount: item.quantity_g,
-        unit: 'g',
-        label_ingredient_id: item.label_ingredient_id,
-        calories: item.macros.calories,
-        protein_g: item.macros.protein_g,
-        carbs_g: item.macros.carbs_g,
-        fat_g: item.macros.fat_g,
-        fiber_g: item.macros.fiber_g,
-        weight_basis: item.weight_basis,
+        name: item.name, amount: item.quantity_g, unit: 'g', label_ingredient_id: item.label_ingredient_id,
+        calories: item.macros.calories, protein_g: item.macros.protein_g, carbs_g: item.macros.carbs_g,
+        fat_g: item.macros.fat_g, fiber_g: item.macros.fiber_g, weight_basis: item.weight_basis,
         nutrition_source: item.nutrition_source,
       });
     } else if (item.kind === 'recipe') {
       ingredientRows.push({
-        name: item.name,
-        amount: item.servings,
-        unit: 'serving',
-        recipe_id: item.recipe_id,
-        calories: item.macros.calories,
-        protein_g: item.macros.protein_g,
-        carbs_g: item.macros.carbs_g,
-        fat_g: item.macros.fat_g,
-        fiber_g: item.macros.fiber_g,
-        weight_basis: item.weight_basis,
+        name: item.name, amount: item.servings, unit: 'serving', recipe_id: item.recipe_id,
+        calories: item.macros.calories, protein_g: item.macros.protein_g, carbs_g: item.macros.carbs_g,
+        fat_g: item.macros.fat_g, fiber_g: item.macros.fiber_g, weight_basis: item.weight_basis,
         nutrition_source: item.nutrition_source,
       });
     }
   }
 
-  const onlyRecipe =
-    payload.items.length === 1 && payload.items[0].kind === 'recipe'
-      ? payload.items[0]
-      : null;
-
+  const onlyRecipe = resolved.length === 1 && resolved[0].kind === 'recipe' ? resolved[0] : null;
   if (onlyRecipe) {
     const recipe = db
       .prepare(
@@ -718,9 +435,7 @@ function commitMealEntry(db, userId, payload) {
            FROM recipes WHERE id = ? AND user_id = ?`
       )
       .get(onlyRecipe.recipe_id, userId);
-    if (!recipe) {
-      throw Object.assign(new Error('Recipe missing at commit'), { code: 'RECIPE_GONE' });
-    }
+    if (!recipe) throw Object.assign(new Error('Recipe missing'), { code: 'RECIPE_GONE' });
     const ins = db
       .prepare(
         `INSERT INTO log_entries (
@@ -731,38 +446,23 @@ function commitMealEntry(db, userId, payload) {
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'mcp', ?, ?)`
       )
       .run(
-        userId,
-        recipe.id,
-        payload.date,
-        payload.time_min,
-        onlyRecipe.servings,
-        payload.meal_slot ? `slot:${payload.meal_slot}` : null,
-        recipe.name,
-        recipe.serving_size,
-        recipe.calories,
-        recipe.protein_g,
-        recipe.carbs_g,
-        recipe.fat_g,
-        recipe.fiber_g,
-        recipe.is_quick_food ? 1 : 0,
-        payload.weight_basis,
-        onlyRecipe.nutrition_source
+        userId, recipe.id, date, time_min, onlyRecipe.servings,
+        meal_slot ? `slot:${meal_slot}` : null, recipe.name, recipe.serving_size,
+        recipe.calories, recipe.protein_g, recipe.carbs_g, recipe.fat_g, recipe.fiber_g,
+        recipe.is_quick_food ? 1 : 0, weight_basis, onlyRecipe.nutrition_source
       );
     result.log_entry_ids.push(ins.lastInsertRowid);
     return result;
   }
 
-  const macros = payload.totals;
-  const recipeId = ensureQuickFoodRecipe(db, userId, payload.name, macros);
-  const ingredients_json = JSON.stringify(ingredientRows);
-  const nutrition_source =
-    payload.items.every(i => i.nutrition_source === 'label')
-      ? 'label'
-      : payload.items.every(i => i.nutrition_source === 'database')
-        ? 'database'
-        : payload.items.some(i => i.nutrition_source === 'estimate')
-          ? 'estimate'
-          : 'database';
+  const recipeId = ensureQuickFoodRecipe(db, userId, name, totals);
+  const nutrition_source = resolved.every(i => i.nutrition_source === 'label')
+    ? 'label'
+    : resolved.every(i => i.nutrition_source === 'database')
+      ? 'database'
+      : resolved.some(i => i.nutrition_source === 'estimate')
+        ? 'estimate'
+        : 'database';
 
   const ins = db
     .prepare(
@@ -774,208 +474,497 @@ function commitMealEntry(db, userId, payload) {
        ) VALUES (?, ?, ?, ?, 1, ?, ?, '1 serving', ?, ?, ?, ?, ?, 1, NULL, ?, 'mcp', ?, ?)`
     )
     .run(
-      userId,
-      recipeId,
-      payload.date,
-      payload.time_min,
-      payload.meal_slot ? `slot:${payload.meal_slot}` : null,
-      payload.name,
-      macros.calories,
-      macros.protein_g,
-      macros.carbs_g,
-      macros.fat_g,
-      macros.fiber_g,
-      ingredients_json,
-      payload.weight_basis,
-      nutrition_source
+      userId, recipeId, date, time_min, meal_slot ? `slot:${meal_slot}` : null, name,
+      totals.calories, totals.protein_g, totals.carbs_g, totals.fat_g, totals.fiber_g,
+      JSON.stringify(ingredientRows), weight_basis, nutrition_source
     );
   result.log_entry_ids.push(ins.lastInsertRowid);
   return result;
 }
 
-function commitFoodItem(db, userId, payload) {
-  const scale = Number(payload.grams_per_serving) / 100;
-  const micros =
-    payload.micros_per_100g && typeof payload.micros_per_100g === 'object'
-      ? JSON.stringify({
-          micros: Object.fromEntries(
-            Object.entries(payload.micros_per_100g).map(([k, v]) => [
-              k,
-              round(Number(v) * scale, 3),
-            ])
-          ),
-          confidence: 'medium',
-        })
-      : null;
-  const r = db
+function buildMealPayload(db, userId, args, refMap) {
+  const date = isoDateOrNull(args.date) || getLocalDateISO();
+  const weight_basis = normalizeWeightBasis(args.weight_basis);
+  if (!weight_basis) return { error: 'weight_basis is required (raw|cooked)' };
+  const itemsIn = Array.isArray(args.items) ? args.items : null;
+  if (!itemsIn || !itemsIn.length) return { error: 'items must be a non-empty array' };
+
+  const resolved = [];
+  const warnings = [];
+  for (let i = 0; i < itemsIn.length; i++) {
+    const r = resolveMealItem(db, userId, itemsIn[i], weight_basis, i, refMap);
+    if (r.error) return { error: r.error };
+    resolved.push(r.item);
+    warnings.push(...(r.warnings || []));
+  }
+  const totals = sumItemMacros(resolved);
+  const meal_slot = args.meal_slot ? String(args.meal_slot).trim() : null;
+  const name = String(args.name || '').trim() || (meal_slot ? `${meal_slot} meal` : 'MCP meal');
+  const time_min = args.time_min == null || args.time_min === '' ? null : Number(args.time_min);
+  if (time_min != null && (!Number.isFinite(time_min) || time_min < 0 || time_min > 1439)) {
+    return { error: 'time_min must be minutes from midnight (0–1439)' };
+  }
+  return { date, name, meal_slot, time_min, weight_basis, resolved, totals, warnings };
+}
+
+function daySlice(day) {
+  return {
+    date: day.date,
+    meal_totals: day.meal_totals,
+    combined_totals: day.combined_totals,
+    vs_goals: day.vs_goals,
+    meals: day.meals,
+  };
+}
+
+function logMeal(db, userId, args = {}, { refMap = null, skipAudit = false } = {}) {
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const built = buildMealPayload(db, userId, args, refMap);
+    if (built.error) return { error: built.error };
+
+    const doWrite = () => {
+      const ids = insertMealFromResolved(db, userId, built);
+      const entry = fetchLogEntryById(db, userId, ids.log_entry_ids[0]);
+      const day = reads.getDay(db, userId, built.date);
+      const response = {
+        op: OPS.log_meal,
+        entry,
+        day: daySlice(day),
+        result_row_ids: ids,
+        warnings: built.warnings,
+        source: 'mcp',
+      };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.log_meal, operationId, before: null, after: entry,
+          result_row_ids: ids, warnings: built.warnings, response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : db.transaction(doWrite)();
+  });
+}
+
+function getFoodRow(db, userId, id) {
+  return db
     .prepare(
-      `INSERT INTO label_ingredients (
-         user_id, name, base_label, brand_name, serving_size_text, grams_per_serving,
-         calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri, source_type,
-         use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit,
-         barcode, micros_json, created_via, weight_basis, nutrition_source
-       ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'manual',
-                 0, NULL, 'weight', NULL, NULL, NULL, NULL, ?, 'mcp', ?, ?)`
+      `SELECT id, name, brand_name, serving_size_text, grams_per_serving,
+              calories, protein_g, carbs_g, fat_g, fiber_g, micros_json,
+              created_via, weight_basis, nutrition_source, source_type, tracking_type
+         FROM label_ingredients WHERE id = ? AND user_id = ?`
     )
-    .run(
-      userId,
-      payload.name,
-      payload.brand_name,
-      payload.serving_size_text,
-      payload.grams_per_serving,
-      payload.per_serving.calories,
-      payload.per_serving.protein_g,
-      payload.per_serving.carbs_g,
-      payload.per_serving.fat_g,
-      payload.per_serving.fiber_g,
-      micros,
-      payload.weight_basis,
-      payload.nutrition_source
-    );
-  return { label_ingredient_ids: [r.lastInsertRowid] };
+    .get(id, userId);
 }
 
-function commitSupplementCorrection(db, userId, payload) {
-  const after = payload.after;
-  db.prepare(
-    `UPDATE supplements
-        SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?
-      WHERE id = ? AND user_id = ?`
-  ).run(
-    after.dose_text,
-    after.dose_qty,
-    after.label_serving_qty,
-    after.label_serving_unit,
-    payload.supplement_id,
-    userId
-  );
-  return { supplement_ids: [payload.supplement_id] };
+function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null } = {}) {
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const name = String(args.name || '').trim();
+    if (!name) return { error: 'name is required' };
+    const weight_basis = normalizeWeightBasis(args.weight_basis);
+    if (!weight_basis) return { error: 'weight_basis is required (raw|cooked)' };
+    const nutrition_source = normalizeNutritionSource(args.nutrition_source);
+    if (!nutrition_source) return { error: 'nutrition_source must be label|database|estimate' };
+
+    const per100 = {
+      calories: Number(args.calories_per_100g),
+      protein_g: Number(args.protein_g_per_100g),
+      carbs_g: Number(args.carbs_g_per_100g),
+      fat_g: Number(args.fat_g_per_100g),
+      fiber_g: args.fiber_g_per_100g == null || args.fiber_g_per_100g === '' ? null : Number(args.fiber_g_per_100g),
+    };
+    if (![per100.calories, per100.protein_g, per100.carbs_g, per100.fat_g].every(Number.isFinite)) {
+      return { error: 'per-100g macros are required' };
+    }
+
+    const serving_size_text = String(args.serving_size_text || '').trim() || '100 g';
+    const grams_per_serving =
+      args.grams_per_serving != null && Number.isFinite(Number(args.grams_per_serving))
+        ? Number(args.grams_per_serving)
+        : 100;
+    const brand_name = args.brand_name ? String(args.brand_name).trim() : null;
+    const similar = searchSimilarIngredients(db, userId, name);
+    const warnings = similar.length ? [`Found ${similar.length} similar library item(s) for "${name}".`] : [];
+    const scale = grams_per_serving / 100;
+    const servingMacros = {
+      calories: round(per100.calories * scale, 1),
+      protein_g: round(per100.protein_g * scale, 2),
+      carbs_g: round(per100.carbs_g * scale, 2),
+      fat_g: round(per100.fat_g * scale, 2),
+      fiber_g: per100.fiber_g == null ? null : round(per100.fiber_g * scale, 2),
+    };
+    const micros =
+      args.micros_per_100g && typeof args.micros_per_100g === 'object'
+        ? JSON.stringify({
+            micros: Object.fromEntries(
+              Object.entries(args.micros_per_100g).map(([k, v]) => [k, round(Number(v) * scale, 3)])
+            ),
+            confidence: 'medium',
+          })
+        : null;
+
+    const doWrite = () => {
+      const r = db
+        .prepare(
+          `INSERT INTO label_ingredients (
+             user_id, name, base_label, brand_name, serving_size_text, grams_per_serving,
+             calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri, source_type,
+             use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit,
+             barcode, micros_json, created_via, weight_basis, nutrition_source
+           ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'manual',
+                     0, NULL, 'weight', NULL, NULL, NULL, NULL, ?, 'mcp', ?, ?)`
+        )
+        .run(
+          userId, name, brand_name, serving_size_text, grams_per_serving,
+          servingMacros.calories, servingMacros.protein_g, servingMacros.carbs_g,
+          servingMacros.fat_g, servingMacros.fiber_g, micros, weight_basis, nutrition_source
+        );
+      const id = r.lastInsertRowid;
+      if (refMap && args.ref) refMap.set(String(args.ref), id);
+      const food = getFoodRow(db, userId, id);
+      const result_row_ids = { label_ingredient_ids: [id] };
+      const response = {
+        op: OPS.add_food_item,
+        label_ingredient_id: id,
+        food,
+        similar_library_items: similar,
+        result_row_ids,
+        warnings,
+        source: 'mcp',
+      };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.add_food_item, operationId, before: null, after: food,
+          result_row_ids, warnings, response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : db.transaction(doWrite)();
+  });
 }
 
-function commitProposal(db, userId, {
-  proposal_id,
-  confirmation_code,
-  user_confirmation_text,
-}) {
-  const id = String(proposal_id || '').trim();
-  const code = String(confirmation_code || '').trim().toUpperCase();
-  const confirmText = String(user_confirmation_text || '').trim();
-  if (!id) return { error: 'proposal_id is required' };
-  if (!code) return { error: 'confirmation_code is required' };
-  if (!confirmText) {
-    return {
-      error:
-        'user_confirmation_text is required (verbatim user approval from the chat)',
+function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const id = Number(args.label_ingredient_id);
+    if (!Number.isInteger(id) || id <= 0) return { error: 'label_ingredient_id is required' };
+    const before = getFoodRow(db, userId, id);
+    if (!before) return { error: `label_ingredient_id ${id} not found` };
+
+    const patch = { ...before };
+    if (args.name != null) patch.name = String(args.name).trim();
+    if (args.brand_name !== undefined) patch.brand_name = args.brand_name ? String(args.brand_name).trim() : null;
+    if (args.serving_size_text != null) patch.serving_size_text = String(args.serving_size_text).trim();
+    if (args.grams_per_serving != null) patch.grams_per_serving = Number(args.grams_per_serving);
+    if (args.calories != null) patch.calories = Number(args.calories);
+    if (args.protein_g != null) patch.protein_g = Number(args.protein_g);
+    if (args.carbs_g != null) patch.carbs_g = Number(args.carbs_g);
+    if (args.fat_g != null) patch.fat_g = Number(args.fat_g);
+    if (args.fiber_g !== undefined) {
+      patch.fiber_g = args.fiber_g == null || args.fiber_g === '' ? null : Number(args.fiber_g);
+    }
+    if (args.weight_basis != null) {
+      const wb = normalizeWeightBasis(args.weight_basis);
+      if (!wb) return { error: 'weight_basis must be raw|cooked' };
+      patch.weight_basis = wb;
+    }
+    if (args.nutrition_source != null) {
+      const ns = normalizeNutritionSource(args.nutrition_source);
+      if (!ns) return { error: 'nutrition_source must be label|database|estimate' };
+      patch.nutrition_source = ns;
+    }
+    if (!patch.name || !patch.serving_size_text) return { error: 'name and serving_size_text cannot be empty' };
+
+    const doWrite = () => {
+      db.prepare(
+        `UPDATE label_ingredients
+            SET name = ?, brand_name = ?, serving_size_text = ?, grams_per_serving = ?,
+                calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
+                weight_basis = ?, nutrition_source = ?
+          WHERE id = ? AND user_id = ?`
+      ).run(
+        patch.name, patch.brand_name, patch.serving_size_text, patch.grams_per_serving,
+        patch.calories, patch.protein_g, patch.carbs_g, patch.fat_g, patch.fiber_g,
+        patch.weight_basis, patch.nutrition_source, id, userId
+      );
+      const after = getFoodRow(db, userId, id);
+      const result_row_ids = { label_ingredient_ids: [id] };
+      const response = { op: OPS.update_food_item, before, after, result_row_ids, warnings: [] };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.update_food_item, operationId, before, after, result_row_ids, warnings: [], response,
+        });
+      }
+      return response;
     };
-  }
+    return skipAudit ? doWrite() : db.transaction(doWrite)();
+  });
+}
 
-  let row = db.prepare('SELECT * FROM mcp_proposals WHERE id = ? AND user_id = ?').get(id, userId);
-  if (!row) return { error: 'Proposal not found' };
-  row = expireIfNeeded(db, row);
+function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const id = Number(args.log_entry_id);
+    if (!Number.isInteger(id) || id <= 0) return { error: 'log_entry_id is required' };
+    const before = fetchLogEntryById(db, userId, id);
+    if (!before) return { error: `log_entry_id ${id} not found` };
 
-  if (row.status === 'committed') {
-    return {
-      ...shapeProposalRow(row),
-      idempotent: true,
-      message: 'Proposal already committed',
-    };
-  }
-  if (row.status === 'discarded') return { error: 'Proposal was discarded' };
-  if (row.status === 'expired') return { error: 'Proposal expired (proposals last 1 hour)' };
-  if (row.status !== 'pending') return { error: `Proposal status is ${row.status}` };
+    const hasItems = Array.isArray(args.items);
+    const date = args.date ? isoDateOrNull(args.date) : before.date;
+    if (args.date && !date) return { error: 'date must be YYYY-MM-DD' };
+    const meal_slot =
+      args.meal_slot !== undefined
+        ? String(args.meal_slot || '').trim() || null
+        : before.notes?.startsWith('slot:')
+          ? before.notes.slice(5)
+          : null;
+    const time_min = args.time_min !== undefined ? Number(args.time_min) : before.time_min;
+    const weight_basis =
+      args.weight_basis != null
+        ? normalizeWeightBasis(args.weight_basis)
+        : before.weight_basis || 'cooked';
+    if (args.weight_basis != null && !weight_basis) return { error: 'weight_basis must be raw|cooked' };
+    const name = args.name != null ? String(args.name).trim() : before.recipe_name;
 
-  if (String(row.confirmation_code).toUpperCase() !== code) {
-    return { error: 'confirmation_code does not match' };
-  }
+    let resolved = null;
+    let totals = null;
+    let warnings = [];
+    if (hasItems) {
+      const built = buildMealPayload(db, userId, {
+        date, name, meal_slot, time_min, weight_basis, items: args.items,
+      }, null);
+      if (built.error) return { error: built.error };
+      resolved = built.resolved;
+      totals = built.totals;
+      warnings = built.warnings;
+    }
 
-  const payload = parseJson(row.payload_json, null);
-  if (!payload) return { error: 'Proposal payload corrupt' };
-
-  let resultIds;
-  try {
-    const run = db.transaction(() => {
-      let ids;
-      if (row.kind === KINDS.meal_entry) ids = commitMealEntry(db, userId, payload);
-      else if (row.kind === KINDS.food_item) ids = commitFoodItem(db, userId, payload);
-      else if (row.kind === KINDS.supplement_correction) {
-        ids = commitSupplementCorrection(db, userId, payload);
-      } else {
-        throw Object.assign(new Error(`Unknown kind ${row.kind}`), { code: 'BAD_KIND' });
+    const doWrite = () => {
+      if (hasItems) {
+        db.prepare('DELETE FROM log_entries WHERE id = ? AND user_id = ?').run(id, userId);
+        const ids = insertMealFromResolved(db, userId, {
+          date, name, meal_slot, time_min, weight_basis, resolved, totals,
+        });
+        const after = fetchLogEntryById(db, userId, ids.log_entry_ids[0]);
+        const result_row_ids = {
+          log_entry_ids: ids.log_entry_ids,
+          replaced_log_entry_id: id,
+          label_ingredient_ids: ids.label_ingredient_ids,
+        };
+        const response = {
+          op: OPS.update_meal_entry, before, after, result_row_ids, warnings,
+          note: 'Item changes create a new log_entry_id; previous id was removed.',
+        };
+        if (!skipAudit) {
+          response.audit_id = recordAudit(db, userId, {
+            op: OPS.update_meal_entry, operationId, before, after, result_row_ids, warnings, response,
+          });
+        }
+        return response;
       }
 
       db.prepare(
-        `UPDATE mcp_proposals
-            SET status = 'committed', committed_at = ?, result_row_ids_json = ?
-          WHERE id = ? AND status = 'pending'`
-      ).run(nowIso(), JSON.stringify(ids), id);
-
-      db.prepare(
-        `INSERT INTO mcp_write_audit (
-           user_id, proposal_id, kind, confirmation_code, user_confirmation_text,
-           preview_json, result_row_ids_json, operation_id, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        userId,
-        id,
-        row.kind,
-        row.confirmation_code,
-        confirmText,
-        row.preview_json,
-        JSON.stringify(ids),
-        row.operation_id,
-        nowIso()
-      );
-      return ids;
-    });
-    resultIds = run();
-  } catch (e) {
-    return { error: e.message || 'Commit failed' };
-  }
-
-  const updated = db.prepare('SELECT * FROM mcp_proposals WHERE id = ?').get(id);
-  return {
-    ...shapeProposalRow(updated),
-    result_row_ids: resultIds,
-    committed: true,
-  };
+        `UPDATE log_entries SET date = ?, time_min = ?, notes = ?, recipe_name = ?, weight_basis = ?
+          WHERE id = ? AND user_id = ?`
+      ).run(date, time_min, meal_slot ? `slot:${meal_slot}` : null, name, weight_basis, id, userId);
+      const after = fetchLogEntryById(db, userId, id);
+      const result_row_ids = { log_entry_ids: [id] };
+      const response = { op: OPS.update_meal_entry, before, after, result_row_ids, warnings: [] };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.update_meal_entry, operationId, before, after, result_row_ids, warnings: [], response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : db.transaction(doWrite)();
+  });
 }
 
-function discardProposal(db, userId, proposal_id) {
-  const id = String(proposal_id || '').trim();
-  if (!id) return { error: 'proposal_id is required' };
-  let row = db.prepare('SELECT * FROM mcp_proposals WHERE id = ? AND user_id = ?').get(id, userId);
-  if (!row) return { error: 'Proposal not found' };
-  row = expireIfNeeded(db, row);
-  if (row.status === 'committed') {
-    return { error: 'Cannot discard a committed proposal; delete the written rows instead' };
-  }
-  if (row.status === 'pending') {
-    db.prepare(`UPDATE mcp_proposals SET status = 'discarded' WHERE id = ?`).run(id);
-  }
-  return shapeProposalRow(db.prepare('SELECT * FROM mcp_proposals WHERE id = ?').get(id));
+function deleteMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const id = Number(args.log_entry_id);
+    if (!Number.isInteger(id) || id <= 0) return { error: 'log_entry_id is required' };
+    const before = fetchLogEntryById(db, userId, id);
+    if (!before) return { error: `log_entry_id ${id} not found` };
+
+    const doWrite = () => {
+      db.prepare('DELETE FROM log_entries WHERE id = ? AND user_id = ?').run(id, userId);
+      const result_row_ids = { deleted_log_entry_ids: [id] };
+      const response = {
+        op: OPS.delete_meal_entry, before, after: null, result_row_ids, warnings: [],
+        permanent: true, message: 'Hard delete — not revertible.',
+      };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.delete_meal_entry, operationId, before, after: null, result_row_ids, warnings: [], response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : db.transaction(doWrite)();
+  });
 }
 
-function listProposals(db, userId, { include_expired = false } = {}) {
-  const rows = db
+function shapeSupplement(db, userId, id) {
+  const row = db
     .prepare(
-      `SELECT * FROM mcp_proposals
-        WHERE user_id = ?
-        ORDER BY created_at DESC
-        LIMIT 50`
+      `SELECT id, name, dose_text, label_serving_qty, label_serving_unit, dose_qty,
+              calories, protein_g, carbs_g, fat_g, created_via
+         FROM supplements WHERE id = ? AND user_id = ?`
     )
-    .all(userId)
-    .map(r => expireIfNeeded(db, r));
-  const filtered = include_expired
-    ? rows
-    : rows.filter(r => r.status === 'pending' || r.status === 'committed');
+    .get(id, userId);
+  if (!row) return null;
   return {
-    proposals: filtered.map(shapeProposalRow),
+    ...row,
+    dose_multiplier: doseMultiplier({
+      label_serving_qty: row.label_serving_qty,
+      dose_qty: row.dose_qty,
+    }),
   };
+}
+
+function updateSupplement(db, userId, args = {}, { skipAudit = false } = {}) {
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const id = Number(args.supplement_id);
+    if (!Number.isInteger(id) || id <= 0) return { error: 'supplement_id is required' };
+    const before = shapeSupplement(db, userId, id);
+    if (!before) return { error: `supplement_id ${id} not found` };
+
+    const afterDose = {
+      dose_text: args.dose_text !== undefined ? String(args.dose_text || '').trim() || null : before.dose_text,
+      dose_qty: args.dose_qty !== undefined ? Number(args.dose_qty) : before.dose_qty,
+      label_serving_qty:
+        args.label_serving_qty !== undefined ? Number(args.label_serving_qty) : before.label_serving_qty,
+      label_serving_unit:
+        args.label_serving_unit !== undefined
+          ? String(args.label_serving_unit || '').trim() || null
+          : before.label_serving_unit,
+    };
+    if (args.dose_qty !== undefined && (!Number.isFinite(afterDose.dose_qty) || afterDose.dose_qty <= 0)) {
+      return { error: 'dose_qty must be a positive number' };
+    }
+    if (
+      args.label_serving_qty !== undefined &&
+      (!Number.isFinite(afterDose.label_serving_qty) || afterDose.label_serving_qty <= 0)
+    ) {
+      return { error: 'label_serving_qty must be a positive number' };
+    }
+
+    const takenDate = args.taken_date ? isoDateOrNull(args.taken_date) : null;
+    if (args.taken_date && !takenDate) return { error: 'taken_date must be YYYY-MM-DD' };
+    const hasTaken = Object.prototype.hasOwnProperty.call(args, 'taken');
+
+    const doWrite = () => {
+      db.prepare(
+        `UPDATE supplements
+            SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?
+          WHERE id = ? AND user_id = ?`
+      ).run(
+        afterDose.dose_text, afterDose.dose_qty, afterDose.label_serving_qty,
+        afterDose.label_serving_unit, id, userId
+      );
+
+      let taken = null;
+      if (hasTaken && takenDate) {
+        db.prepare(
+          `INSERT INTO supplement_log (user_id, date, supplement_id, taken, dose_qty)
+           VALUES (?, ?, ?, ?, NULL)
+           ON CONFLICT(user_id, date, supplement_id) DO UPDATE SET taken = excluded.taken`
+        ).run(userId, takenDate, id, args.taken ? 1 : 0);
+        taken = { date: takenDate, taken: !!args.taken };
+      }
+
+      const after = shapeSupplement(db, userId, id);
+      const result_row_ids = { supplement_ids: [id] };
+      const response = { op: OPS.update_supplement, before, after, taken, result_row_ids, warnings: [] };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.update_supplement, operationId, before, after, result_row_ids, warnings: [], response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : db.transaction(doWrite)();
+  });
+}
+
+function writeBatch(db, userId, args = {}) {
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const ops = Array.isArray(args.operations) ? args.operations : null;
+    if (!ops || !ops.length) return { error: 'operations must be a non-empty array' };
+
+    try {
+      const run = db.transaction(() => {
+        const refMap = new Map();
+        const results = [];
+        for (let i = 0; i < ops.length; i++) {
+          const step = { ...(ops[i] || {}) };
+          delete step.operation_id; // batch-level idempotency only
+          const op = String(step.op || '').trim();
+          let result;
+          if (op === OPS.add_food_item) {
+            result = addFoodItem(db, userId, step, { skipAudit: true, refMap });
+          } else if (op === OPS.log_meal) {
+            result = logMeal(db, userId, step, { skipAudit: true, refMap });
+          } else if (op === OPS.update_food_item) {
+            result = updateFoodItem(db, userId, step, { skipAudit: true });
+          } else if (op === OPS.update_meal_entry) {
+            result = updateMealEntry(db, userId, step, { skipAudit: true });
+          } else if (op === OPS.delete_meal_entry) {
+            result = deleteMealEntry(db, userId, step, { skipAudit: true });
+          } else if (op === OPS.update_supplement) {
+            result = updateSupplement(db, userId, step, { skipAudit: true });
+          } else {
+            throw Object.assign(new Error(`operations[${i}]: unsupported op "${op}"`), { code: 'BAD_OP' });
+          }
+          if (result?.error) {
+            throw Object.assign(new Error(`operations[${i}]: ${result.error}`), { code: 'OP_FAILED' });
+          }
+          results.push(result);
+        }
+
+        const response = {
+          op: OPS.write_batch,
+          results,
+          refs: Object.fromEntries(refMap),
+          warnings: results.flatMap(r => r.warnings || []),
+        };
+        const lastMeal = [...results].reverse().find(r => r.op === OPS.log_meal);
+        if (lastMeal?.day) response.day = lastMeal.day;
+        response.result_row_ids = {
+          log_entry_ids: results.flatMap(r => r.result_row_ids?.log_entry_ids || []),
+          label_ingredient_ids: results.flatMap(r => r.result_row_ids?.label_ingredient_ids || []),
+          supplement_ids: results.flatMap(r => r.result_row_ids?.supplement_ids || []),
+        };
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.write_batch,
+          operationId,
+          before: null,
+          after: { refs: response.refs, results: results.map(r => ({ op: r.op, result_row_ids: r.result_row_ids })) },
+          result_row_ids: response.result_row_ids,
+          warnings: response.warnings,
+          response,
+        });
+        return response;
+      });
+      return run();
+    } catch (e) {
+      return { error: e.message || 'write_batch failed' };
+    }
+  });
 }
 
 function listRecentMcpWrites(db, userId, daysRaw = 7) {
   const days = Math.min(90, Math.max(1, Number(daysRaw) || 7));
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const sinceTs = new Date(Date.now() - days * 86400000).toISOString();
 
   const meals = db
     .prepare(
@@ -994,39 +983,31 @@ function listRecentMcpWrites(db, userId, daysRaw = 7) {
               calories, protein_g, carbs_g, fat_g, created_via, weight_basis, nutrition_source
          FROM label_ingredients
         WHERE user_id = ? AND created_via = 'mcp'
-        ORDER BY id DESC
-        LIMIT 100`
+        ORDER BY id DESC LIMIT 100`
     )
     .all(userId);
 
   const audits = db
     .prepare(
-      `SELECT id, proposal_id, kind, confirmation_code, user_confirmation_text,
-              preview_json, result_row_ids_json, created_at
+      `SELECT id AS audit_id, kind, op, operation_id, created_at,
+              before_json, after_json, result_row_ids_json, warnings_json, preview_json
          FROM mcp_write_audit
         WHERE user_id = ? AND created_at >= ?
-        ORDER BY created_at DESC
-        LIMIT 100`
+        ORDER BY created_at DESC LIMIT 100`
     )
-    .all(userId, new Date(Date.now() - days * 86400000).toISOString())
+    .all(userId, sinceTs)
     .map(a => ({
-      id: a.id,
-      proposal_id: a.proposal_id,
-      kind: a.kind,
-      confirmation_code: a.confirmation_code,
-      user_confirmation_text: a.user_confirmation_text,
+      audit_id: a.audit_id,
+      op: a.op || a.kind,
+      operation_id: a.operation_id || null,
       created_at: a.created_at,
-      preview: parseJson(a.preview_json, {}),
+      before: parseJson(a.before_json, null),
+      after: parseJson(a.after_json, parseJson(a.preview_json, null)),
       result_row_ids: parseJson(a.result_row_ids_json, {}),
+      warnings: parseJson(a.warnings_json, []),
     }));
 
-  return {
-    days,
-    since,
-    meals,
-    foods,
-    audits,
-  };
+  return { days, since, meals, foods, audits };
 }
 
 function bulkDeleteMcpLogEntries(db, userId, ids) {
@@ -1034,17 +1015,12 @@ function bulkDeleteMcpLogEntries(db, userId, ids) {
   if (!list.length) return { deleted: 0 };
   const placeholders = list.map(() => '?').join(',');
   const owned = db
-    .prepare(
-      `SELECT id FROM log_entries
-        WHERE user_id = ? AND source = 'mcp' AND id IN (${placeholders})`
-    )
+    .prepare(`SELECT id FROM log_entries WHERE user_id = ? AND source = 'mcp' AND id IN (${placeholders})`)
     .all(userId, ...list)
     .map(r => r.id);
   if (!owned.length) return { deleted: 0, skipped: list.length };
   const ph2 = owned.map(() => '?').join(',');
-  const r = db
-    .prepare(`DELETE FROM log_entries WHERE user_id = ? AND id IN (${ph2})`)
-    .run(userId, ...owned);
+  const r = db.prepare(`DELETE FROM log_entries WHERE user_id = ? AND id IN (${ph2})`).run(userId, ...owned);
   return { deleted: r.changes, ids: owned };
 }
 
@@ -1053,29 +1029,24 @@ function bulkDeleteMcpFoods(db, userId, ids) {
   if (!list.length) return { deleted: 0 };
   const placeholders = list.map(() => '?').join(',');
   const owned = db
-    .prepare(
-      `SELECT id FROM label_ingredients
-        WHERE user_id = ? AND created_via = 'mcp' AND id IN (${placeholders})`
-    )
+    .prepare(`SELECT id FROM label_ingredients WHERE user_id = ? AND created_via = 'mcp' AND id IN (${placeholders})`)
     .all(userId, ...list)
     .map(r => r.id);
   if (!owned.length) return { deleted: 0 };
   const ph2 = owned.map(() => '?').join(',');
-  const r = db
-    .prepare(`DELETE FROM label_ingredients WHERE user_id = ? AND id IN (${ph2})`)
-    .run(userId, ...owned);
+  const r = db.prepare(`DELETE FROM label_ingredients WHERE user_id = ? AND id IN (${ph2})`).run(userId, ...owned);
   return { deleted: r.changes, ids: owned };
 }
 
 module.exports = {
-  PROPOSAL_TTL_MS,
-  KINDS,
-  proposeMealEntry,
-  proposeFoodItem,
-  proposeSupplementCorrection,
-  commitProposal,
-  discardProposal,
-  listProposals,
+  OPS,
+  logMeal,
+  addFoodItem,
+  updateFoodItem,
+  updateMealEntry,
+  deleteMealEntry,
+  updateSupplement,
+  writeBatch,
   listRecentMcpWrites,
   bulkDeleteMcpLogEntries,
   bulkDeleteMcpFoods,

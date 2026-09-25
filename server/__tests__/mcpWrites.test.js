@@ -2,7 +2,7 @@ const { buildTestApp, createUser } = require('./helpers');
 const writes = require('../mcp/writes');
 const reads = require('../mcp/reads');
 
-describe('MCP Phase 2 writes', () => {
+describe('MCP Phase 3 direct writes', () => {
   let db;
   let userId;
   let ingredientId;
@@ -29,34 +29,24 @@ describe('MCP Phase 2 writes', () => {
     db.prepare(
       `INSERT INTO supplements (user_id, name, dose_text, calories, protein_g, carbs_g, fat_g, counts_toward_macros,
          label_serving_qty, label_serving_unit, dose_qty, sort_order)
-       VALUES (?, 'Creatine', '5 g', 0, 0, 0, 0, 0, 5, 'g', 5, 0)`
+       VALUES (?, 'Kroger Multivitamin', '3 tablets', 0, 0, 0, 0, 0, 1, 'tablet', 3, 0)`
     ).run(userId);
     supplementId = db.prepare('SELECT id FROM supplements WHERE user_id = ?').get(userId).id;
   });
 
-  it('propose_food_item returns similar matches and does not write yet', () => {
-    const p = writes.proposeFoodItem(db, userId, {
-      name: 'Chicken',
-      calories_per_100g: 165,
-      protein_g_per_100g: 31,
-      carbs_g_per_100g: 0,
-      fat_g_per_100g: 3.6,
-      nutrition_source: 'label',
-      weight_basis: 'raw',
-    });
-    expect(p.error).toBeUndefined();
-    expect(p.confirmation_code).toMatch(/^F-/);
-    expect(p.preview.similar_library_items.length).toBeGreaterThan(0);
-    expect(p.preview.similar_library_items[0].name).toMatch(/Chicken/i);
-    const count = db.prepare(
-      `SELECT COUNT(*) AS n FROM label_ingredients WHERE user_id = ? AND created_via = 'mcp'`
-    ).get(userId).n;
-    expect(count).toBe(0);
-  });
+  it('log_meal writes immediately and returns day totals + vs_goals', () => {
+    for (const wd of [1, 2, 3, 4, 5, 6, 7]) {
+      db.prepare(
+        `INSERT INTO day_goal_versions (
+           user_id, effective_start_date, weekday,
+           calories_min, calories_max, protein_g_min, protein_g_max,
+           carbs_g_min, carbs_g_max, fat_g_min, fat_g_max
+         ) VALUES (?, '2026-01-01', ?, 1800, 2200, 140, 180, 180, 250, 50, 80)`
+      ).run(userId, wd);
+    }
 
-  it('commit_proposal with wrong code fails; correct code writes source=mcp', () => {
-    const p = writes.proposeMealEntry(db, userId, {
-      date: '2026-09-20',
+    const r = writes.logMeal(db, userId, {
+      date: '2026-09-25',
       weight_basis: 'cooked',
       name: 'Lunch',
       items: [
@@ -67,68 +57,108 @@ describe('MCP Phase 2 writes', () => {
         },
       ],
     });
-    expect(p.proposal_id).toBeTruthy();
-
-    const bad = writes.commitProposal(db, userId, {
-      proposal_id: p.proposal_id,
-      confirmation_code: 'M-0000',
-      user_confirmation_text: 'yes do it',
-    });
-    expect(bad.error).toMatch(/confirmation_code/);
-
-    const dayBefore = reads.getDay(db, userId, '2026-09-20');
-    expect(dayBefore.meals).toHaveLength(0);
-
-    const ok = writes.commitProposal(db, userId, {
-      proposal_id: p.proposal_id,
-      confirmation_code: p.confirmation_code,
-      user_confirmation_text: 'yes, log it',
-    });
-    expect(ok.committed).toBe(true);
-    expect(ok.result_row_ids.log_entry_ids).toHaveLength(1);
-
-    const day = reads.getDay(db, userId, '2026-09-20');
-    expect(day.meals).toHaveLength(1);
-    expect(day.meals[0].source).toBe('mcp');
-    expect(day.meals[0].weight_basis).toBe('cooked');
-    expect(Math.round(day.meal_totals.calories)).toBe(Math.round(165 * 1.5));
-
-    const audit = db.prepare(
-      'SELECT * FROM mcp_write_audit WHERE user_id = ?'
-    ).get(userId);
-    expect(audit.user_confirmation_text).toBe('yes, log it');
-    expect(audit.confirmation_code).toBe(p.confirmation_code);
+    expect(r.error).toBeUndefined();
+    expect(r.entry.source).toBe('mcp');
+    expect(r.day.meal_totals.calories).toBeCloseTo(165 * 1.5, 0);
+    expect(r.day.vs_goals).toBeTruthy();
+    expect(r.day.vs_goals.calories).toBeTruthy();
+    expect(reads.getDay(db, userId, '2026-09-25').meals).toHaveLength(1);
   });
 
-  it('expired proposal cannot commit', () => {
-    const p = writes.proposeMealEntry(db, userId, {
-      date: '2026-09-21',
-      weight_basis: 'raw',
-      items: [
+  it('write_batch resolves refs and rolls back on failure', () => {
+    const ok = writes.writeBatch(db, userId, {
+      operations: [
         {
-          label_ingredient_id: ingredientId,
-          quantity_g: 100,
+          op: 'add_food_item',
+          ref: 'popcorn',
+          name: 'Popcorn Kernels A',
+          calories_per_100g: 375,
+          protein_g_per_100g: 12,
+          carbs_g_per_100g: 74,
+          fat_g_per_100g: 4,
+          nutrition_source: 'label',
+          weight_basis: 'raw',
+        },
+        {
+          op: 'add_food_item',
+          ref: 'oil',
+          name: 'Olive Oil A',
+          calories_per_100g: 884,
+          protein_g_per_100g: 0,
+          carbs_g_per_100g: 0,
+          fat_g_per_100g: 100,
+          nutrition_source: 'label',
+          weight_basis: 'raw',
+        },
+        {
+          op: 'add_food_item',
+          ref: 'salt',
+          name: 'Sea Salt A',
+          calories_per_100g: 0,
+          protein_g_per_100g: 0,
+          carbs_g_per_100g: 0,
+          fat_g_per_100g: 0,
           nutrition_source: 'database',
+          weight_basis: 'raw',
+        },
+        {
+          op: 'log_meal',
+          date: '2026-09-25',
+          weight_basis: 'cooked',
+          name: 'Movie snacks',
+          items: [
+            { ref: 'popcorn', quantity_g: 40, nutrition_source: 'database' },
+            { ref: 'oil', quantity_g: 10, nutrition_source: 'database' },
+            { ref: 'salt', quantity_g: 1, nutrition_source: 'database' },
+          ],
         },
       ],
     });
-    db.prepare(
-      `UPDATE mcp_proposals SET expires_at = ? WHERE id = ?`
-    ).run('2020-01-01T00:00:00.000Z', p.proposal_id);
+    expect(ok.error).toBeUndefined();
+    expect(ok.refs.popcorn).toBeTruthy();
+    expect(ok.refs.oil).toBeTruthy();
+    expect(ok.refs.salt).toBeTruthy();
+    expect(ok.result_row_ids.log_entry_ids).toHaveLength(1);
+    expect(ok.day).toBeTruthy();
 
-    const r = writes.commitProposal(db, userId, {
-      proposal_id: p.proposal_id,
-      confirmation_code: p.confirmation_code,
-      user_confirmation_text: 'approve',
+    const beforeFoods = db
+      .prepare(`SELECT COUNT(*) AS n FROM label_ingredients WHERE user_id = ? AND created_via = 'mcp'`)
+      .get(userId).n;
+
+    const fail = writes.writeBatch(db, userId, {
+      operations: [
+        {
+          op: 'add_food_item',
+          ref: 'x',
+          name: 'Should Roll Back',
+          calories_per_100g: 100,
+          protein_g_per_100g: 1,
+          carbs_g_per_100g: 1,
+          fat_g_per_100g: 1,
+          nutrition_source: 'estimate',
+          weight_basis: 'raw',
+        },
+        {
+          op: 'log_meal',
+          date: '2026-09-26',
+          weight_basis: 'raw',
+          items: [{ ref: 'missing', quantity_g: 10, nutrition_source: 'database' }],
+        },
+      ],
     });
-    expect(r.error).toMatch(/expired/i);
+    expect(fail.error).toMatch(/unknown ref|operations\[1\]/);
+    const afterFoods = db
+      .prepare(`SELECT COUNT(*) AS n FROM label_ingredients WHERE user_id = ? AND created_via = 'mcp'`)
+      .get(userId).n;
+    expect(afterFoods).toBe(beforeFoods);
+    expect(reads.getDay(db, userId, '2026-09-26').meals).toHaveLength(0);
   });
 
-  it('same operation_id is idempotent', () => {
+  it('same operation_id twice creates one row', () => {
     const args = {
-      date: '2026-09-22',
+      date: '2026-09-27',
       weight_basis: 'raw',
-      operation_id: 'op-meal-1',
+      operation_id: 'op-once',
       items: [
         {
           recipe_id: recipeId,
@@ -137,52 +167,35 @@ describe('MCP Phase 2 writes', () => {
         },
       ],
     };
-    const a = writes.proposeMealEntry(db, userId, args);
-    const b = writes.proposeMealEntry(db, userId, args);
-    expect(b.proposal_id).toBe(a.proposal_id);
+    const a = writes.logMeal(db, userId, args);
+    const b = writes.logMeal(db, userId, args);
     expect(b.idempotent).toBe(true);
-
-    writes.commitProposal(db, userId, {
-      proposal_id: a.proposal_id,
-      confirmation_code: a.confirmation_code,
-      user_confirmation_text: 'ok',
-    });
-    const again = writes.commitProposal(db, userId, {
-      proposal_id: a.proposal_id,
-      confirmation_code: a.confirmation_code,
-      user_confirmation_text: 'ok again',
-    });
-    expect(again.idempotent).toBe(true);
-
-    const meals = db
+    expect(b.entry.id).toBe(a.entry.id);
+    const n = db
       .prepare(`SELECT COUNT(*) AS n FROM log_entries WHERE user_id = ? AND source = 'mcp'`)
       .get(userId).n;
-    expect(meals).toBe(1);
+    expect(n).toBe(1);
   });
 
-  it('uncommitted proposal does not appear in get_day / get_log_range', () => {
-    writes.proposeMealEntry(db, userId, {
-      date: '2026-09-23',
-      weight_basis: 'raw',
-      items: [
-        {
-          name: 'Oats',
-          quantity_g: 40,
-          calories_per_100g: 389,
-          protein_g_per_100g: 17,
-          carbs_g_per_100g: 66,
-          fat_g_per_100g: 7,
-          nutrition_source: 'estimate',
-        },
-      ],
+  it('update_supplement returns before/after dose_multiplier and appears in recent writes', () => {
+    const r = writes.updateSupplement(db, userId, {
+      supplement_id: supplementId,
+      dose_qty: 1,
+      dose_text: '1 tablet',
     });
-    expect(reads.getDay(db, userId, '2026-09-23').meals).toHaveLength(0);
-    expect(reads.getDailySummaries(db, userId, '2026-09-23', '2026-09-23')).toHaveLength(0);
+    expect(r.before.dose_multiplier).toBe(3);
+    expect(r.after.dose_multiplier).toBe(1);
+    expect(r.after.dose_qty).toBe(1);
+
+    const recent = writes.listRecentMcpWrites(db, userId, 7);
+    expect(recent.audits.some(a => a.op === 'update_supplement' && a.audit_id === r.audit_id)).toBe(
+      true
+    );
   });
 
-  it('list_recent_mcp_writes and bulk delete only touch mcp rows', () => {
-    const p = writes.proposeMealEntry(db, userId, {
-      date: '2026-09-24',
+  it('delete_meal_entry hard-deletes', () => {
+    const logged = writes.logMeal(db, userId, {
+      date: '2026-09-28',
       weight_basis: 'cooked',
       items: [
         {
@@ -192,74 +205,30 @@ describe('MCP Phase 2 writes', () => {
         },
       ],
     });
-    writes.commitProposal(db, userId, {
-      proposal_id: p.proposal_id,
-      confirmation_code: p.confirmation_code,
-      user_confirmation_text: 'ship it',
-    });
-
-    // Manual (non-mcp) entry
-    db.prepare(
-      `INSERT INTO log_entries (
-         user_id, recipe_id, date, servings, recipe_name, serving_size,
-         recipe_calories, recipe_protein_g, recipe_carbs_g, recipe_fat_g, recipe_fiber_g,
-         recipe_is_quick_food, source
-       ) VALUES (?, ?, '2026-09-24', 1, 'Manual', '1', 100, 10, 10, 2, 0, 0, 'app')`
-    ).run(userId, recipeId);
-
-    const recent = writes.listRecentMcpWrites(db, userId, 7);
-    expect(recent.meals.every(m => m.source === 'mcp')).toBe(true);
-    expect(recent.meals).toHaveLength(1);
-
-    const mcpId = recent.meals[0].id;
-    const manualId = db
-      .prepare(`SELECT id FROM log_entries WHERE user_id = ? AND source = 'app'`)
-      .get(userId).id;
-
-    const del = writes.bulkDeleteMcpLogEntries(db, userId, [mcpId, manualId]);
-    expect(del.deleted).toBe(1);
-    expect(
-      db.prepare(`SELECT COUNT(*) AS n FROM log_entries WHERE id = ?`).get(manualId).n
-    ).toBe(1);
-    expect(
-      db.prepare(`SELECT COUNT(*) AS n FROM log_entries WHERE id = ?`).get(mcpId).n
-    ).toBe(0);
+    const id = logged.entry.id;
+    const del = writes.deleteMealEntry(db, userId, { log_entry_id: id });
+    expect(del.permanent).toBe(true);
+    expect(db.prepare('SELECT id FROM log_entries WHERE id = ?').get(id)).toBeUndefined();
   });
 
-  it('propose_supplement_correction commit updates dose fields', () => {
-    const p = writes.proposeSupplementCorrection(db, userId, {
-      supplement_id: supplementId,
-      dose_qty: 10,
-      dose_text: '10 g',
-    });
-    expect(p.preview.before.dose_qty).toBe(5);
-    expect(p.preview.after.dose_qty).toBe(10);
-    writes.commitProposal(db, userId, {
-      proposal_id: p.proposal_id,
-      confirmation_code: p.confirmation_code,
-      user_confirmation_text: 'fix creatine dose',
-    });
-    const row = db.prepare('SELECT dose_qty, dose_text FROM supplements WHERE id = ?').get(supplementId);
-    expect(row.dose_qty).toBe(10);
-    expect(row.dose_text).toBe('10 g');
-  });
-
-  it('discard_proposal prevents commit', () => {
-    const p = writes.proposeFoodItem(db, userId, {
-      name: 'Whey Isolate Unique',
-      calories_per_100g: 370,
-      protein_g_per_100g: 80,
-      carbs_g_per_100g: 5,
-      fat_g_per_100g: 2,
+  it('add_food_item writes immediately', () => {
+    const r = writes.addFoodItem(db, userId, {
+      name: 'Greek Yogurt Unique',
+      calories_per_100g: 97,
+      protein_g_per_100g: 9,
+      carbs_g_per_100g: 4,
+      fat_g_per_100g: 5,
       nutrition_source: 'label',
       weight_basis: 'raw',
     });
-    writes.discardProposal(db, userId, p.proposal_id);
-    const r = writes.commitProposal(db, userId, {
-      proposal_id: p.proposal_id,
-      confirmation_code: p.confirmation_code,
-      user_confirmation_text: 'yes',
-    });
-    expect(r.error).toMatch(/discarded/i);
+    expect(r.label_ingredient_id).toBeTruthy();
+    expect(r.food.created_via).toBe('mcp');
+  });
+
+  it('proposals table is gone', () => {
+    const row = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='mcp_proposals'`)
+      .get();
+    expect(row).toBeUndefined();
   });
 });
