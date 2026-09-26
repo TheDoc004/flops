@@ -1,6 +1,6 @@
 const express = require('express');
 const { uid } = require('../userId');
-const { buildMicrosBlob, MICRO_KEYS } = require('../microNutrients');
+const { buildMicrosBlob, MICRO_KEYS, parseMicrosFlat } = require('../microNutrients');
 const {
   scanSupplementLabel,
   AiConfigError,
@@ -85,19 +85,7 @@ function microsJsonFromBody(body) {
 
 /** Flat { key: amount } micros object parsed from a stored blob, or null. */
 function parseMicrosValues(micros_json) {
-  if (!micros_json) return null;
-  try {
-    const p = typeof micros_json === 'string' ? JSON.parse(micros_json) : micros_json;
-    if (!p || typeof p !== 'object' || !p.micros || typeof p.micros !== 'object') return null;
-    const out = {};
-    for (const k of MICRO_KEYS) {
-      const v = Number(p.micros[k]);
-      if (Number.isFinite(v) && v > 0) out[k] = v;
-    }
-    return Object.keys(out).length ? out : null;
-  } catch {
-    return null;
-  }
+  return parseMicrosFlat(micros_json);
 }
 
 /** Replace a row's raw micros_json with a parsed `micros` object for the API. */

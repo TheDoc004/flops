@@ -54,13 +54,9 @@ function parseMicrosBlob(micros_json) {
   try {
     const p = typeof micros_json === 'string' ? JSON.parse(micros_json) : micros_json;
     if (!p || typeof p !== 'object') return null;
-    const src = p.micros && typeof p.micros === 'object' ? p.micros : p;
-    const out = {};
-    for (const k of MICRO_KEYS) {
-      const v = Number(src[k]);
-      if (Number.isFinite(v) && v > 0) out[k] = v;
-    }
-    if (!Object.keys(out).length) return null;
+    const { parseMicrosFlat } = require('../microNutrients');
+    const out = parseMicrosFlat(p);
+    if (!out) return null;
     return {
       micros: out,
       confidence: p.confidence || null,

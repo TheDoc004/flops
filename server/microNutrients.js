@@ -99,10 +99,33 @@ function buildMicrosBlob(microsRaw, { confidence, notes } = {}) {
   return { micros, confidence: conf, notes: safeNotes, version: MICRO_ESTIMATE_VERSION, estimatedAt: new Date().toISOString() };
 }
 
+/**
+ * Flat { key: amount } from a stored micros_json blob (or already-parsed object).
+ * Accepts the standard `{ micros: {...} }` shape OR a legacy flat map of keys —
+ * History/MCP must both see fish-oil EPA/DHA either way. Unknown keys ignored.
+ */
+function parseMicrosFlat(microsJson) {
+  if (!microsJson) return null;
+  try {
+    const p = typeof microsJson === 'string' ? JSON.parse(microsJson) : microsJson;
+    if (!p || typeof p !== 'object') return null;
+    const src = p.micros && typeof p.micros === 'object' ? p.micros : p;
+    const out = {};
+    for (const k of MICRO_KEYS) {
+      const v = Number(src[k]);
+      if (Number.isFinite(v) && v > 0) out[k] = v;
+    }
+    return Object.keys(out).length ? out : null;
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
   MICRO_KEYS,
   MICRO_UNITS,
   MICRO_ESTIMATE_VERSION,
   MICRO_DAILY_TARGETS,
   buildMicrosBlob,
+  parseMicrosFlat,
 };
