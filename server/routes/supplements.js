@@ -1,6 +1,6 @@
 const express = require('express');
 const { uid } = require('../userId');
-const { buildMicrosBlob, MICRO_KEYS, parseMicrosFlat } = require('../microNutrients');
+const { buildMicrosBlob, parseMicrosFlat } = require('../microNutrients');
 const {
   scanSupplementLabel,
   AiConfigError,
