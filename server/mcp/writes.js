@@ -53,8 +53,9 @@ const WRITE_ALLOWED_KEYS = {
   ]),
   [OPS.delete_meal_entry]: new Set(['op', 'log_entry_id', 'operation_id']),
   [OPS.update_supplement]: new Set([
-    'op', 'supplement_id', 'dose_text', 'dose_qty', 'label_serving_qty', 'label_serving_unit',
-    'calories', 'protein_g', 'carbs_g', 'fat_g', 'micros', 'taken', 'taken_date', 'operation_id',
+    'op', 'supplement_id', 'name', 'dose_text', 'dose_qty', 'label_serving_qty', 'label_serving_unit',
+    'calories', 'protein_g', 'carbs_g', 'fat_g', 'micros', 'counts_toward_macros',
+    'taken', 'taken_date', 'day_dose_qty', 'operation_id',
   ]),
   [OPS.write_batch]: new Set(['operations', 'operation_id']),
   [OPS.revert_mcp_write]: new Set(['audit_id', 'operation_id']),
@@ -1230,6 +1231,20 @@ function updateSupplement(db, userId, args = {}, { skipAudit = false } = {}) {
       return { error: 'label_serving_qty must be a positive number' };
     }
 
+    const nextName =
+      args.name !== undefined ? String(args.name || '').trim() : before.name;
+    if (args.name !== undefined && !nextName) return { error: 'name cannot be empty' };
+
+    let nextCounts = before.counts_toward_macros ? 1 : 0;
+    if (args.counts_toward_macros !== undefined) {
+      nextCounts =
+        args.counts_toward_macros === true ||
+        args.counts_toward_macros === 1 ||
+        args.counts_toward_macros === '1'
+          ? 1
+          : 0;
+    }
+
     const nutritionPatch = {
       calories: args.calories !== undefined ? Number(args.calories) : before.calories,
       protein_g: args.protein_g !== undefined ? Number(args.protein_g) : before.protein_g,
@@ -1258,56 +1273,75 @@ function updateSupplement(db, userId, args = {}, { skipAudit = false } = {}) {
       args.fat_g !== undefined ||
       microsTouched;
 
+    const metaTouched =
+      args.name !== undefined ||
+      args.counts_toward_macros !== undefined ||
+      args.dose_text !== undefined ||
+      args.dose_qty !== undefined ||
+      args.label_serving_qty !== undefined ||
+      args.label_serving_unit !== undefined;
+
     const takenDate = args.taken_date ? isoDateOrNull(args.taken_date) : null;
     if (args.taken_date && !takenDate) return { error: 'taken_date must be YYYY-MM-DD' };
     const hasTaken = Object.prototype.hasOwnProperty.call(args, 'taken');
+    const hasDayDose = Object.prototype.hasOwnProperty.call(args, 'day_dose_qty');
+    let dayDose = null;
+    if (hasDayDose) {
+      if (args.day_dose_qty === null) {
+        dayDose = null;
+      } else {
+        const n = Number(args.day_dose_qty);
+        if (!Number.isFinite(n) || n <= 0) return { error: 'day_dose_qty must be a positive number or null' };
+        dayDose = n;
+      }
+    }
+    if (hasDayDose && !takenDate && !hasTaken) {
+      return { error: 'day_dose_qty requires taken_date (and usually taken:true)' };
+    }
 
     const doWrite = () => {
-      if (nutritionTouched) {
+      if (nutritionTouched || metaTouched) {
         if (microsTouched) {
           db.prepare(
             `UPDATE supplements
-                SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?,
-                    calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, micros_json = ?
+                SET name = ?, dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?,
+                    calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, micros_json = ?,
+                    counts_toward_macros = ?
               WHERE id = ? AND user_id = ?`
           ).run(
+            nextName,
             afterDose.dose_text, afterDose.dose_qty, afterDose.label_serving_qty,
             afterDose.label_serving_unit,
             nutritionPatch.calories, nutritionPatch.protein_g, nutritionPatch.carbs_g, nutritionPatch.fat_g,
-            microsJson, id, userId
+            microsJson, nextCounts, id, userId
           );
         } else {
           db.prepare(
             `UPDATE supplements
-                SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?,
-                    calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?
+                SET name = ?, dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?,
+                    calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, counts_toward_macros = ?
               WHERE id = ? AND user_id = ?`
           ).run(
+            nextName,
             afterDose.dose_text, afterDose.dose_qty, afterDose.label_serving_qty,
             afterDose.label_serving_unit,
             nutritionPatch.calories, nutritionPatch.protein_g, nutritionPatch.carbs_g, nutritionPatch.fat_g,
-            id, userId
+            nextCounts, id, userId
           );
         }
-      } else {
-        db.prepare(
-          `UPDATE supplements
-              SET dose_text = ?, dose_qty = ?, label_serving_qty = ?, label_serving_unit = ?
-            WHERE id = ? AND user_id = ?`
-        ).run(
-          afterDose.dose_text, afterDose.dose_qty, afterDose.label_serving_qty,
-          afterDose.label_serving_unit, id, userId
-        );
       }
 
       let taken = null;
-      if (hasTaken && takenDate) {
+      if ((hasTaken || hasDayDose) && takenDate) {
+        const takenVal = hasTaken ? (args.taken ? 1 : 0) : 1;
         db.prepare(
           `INSERT INTO supplement_log (user_id, date, supplement_id, taken, dose_qty)
-           VALUES (?, ?, ?, ?, NULL)
-           ON CONFLICT(user_id, date, supplement_id) DO UPDATE SET taken = excluded.taken`
-        ).run(userId, takenDate, id, args.taken ? 1 : 0);
-        taken = { date: takenDate, taken: !!args.taken };
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, date, supplement_id) DO UPDATE SET
+             taken = excluded.taken,
+             dose_qty = CASE WHEN ? THEN excluded.dose_qty ELSE supplement_log.dose_qty END`
+        ).run(userId, takenDate, id, takenVal, hasDayDose ? dayDose : null, hasDayDose ? 1 : 0);
+        taken = { date: takenDate, taken: !!takenVal, day_dose_qty: hasDayDose ? dayDose : undefined };
       }
 
       const after = shapeSupplement(db, userId, id);
@@ -1748,6 +1782,11 @@ function bulkDeleteMcpFoods(db, userId, ids) {
 
 module.exports = {
   OPS,
+  WRITE_ALLOWED_KEYS,
+  rejectUnknownArgs,
+  recordAudit,
+  withIdempotency,
+  nowIso,
   logMeal,
   addFoodItem,
   updateFoodItem,

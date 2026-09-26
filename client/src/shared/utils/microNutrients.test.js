@@ -54,6 +54,18 @@ describe('sumDayTotalMicros — meals + supplements', () => {
     expect(r.values).toEqual({});
     expect(r.supplementCount).toBe(0);
   });
+
+  it('adds fish-oil EPA/DHA from taken supplements onto day totals', () => {
+    const r = sumDayTotalMicros({
+      entries: [],
+      supplements: [{ micros: { omega3_epa_mg: 360, omega3_dha_mg: 240 } }],
+    });
+    expect(r.values.omega3_epa_mg).toBe(360);
+    expect(r.values.omega3_dha_mg).toBe(240);
+    expect(r.supplementCount).toBe(1);
+    expect(r.hasMicros).toBe(true);
+    expect(r.confidence).toBe('high');
+  });
 });
 
 describe('dominantNutrients', () => {

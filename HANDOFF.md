@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-09-25 (Phase 4 Part B: live meal micros from ingredients)_
+_Last updated: 2026-09-26 (MCP full user-scoped parity + fish-oil omega-3 fix)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -22,28 +22,21 @@ _current-state_ companion to it.
 
 ## Where Diego left off (read this first)
 
-**Status:** Active. Nutrition daily driver + Log Meal UX; MCP Phase 3 + lookup tools.
-**Part A shipped:** placeholder `grams_per_serving` (&lt;3g) no longer derives `per_100g`;
-writes reject those values; boot repair nulls unit cosmetic ids and flips rice cakes/
-onion bagel (11/22/34) to unit tracking.
-**MCP micros write path shipped:** `update_food_item` / `add_food_item` persist
-`micros` / `micros_per_100g` → `label_ingredients.micros_json` (per-serving blob).
-`micros_confidence` (`high|medium|low`) is required when writing micros.
-**Part B shipped:** meal micros are **live-scaled on read** from ingredient-library
-`micros_json` (`server/entryMicros.js`). New logs no longer freeze AI estimates onto
-`log_entries.micros_json`. History/`get_day`/`get_micronutrient_totals` prefer live
-values; legacy frozen blobs remain as fallback. `get_micronutrient_totals` returns
-coverage + `avg_daily` + `pct_of_daily_target`.
-
-**Last active work stream:** micronutrient provenance — Part A + B done.
+**Status:** Active. Nutrition daily driver; **MCP Phase 5** = full user-scoped read/write
+parity (meals, recipes, ingredients, supplements, goals, profile, weights, gym) + guarded
+`query` tool. Bound to `MCP_USER_ID` — never other users.
+**Omega-3:** History day totals include taken supplements with `micros_json`. Flat or nested
+blobs parse via `parseMicrosFlat`. Fish oil needs `omega3_epa_mg` / `omega3_dha_mg` on the
+supplement (DSLD bare “total omega-3” alone stores nothing). Dashboard has no micros bars —
+use History / `get_micronutrient_totals`.
 
 **When you return / next picks (optional):**
 
-1. **Backfill** — use `update_food_item` + `micros_per_100g` + `micros_confidence` (`medium` for USDA, `high` for labels); past meals pick them up live.
-2. **Claude connector** — confirm `search_ingredients` / meal micros after Render redeploy.
-3. **Gym UX / progressive overload** — agent can already call `get_gym_progress`.
-4. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
-5. **Ops:** Resend domain verification for production OTP email (if not done yet).
+1. **Backfill fish-oil micros** on prod if EPA/DHA still empty (`create_supplement` /
+   `update_supplement` or Manage Supplements).
+2. **Claude connector** — after Render redeploy, exercise recipe/gym/query tools.
+3. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
+4. **Ops:** Resend domain verification for production OTP email (if not done yet).
 
 ---
 

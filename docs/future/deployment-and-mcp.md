@@ -1,7 +1,8 @@
 # Deployment + MCP Connector — Plan
 
-_Written 2026-08-02. **Updated 2026-09-24:** deploy + auth live; MCP reads + Phase 2
-propose/commit writes shipped (`source=mcp`, audit, bulk undo). See `docs/mcp-connector.md`._
+_Written 2026-08-02. **Updated 2026-09-26:** deploy + auth live; MCP is **direct writes**
+(no propose/commit). Full user-scoped read/write parity + guarded `query` — see
+`docs/mcp-connector.md`._
 
 ## Status (2026-09)
 
@@ -9,7 +10,7 @@ propose/commit writes shipped (`source=mcp`, audit, bulk undo). See `docs/mcp-co
 |---|---|
 | 1 Auth + rate limiting | **Done** (Bearer sessions, not shared-secret) |
 | 2 Render + Vercel deploy | **Done** (`useflops.com` + `flops-c6ic.onrender.com`) |
-| 3 MCP server | **Done** — reads + propose/commit writes at `/mcp` |
+| 3 MCP server | **Done** — reads + direct domain writes + `query` at `/mcp` |
 
 ---
 
@@ -18,8 +19,10 @@ propose/commit writes shipped (`source=mcp`, audit, bulk undo). See `docs/mcp-co
 Log meals into FLOPS from the Claude app on the phone, so the copy-paste step through the
 AI Logger disappears.
 
-**Pivot (Sept 2026):** analyze-only shipped first; Phase 2 adds confirm-first writes
-(`propose_*` → chat approve → `commit_proposal`) with permanent `source=mcp` flags.
+**Current shape (Sept 2026):** MCP writes **commit immediately** (audited, `source=mcp`,
+meal soft-delete + `revert_mcp_write`). There is **no** propose/commit handshake anymore.
+Agents can also mutate recipes, supplements, goals, profile, weights, and gym data for the
+bound `MCP_USER_ID` only.
 
 ## Why this shape
 
@@ -30,20 +33,14 @@ Today he copies that into the FLOPS AI Logger by hand. He is the middleman, and 
 the thing being removed.
 
 Notably **Claude does all the macro maths in the chat**. FLOPS only has to accept final
-numbers. That means the MCP tool never touches the Ingredient Library, and so it sidesteps
-the dry-vs-cooked basis trap entirely (see `docs/` notes on that hazard).
-
-Logging must be **confirm-first**: Claude states the macros, asks, and only writes on a
-yes. This is free — MCP clients prompt for approval on every tool call and show the tool
-input. No extra work; just write tool descriptions that make Claude state the numbers first.
+numbers for many paths — or resolve library ingredients by id.
 
 ## Decision made
 
 **Deploy to Render with a persistent disk (~$7/mo), always on.** Diego chose this over the
 free Cloudflare Tunnel alternative because a tunnel only works while the Mac is awake.
 The deploy is required anyway: custom connectors are reached from Anthropic's cloud, not
-the phone, so the server must be publicly resolvable. Bonus: it also puts FLOPS itself on
-the phone's browser, which is arguably the bigger win.
+the phone, so the server must be publicly resolvable.
 
 ---
 
@@ -51,33 +48,23 @@ the phone's browser, which is arguably the bigger win.
 
 ### The hard part is already built
 
-`POST /api/log/custom` (`server/routes/log.js:315`) already accepts exactly what Claude
-produces — `{ date, name, calories, protein_g, carbs_g, fat_g, fiber_g, servings, notes,
-ingredients[] }` — and writes it to a hidden backing recipe (`is_quick_food = 1`) so it
-lands in the daily log and history but never in the Recipe Library. It dedupes by name, and
-it already accepts a per-ingredient breakdown plus micros. **The MCP tool is a pass-through.**
-`POST /api/log/quick-food` covers per-100g foods.
+`POST /api/log/custom` already accepts exactly what Claude produces. MCP `log_meal` /
+`add_food_item` cover the same ground with library-id and per-100g paths.
 
 ### Codebase health — good
 
-- SQL is safe. All user input parameterized; dynamic `WHERE` clauses assembled from fixed
-  strings only; `workouts.js` validates against an allowlist `Set` first.
-- Migrations are idempotent and run on boot, so Render migrates the schema automatically.
-- No TODO/FIXME/HACK anywhere in source.
-- 403 tests across 45 files.
-- `.env` and `*.db` gitignored and untracked; no secrets in the repo.
-- `user_id` already threads through all ~208 call sites (always 0) — multi-user later is a
-  migration, not a rewrite.
-- Client structure is sound: `features/*`, `shared/{api,ui,utils,hooks,context,config}`, `app/`.
-
-Drifting but not urgent: `AiMacroLogger.jsx` (1,335 lines) and `routes/log.js` (810 lines)
-are where the next feature will start to hurt. Split eventually, not before deploying.
+- SQL is parameterized; MCP `query` is SELECT/WITH-only with user-scoped TEMP VIEWs.
+- Migrations are idempotent and run on boot.
+- Multi-user: HTTP uses `req.user.id`; MCP uses `MCP_USER_ID`.
 
 ### Risks that only exist once public
 
-1. **AI endpoints spend real money.** `/api/ai/macro-estimate` and `/api/ai/transcribe` call
-   OpenAI/Anthropic with the server's own key. No rate limiting exists anywhere, and
-   `/transcribe` accepts 25 MB uploads. Public + unauthenticated = someone can run up a bill.
+1. **AI endpoints spend real money.** Rate limits + `ai_usage` caps protect paid routes.
+2. **MCP token is powerful** for one user — treat `MCP_API_TOKEN` like a password; rotate if leaked.
+3. Optional later: IP allowlist for Anthropic egress `160.79.104.0/21`.
+
+For the live tool catalog and auth setup, always prefer **`docs/mcp-connector.md`**.
+
    **This is the most expensive failure mode.**
 2. **No backups.** 609 log entries and 284 recipes in one SQLite file, no export in the app,
    no backup script. On the Mac it is covered by Time Machine/iCloud; on a Render disk that

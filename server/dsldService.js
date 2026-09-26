@@ -58,13 +58,21 @@ const GROUP_TO_KEY = {
   sodium: 'sodium_mg',
   zinc: 'zinc_mg',
   // Omega-3s — fish oil labels list EPA/DHA by name or abbreviation.
+  // Parentheticals are stripped in groupCandidates, so "EPA (as EE)" → "epa".
   epa: 'omega3_epa_mg',
   'eicosapentaenoic acid': 'omega3_epa_mg',
+  'eicosapentaenoic acids': 'omega3_epa_mg',
+  'epa ethyl ester': 'omega3_epa_mg',
+  'epa ee': 'omega3_epa_mg',
   dha: 'omega3_dha_mg',
   'docosahexaenoic acid': 'omega3_dha_mg',
+  'docosahexaenoic acids': 'omega3_dha_mg',
+  'dha ethyl ester': 'omega3_dha_mg',
+  'dha ee': 'omega3_dha_mg',
   ala: 'omega3_ala_g',
   'alpha-linolenic acid': 'omega3_ala_g',
   'alpha linolenic acid': 'omega3_ala_g',
+  'alpha-linolenic acids': 'omega3_ala_g',
   // Other
   'dietary fiber': 'fiber_g',
   fiber: 'fiber_g',
