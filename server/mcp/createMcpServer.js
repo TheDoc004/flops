@@ -2,6 +2,7 @@ const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { z } = require('zod');
 const reads = require('./reads');
 const writes = require('./writes');
+const { runUserQuery } = require('./query');
 
 const READ_ONLY =
   'Read-only FLOPS data tool. Does not write meals, change foods, or alter settings. '
@@ -313,6 +314,28 @@ function createFlopsMcpServer(db, userId) {
       reads.textResult({
         supplements: reads.listSupplements(db, userId, { include_deleted: !!include_deleted }),
       })
+  );
+
+  server.registerTool(
+    'query',
+    {
+      title: 'SQL query (read-only)',
+      description:
+        `${READ_ONLY} Run a SELECT or WITH … SELECT against this user's FLOPS data. `
+        + 'Writes, PRAGMA, ATTACH, and schema-qualified (main./temp.) names are refused. '
+        + 'Results are automatically scoped to the bound MCP user — you never see other users. '
+        + `Max ${200} rows returned (truncated with a note if larger). Prefer convenience tools `
+        + '(get_day, search_*) when they fit; use query for ad-hoc joins and inspection.',
+      inputSchema: {
+        sql: z.string().min(1).describe('SELECT or WITH … SELECT only'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ sql }) => {
+      const result = runUserQuery(db, userId, sql);
+      if (result.error) return reads.errorResult(result.error);
+      return reads.textResult(result);
+    }
   );
 
   server.registerTool(
