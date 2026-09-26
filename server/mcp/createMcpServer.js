@@ -2,6 +2,7 @@ const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { z } = require('zod');
 const reads = require('./reads');
 const writes = require('./writes');
+const mutates = require('./mutates');
 const { runUserQuery } = require('./query');
 
 const READ_ONLY =
@@ -575,8 +576,16 @@ function createFlopsMcpServer(db, userId) {
             .nullable()
             .optional()
             .describe('Per label serving micros object, or null to clear'),
+          name: z.string().optional(),
+          counts_toward_macros: z.boolean().optional(),
           taken: z.boolean().optional(),
           taken_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          day_dose_qty: z
+            .number()
+            .positive()
+            .nullable()
+            .optional()
+            .describe('Per-day dose override for taken_date (null clears). Requires taken_date.'),
           operation_id: z.string().optional(),
         })
         .strict(),
@@ -635,6 +644,75 @@ function createFlopsMcpServer(db, userId) {
     },
     async ({ days }) => wrapWrite(writes.listRecentMcpWrites(db, userId, days))
   );
+
+  // ── Domain mutates (recipes, supplements, goals, profile, gym) ──
+  const mutateTools = [
+    ['create_recipe', 'Create recipe', mutates.createRecipe, false,
+      'Create a recipe with macros + optional ingredients JSON (library and/or free-text lines).'],
+    ['update_recipe', 'Update recipe', mutates.updateRecipe, false,
+      'Update a recipe. Past meal logs keep denormalized macros — they are not rewritten.'],
+    ['delete_recipe', 'Delete recipe', mutates.deleteRecipe, true,
+      'Soft-delete a recipe (is_deleted=1). Historical logs keep referencing it.'],
+    ['reactivate_recipe', 'Reactivate limited recipe', mutates.reactivateRecipe, false,
+      'Bump remaining_uses on a limited-use template and clear archived.'],
+    ['create_supplement', 'Create supplement', mutates.createSupplement, false,
+      'Create a supplement with optional per-label-serving micros (use omega3_epa_mg / omega3_dha_mg for fish oil).'],
+    ['delete_supplement', 'Delete supplement', mutates.deleteSupplement, true,
+      'Soft-delete a supplement (is_deleted=1).'],
+    ['delete_food_item', 'Delete food item', mutates.deleteFoodItem, true,
+      'Hard-delete a label ingredient (matches HTTP).'],
+    ['upsert_goals', 'Upsert macro goals', mutates.upsertGoals, false,
+      'Upsert a goal version: effective_start_date + goals[] with weekday 1–7 and min/max macros.'],
+    ['update_profile', 'Update profile', mutates.updateProfile, false,
+      'Patch user profile / unit prefs / dashboard toggles.'],
+    ['upsert_body_weight', 'Upsert body weight', mutates.upsertBodyWeight, false,
+      'Set weight_kg for a date (YYYY-MM-DD).'],
+    ['delete_body_weight', 'Delete body weight', mutates.deleteBodyWeight, true,
+      'Remove a body-weight entry for a date.'],
+    ['create_gym_exercise', 'Create gym exercise', mutates.createGymExercise, false,
+      'Create a custom gym exercise (or return existing same name).'],
+    ['create_gym_template', 'Create gym template', mutates.createGymTemplate, false,
+      'Create a workout template.'],
+    ['update_gym_template', 'Update gym template', mutates.updateGymTemplate, false,
+      'Rename / edit notes on a template.'],
+    ['delete_gym_template', 'Delete gym template', mutates.deleteGymTemplate, true,
+      'Soft-delete a gym template.'],
+    ['add_template_exercise', 'Add template exercise', mutates.addTemplateExercise, false,
+      'Add an exercise to a template by exercise_id or name.'],
+    ['update_template_exercise', 'Update template exercise', mutates.updateTemplateExercise, false,
+      'Patch targets / sort_order on a template exercise row.'],
+    ['delete_template_exercise', 'Delete template exercise', mutates.deleteTemplateExercise, true,
+      'Hard-delete a template exercise row.'],
+    ['upsert_gym_schedule', 'Upsert gym schedule', mutates.upsertGymSchedule, false,
+      'Replace weekly schedule: days[] with weekday 1–7, enabled, template_id, duration_min.'],
+    ['create_gym_session', 'Create gym session', mutates.createGymSession, false,
+      'Start (or reuse open) session for a date.'],
+    ['update_gym_session', 'Update gym session', mutates.updateGymSession, false,
+      'Finish / reopen / annotate a session (finish:true sets ended_at).'],
+    ['add_gym_set', 'Add gym set', mutates.addGymSet, false,
+      'Log a set on an open session. is_1rm + weight upserts tested 1RM.'],
+    ['delete_gym_set', 'Delete gym set', mutates.deleteGymSet, true,
+      'Hard-delete a set from a session.'],
+    ['upsert_one_rm', 'Upsert one-rep max', mutates.upsertOneRm, false,
+      'Set estimated/tested 1RM for an exercise.'],
+  ];
+
+  for (const [name, title, fn, destructive, desc] of mutateTools) {
+    server.registerTool(
+      name,
+      {
+        title,
+        description: `${WRITE_NOW} ${desc}`,
+        inputSchema: z.object({}).passthrough(),
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: !!destructive,
+          openWorldHint: false,
+        },
+      },
+      async (args) => wrapWrite(fn(db, userId, args))
+    );
+  }
 
   return server;
 }
