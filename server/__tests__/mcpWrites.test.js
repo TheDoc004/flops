@@ -250,7 +250,7 @@ describe('MCP Phase 3 direct writes', () => {
   });
 
   it('search_ingredients and list_supplements return library rows', () => {
-    const foods = reads.searchIngredients(db, userId, 'chicken');
+    const foods = reads.searchIngredients(db, userId, 'chicken').ingredients;
     expect(foods.some(f => f.id === ingredientId)).toBe(true);
     expect(foods[0].per_serving).toBeTruthy();
     expect(foods[0].per_100g).toBeTruthy();

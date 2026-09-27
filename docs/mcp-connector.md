@@ -65,7 +65,9 @@ Optional hardening later: restrict `/mcp` to Anthropic egress `160.79.104.0/21` 
 | `list_supplements` | Full supplement library (IDs + per-label-serving macros/micros); optional `include_deleted` |
 | `get_micronutrient_totals` | Summed micros over a range |
 | `search_recipes` | Recipe library name search |
-| `search_ingredients` | Ingredient library by name/brand — use these IDs in `log_meal`. `per_100g` is null when `grams_per_serving` is missing or &lt; 3g (placeholders are never derived). |
+| `search_ingredients` | Ingredient library by name/brand — use these IDs in `log_meal`. Supports `offset` (paginate past the 50-row page) and `has_micros` (`true`/`false` filter). Returns `{ingredients, total_matched, limit, offset}`. `per_100g` is null when `grams_per_serving` is missing or &lt; 3g. |
+| `query` | Read-only SQL (`SELECT` / `WITH … SELECT`). CST-parsed (`sql-parser-cst`), runs on a separate `{readonly:true}` connection with per-user TEMP VIEW shadows. Max **1000** rows (`truncated` + `total_matched`); **5s** Worker timeout. Auth tables (`users`, `sessions`, …) are empty-shadowed. Prefer convenience tools for scaled micros / intake trends. |
+| `describe_schema` | Columns, types, FKs for tables `query` can see (allowlisted only; auth tables omitted). Call this before inventing column names. |
 | `get_gym_today` | Schedule + session/sets for a date |
 | `get_gym_progress` | Working-set history for an exercise (id or name) |
 | `list_recent_mcp_writes` | Meals/foods/audit (with `audit_id`) written via MCP |
@@ -74,6 +76,7 @@ Example prompts:
 
 - “Using FLOPS, how did yesterday’s macros sit vs my goals?”
 - “Search ingredients for chicken, then log 150g cooked for lunch.”
+- “List every ingredient missing micros (`has_micros: false`), paginating with `offset` if needed — or `query` `SELECT id, name FROM label_ingredients WHERE micros_json IS NULL`.”
 - “Using `get_intake_weight_trend`, start 2026-08-20 end 2026-09-19 split_at 2026-09-11 — am I gaining and what’s my maintenance?”
 - “Show progressive overload signals for bench press from gym progress.”
 

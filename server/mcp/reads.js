@@ -530,9 +530,12 @@ function per100FromServing(row) {
 /**
  * Search the ingredient library by name/brand substring.
  * Macros on the row are per label serving; per_100g is derived when grams_per_serving is set.
+ * @param {{ limit?: number, offset?: number, has_micros?: boolean }} [opts]
+ *   has_micros true = only rows with micros_json nutrients; false = only missing micros.
  */
-function searchIngredients(db, userId, query, { limit = 25 } = {}) {
+function searchIngredients(db, userId, query, { limit = 25, offset = 0, has_micros } = {}) {
   const lim = Math.min(50, Math.max(1, Number(limit) || 25));
+  const off = Math.max(0, Number(offset) || 0);
   const q = String(query || '').trim().toLowerCase();
   const rows = db
     .prepare(
@@ -544,15 +547,17 @@ function searchIngredients(db, userId, query, { limit = 25 } = {}) {
         ORDER BY use_count DESC, name COLLATE NOCASE`
     )
     .all(userId);
-  const filtered = q
+  let filtered = q
     ? rows.filter(r => {
         const name = String(r.name || '').toLowerCase();
         const brand = String(r.brand_name || '').toLowerCase();
         return name.includes(q) || brand.includes(q);
       })
     : rows;
-  return filtered.slice(0, lim).map(r => {
+
+  const mapped = filtered.map(r => {
     const micros = parseMicrosBlob(r.micros_json);
+    const hasMicros = !!(micros?.micros && Object.keys(micros.micros).length);
     return {
       id: r.id,
       name: r.name,
@@ -573,10 +578,22 @@ function searchIngredients(db, userId, query, { limit = 25 } = {}) {
         fiber_g: r.fiber_g,
       },
       per_100g: per100FromServing(r),
-      has_micros: !!(micros?.micros && Object.keys(micros.micros).length),
+      has_micros: hasMicros,
       micros_confidence: micros?.confidence || null,
     };
   });
+
+  let result = mapped;
+  if (has_micros === true) result = result.filter(r => r.has_micros);
+  if (has_micros === false) result = result.filter(r => !r.has_micros);
+
+  const total_matched = result.length;
+  return {
+    ingredients: result.slice(off, off + lim),
+    total_matched,
+    limit: lim,
+    offset: off,
+  };
 }
 
 /**
