@@ -22,6 +22,8 @@ On the API web service (`flops-c6ic`), set:
 
 Redeploy after saving. Until `MCP_API_TOKEN` is set, `/mcp` returns **503**.
 
+**Build command:** Render must run `npm install && node scripts/write-build-info.js` (see `render.yaml`) so `built_at` is stamped. Runtime still falls back to `RENDER_GIT_COMMIT` for `git_sha` if the write-build-info step was skipped.
+
 **Auth note:** static token only (Bearer or `x-api-key`). No OAuth. Writes are scoped to `MCP_USER_ID` (or the first user).
 
 ---
@@ -55,6 +57,7 @@ Optional hardening later: restrict `/mcp` to Anthropic egress `160.79.104.0/21` 
 
 | Tool | Use |
 |---|---|
+| `get_server_info` | **What's actually running:** `git_sha`, `built_at` (deploy build clock), `process_started_at`, `tool_count` + `tools[]`. Use after a deploy to tell live code apart from a stale Claude tool list or an unmerged draft. |
 | `get_day` | One day: meals (with `id` + ingredients), totals, supplements, goals, vs-range, weight |
 | `get_log_range` | Daily summaries (optional full entries with ids); max 90 days |
 | `get_goals` | Weekly min/max macros for a date |
@@ -72,10 +75,13 @@ Optional hardening later: restrict `/mcp` to Anthropic egress `160.79.104.0/21` 
 
 Example prompts:
 
+- “Call get_server_info — what git SHA is live and how many MCP tools are registered?”
 - “Using FLOPS, how did yesterday’s macros sit vs my goals?”
 - “Search ingredients for chicken, then log 150g cooked for lunch.”
 - “Using `get_intake_weight_trend`, start 2026-08-20 end 2026-09-19 split_at 2026-09-11 — am I gaining and what’s my maintenance?”
 - “Show progressive overload signals for bench press from gym progress.”
+
+**Deploy sanity (no MCP client needed):** `GET https://flops-c6ic.onrender.com/health` returns the same `git_sha` / `built_at` / `process_started_at` (no tool list). If `built_at` is new but `process_started_at` is old, the build finished and the old process is still serving.
 
 ---
 

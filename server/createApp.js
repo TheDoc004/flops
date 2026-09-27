@@ -19,6 +19,7 @@ const { createPrepRouter } = require('./routes/prep');
 const { createPreppedBatchesRouter } = require('./routes/preppedBatches');
 const { createMcpRouter } = require('./mcp/createMcpRouter');
 const { createMcpWritesRouter } = require('./routes/mcpWrites');
+const { getHealthInfo } = require('./buildInfo');
 
 /**
  * Build the Express app (used by index.js and tests).
@@ -50,7 +51,7 @@ function createApp(db = createDb(process.env.DB_PATH || './nutrition.db'), opts 
   app.use(express.json({ limit: '1mb' }));
   app.use(attachUser);
 
-  app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
+  app.get('/health', (_req, res) => res.status(200).json(getHealthInfo()));
 
   // Analyze-only MCP (Streamable HTTP). Own Bearer token — not session auth.
   app.use('/mcp', createMcpRouter(db));

@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-09-25 (Phase 4 Part B: live meal micros from ingredients)_
+_Last updated: 2026-09-27 (`get_server_info` / deploy identity)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -35,12 +35,14 @@ onion bagel (11/22/34) to unit tracking.
 values; legacy frozen blobs remain as fallback. `get_micronutrient_totals` returns
 coverage + `avg_daily` + `pct_of_daily_target`.
 
-**Last active work stream:** micronutrient provenance — Part A + B done.
+**Last active work stream:** `get_server_info` MCP tool + `/health` identity
+(`git_sha`, `built_at`, `process_started_at`, `tool_count`) so a deploy can be
+verified without failing a write — see `docs/mcp-connector.md`.
 
 **When you return / next picks (optional):**
 
 1. **Backfill** — use `update_food_item` + `micros_per_100g` + `micros_confidence` (`medium` for USDA, `high` for labels); past meals pick them up live.
-2. **Claude connector** — confirm `search_ingredients` / meal micros after Render redeploy.
+2. **Claude connector** — after Render redeploy, call `get_server_info` (or `curl /health`) and confirm `git_sha` matches the merged commit; refresh the connector if `tool_count` looks stale client-side.
 3. **Gym UX / progressive overload** — agent can already call `get_gym_progress`.
 4. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
 5. **Ops:** Resend domain verification for production OTP email (if not done yet).

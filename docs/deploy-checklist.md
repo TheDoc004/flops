@@ -28,7 +28,7 @@ Goal: **HTTPS URL that works on phone Safari** without your laptop running.
      - or `SMTP_URL=smtp://...`
    - Optional: `AI_MONTHLY_CAP=200`
    - Do **not** set `AUTH_DEV`
-5. Deploy; confirm `https://YOUR-SERVICE.onrender.com/health` returns `{"status":"ok"}`.
+5. Deploy; confirm `https://YOUR-SERVICE.onrender.com/health` returns `{"status":"ok",...}` with a `git_sha` matching the commit you just pushed (also `built_at` / `process_started_at`).
 
 ### Resend setup (recommended mailer)
 

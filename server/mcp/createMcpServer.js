@@ -2,6 +2,7 @@ const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { z } = require('zod');
 const reads = require('./reads');
 const writes = require('./writes');
+const { getServerInfo } = require('../buildInfo');
 
 const READ_ONLY =
   'Read-only FLOPS data tool. Does not write meals, change foods, or alter settings. '
@@ -58,7 +59,30 @@ function createFlopsMcpServer(db, userId) {
     version: '1.0.0',
   });
 
-  server.registerTool(
+  // Track registrations so get_server_info.tool_count matches tools/list without
+  // depending on SDK private fields.
+  const registeredToolNames = [];
+  const registerTool = (name, config, handler) => {
+    registeredToolNames.push(name);
+    return server.registerTool(name, config, handler);
+  };
+
+  registerTool(
+    'get_server_info',
+    {
+      title: 'Get server info',
+      description:
+        `${READ_ONLY} What's actually running on this API process: git SHA, build/deploy `
+        + 'timestamp (built_at), process start time, and the count/names of registered MCP tools. '
+        + 'Call this after a deploy to confirm the new commit is live (vs a stale Claude tool list '
+        + 'or an unmerged draft). Cheap; no DB reads.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async () => reads.textResult(getServerInfo({ tools: registeredToolNames }))
+  );
+
+  registerTool(
     'get_day',
     {
       title: 'Get day summary',
@@ -77,7 +101,7 @@ function createFlopsMcpServer(db, userId) {
     async ({ date }) => reads.textResult(reads.getDay(db, userId, date))
   );
 
-  server.registerTool(
+  registerTool(
     'get_log_range',
     {
       title: 'Get log range',
@@ -108,7 +132,7 @@ function createFlopsMcpServer(db, userId) {
     }
   );
 
-  server.registerTool(
+  registerTool(
     'get_goals',
     {
       title: 'Get macro goals',
@@ -125,7 +149,7 @@ function createFlopsMcpServer(db, userId) {
     async ({ date }) => reads.textResult(reads.getGoalsForDate(db, userId, date))
   );
 
-  server.registerTool(
+  registerTool(
     'get_body_weights',
     {
       title: 'Get body weights',
@@ -153,7 +177,7 @@ function createFlopsMcpServer(db, userId) {
     }
   );
 
-  server.registerTool(
+  registerTool(
     'get_intake_weight_trend',
     {
       title: 'Get intake vs weight trend',
@@ -193,7 +217,7 @@ function createFlopsMcpServer(db, userId) {
     }
   );
 
-  server.registerTool(
+  registerTool(
     'get_profile',
     {
       title: 'Get profile',
@@ -204,7 +228,7 @@ function createFlopsMcpServer(db, userId) {
     async () => reads.textResult(reads.getProfile(db, userId))
   );
 
-  server.registerTool(
+  registerTool(
     'get_supplements_range',
     {
       title: 'Get supplements range',
@@ -225,7 +249,7 @@ function createFlopsMcpServer(db, userId) {
     }
   );
 
-  server.registerTool(
+  registerTool(
     'get_micronutrient_totals',
     {
       title: 'Get micronutrient totals',
@@ -254,7 +278,7 @@ function createFlopsMcpServer(db, userId) {
     }
   );
 
-  server.registerTool(
+  registerTool(
     'search_recipes',
     {
       title: 'Search recipes',
@@ -271,7 +295,7 @@ function createFlopsMcpServer(db, userId) {
       })
   );
 
-  server.registerTool(
+  registerTool(
     'search_ingredients',
     {
       title: 'Search ingredients',
@@ -293,7 +317,7 @@ function createFlopsMcpServer(db, userId) {
       })
   );
 
-  server.registerTool(
+  registerTool(
     'list_supplements',
     {
       title: 'List supplements',
@@ -315,7 +339,7 @@ function createFlopsMcpServer(db, userId) {
       })
   );
 
-  server.registerTool(
+  registerTool(
     'get_gym_today',
     {
       title: 'Get gym day',
@@ -333,7 +357,7 @@ function createFlopsMcpServer(db, userId) {
     async ({ date }) => reads.textResult(reads.getGymToday(db, userId, date))
   );
 
-  server.registerTool(
+  registerTool(
     'get_gym_progress',
     {
       title: 'Get gym progress',
@@ -356,7 +380,7 @@ function createFlopsMcpServer(db, userId) {
     }
   );
 
-  server.registerTool(
+  registerTool(
     'log_meal',
     {
       title: 'Log meal',
@@ -382,7 +406,7 @@ function createFlopsMcpServer(db, userId) {
     async (args) => wrapWrite(writes.logMeal(db, userId, args))
   );
 
-  server.registerTool(
+  registerTool(
     'add_food_item',
     {
       title: 'Add food item',
@@ -431,7 +455,7 @@ function createFlopsMcpServer(db, userId) {
     async (args) => wrapWrite(writes.addFoodItem(db, userId, args))
   );
 
-  server.registerTool(
+  registerTool(
     'update_food_item',
     {
       title: 'Update food item',
@@ -483,7 +507,7 @@ function createFlopsMcpServer(db, userId) {
     async (args) => wrapWrite(writes.updateFoodItem(db, userId, args))
   );
 
-  server.registerTool(
+  registerTool(
     'update_meal_entry',
     {
       title: 'Update meal entry',
@@ -508,7 +532,7 @@ function createFlopsMcpServer(db, userId) {
     async (args) => wrapWrite(writes.updateMealEntry(db, userId, args))
   );
 
-  server.registerTool(
+  registerTool(
     'delete_meal_entry',
     {
       title: 'Delete meal entry',
@@ -526,7 +550,7 @@ function createFlopsMcpServer(db, userId) {
     async (args) => wrapWrite(writes.deleteMealEntry(db, userId, args))
   );
 
-  server.registerTool(
+  registerTool(
     'update_supplement',
     {
       title: 'Update supplement',
@@ -562,7 +586,7 @@ function createFlopsMcpServer(db, userId) {
     async (args) => wrapWrite(writes.updateSupplement(db, userId, args))
   );
 
-  server.registerTool(
+  registerTool(
     'write_batch',
     {
       title: 'Write batch',
@@ -580,7 +604,7 @@ function createFlopsMcpServer(db, userId) {
     async (args) => wrapWrite(writes.writeBatch(db, userId, args))
   );
 
-  server.registerTool(
+  registerTool(
     'revert_mcp_write',
     {
       title: 'Revert MCP write',
@@ -599,7 +623,7 @@ function createFlopsMcpServer(db, userId) {
     async (args) => wrapWrite(writes.revertMcpWrite(db, userId, args))
   );
 
-  server.registerTool(
+  registerTool(
     'list_recent_mcp_writes',
     {
       title: 'List recent MCP writes',

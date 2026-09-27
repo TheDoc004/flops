@@ -97,6 +97,7 @@ describe('MCP /mcp auth', () => {
     const names = (listed.body.result?.tools || []).map(t => t.name);
     expect(names).toEqual(
       expect.arrayContaining([
+        'get_server_info',
         'get_day',
         'get_log_range',
         'get_goals',
