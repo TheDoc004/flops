@@ -46,8 +46,8 @@ describe('per_100g derivation', () => {
          (?, 'Bagel Ok Null', '1 bagel', NULL, 260, 9, 50, 2, 'manual', 'unit')`
     ).run(userId, userId);
 
-    const bad = reads.searchIngredients(db, userId, 'Rice Cake Bad')[0];
-    const ok = reads.searchIngredients(db, userId, 'Bagel Ok Null')[0];
+    const bad = reads.searchIngredients(db, userId, 'Rice Cake Bad').ingredients[0];
+    const ok = reads.searchIngredients(db, userId, 'Bagel Ok Null').ingredients[0];
     expect(bad.per_100g).toBeNull();
     expect(ok.per_100g).toBeNull();
   });
@@ -59,7 +59,7 @@ describe('per_100g derivation', () => {
          source_type, tracking_type
        ) VALUES (?, 'Chicken', '100 g', 100, 165, 31, 0, 3.6, 'manual', 'weight')`
     ).run(userId);
-    const row = reads.searchIngredients(db, userId, 'Chicken')[0];
+    const row = reads.searchIngredients(db, userId, 'Chicken').ingredients[0];
     expect(row.per_100g.calories).toBe(165);
     expect(row.per_100g.calories).toBeLessThan(900);
   });

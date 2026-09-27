@@ -2,6 +2,7 @@ const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { z } = require('zod');
 const reads = require('./reads');
 const writes = require('./writes');
+const { runUserQuery, describeSchema } = require('./query');
 
 const READ_ONLY =
   'Read-only FLOPS data tool. Does not write meals, change foods, or alter settings. '
@@ -283,14 +284,59 @@ function createFlopsMcpServer(db, userId) {
       inputSchema: {
         query: z.string().optional().describe('Name or brand substring (case-insensitive)'),
         limit: z.number().int().min(1).max(50).optional(),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('Skip this many matches (pagination past the 50-row page)'),
+        has_micros: z
+          .boolean()
+          .optional()
+          .describe('true = only foods with micros; false = only foods missing micros'),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ query, limit }) =>
+    async ({ query, limit, offset, has_micros }) =>
       reads.textResult({
         query: query || '',
-        ingredients: reads.searchIngredients(db, userId, query, { limit }),
+        ...reads.searchIngredients(db, userId, query, { limit, offset, has_micros }),
       })
+  );
+
+  server.registerTool(
+    'query',
+    {
+      title: 'SQL query (read-only)',
+      description:
+        `${READ_ONLY} Run a SELECT or WITH … SELECT against this user's FLOPS data. `
+        + 'Parsed with a real SQL CST (not regex). Executes on a driver-level readonly '
+        + 'connection. Results are auto-scoped to the bound MCP user. Max 1000 rows; '
+        + '5s timeout. Prefer describe_schema for column names. Convenience tools stay '
+        + 'better for scaled micros / intake trends.',
+      inputSchema: {
+        sql: z.string().min(1).describe('SELECT or WITH … SELECT only'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ sql }) => {
+      const result = await runUserQuery(db, userId, sql);
+      if (result.error) return reads.errorResult(result.error);
+      return reads.textResult(result);
+    }
+  );
+
+  server.registerTool(
+    'describe_schema',
+    {
+      title: 'Describe schema',
+      description:
+        `${READ_ONLY} Tables/columns/types/foreign keys available to query(). `
+        + 'Auth/secret tables are omitted. User-scoped tables are filtered to you automatically.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async () => reads.textResult(describeSchema(db))
   );
 
   server.registerTool(
