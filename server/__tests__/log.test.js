@@ -4,6 +4,8 @@ const { createDb } = require('../db');
 const { createAuthMiddleware } = require('../middleware/auth');
 const { createRecipesRouter } = require('../routes/recipes');
 const { createLogRouter } = require('../routes/log');
+const { createLabelIngredientsRouter } = require('../routes/labelIngredients');
+const { buildTestApp, authHeader, createUser } = require('./helpers');
 
 function buildApp() {
   const db = createDb(':memory:');
@@ -14,6 +16,7 @@ function buildApp() {
   app.use(requireAuth);
   app.use('/api/recipes', createRecipesRouter(db));
   app.use('/api/log', createLogRouter(db));
+  app.use('/api/label-ingredients', createLabelIngredientsRouter(db));
   return app;
 }
 
@@ -364,5 +367,116 @@ describe('PUT /api/log/:id', () => {
   it('returns 404 for non-existent entry', async () => {
     const res = await request(buildApp()).put('/api/log/999').send({ servings: 2 });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /api/log/last-for-recipe', () => {
+  async function seedIngredient(app, name = 'Oats') {
+    const res = await request(app).post('/api/label-ingredients').send({
+      name,
+      serving_size_text: '100 g',
+      grams_per_serving: 100,
+      calories: 380,
+      protein_g: 13,
+      carbs_g: 67,
+      fat_g: 7,
+      tracking_type: 'weight',
+    });
+    expect(res.status).toBe(201);
+    return res.body;
+  }
+
+  it('returns ingredients: null when the recipe has never been logged with a receipt', async () => {
+    const app = buildApp();
+    const recipe = await seedRecipe(app);
+    const res = await request(app).get(`/api/log/last-for-recipe?recipe_id=${recipe.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      recipe_id: recipe.id,
+      log_entry_id: null,
+      date: null,
+      ingredients: null,
+    });
+  });
+
+  it('returns 400 without recipe_id', async () => {
+    const res = await request(buildApp()).get('/api/log/last-for-recipe');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 for another user\'s recipe', async () => {
+    const { app, db } = buildTestApp();
+    const alice = createUser(db, 'alice-last@example.com');
+    const bob = createUser(db, 'bob-last@example.com');
+    const recipe = await request(app)
+      .post('/api/recipes')
+      .set(authHeader(db, alice.id))
+      .send({ name: 'Alice Bowl', serving_size: '1', calories: 100, protein_g: 10, carbs_g: 10, fat_g: 2 });
+    expect(recipe.status).toBe(201);
+
+    const res = await request(app)
+      .get(`/api/log/last-for-recipe?recipe_id=${recipe.body.id}`)
+      .set(authHeader(db, bob.id));
+    expect(res.status).toBe(404);
+  });
+
+  it('returns the newest alive receipt for the recipe', async () => {
+    const app = buildApp();
+    const recipe = await seedRecipe(app);
+    const oats = await seedIngredient(app, 'Oats');
+    const berries = await seedIngredient(app, 'Berries');
+
+    await request(app).post('/api/log').send({
+      recipe_id: recipe.id,
+      date: '2026-04-07',
+      time_min: 480,
+      servings: 1,
+      ingredients: [{ name: 'Oats', label_ingredient_id: oats.id, amount: 40, unit: 'g' }],
+    });
+    const newer = await request(app).post('/api/log').send({
+      recipe_id: recipe.id,
+      date: '2026-04-09',
+      time_min: 500,
+      servings: 1,
+      ingredients: [
+        { name: 'Oats', label_ingredient_id: oats.id, amount: 80, unit: 'g' },
+        { name: 'Berries', label_ingredient_id: berries.id, amount: 100, unit: 'g' },
+      ],
+    });
+    expect(newer.status).toBe(201);
+
+    const res = await request(app).get(`/api/log/last-for-recipe?recipe_id=${recipe.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.recipe_id).toBe(recipe.id);
+    expect(res.body.log_entry_id).toBe(newer.body.id);
+    expect(res.body.date).toBe('2026-04-09');
+    expect(res.body.ingredients).toHaveLength(2);
+    expect(res.body.ingredients.map(r => r.label_ingredient_id)).toEqual([oats.id, berries.id]);
+    expect(res.body.ingredients[0].amount).toBe(80);
+  });
+
+  it('ignores soft-deleted logs', async () => {
+    const app = buildApp();
+    const recipe = await seedRecipe(app);
+    const oats = await seedIngredient(app);
+    const older = await request(app).post('/api/log').send({
+      recipe_id: recipe.id,
+      date: '2026-04-07',
+      servings: 1,
+      ingredients: [{ name: 'Oats', label_ingredient_id: oats.id, amount: 40, unit: 'g' }],
+    });
+    const newer = await request(app).post('/api/log').send({
+      recipe_id: recipe.id,
+      date: '2026-04-09',
+      servings: 1,
+      ingredients: [{ name: 'Oats', label_ingredient_id: oats.id, amount: 90, unit: 'g' }],
+    });
+    expect(newer.status).toBe(201);
+    await request(app).delete(`/api/log/${newer.body.id}`);
+
+    const res = await request(app).get(`/api/log/last-for-recipe?recipe_id=${recipe.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.log_entry_id).toBe(older.body.id);
+    expect(res.body.ingredients[0].amount).toBe(40);
   });
 });
