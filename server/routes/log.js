@@ -384,6 +384,60 @@ function createLogRouter(db) {
     res.status(201).json(logEntryResponse(db, userId, entryId));
   });
 
+  /**
+   * Latest logged receipt for a recipe (ingredients_json), for Log Meal
+   * "remember last variant" seeding. Soft-deleted rows are ignored.
+   */
+  router.get('/last-for-recipe', (req, res) => {
+    const userId = uid(req);
+    const recipeId = Number(req.query.recipe_id);
+    if (!Number.isInteger(recipeId) || recipeId <= 0) {
+      return res.status(400).json({ error: 'recipe_id is required' });
+    }
+
+    const owned = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
+    if (!owned) {
+      return res.status(404).json({ error: 'Recipe not found' });
+    }
+
+    const row = db
+      .prepare(
+        `SELECT id, date, ingredients_json
+           FROM log_entries
+          WHERE user_id = ?
+            AND recipe_id = ?
+            AND COALESCE(is_deleted, 0) = 0
+            AND ingredients_json IS NOT NULL
+            AND TRIM(ingredients_json) != ''
+            AND TRIM(ingredients_json) != 'null'
+          ORDER BY date DESC, COALESCE(time_min, -1) DESC, id DESC
+          LIMIT 1`
+      )
+      .get(userId, recipeId);
+
+    if (!row) {
+      return res.json({ recipe_id: recipeId, log_entry_id: null, date: null, ingredients: null });
+    }
+
+    let ingredients = null;
+    try {
+      const parsed = JSON.parse(row.ingredients_json);
+      if (Array.isArray(parsed) && parsed.length) ingredients = parsed;
+    } catch {
+      ingredients = null;
+    }
+    if (!ingredients) {
+      return res.json({ recipe_id: recipeId, log_entry_id: null, date: null, ingredients: null });
+    }
+
+    res.json({
+      recipe_id: recipeId,
+      log_entry_id: row.id,
+      date: row.date,
+      ingredients,
+    });
+  });
+
   router.get('/days', (req, res) => {
     const userId = uid(req);
     const limitRaw = req.query.limit;

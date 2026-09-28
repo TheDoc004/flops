@@ -636,6 +636,53 @@ export function seedReceiptFromRecipe(recipe, labelById, remembered = {}) {
 }
 
 /**
+ * Seed a receipt from a log's `ingredients_json` rows (array or JSON string).
+ * Library-linked rows rebuild live macros; orphaned rows keep stored macros.
+ */
+export function seedReceiptFromIngredientsJson(rows, labelById = {}) {
+  let parsed = rows;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed) || !parsed.length) return [];
+  const lines = [];
+  for (const r of parsed) {
+    if (!r || typeof r !== 'object') continue;
+    const lid = Number(r.label_ingredient_id);
+    const ing = Number.isInteger(lid) && lid > 0
+      ? (labelById[String(lid)] || labelById[lid])
+      : null;
+    if (ing) {
+      const line = buildReceiptLine(ing, r.amount, r.unit || 'g', {
+        source: r.source || 'library',
+      });
+      if (line) lines.push(line);
+      continue;
+    }
+    if (r.name && r.calories != null) {
+      lines.push({
+        id: newReceiptLineId(),
+        label_ingredient_id: Number.isInteger(lid) && lid > 0 ? lid : null,
+        name: r.name,
+        amount: String(r.amount ?? ''),
+        unit: r.unit || '',
+        calories: r.calories,
+        protein_g: r.protein_g,
+        carbs_g: r.carbs_g,
+        fat_g: r.fat_g,
+        fiber_g: r.fiber_g,
+        source: r.source || 'estimated',
+      });
+    }
+  }
+  return lines;
+}
+
+/**
  * Seed a receipt from a historical log's `slot_selections_json` (substitutions
  * + amounts). Used when `ingredients_json` is missing so editing an old log
  * does not fall back to the current recipe template.

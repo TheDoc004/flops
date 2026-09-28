@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createRecipe, fetchRecipe, fetchRecipes } from '@shared/api/recipes';
 import { fetchLabelIngredients } from '@shared/api/labelIngredients';
 import { fetchPreppedBatches } from '@shared/api/preppedBatches';
+import { fetchLastLogForRecipe } from '@shared/api/log';
 import { suggestSubstitutes } from '@shared/api/ai';
 import RecipeCombobox from '@shared/ui/RecipeCombobox';
 import IngredientCombobox from '@features/meal-builder/IngredientCombobox';
@@ -37,6 +38,7 @@ import {
   retargetLineToIngredient,
   saveLastReceiptAmounts,
   seedReceiptFromRecipe,
+  seedReceiptFromIngredientsJson,
   seedReceiptFromLoggedSelections,
   sumReceiptMacros,
 } from './recipeReceipt';
@@ -133,6 +135,8 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const [preppedBatches, setPreppedBatches] = useState([]);
   const [receipt, setReceipt] = useState([]);
   const [seededFromRecipeId, setSeededFromRecipeId] = useState(null);
+  /** 'last_log' | 'recipe' | null — null when editing an entry or building from scratch */
+  const [receiptSeedSource, setReceiptSeedSource] = useState(null);
   const [activeLineId, setActiveLineId] = useState(null);
   const [subLineId, setSubLineId] = useState(null);
   const [subSuggestions, setSubSuggestions] = useState([]);
@@ -140,6 +144,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   const [subError, setSubError] = useState('');
   const [subSource, setSubSource] = useState('');
   const receiptSeededRef = useRef(false);
+  const seedRequestIdRef = useRef(0);
 
   const selectedRecipe = useMemo(
     () => recipes.find(r => String(r.id) === String(recipeId)) || null,
@@ -269,48 +274,59 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     ref.current?.showModal();
   }, []);
 
+  /**
+   * Seed the receipt from a recipe template, optionally preferring the most
+   * recent logged ingredients for that recipe (sticky breakfast / bowl variants).
+   */
+  async function seedRecipeReceipt(recipe, { preferLastLog } = {}) {
+    if (!recipe) {
+      setReceipt([]);
+      setSeededFromRecipeId(null);
+      setReceiptSeedSource(null);
+      return;
+    }
+    const requestId = ++seedRequestIdRef.current;
+    setSeededFromRecipeId(String(recipe.id));
+
+    if (preferLastLog) {
+      try {
+        const last = await fetchLastLogForRecipe(recipe.id);
+        if (requestId !== seedRequestIdRef.current) return;
+        if (Array.isArray(last?.ingredients) && last.ingredients.length) {
+          const lines = seedReceiptFromIngredientsJson(last.ingredients, labelById);
+          if (lines.length) {
+            setReceipt(lines);
+            setReceiptSeedSource('last_log');
+            receiptSeededRef.current = true;
+            return;
+          }
+        }
+      } catch {
+        /* fall through to recipe template */
+      }
+    }
+
+    if (requestId !== seedRequestIdRef.current) return;
+    // Amount memory only when falling back to the template (last log already has amounts).
+    const remembered = preferLastLog ? loadLastReceiptAmounts(recipe.id) : {};
+    const lines = seedReceiptFromRecipe(recipe, labelById, remembered);
+    setReceipt(lines);
+    setReceiptSeedSource('recipe');
+    receiptSeededRef.current = true;
+  }
+
   useEffect(() => {
     if (receiptSeededRef.current) return;
     if (labelIngredients.length === 0 && !initialEntry) return;
 
     if (initialEntry?.ingredients_json) {
-      try {
-        const rows = typeof initialEntry.ingredients_json === 'string'
-          ? JSON.parse(initialEntry.ingredients_json)
-          : initialEntry.ingredients_json;
-        if (Array.isArray(rows) && rows.length) {
-          const lines = [];
-          for (const r of rows) {
-            const lid = Number(r.label_ingredient_id);
-            const ing = Number.isInteger(lid) && lid > 0 ? labelById[String(lid)] : null;
-            if (ing) {
-              const line = buildReceiptLine(ing, r.amount, r.unit || 'g', { source: r.source || 'library' });
-              if (line) lines.push(line);
-            } else if (r.name && r.calories != null) {
-              lines.push({
-                id: `legacy_${lines.length}`,
-                label_ingredient_id: lid > 0 ? lid : null,
-                name: r.name,
-                amount: String(r.amount ?? ''),
-                unit: r.unit || '',
-                calories: r.calories,
-                protein_g: r.protein_g,
-                carbs_g: r.carbs_g,
-                fat_g: r.fat_g,
-                fiber_g: r.fiber_g,
-                source: r.source || 'estimated',
-              });
-            }
-          }
-          if (lines.length) {
-            setReceipt(lines);
-            receiptSeededRef.current = true;
-            if (initialEntry.recipe_id) setSeededFromRecipeId(String(initialEntry.recipe_id));
-            return;
-          }
-        }
-      } catch {
-        /* fall through */
+      const lines = seedReceiptFromIngredientsJson(initialEntry.ingredients_json, labelById);
+      if (lines.length) {
+        setReceipt(lines);
+        setReceiptSeedSource(null);
+        receiptSeededRef.current = true;
+        if (initialEntry.recipe_id) setSeededFromRecipeId(String(initialEntry.recipe_id));
+        return;
       }
     }
 
@@ -318,6 +334,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       const lines = seedReceiptFromLoggedSelections(initialEntry.slot_selections_json, labelById);
       if (lines.length) {
         setReceipt(lines);
+        setReceiptSeedSource(null);
         receiptSeededRef.current = true;
         if (initialEntry.recipe_id) setSeededFromRecipeId(String(initialEntry.recipe_id));
         return;
@@ -325,17 +342,19 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     }
 
     if (selectedRecipe && Object.keys(labelById).length > 0) {
-      const remembered = initialEntry ? {} : loadLastReceiptAmounts(selectedRecipe.id);
-      const lines = seedReceiptFromRecipe(selectedRecipe, labelById, remembered);
-      setReceipt(lines);
-      setSeededFromRecipeId(String(selectedRecipe.id));
-      receiptSeededRef.current = true;
+      // Editing an old entry without a receipt falls back to the template only.
+      void seedRecipeReceipt(selectedRecipe, { preferLastLog: !initialEntry });
     }
+    // seedRecipeReceipt closes over labelById; re-run when library/recipe ready.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional seed-once gate via receiptSeededRef
   }, [selectedRecipe, labelById, labelIngredients.length, initialEntry]);
 
   function clearRecipeSeed() {
+    seedRequestIdRef.current += 1;
+    receiptSeededRef.current = false;
     setRecipeId('');
     setSeededFromRecipeId(null);
+    setReceiptSeedSource(null);
     setReceipt([]);
     setMealName('');
     setServings('1');
@@ -347,18 +366,22 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
 
   function applyRecipeSeed(recipe) {
     if (!recipe) {
+      seedRequestIdRef.current += 1;
       setReceipt([]);
       setSeededFromRecipeId(null);
+      setReceiptSeedSource(null);
       return;
     }
-    const remembered = loadLastReceiptAmounts(recipe.id);
-    const lines = seedReceiptFromRecipe(recipe, labelById, remembered);
-    setReceipt(lines);
-    setSeededFromRecipeId(String(recipe.id));
+    receiptSeededRef.current = false;
     setMealName('');
     setActiveLineId(null);
     setSubLineId(null);
     setSubSuggestions([]);
+    if (Object.keys(labelById).length > 0) {
+      void seedRecipeReceipt(recipe, { preferLastLog: true });
+    } else {
+      setSeededFromRecipeId(String(recipe.id));
+    }
   }
 
   function handleAddIngredient(nextId) {
@@ -405,8 +428,11 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
   /** Top search: recipes seed the meal; first ingredients start a custom meal. */
   function handleTopSearchPick(nextId, kind) {
     if (kind === 'ingredient') {
+      seedRequestIdRef.current += 1;
+      receiptSeededRef.current = false;
       setRecipeId('');
       setSeededFromRecipeId(null);
+      setReceiptSeedSource(null);
       handleAddIngredient(nextId);
       return;
     }
@@ -511,11 +537,14 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
     if (nextId) focusAmount(nextId);
   }
 
-  function resetToRecipeAmounts() {
+  function revertToOriginal() {
     if (!selectedRecipe) return;
+    seedRequestIdRef.current += 1;
     const lines = seedReceiptFromRecipe(selectedRecipe, labelById, {});
     setReceipt(lines);
     setSeededFromRecipeId(String(selectedRecipe.id));
+    setReceiptSeedSource('recipe');
+    receiptSeededRef.current = true;
   }
 
   async function openSubstitutes(line) {
@@ -908,6 +937,11 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>
                 What&apos;s in this meal
               </p>
+              {receiptSeedSource === 'last_log' && (
+                <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-text-muted)' }}>
+                  Last logged version
+                </p>
+              )}
               {mealStarted && (
                 <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-text-muted)' }}>
                   ↑↓ move · ⌘⌫ remove · ⌘↵ log
@@ -918,10 +952,10 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={resetToRecipeAmounts}
+                onClick={revertToOriginal}
                 style={{ minHeight: 0, padding: '5px 12px', fontSize: 12, whiteSpace: 'nowrap' }}
               >
-                Reset to recipe
+                Revert to original
               </button>
             )}
           </div>
