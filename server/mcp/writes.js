@@ -29,6 +29,7 @@ const OPS = {
   update_meal_entry: 'update_meal_entry',
   delete_meal_entry: 'delete_meal_entry',
   update_supplement: 'update_supplement',
+  create_meal_prep: 'create_meal_prep',
   write_batch: 'write_batch',
   revert_mcp_write: 'revert_mcp_write',
 };
@@ -55,6 +56,9 @@ const WRITE_ALLOWED_KEYS = {
   [OPS.update_supplement]: new Set([
     'op', 'supplement_id', 'dose_text', 'dose_qty', 'label_serving_qty', 'label_serving_unit',
     'calories', 'protein_g', 'carbs_g', 'fat_g', 'micros', 'taken', 'taken_date', 'operation_id',
+  ]),
+  [OPS.create_meal_prep]: new Set([
+    'op', 'name', 'servings', 'weight_basis', 'items', 'operation_id',
   ]),
   [OPS.write_batch]: new Set(['operations', 'operation_id']),
   [OPS.revert_mcp_write]: new Set(['audit_id', 'operation_id']),
@@ -290,6 +294,86 @@ function withIdempotency(db, userId, operationId, runFn) {
   return runFn();
 }
 
+// Limited-use (meal prep) accounting — mirrors routes/log.js so a container
+// logged through MCP counts down exactly like one logged in the app. A use is
+// charged to the log entry whose recipe_id is the limited recipe; soft-deleting
+// that entry hands the uses back (capped at max_uses), restoring it re-charges.
+const usesOf = servings => Math.max(1, Math.ceil(Number(servings) || 1));
+
+function isLimitedRecipe(recipe) {
+  return recipe && recipe.recipe_kind === 'limited' && recipe.remaining_uses != null;
+}
+
+function consumeLimitedUses(db, userId, recipeId, servings) {
+  const need = usesOf(servings);
+  const r = db
+    .prepare(
+      `UPDATE recipes
+          SET remaining_uses = remaining_uses - ?,
+              is_archived = CASE WHEN remaining_uses - ? <= 0 THEN 1 ELSE is_archived END
+        WHERE id = ? AND user_id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL
+          AND remaining_uses >= ?`
+    )
+    .run(need, need, recipeId, userId, need);
+  if (r.changes > 0) return;
+  const row = db
+    .prepare('SELECT recipe_kind, remaining_uses FROM recipes WHERE id = ? AND user_id = ?')
+    .get(recipeId, userId);
+  if (isLimitedRecipe(row)) {
+    throw Object.assign(
+      new Error(`Meal prep recipe #${recipeId} has ${row.remaining_uses} use(s) left; ${need} needed.`),
+      { code: 'LIMIT_USES' }
+    );
+  }
+}
+
+function restoreLimitedUses(db, userId, recipeId, servings) {
+  const back = usesOf(servings);
+  // Un-archive only when exhausted (remaining 0) so a manually archived
+  // template stays archived. SET expressions read pre-update values.
+  db.prepare(
+    `UPDATE recipes
+        SET remaining_uses = CASE
+              WHEN max_uses IS NOT NULL THEN MIN(max_uses, remaining_uses + ?)
+              ELSE remaining_uses + ?
+            END,
+            is_archived = CASE WHEN remaining_uses <= 0 THEN 0 ELSE is_archived END
+      WHERE id = ? AND user_id = ? AND recipe_kind = 'limited' AND remaining_uses IS NOT NULL`
+  ).run(back, back, recipeId, userId);
+}
+
+function entryUsage(db, userId, entryId) {
+  return db
+    .prepare(`SELECT recipe_id, servings, COALESCE(is_deleted, 0) AS is_deleted FROM log_entries WHERE id = ? AND user_id = ?`)
+    .get(entryId, userId);
+}
+
+/** Soft-delete a log entry and hand its limited-recipe uses back. */
+function softDeleteEntry(db, userId, entryId) {
+  const e = entryUsage(db, userId, entryId);
+  if (!e || e.is_deleted) return;
+  db.prepare(`UPDATE log_entries SET is_deleted = 1 WHERE id = ? AND user_id = ?`).run(entryId, userId);
+  if (e.recipe_id != null) restoreLimitedUses(db, userId, e.recipe_id, e.servings);
+}
+
+/** Restore a soft-deleted log entry and re-charge its limited-recipe uses. */
+function undeleteEntry(db, userId, entryId) {
+  const e = entryUsage(db, userId, entryId);
+  if (!e || !e.is_deleted) return;
+  if (e.recipe_id != null) consumeLimitedUses(db, userId, e.recipe_id, e.servings);
+  db.prepare(`UPDATE log_entries SET is_deleted = 0 WHERE id = ? AND user_id = ?`).run(entryId, userId);
+}
+
+/** Run a write transaction, turning a LIMIT_USES throw into a tool error. */
+function runWriteTx(db, fn) {
+  try {
+    return db.transaction(fn)();
+  } catch (e) {
+    if (e.code === 'LIMIT_USES') return { error: e.message, code: 'LIMIT_USES' };
+    throw e;
+  }
+}
+
 function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
   const warnings = [];
   let working = item;
@@ -363,7 +447,8 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
     const id = Number(working.recipe_id);
     const recipe = db
       .prepare(
-        `SELECT id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, is_deleted
+        `SELECT id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, is_deleted,
+                recipe_kind, remaining_uses, is_archived
            FROM recipes WHERE id = ? AND user_id = ?`
       )
       .get(id, userId);
@@ -372,12 +457,22 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
     }
     const s = Number.isFinite(servings) && servings > 0 ? servings : null;
     if (s == null) return { error: `items[${index}]: recipe items need servings` };
+    const limited = isLimitedRecipe(recipe);
+    if (limited && (recipe.is_archived || Number(recipe.remaining_uses) < usesOf(s))) {
+      return {
+        error:
+          `items[${index}]: meal prep recipe #${id} ("${recipe.name}") has ${recipe.remaining_uses} use(s) left; ` +
+          `${usesOf(s)} needed.`,
+        code: 'LIMIT_USES',
+      };
+    }
     return {
       item: {
         kind: 'recipe',
         recipe_id: recipe.id,
         name: recipe.name,
         servings: s,
+        limited,
         quantity_g: Number.isFinite(quantity_g) ? quantity_g : null,
         weight_basis,
         resolved_weight_basis: weight_basis,
@@ -625,6 +720,7 @@ function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, w
         recipe.calories, recipe.protein_g, recipe.carbs_g, recipe.fat_g, recipe.fiber_g,
         recipe.is_quick_food ? 1 : 0, weight_basis, onlyRecipe.nutrition_source
       );
+    if (onlyRecipe.limited) consumeLimitedUses(db, userId, recipe.id, onlyRecipe.servings);
     result.log_entry_ids.push(ins.lastInsertRowid);
     return result;
   }
@@ -667,9 +763,20 @@ function buildMealPayload(db, userId, args, refMap) {
   const warnings = [];
   for (let i = 0; i < itemsIn.length; i++) {
     const r = resolveMealItem(db, userId, itemsIn[i], weight_basis, i, refMap);
-    if (r.error) return { error: r.error };
+    if (r.error) return r.code ? { error: r.error, code: r.code } : { error: r.error };
     resolved.push(r.item);
     warnings.push(...(r.warnings || []));
+  }
+  if (resolved.length > 1 && resolved.some(it => it.limited)) {
+    // Uses are charged to an entry whose recipe_id is the prep recipe; a mixed
+    // meal is stored against a quick-food recipe, so its use could never be
+    // handed back on delete. Log the container as its own entry.
+    return {
+      error:
+        'Meal prep (limited-use) recipes must be logged on their own: items=[{recipe_id, servings}]. ' +
+        'Log other foods as a separate meal.',
+      code: 'MEAL_PREP_MIXED',
+    };
   }
   const totals = sumItemMacros(resolved);
   const meal_slot = args.meal_slot ? String(args.meal_slot).trim() : null;
@@ -704,7 +811,7 @@ function logMeal(db, userId, args = {}, { refMap = null, skipAudit = false } = {
   const operationId = args.operation_id ? String(args.operation_id).trim() : null;
   return withIdempotency(db, userId, operationId, () => {
     const built = buildMealPayload(db, userId, args, refMap);
-    if (built.error) return { error: built.error };
+    if (built.error) return built;
     const mealWarnings = collectMealWarnings(built);
 
     const doWrite = () => {
@@ -727,7 +834,7 @@ function logMeal(db, userId, args = {}, { refMap = null, skipAudit = false } = {
       }
       return response;
     };
-    return skipAudit ? doWrite() : db.transaction(doWrite)();
+    return skipAudit ? doWrite() : runWriteTx(db, doWrite);
   });
 }
 
@@ -1023,7 +1130,7 @@ function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
       const built = buildMealPayload(db, userId, {
         date, name, meal_slot, time_min, weight_basis, items: args.items,
       }, null);
-      if (built.error) return { error: built.error };
+      if (built.error) return built;
       resolved = built.resolved;
       totals = built.totals;
       warnings = collectMealWarnings(built);
@@ -1033,9 +1140,7 @@ function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
 
     const doWrite = () => {
       if (hasItems) {
-        db.prepare(
-          `UPDATE log_entries SET is_deleted = 1 WHERE id = ? AND user_id = ?`
-        ).run(id, userId);
+        softDeleteEntry(db, userId, id);
         const ids = insertMealFromResolved(db, userId, {
           date, name, meal_slot, time_min, weight_basis, resolved, totals,
         });
@@ -1099,7 +1204,7 @@ function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
       }
       return response;
     };
-    return skipAudit ? doWrite() : db.transaction(doWrite)();
+    return skipAudit ? doWrite() : runWriteTx(db, doWrite);
   });
 }
 
@@ -1116,9 +1221,7 @@ function deleteMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
     const dayBefore = daySlice(reads.getDay(db, userId, before.date));
 
     const doWrite = () => {
-      db.prepare(
-        `UPDATE log_entries SET is_deleted = 1 WHERE id = ? AND user_id = ?`
-      ).run(id, userId);
+      softDeleteEntry(db, userId, id);
       const result_row_ids = { deleted_log_entry_ids: [id] };
       const dayAfter = daySlice(reads.getDay(db, userId, before.date));
       const response = {
@@ -1135,6 +1238,157 @@ function deleteMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
       if (!skipAudit) {
         response.audit_id = recordAudit(db, userId, {
           op: OPS.delete_meal_entry, operationId, before, after: null, result_row_ids, warnings: [], response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : db.transaction(doWrite)();
+  });
+}
+
+const MEAL_PREP_SOURCE = 'mcp_meal_prep';
+const MAX_MEAL_PREP_SERVINGS = 50;
+
+function fetchRecipeById(db, userId, id) {
+  const row = db
+    .prepare(
+      `SELECT id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients,
+              recipe_kind, remaining_uses, max_uses, is_archived, meal_builder_meta,
+              COALESCE(is_deleted, 0) AS is_deleted
+         FROM recipes WHERE id = ? AND user_id = ?`
+    )
+    .get(id, userId);
+  if (!row) return null;
+  return {
+    ...row,
+    ingredients: parseJson(row.ingredients, []),
+    meal_builder_meta: parseJson(row.meal_builder_meta, null),
+  };
+}
+
+/**
+ * Create an equal-split meal prep: a limited-use recipe with one use per
+ * container. Items are the WHOLE batch (what goes in the pot); the stored
+ * recipe holds one container's share — the same model the app's
+ * "Save as Meal Prep" writes (per-serving macros + amounts, N uses).
+ * New per-100g foods become library ingredients so every line stays
+ * library-backed and editable.
+ */
+function createMealPrep(db, userId, args = {}, { skipAudit = false, refMap = null } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.create_meal_prep);
+  if (badKeys) return badKeys;
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const name = String(args.name || '').trim();
+    if (!name) return { error: 'name is required' };
+    const servings = Number(args.servings);
+    if (!Number.isInteger(servings) || servings < 2 || servings > MAX_MEAL_PREP_SERVINGS) {
+      return { error: `servings must be an integer 2–${MAX_MEAL_PREP_SERVINGS} (number of containers)` };
+    }
+    const weight_basis = normalizeWeightBasis(args.weight_basis);
+    if (!weight_basis) return { error: 'weight_basis is required (raw|cooked)' };
+    const itemsIn = Array.isArray(args.items) ? args.items : null;
+    if (!itemsIn || !itemsIn.length) return { error: 'items must be a non-empty array' };
+
+    const resolved = [];
+    const warnings = [];
+    for (let i = 0; i < itemsIn.length; i++) {
+      if (itemsIn[i]?.recipe_id != null) {
+        return { error: `items[${i}]: meal prep items must be ingredients (label_ingredient_id, ref, or new per-100g food), not recipes` };
+      }
+      const r = resolveMealItem(db, userId, itemsIn[i], weight_basis, i, refMap);
+      if (r.error) return { error: r.error };
+      resolved.push(r.item);
+      warnings.push(...(r.warnings || []));
+    }
+
+    const batchTotals = sumItemMacros(resolved);
+    const perServing = {
+      calories: round(batchTotals.calories / servings, 1),
+      protein_g: round(batchTotals.protein_g / servings, 2),
+      carbs_g: round(batchTotals.carbs_g / servings, 2),
+      fat_g: round(batchTotals.fat_g / servings, 2),
+      fiber_g: batchTotals.fiber_g == null ? null : round(batchTotals.fiber_g / servings, 2),
+    };
+    // Quantity checks are tuned for one meal, so judge a container's share,
+    // not the whole pot (1.5kg of chicken across 5 containers is normal).
+    warnings.push(...warningsForMealTotals(
+      perServing,
+      resolved.map(it => ({ ...it, quantity_g: it.quantity_g / servings }))
+    ));
+    const sameName = db
+      .prepare(
+        `SELECT id FROM recipes
+          WHERE user_id = ? AND lower(name) = lower(?) AND COALESCE(is_deleted, 0) = 0
+            AND COALESCE(is_quick_food, 0) = 0`
+      )
+      .all(userId, name);
+    if (sameName.length) {
+      warnings.push(`A recipe named "${name}" already exists (id ${sameName.map(r => r.id).join(', ')}).`);
+    }
+
+    const doWrite = () => {
+      const label_ingredient_ids = [];
+      const ingredients = resolved.map(item => {
+        let lid = item.label_ingredient_id;
+        if (item.kind === 'new_food') {
+          lid = createLabelFromNewFood(db, userId, item);
+          label_ingredient_ids.push(lid);
+        }
+        return {
+          kind: 'ingredient',
+          name: item.name,
+          amount: String(round(item.quantity_g / servings, 1)),
+          unit: 'g',
+          label_ingredient_id: lid,
+        };
+      });
+      const meta = {
+        source: MEAL_PREP_SOURCE,
+        containers: servings,
+        split: 'equal',
+        weight_basis,
+      };
+      const ins = db
+        .prepare(
+          `INSERT INTO recipes (
+             user_id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, ingredients,
+             recipe_kind, remaining_uses, max_uses, is_archived, meal_builder_meta, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'limited', ?, ?, 0, ?, ?)`
+        )
+        .run(
+          userId, name, `1 of ${servings} meal-prep servings`,
+          perServing.calories, perServing.protein_g, perServing.carbs_g, perServing.fat_g, perServing.fiber_g,
+          JSON.stringify(ingredients), servings, servings, JSON.stringify(meta), nowIso()
+        );
+      const recipeId = ins.lastInsertRowid;
+      const recipe = fetchRecipeById(db, userId, recipeId);
+      const result_row_ids = { recipe_ids: [recipeId], label_ingredient_ids };
+      const deduped = [...new Set(warnings)];
+      const response = {
+        op: OPS.create_meal_prep,
+        recipe,
+        servings,
+        per_serving: perServing,
+        batch_totals: batchTotals,
+        resolved_items: resolved.map(it => ({
+          name: it.name,
+          batch_quantity_g: it.quantity_g,
+          per_serving_quantity_g: round(it.quantity_g / servings, 1),
+          resolved_weight_basis: it.resolved_weight_basis,
+          nutrition_source: it.nutrition_source,
+        })),
+        result_row_ids,
+        warnings: deduped,
+        source: 'mcp',
+        message:
+          `Meal prep saved: ${servings} servings. Log one container with log_meal ` +
+          `items=[{recipe_id: ${recipeId}, servings: 1}].`,
+      };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.create_meal_prep, operationId, before: null, after: recipe,
+          result_row_ids, warnings: deduped, response,
         });
       }
       return response;
@@ -1370,6 +1624,8 @@ function writeBatch(db, userId, args = {}) {
             result = deleteMealEntry(db, userId, step, { skipAudit: true });
           } else if (op === OPS.update_supplement) {
             result = updateSupplement(db, userId, step, { skipAudit: true });
+          } else if (op === OPS.create_meal_prep) {
+            result = createMealPrep(db, userId, step, { skipAudit: true, refMap });
           } else {
             throw Object.assign(new Error(`operations[${i}]: unsupported op "${op}"`), { code: 'BAD_OP' });
           }
@@ -1394,6 +1650,7 @@ function writeBatch(db, userId, args = {}) {
           log_entry_ids: results.flatMap(r => r.result_row_ids?.log_entry_ids || []),
           label_ingredient_ids: results.flatMap(r => r.result_row_ids?.label_ingredient_ids || []),
           supplement_ids: results.flatMap(r => r.result_row_ids?.supplement_ids || []),
+          recipe_ids: results.flatMap(r => r.result_row_ids?.recipe_ids || []),
         };
         response.audit_id = recordAudit(db, userId, {
           op: OPS.write_batch,
@@ -1468,11 +1725,7 @@ function revertOneResult(db, userId, result) {
   const op = result?.op;
   const ids = result?.result_row_ids || {};
   if (op === OPS.delete_meal_entry) {
-    for (const id of ids.deleted_log_entry_ids || []) {
-      db.prepare(
-        `UPDATE log_entries SET is_deleted = 0 WHERE id = ? AND user_id = ?`
-      ).run(id, userId);
-    }
+    for (const id of ids.deleted_log_entry_ids || []) undeleteEntry(db, userId, id);
     return;
   }
   if (op === OPS.add_food_item) {
@@ -1482,6 +1735,20 @@ function revertOneResult(db, userId, result) {
           `DELETE FROM label_ingredients WHERE id = ? AND user_id = ? AND created_via = 'mcp'`
         ).run(id, userId);
       }
+    }
+    return;
+  }
+  if (op === OPS.create_meal_prep) {
+    // Soft-delete: logged containers keep pointing at the recipe row.
+    for (const id of ids.recipe_ids || []) {
+      db.prepare(
+        `UPDATE recipes SET is_deleted = 1 WHERE id = ? AND user_id = ?`
+      ).run(id, userId);
+    }
+    for (const id of ids.label_ingredient_ids || []) {
+      db.prepare(
+        `DELETE FROM label_ingredients WHERE id = ? AND user_id = ? AND created_via = 'mcp'`
+      ).run(id, userId);
     }
     return;
   }
@@ -1531,10 +1798,8 @@ function revertOneResult(db, userId, result) {
     return;
   }
   if (op === OPS.update_meal_entry) {
-    for (const id of ids.log_entry_ids || []) {
-      db.prepare(
-        `UPDATE log_entries SET is_deleted = 1 WHERE id = ? AND user_id = ?`
-      ).run(id, userId);
+    if (ids.replaced_log_entry_id) {
+      for (const id of ids.log_entry_ids || []) softDeleteEntry(db, userId, id);
     }
     for (const id of ids.label_ingredient_ids || []) {
       db.prepare(
@@ -1542,9 +1807,7 @@ function revertOneResult(db, userId, result) {
       ).run(id, userId);
     }
     if (ids.replaced_log_entry_id) {
-      db.prepare(
-        `UPDATE log_entries SET is_deleted = 0 WHERE id = ? AND user_id = ?`
-      ).run(ids.replaced_log_entry_id, userId);
+      undeleteEntry(db, userId, ids.replaced_log_entry_id);
     } else if (result.before && !ids.replaced_log_entry_id) {
       // Metadata-only update: restore fields on the same id
       const b = result.before;
@@ -1565,11 +1828,7 @@ function revertOneResult(db, userId, result) {
     return;
   }
   if (op === OPS.log_meal) {
-    for (const id of ids.log_entry_ids || []) {
-      db.prepare(
-        `UPDATE log_entries SET is_deleted = 1 WHERE id = ? AND user_id = ?`
-      ).run(id, userId);
-    }
+    for (const id of ids.log_entry_ids || []) softDeleteEntry(db, userId, id);
     for (const id of ids.label_ingredient_ids || []) {
       db.prepare(
         `DELETE FROM label_ingredients WHERE id = ? AND user_id = ? AND created_via = 'mcp'`
@@ -1654,8 +1913,8 @@ function revertMcpWrite(db, userId, args = {}) {
     });
     return run();
   } catch (e) {
-    if (e.code === 'NOT_REVERTIBLE') {
-      return { error: e.message, code: 'NOT_REVERTIBLE' };
+    if (e.code === 'NOT_REVERTIBLE' || e.code === 'LIMIT_USES') {
+      return { error: e.message, code: e.code };
     }
     return { error: e.message || 'Revert failed' };
   }
@@ -1754,6 +2013,7 @@ module.exports = {
   updateMealEntry,
   deleteMealEntry,
   updateSupplement,
+  createMealPrep,
   writeBatch,
   revertMcpWrite,
   listRecentMcpWrites,

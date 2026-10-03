@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-09-27 (`get_server_info` / deploy identity)_
+_Last updated: 2026-10-02 (`create_meal_prep` MCP tool)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -35,7 +35,14 @@ onion bagel (11/22/34) to unit tracking.
 values; legacy frozen blobs remain as fallback. `get_micronutrient_totals` returns
 coverage + `avg_daily` + `pct_of_daily_target`.
 
-**Last active work stream:** `get_server_info` MCP tool + `/health` identity
+**Last active work stream:** `create_meal_prep` MCP write tool — agents save a batch
+as an equal-split limited-use recipe (whole-batch grams in, per-container recipe out;
+also a `write_batch` op, revertible). MCP meal writes now do limited-use accounting
+like `/api/log`: `log_meal` charges a use per serving (refuses when out, and refuses
+mixing a prep container with other foods); `delete_meal_entry`, `update_meal_entry`
+and `revert_mcp_write` hand uses back / re-charge them.
+
+**Previous work stream:** `get_server_info` MCP tool + `/health` identity
 (`git_sha`, `built_at`, `process_started_at`, `tool_count`) so a deploy can be
 verified without failing a write — see `docs/mcp-connector.md`.
 

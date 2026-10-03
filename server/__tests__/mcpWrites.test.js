@@ -438,6 +438,193 @@ describe('MCP Phase 3 direct writes', () => {
     expect(r.code).toBe('UNKNOWN_PARAM');
   });
 
+  it('create_meal_prep saves an equal-split limited recipe with per-container macros', () => {
+    const r = writes.createMealPrep(db, userId, {
+      name: 'Chicken & Rice Prep',
+      servings: 5,
+      weight_basis: 'cooked',
+      items: [
+        { label_ingredient_id: ingredientId, quantity_g: 1000, nutrition_source: 'database' },
+        {
+          name: 'Cooked Jasmine Rice',
+          quantity_g: 1000,
+          calories_per_100g: 130,
+          protein_g_per_100g: 2.7,
+          carbs_g_per_100g: 28,
+          fat_g_per_100g: 0.3,
+          nutrition_source: 'database',
+        },
+      ],
+    });
+    expect(r.error).toBeUndefined();
+    expect(r.audit_id).toBeTruthy();
+    expect(r.batch_totals.calories).toBe(2950);
+    expect(r.per_serving.calories).toBe(590);
+    expect(r.per_serving.protein_g).toBe(67.4);
+    // Batch-sized grams must not trip the single-meal "unusually large" warning.
+    expect(r.warnings.join(' ')).not.toMatch(/unusually large/);
+
+    const recipe = r.recipe;
+    expect(recipe.recipe_kind).toBe('limited');
+    expect(recipe.remaining_uses).toBe(5);
+    expect(recipe.max_uses).toBe(5);
+    expect(recipe.serving_size).toBe('1 of 5 meal-prep servings');
+    expect(recipe.meal_builder_meta).toMatchObject({ source: 'mcp_meal_prep', containers: 5, split: 'equal' });
+    expect(recipe.ingredients).toHaveLength(2);
+    expect(recipe.ingredients[0]).toMatchObject({
+      kind: 'ingredient', amount: '200', unit: 'g', label_ingredient_id: ingredientId,
+    });
+    const riceId = r.result_row_ids.label_ingredient_ids[0];
+    expect(recipe.ingredients[1]).toMatchObject({ kind: 'ingredient', amount: '200', label_ingredient_id: riceId });
+    const rice = db.prepare('SELECT created_via FROM label_ingredients WHERE id = ?').get(riceId);
+    expect(rice.created_via).toBe('mcp');
+
+    // A container is loggable through log_meal.
+    const logged = writes.logMeal(db, userId, {
+      date: '2026-09-29',
+      weight_basis: 'cooked',
+      items: [{ recipe_id: recipe.id, servings: 1, nutrition_source: 'database' }],
+    });
+    expect(logged.error).toBeUndefined();
+    expect(logged.entry.recipe_name).toBe('Chicken & Rice Prep');
+  });
+
+  it('create_meal_prep refuses recipe items, bad servings, and unknown params', () => {
+    const base = {
+      name: 'Prep',
+      servings: 4,
+      weight_basis: 'cooked',
+      items: [{ label_ingredient_id: ingredientId, quantity_g: 800, nutrition_source: 'database' }],
+    };
+    expect(writes.createMealPrep(db, userId, { ...base, servings: 1 }).error).toMatch(/servings must be/);
+    expect(writes.createMealPrep(db, userId, {
+      ...base,
+      items: [{ recipe_id: recipeId, servings: 1, nutrition_source: 'database' }],
+    }).error).toMatch(/not recipes/);
+    const unknown = writes.createMealPrep(db, userId, { ...base, max_uses: 4 });
+    expect(unknown.code).toBe('UNKNOWN_PARAM');
+    const count = db.prepare(`SELECT COUNT(*) AS n FROM recipes WHERE user_id = ? AND recipe_kind = 'limited'`).get(userId).n;
+    expect(count).toBe(0);
+  });
+
+  it('create_meal_prep is revertible and works inside write_batch with refs', () => {
+    const batch = writes.writeBatch(db, userId, {
+      operations: [
+        {
+          op: 'add_food_item',
+          ref: 'beans',
+          name: 'Black Beans Cooked',
+          calories_per_100g: 132,
+          protein_g_per_100g: 8.9,
+          carbs_g_per_100g: 23.7,
+          fat_g_per_100g: 0.5,
+          nutrition_source: 'database',
+          weight_basis: 'cooked',
+        },
+        {
+          op: 'create_meal_prep',
+          name: 'Burrito Bowl Prep',
+          servings: 4,
+          weight_basis: 'cooked',
+          items: [
+            { ref: 'beans', quantity_g: 600, nutrition_source: 'database' },
+            { label_ingredient_id: ingredientId, quantity_g: 800, nutrition_source: 'database' },
+          ],
+        },
+      ],
+    });
+    expect(batch.error).toBeUndefined();
+    const recipeIdNew = batch.result_row_ids.recipe_ids[0];
+    expect(recipeIdNew).toBeTruthy();
+
+    const rev = writes.revertMcpWrite(db, userId, { audit_id: batch.audit_id });
+    expect(rev.ok).toBe(true);
+    const row = db.prepare('SELECT is_deleted FROM recipes WHERE id = ?').get(recipeIdNew);
+    expect(row.is_deleted).toBe(1);
+    const beans = db.prepare(`SELECT id FROM label_ingredients WHERE name = 'Black Beans Cooked'`).get();
+    expect(beans).toBeUndefined();
+  });
+
+  describe('meal prep countdown', () => {
+    let prepId;
+    const uses = () => db.prepare('SELECT remaining_uses, is_archived FROM recipes WHERE id = ?').get(prepId);
+    const logContainer = (servings = 1) => writes.logMeal(db, userId, {
+      date: '2026-09-30',
+      weight_basis: 'cooked',
+      items: [{ recipe_id: prepId, servings, nutrition_source: 'database' }],
+    });
+
+    beforeEach(() => {
+      const r = writes.createMealPrep(db, userId, {
+        name: 'Countdown Prep',
+        servings: 3,
+        weight_basis: 'cooked',
+        items: [{ label_ingredient_id: ingredientId, quantity_g: 600, nutrition_source: 'database' }],
+      });
+      prepId = r.recipe.id;
+    });
+
+    it('log_meal takes one use per serving and archives at zero', () => {
+      expect(logContainer().error).toBeUndefined();
+      expect(uses()).toEqual({ remaining_uses: 2, is_archived: 0 });
+      expect(logContainer(2).error).toBeUndefined();
+      expect(uses()).toEqual({ remaining_uses: 0, is_archived: 1 });
+      const none = logContainer();
+      expect(none.code).toBe('LIMIT_USES');
+      expect(reads.getDay(db, userId, '2026-09-30').meals).toHaveLength(2);
+    });
+
+    it('refuses more servings than uses left without writing', () => {
+      const r = logContainer(4);
+      expect(r.code).toBe('LIMIT_USES');
+      expect(uses().remaining_uses).toBe(3);
+      expect(reads.getDay(db, userId, '2026-09-30').meals).toHaveLength(0);
+    });
+
+    it('refuses mixing a prep container with other foods', () => {
+      const r = writes.logMeal(db, userId, {
+        date: '2026-09-30',
+        weight_basis: 'cooked',
+        items: [
+          { recipe_id: prepId, servings: 1, nutrition_source: 'database' },
+          { label_ingredient_id: ingredientId, quantity_g: 50, nutrition_source: 'database' },
+        ],
+      });
+      expect(r.code).toBe('MEAL_PREP_MIXED');
+      expect(uses().remaining_uses).toBe(3);
+    });
+
+    it('delete, revert and update hand uses back and re-charge them', () => {
+      const logged = logContainer();
+      const entryId = logged.entry.id;
+      expect(uses().remaining_uses).toBe(2);
+
+      const del = writes.deleteMealEntry(db, userId, { log_entry_id: entryId });
+      expect(uses().remaining_uses).toBe(3);
+      writes.revertMcpWrite(db, userId, { audit_id: del.audit_id });
+      expect(uses().remaining_uses).toBe(2);
+
+      const upd = writes.updateMealEntry(db, userId, {
+        log_entry_id: entryId,
+        items: [{ recipe_id: prepId, servings: 2, nutrition_source: 'database' }],
+      });
+      expect(upd.error).toBeUndefined();
+      expect(uses().remaining_uses).toBe(1);
+      writes.revertMcpWrite(db, userId, { audit_id: upd.audit_id });
+      expect(uses().remaining_uses).toBe(2);
+
+      writes.revertMcpWrite(db, userId, { audit_id: logged.audit_id });
+      expect(uses()).toEqual({ remaining_uses: 3, is_archived: 0 });
+    });
+
+    it('un-archives an exhausted prep when a container is deleted', () => {
+      const last = logContainer(3);
+      expect(uses()).toEqual({ remaining_uses: 0, is_archived: 1 });
+      writes.deleteMealEntry(db, userId, { log_entry_id: last.entry.id });
+      expect(uses()).toEqual({ remaining_uses: 3, is_archived: 0 });
+    });
+  });
+
   it('proposals table is gone', () => {
     const row = db
       .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='mcp_proposals'`)

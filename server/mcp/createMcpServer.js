@@ -389,7 +389,9 @@ function createFlopsMcpServer(db, userId) {
         + 'or new per-100g food. Requires meal weight_basis; item weight_basis overrides it. '
         + 'If an item cites a library ingredient whose stored weight_basis disagrees, the write is refused. '
         + 'Requires per-item nutrition_source. Returns the entry, resolved_weight_basis per item, and day totals/vs_goals. '
-        + 'Discover ingredient IDs with search_ingredients.',
+        + 'Discover ingredient IDs with search_ingredients. '
+        + 'Meal prep (limited-use) recipes count down one use per serving and must be logged alone '
+        + '(items=[{recipe_id, servings}]); deleting or reverting the entry hands the uses back.',
       inputSchema: z
         .object({
           date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -587,12 +589,42 @@ function createFlopsMcpServer(db, userId) {
   );
 
   registerTool(
+    'create_meal_prep',
+    {
+      title: 'Create meal prep',
+      description:
+        `${WRITE_NOW} Save a batch-cooked meal prep as a limited-use recipe split equally into N containers. `
+        + 'items are the WHOLE batch (everything in the pot, in grams); the saved recipe holds one container\'s share '
+        + '(per-serving macros and amounts) with servings uses — the same format as the app\'s "Save as Meal Prep". '
+        + 'Items: label_ingredient_id+quantity_g, ref from a prior add_food_item in write_batch, or a new per-100g food '
+        + '(created as a library ingredient). Recipe items are refused. Requires weight_basis and per-item nutrition_source. '
+        + 'Log a container afterwards with log_meal items=[{recipe_id, servings: 1}]. Revert soft-deletes the recipe.',
+      inputSchema: z
+        .object({
+          name: z.string().min(1),
+          servings: z
+            .number()
+            .int()
+            .min(2)
+            .max(50)
+            .describe('Number of equal containers the batch is split into'),
+          weight_basis: z.enum(['raw', 'cooked']),
+          items: z.array(mealItemSchema).min(1).describe('Whole-batch ingredients (not per container)'),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.createMealPrep(db, userId, args))
+  );
+
+  registerTool(
     'write_batch',
     {
       title: 'Write batch',
       description:
         `${WRITE_NOW} Run multiple write ops in one all-or-nothing transaction. `
-        + 'add_food_item may set ref; later log_meal items can use that ref. Any failure rolls back all.',
+        + 'add_food_item may set ref; later log_meal or create_meal_prep items can use that ref. Any failure rolls back all.',
       inputSchema: z
         .object({
           operations: z.array(z.record(z.string(), z.any())).min(1),

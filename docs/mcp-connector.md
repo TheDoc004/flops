@@ -93,13 +93,14 @@ Writes **commit immediately**. Safety is undo, not a handshake: every MCP row is
 
 | Tool | Use |
 |---|---|
-| `log_meal` | Log a meal now; returns entry + day totals/`vs_goals`. Prefer `search_ingredients` IDs. |
+| `log_meal` | Log a meal now; returns entry + day totals/`vs_goals`. Prefer `search_ingredients` IDs. Meal prep (limited-use) recipes take one use per serving (`LIMIT_USES` when out) and must be logged alone (`MEAL_PREP_MIXED` otherwise); delete / edit / revert hand uses back, matching `/api/log`. |
 | `add_food_item` | Create a library food. Highly similar names are **refused** unless `allow_duplicate: true`. |
 | `update_food_item` | Patch a food (incl. `micros` per serving or `micros_per_100g`); before/after. Writes `label_ingredients.micros_json`. |
 | `update_meal_entry` | Change date/slot/items; before/after + day totals. Item replace soft-deletes old id. |
 | `delete_meal_entry` | Soft-delete a log row (revertible via `revert_mcp_write`). |
 | `update_supplement` | Dose fields and/or per-label-serving macros/micros; `historical_totals_recalculate` when nutrition changes (past taken days recalculate on read). |
-| `write_batch` | Multiple ops in one transaction. `add_food_item` can set `ref`; later `log_meal` items use that `ref`. Failure rolls back all. |
+| `create_meal_prep` | Batch-cooked meal prep → equal-split **limited-use recipe** (`servings` = containers, 2–50). `items` are the **whole batch** in grams (library id, `ref`, or new per-100g food — not recipes); the recipe stores one container's macros/amounts with N uses, same format as the app's Save as Meal Prep (`meal_builder_meta.source = "mcp_meal_prep"`). Log a container with `log_meal` `{recipe_id, servings: 1}`. Revert soft-deletes the recipe. |
+| `write_batch` | Multiple ops in one transaction. `add_food_item` can set `ref`; later `log_meal` / `create_meal_prep` items use that `ref`. Failure rolls back all. |
 | `revert_mcp_write` | Undo a prior MCP write by `audit_id` (creates soft-removed, updates restored, soft-deletes undeleted). |
 
 Warnings (fiber missing, micros missing, 4/4/9 mismatch, wild quantities) come back in the response and never block a write.
