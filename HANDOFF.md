@@ -41,6 +41,11 @@ also a `write_batch` op, revertible). MCP meal writes now do limited-use account
 like `/api/log`: `log_meal` charges a use per serving (refuses when out, and refuses
 mixing a prep container with other foods); `delete_meal_entry`, `update_meal_entry`
 and `revert_mcp_write` hand uses back / re-charge them.
+**Fixed 2026-10-02:** MCP `log_meal` single-recipe logs now store the same per-serving
+`ingredients_json` snapshot as `POST /api/log` (shared `receiptFromRecipeTemplate` in
+`recipeIngredients.js`), so their micros resolve live like app logs; recipe items keep
+the caller's `nutrition_source`. Boot repair `repairMcpRecipeEntrySnapshots` (db.js)
+backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
 
 **Previous work stream:** `get_server_info` MCP tool + `/health` identity
 (`git_sha`, `built_at`, `process_started_at`, `tool_count`) so a deploy can be

@@ -93,7 +93,7 @@ Writes **commit immediately**. Safety is undo, not a handshake: every MCP row is
 
 | Tool | Use |
 |---|---|
-| `log_meal` | Log a meal now; returns entry + day totals/`vs_goals`. Prefer `search_ingredients` IDs. Meal prep (limited-use) recipes take one use per serving (`LIMIT_USES` when out) and must be logged alone (`MEAL_PREP_MIXED` otherwise); delete / edit / revert hand uses back, matching `/api/log`. |
+| `log_meal` | Log a meal now; returns entry + day totals/`vs_goals`. Prefer `search_ingredients` IDs. Meal prep (limited-use) recipes take one use per serving (`LIMIT_USES` when out) and must be logged alone (`MEAL_PREP_MIXED` otherwise); delete / edit / revert hand uses back, matching `/api/log`. A single-recipe log stores the same per-serving ingredients snapshot as the app, so micros resolve live from the library; recipe items keep the `nutrition_source` you pass. |
 | `add_food_item` | Create a library food. Highly similar names are **refused** unless `allow_duplicate: true`. |
 | `update_food_item` | Patch a food (incl. `micros` per serving or `micros_per_100g`); before/after. Writes `label_ingredients.micros_json`. |
 | `update_meal_entry` | Change date/slot/items; before/after + day totals. Item replace soft-deletes old id. |

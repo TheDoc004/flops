@@ -152,6 +152,46 @@ function repairLoggedIngredientUnits(db) {
   return repaired;
 }
 
+/**
+ * MCP log_meal used to insert single-recipe logs with ingredients_json NULL,
+ * so those entries had nothing for entryMicros to derive micros from (macros
+ * were fine — they come from the recipe row). Fill the missing per-serving
+ * snapshot with the same receiptFromRecipeTemplate POST /api/log uses.
+ * Touches only live source='mcp' entries linked to a non-quick recipe whose
+ * snapshot is NULL; never changes macros. Idempotent.
+ */
+function repairMcpRecipeEntrySnapshots(db) {
+  const { receiptFromRecipeTemplate } = require('./recipeIngredients');
+  const entries = db
+    .prepare(
+      `SELECT le.id, le.user_id, r.id AS rid, r.ingredients, r.meal_builder_meta
+         FROM log_entries le
+         JOIN recipes r ON r.id = le.recipe_id AND r.user_id = le.user_id
+        WHERE le.source = 'mcp' AND le.ingredients_json IS NULL
+          AND COALESCE(le.is_deleted, 0) = 0 AND COALESCE(r.is_quick_food, 0) = 0`
+    )
+    .all();
+  if (entries.length === 0) return 0;
+  const update = db.prepare('UPDATE log_entries SET ingredients_json = ? WHERE id = ? AND ingredients_json IS NULL');
+  let repaired = 0;
+  db.transaction(() => {
+    for (const e of entries) {
+      let receipt = null;
+      try {
+        receipt = receiptFromRecipeTemplate(
+          db, { id: e.rid, ingredients: e.ingredients, meal_builder_meta: e.meal_builder_meta }, e.user_id
+        );
+      } catch {
+        continue;
+      }
+      if (!receipt?.rows?.length) continue;
+      repaired += update.run(JSON.stringify(receipt.rows), e.id).changes;
+    }
+  })();
+  if (repaired) console.log(`[db] repaired ${repaired} MCP recipe log snapshot(s)`);
+  return repaired;
+}
+
 function createDb(dbPath) {
   const db = new Database(dbPath);
   db.exec(`
@@ -921,6 +961,8 @@ function createDb(dbPath) {
   const { migrateLegacyUserZero } = require('./authService');
   migrateLegacyUserZero(db);
 
+  repairMcpRecipeEntrySnapshots(db);
+
   return db;
 }
 
@@ -929,4 +971,5 @@ module.exports = {
   repairLoggedIngredientUnits,
   repairHybridIngredientTracking,
   repairPlaceholderGramsPerServing,
+  repairMcpRecipeEntrySnapshots,
 };

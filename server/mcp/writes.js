@@ -18,6 +18,7 @@ const {
   isUsableGramsPerServing,
 } = require('../gramsPerServing');
 const { buildMicrosBlob } = require('../microNutrients');
+const { receiptFromRecipeTemplate } = require('../recipeIngredients');
 
 const NUTRITION_SOURCES = new Set(['label', 'database', 'estimate']);
 const WEIGHT_BASES = new Set(['raw', 'cooked']);
@@ -476,7 +477,7 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
         quantity_g: Number.isFinite(quantity_g) ? quantity_g : null,
         weight_basis,
         resolved_weight_basis: weight_basis,
-        nutrition_source: 'database',
+        nutrition_source,
         macros: {
           calories: round((Number(recipe.calories) || 0) * s, 1),
           protein_g: round((Number(recipe.protein_g) || 0) * s, 2),
@@ -665,6 +666,22 @@ function fetchLogEntryById(db, userId, id, { includeDeleted = false } = {}) {
   };
 }
 
+/**
+ * Per-serving ingredients snapshot for a recipe log — the same rows POST
+ * /api/log stores (via receiptFromRecipeTemplate), so entry micros resolve
+ * live from the library exactly as for app logs. Macros on the entry still
+ * come from the recipe row. A recipe with no library lines, or one whose
+ * lines can't be scaled, keeps a null snapshot rather than refusing the log.
+ */
+function recipeIngredientsSnapshotJson(db, userId, recipe) {
+  try {
+    const receipt = receiptFromRecipeTemplate(db, recipe, userId);
+    return receipt?.rows?.length ? JSON.stringify(receipt.rows) : null;
+  } catch {
+    return null;
+  }
+}
+
 function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, weight_basis, resolved, totals }) {
   const result = { log_entry_ids: [], label_ingredient_ids: [] };
   const ingredientRows = [];
@@ -700,11 +717,13 @@ function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, w
   if (onlyRecipe) {
     const recipe = db
       .prepare(
-        `SELECT id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, is_quick_food
+        `SELECT id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, is_quick_food,
+                ingredients, meal_builder_meta
            FROM recipes WHERE id = ? AND user_id = ?`
       )
       .get(onlyRecipe.recipe_id, userId);
     if (!recipe) throw Object.assign(new Error('Recipe missing'), { code: 'RECIPE_GONE' });
+    const ingredientsJson = recipeIngredientsSnapshotJson(db, userId, recipe);
     const ins = db
       .prepare(
         `INSERT INTO log_entries (
@@ -712,13 +731,13 @@ function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, w
            recipe_name, serving_size, recipe_calories, recipe_protein_g, recipe_carbs_g,
            recipe_fat_g, recipe_fiber_g, recipe_is_quick_food, slot_selections_json,
            ingredients_json, source, weight_basis, nutrition_source
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'mcp', ?, ?)`
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'mcp', ?, ?)`
       )
       .run(
         userId, recipe.id, date, time_min, onlyRecipe.servings,
         meal_slot ? `slot:${meal_slot}` : null, recipe.name, recipe.serving_size,
         recipe.calories, recipe.protein_g, recipe.carbs_g, recipe.fat_g, recipe.fiber_g,
-        recipe.is_quick_food ? 1 : 0, weight_basis, onlyRecipe.nutrition_source
+        recipe.is_quick_food ? 1 : 0, ingredientsJson, weight_basis, onlyRecipe.nutrition_source
       );
     if (onlyRecipe.limited) consumeLimitedUses(db, userId, recipe.id, onlyRecipe.servings);
     result.log_entry_ids.push(ins.lastInsertRowid);
@@ -2020,4 +2039,5 @@ module.exports = {
   bulkDeleteMcpLogEntries,
   bulkDeleteMcpFoods,
   searchSimilarIngredients,
+  recipeIngredientsSnapshotJson,
 };

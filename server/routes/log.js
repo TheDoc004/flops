@@ -5,8 +5,8 @@ const {
   resolvedIngredientRows,
   resolveSlotsForLog,
   listVariableSlotsFromRecipeRow,
-  listRecipeIngredientLines,
   resolveReceiptForLog,
+  receiptFromRecipeTemplate,
 } = require('../recipeIngredients');
 const { withResolvedMicros } = require('../entryMicros');
 const { applyUsageMap, usageFromIngredientsJson, extractPreppedUsageFromRows } = require('../preppedBatchLib');
@@ -99,22 +99,6 @@ function hasSlotPayload(body) {
   return !!(
     (body?.slot_selections && typeof body.slot_selections === 'object' && !Array.isArray(body.slot_selections)) ||
     (body?.log_slot_customizations && typeof body.log_slot_customizations === 'object' && !Array.isArray(body.log_slot_customizations))
-  );
-}
-
-/** Default log receipt from the recipe's library lines (no client ingredients). */
-function receiptFromRecipeTemplate(db, recipe, userId) {
-  const lines = listRecipeIngredientLines(recipe);
-  if (!lines.length) return null;
-  return resolveReceiptForLog(
-    db,
-    lines.map(l => ({
-      name: l.name,
-      amount: Number(l.amount),
-      unit: l.unit,
-      label_ingredient_id: l.label_ingredient_id,
-    })),
-    userId
   );
 }
 
