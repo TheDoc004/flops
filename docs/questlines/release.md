@@ -37,7 +37,7 @@ has **no LICENSE**, which legally means "all rights reserved". Nobody may reuse 
 
 - [ ] **A1. Pick a license.** MIT (simplest, anyone can do anything) vs AGPL-3.0 (anyone
       who hosts a modified copy must publish their changes). Diego decides.
-- [ ] **A2. Secrets / history audit.** Scan git history for keys, tokens, `.env`, `*.db`, and
+- [x] **A2. Secrets / history audit.** _(2026-10-04: clean, see log)_ Scan git history for keys, tokens, `.env`, `*.db`, and
       personal data (Diego's real logs, emails, photos in fixtures or `assets/`).
 - [ ] **A3. Public README.** What FLOPS is, screenshots, the notebook philosophy, a
       feature list, the tech stack, and links to live + docs.
@@ -82,3 +82,8 @@ static `MCP_API_TOKEN`, with writes scoped to `MCP_USER_ID`. That's the main gap
 ## Log
 
 - **2026-10-04:** Questline opened. Direction agreed: do A, then B; one MCP server for both clients.
+- **2026-10-04:** A2 history audit. No key-shaped strings (Anthropic/OpenAI/AWS/GitHub/Resend/
+  Slack/private keys) anywhere in history. Only `.env.example` files were ever committed, and no
+  `.db` files. Tracked emails are all placeholders or test addresses. `server/node_modules` was
+  committed early and later removed (pack is 17.9 MiB, so not worth rewriting history). The only
+  personal traces are "Diego" in `.design/` mockups and `.cursor/rules/`, which is harmless.
