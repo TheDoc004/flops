@@ -1,12 +1,15 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-02 (`create_meal_prep` MCP tool)_
+_Last updated: 2026-10-04 (Release questline opened — `docs/questlines/`)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
 >
 > **Auth / onboarding / coach** are live: Bearer sessions (email OTP + Apple/dev),
 > first-run onboarding, invite codes, consent scopes, Coach roster + soft suggestions.
+>
+> **Questlines:** feature work (Build) lives here; going public — open source, then a
+> ChatGPT/Claude connector — is the **Release** questline in **`docs/questlines/release.md`**.
 >
 > **Deploy:** **LIVE** — see [Deploy (live)](#deploy-live) below and **`docs/deploy-checklist.md`**.
 

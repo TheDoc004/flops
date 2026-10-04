@@ -2,6 +2,8 @@
 
 > **Current state snapshot:** see **`HANDOFF.md`** (last updated 2026-09-04).
 > Canonical repo: **`~/dev/FLOPS`**. Live: **https://www.useflops.com** (Vercel + Render, push `main` to deploy).
+> **Questlines:** work is split into tracks — **Build** (features, tracked in `HANDOFF.md`) and
+> **Release** (open source → ChatGPT/Claude connector). See **`docs/questlines/`**.
 
 ## What This App Is
 
