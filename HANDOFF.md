@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-04 (Release questline opened — `docs/questlines/`)_
+_Last updated: 2026-10-04 (Release questline opened — `docs/questlines/`; MCP unit-tracked grams fix)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -49,6 +49,16 @@ and `revert_mcp_write` hand uses back / re-charge them.
 `recipeIngredients.js`), so their micros resolve live like app logs; recipe items keep
 the caller's `nutrition_source`. Boot repair `repairMcpRecipeEntrySnapshots` (db.js)
 backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
+
+**2026-10-04 — unit-tracked gram weight:** unit-tracked foods have ONE gram weight,
+`grams_per_unit` (what unitConvert, micros and the edit modal read). MCP used to scale them
+by the stray `grams_per_serving`, so macros were right but micros silently dropped (eggs
+logged as 200 g). MCP `log_meal` now uses the app's converter and takes `quantity`+`unit`
+("4 egg"); grams without `grams_per_unit` are refused; dropped micros surface as warnings.
+**Pending:** run `server/scripts/migrateUnitGramsPerUnit.js` (dry run, then `--apply`) on
+Render to move `grams_per_serving` → `grams_per_unit` on unit rows — until then MCP can
+only log those foods by count. Historical log rows are NOT rewritten (their micros heal live
+once `grams_per_unit` is set).
 
 **Previous work stream:** `get_server_info` MCP tool + `/health` identity
 (`git_sha`, `built_at`, `process_started_at`, `tool_count`) so a deploy can be
