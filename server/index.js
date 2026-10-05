@@ -7,6 +7,10 @@ try {
   /* no .env file — rely on the process environment */
 }
 
+// Server-local dates ("today" for MCP writes/reads) follow the owner's calendar,
+// not the host's UTC clock. Render's dashboard env can still override it.
+if (!process.env.TZ) process.env.TZ = 'America/Los_Angeles';
+
 if (process.env.NODE_ENV !== 'production' && process.env.AUTH_DEV == null) {
   process.env.AUTH_DEV = '1';
 }

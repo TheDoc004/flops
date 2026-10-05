@@ -20,6 +20,7 @@ Goal: **HTTPS URL that works on phone Safari** without your laptop running.
 4. Env vars:
    - `NODE_VERSION=20`
    - `NODE_ENV=production`
+   - `TZ=America/Los_Angeles` — server "today" for MCP tools (index.js defaults to this if unset)
    - `DB_PATH=/var/data/nutrition.db`
    - `ALLOWED_ORIGIN=` — see [Custom domain](#7-custom-domain-useflopscom) (exact origins, no trailing slash; comma-separated)
    - `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY`

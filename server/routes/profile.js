@@ -1,5 +1,6 @@
 const express = require('express');
 const { uid } = require('../userId');
+const { upsertBodyWeight } = require('../bodyWeights');
 
 const PROFILE_FIELDS = [
   'height_cm',
@@ -295,12 +296,8 @@ function createBodyWeightsRouter(db) {
       return res.status(400).json({ error: 'weight_kg is required and must be a non-negative number' });
     }
 
-    db.prepare(`
-      INSERT INTO body_weights (user_id, date, weight_kg) VALUES (?, ?, ?)
-      ON CONFLICT(user_id, date) DO UPDATE SET weight_kg = excluded.weight_kg
-    `).run(userId, date, w);
-
-    res.json(db.prepare('SELECT date, weight_kg FROM body_weights WHERE user_id = ? AND date = ?').get(userId, date));
+    const { after } = upsertBodyWeight(db, userId, date, w, 'app');
+    res.json({ date: after.date, weight_kg: after.weight_kg });
   });
 
   router.delete('/:date', (req, res) => {

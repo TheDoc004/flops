@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-04 (Release questline opened — `docs/questlines/`; MCP unit-tracked grams fix)_
+_Last updated: 2026-10-05 (MCP `log_body_weight`; server TZ = Pacific)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -49,6 +49,13 @@ and `revert_mcp_write` hand uses back / re-charge them.
 `recipeIngredients.js`), so their micros resolve live like app logs; recipe items keep
 the caller's `nutrition_source`. Boot repair `repairMcpRecipeEntrySnapshots` (db.js)
 backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
+
+**2026-10-05 — `log_body_weight` + server TZ:** MCP can write weigh-ins (lb/kg, same-date
+overwrite like the Dashboard, `body_weights.source` = app|mcp, revertible, batchable) via the
+shared `server/bodyWeights.js` upsert the REST PUT now uses too. `server/index.js` defaults
+`TZ=America/Los_Angeles` (Render ran UTC, so MCP "today" flipped at 5 pm PT); also in
+`render.yaml` / deploy checklist. Known UI quirk, not changed: the Dashboard weight card saves
+to the *viewing* date and still says "Logged for today" on a past day.
 
 **2026-10-04 — unit-tracked gram weight:** unit-tracked foods have ONE gram weight,
 `grams_per_unit` (what unitConvert, micros and the edit modal read). MCP used to scale them

@@ -14,6 +14,8 @@ services:
         value: "20"
       - key: NODE_ENV
         value: production
+      - key: TZ
+        value: America/Los_Angeles
       - key: DB_PATH
         value: /var/data/nutrition.db
       - key: ALLOWED_ORIGIN

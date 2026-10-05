@@ -639,12 +639,37 @@ function createFlopsMcpServer(db, userId) {
   );
 
   registerTool(
+    'log_body_weight',
+    {
+      title: 'Log body weight',
+      description:
+        `${WRITE_NOW} Record a body-weight weigh-in when the user reports their weight `
+        + '("log my weight, 151.9 lb", "I weighed 69 kg this morning"). One weigh-in per date, stored in kg '
+        + 'exactly as the app stores it; a second weigh-in for the same date OVERWRITES the first (same as the app) '
+        + 'and the replaced value is returned. Always pass unit as the user said it (lb or kg) — never guess. '
+        + 'date defaults to today in the server\'s timezone (Pacific); pass the user\'s own date when they name one. '
+        + 'Accepted range 20–300 kg; a jump of >3 kg from the previous weigh-in adds a warning. '
+        + 'Returns both units, the replaced value (if any), the previous weigh-in, and audit_id for revert_mcp_write.',
+      inputSchema: z
+        .object({
+          weight: z.number().positive().describe('The number the user reported, in `unit`'),
+          unit: z.enum(['lb', 'kg']).describe('Unit of `weight` as the user stated it'),
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('YYYY-MM-DD; defaults to today'),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.logBodyWeight(db, userId, args))
+  );
+
+  registerTool(
     'write_batch',
     {
       title: 'Write batch',
       description:
         `${WRITE_NOW} Run multiple write ops in one all-or-nothing transaction. `
-        + 'add_food_item may set ref; later log_meal or create_meal_prep items can use that ref. Any failure rolls back all.',
+        + 'add_food_item may set ref; later log_meal or create_meal_prep items can use that ref. Ops: add_food_item, log_meal, update_food_item, update_meal_entry, delete_meal_entry, update_supplement, create_meal_prep, log_body_weight. Any failure rolls back all.',
       inputSchema: z
         .object({
           operations: z.array(z.record(z.string(), z.any())).min(1),

@@ -18,6 +18,7 @@ const {
   isUsableGramsPerServing,
 } = require('../gramsPerServing');
 const { buildMicrosBlob } = require('../microNutrients');
+const { LB_PER_KG, getBodyWeight, upsertBodyWeight } = require('../bodyWeights');
 const {
   receiptFromRecipeTemplate,
   ingredientMacrosForAmount,
@@ -37,6 +38,7 @@ const OPS = {
   delete_meal_entry: 'delete_meal_entry',
   update_supplement: 'update_supplement',
   create_meal_prep: 'create_meal_prep',
+  log_body_weight: 'log_body_weight',
   write_batch: 'write_batch',
   revert_mcp_write: 'revert_mcp_write',
 };
@@ -67,6 +69,7 @@ const WRITE_ALLOWED_KEYS = {
   [OPS.create_meal_prep]: new Set([
     'op', 'name', 'servings', 'weight_basis', 'items', 'operation_id',
   ]),
+  [OPS.log_body_weight]: new Set(['op', 'weight', 'unit', 'date', 'operation_id']),
   [OPS.write_batch]: new Set(['operations', 'operation_id']),
   [OPS.revert_mcp_write]: new Set(['audit_id', 'operation_id']),
 };
@@ -1521,6 +1524,89 @@ function createMealPrep(db, userId, args = {}, { skipAudit = false, refMap = nul
   });
 }
 
+const MIN_BODY_KG = 20;
+const MAX_BODY_KG = 300;
+/** A jump this big from the previous weigh-in is worth a second look (warn, never block). */
+const BODY_WEIGHT_JUMP_KG = 3;
+
+const toLb = kg => round(kg * LB_PER_KG, 1);
+
+/**
+ * Log a weigh-in for a date (default: server-local today). Same storage and
+ * same-date OVERWRITE as the Dashboard (shared upsertBodyWeight); the replaced
+ * value is returned and restored by revert_mcp_write.
+ */
+function logBodyWeight(db, userId, args = {}, { skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.log_body_weight);
+  if (badKeys) return badKeys;
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const unit = String(args.unit || '').trim().toLowerCase();
+    if (unit !== 'lb' && unit !== 'kg') return { error: 'unit is required: "lb" or "kg"' };
+    const weight = Number(args.weight);
+    if (!Number.isFinite(weight) || weight <= 0) return { error: 'weight must be a positive number' };
+    // Full precision, exactly as the app stores a typed value (lb ÷ 2.20462).
+    const weight_kg = unit === 'lb' ? weight / LB_PER_KG : weight;
+    if (weight_kg < MIN_BODY_KG || weight_kg > MAX_BODY_KG) {
+      return {
+        error:
+          `${weight} ${unit} is outside the accepted range ` +
+          `(${MIN_BODY_KG}–${MAX_BODY_KG} kg / ${toLb(MIN_BODY_KG)}–${toLb(MAX_BODY_KG)} lb). Nothing was written.`,
+        code: 'OUT_OF_RANGE',
+      };
+    }
+    if (args.date != null && !isoDateOrNull(args.date)) return { error: 'date must be YYYY-MM-DD' };
+    const date = isoDateOrNull(args.date) || getLocalDateISO();
+
+    const previousRow = db
+      .prepare(
+        `SELECT date, weight_kg FROM body_weights WHERE user_id = ? AND date < ? ORDER BY date DESC LIMIT 1`
+      )
+      .get(userId, date);
+    const warnings = [];
+    if (previousRow && Math.abs(weight_kg - previousRow.weight_kg) > BODY_WEIGHT_JUMP_KG) {
+      warnings.push(
+        `${round(weight_kg, 2)} kg differs from the previous weigh-in (${round(previousRow.weight_kg, 2)} kg on ` +
+        `${previousRow.date}) by more than ${BODY_WEIGHT_JUMP_KG} kg — check the number and unit.`
+      );
+    }
+
+    const doWrite = () => {
+      const { before, after } = upsertBodyWeight(db, userId, date, weight_kg, 'mcp');
+      const shape = row => row && {
+        date: row.date,
+        weight_kg: round(row.weight_kg, 2),
+        weight_lb: toLb(row.weight_kg),
+        source: row.source,
+      };
+      const result_row_ids = { body_weight_dates: [date] };
+      const response = {
+        op: OPS.log_body_weight,
+        date,
+        weight_kg: round(after.weight_kg, 2),
+        weight_lb: toLb(after.weight_kg),
+        input: { weight, unit },
+        replaced: shape(before),
+        before,
+        after,
+        previous_weigh_in: previousRow
+          ? { date: previousRow.date, weight_kg: round(previousRow.weight_kg, 2), weight_lb: toLb(previousRow.weight_kg) }
+          : null,
+        result_row_ids,
+        warnings,
+        source: 'mcp',
+      };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.log_body_weight, operationId, before, after, result_row_ids, warnings, response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : db.transaction(doWrite)();
+  });
+}
+
 function shapeSupplement(db, userId, id) {
   const row = db
     .prepare(
@@ -1750,6 +1836,8 @@ function writeBatch(db, userId, args = {}) {
             result = updateSupplement(db, userId, step, { skipAudit: true });
           } else if (op === OPS.create_meal_prep) {
             result = createMealPrep(db, userId, step, { skipAudit: true, refMap });
+          } else if (op === OPS.log_body_weight) {
+            result = logBodyWeight(db, userId, step, { skipAudit: true });
           } else {
             throw Object.assign(new Error(`operations[${i}]: unsupported op "${op}"`), { code: 'BAD_OP' });
           }
@@ -1775,6 +1863,7 @@ function writeBatch(db, userId, args = {}) {
           label_ingredient_ids: results.flatMap(r => r.result_row_ids?.label_ingredient_ids || []),
           supplement_ids: results.flatMap(r => r.result_row_ids?.supplement_ids || []),
           recipe_ids: results.flatMap(r => r.result_row_ids?.recipe_ids || []),
+          body_weight_dates: results.flatMap(r => r.result_row_ids?.body_weight_dates || []),
         };
         response.audit_id = recordAudit(db, userId, {
           op: OPS.write_batch,
@@ -1873,6 +1962,27 @@ function revertOneResult(db, userId, result) {
       db.prepare(
         `DELETE FROM label_ingredients WHERE id = ? AND user_id = ? AND created_via = 'mcp'`
       ).run(id, userId);
+    }
+    return;
+  }
+  if (op === OPS.log_body_weight) {
+    // Undo only what MCP wrote: if the row changed since (re-entered in the
+    // app), refuse rather than discard the newer weigh-in.
+    const wrote = result.after || (result.date ? { date: result.date } : null);
+    const date = wrote?.date;
+    if (!date) return;
+    const current = getBodyWeight(db, userId, date);
+    if (current && wrote.weight_kg != null &&
+        (current.source !== 'mcp' || Math.abs(current.weight_kg - wrote.weight_kg) > 1e-9)) {
+      throw Object.assign(
+        new Error(`The ${date} weigh-in changed after this MCP write (now ${round(current.weight_kg, 2)} kg, ${current.source}); not reverting.`),
+        { code: 'NOT_REVERTIBLE' }
+      );
+    }
+    if (result.before) {
+      upsertBodyWeight(db, userId, date, result.before.weight_kg, result.before.source || 'app');
+    } else {
+      db.prepare('DELETE FROM body_weights WHERE user_id = ? AND date = ?').run(userId, date);
     }
     return;
   }
@@ -2143,6 +2253,7 @@ module.exports = {
   deleteMealEntry,
   updateSupplement,
   createMealPrep,
+  logBodyWeight,
   writeBatch,
   revertMcpWrite,
   listRecentMcpWrites,

@@ -818,6 +818,11 @@ function createDb(dbPath) {
 
   // MCP Phase 2/3: permanent source flags + audit trail.
   // `source` / `created_via` are never cleared; UI uses them for badges and bulk undo.
+  // Who wrote a weigh-in (app | mcp) — MCP writes are flagged like meals are.
+  const bodyWeightCols = db.prepare('PRAGMA table_info(body_weights)').all().map(c => c.name);
+  if (bodyWeightCols.length && !bodyWeightCols.includes('source')) {
+    db.exec(`ALTER TABLE body_weights ADD COLUMN source TEXT NOT NULL DEFAULT 'app'`);
+  }
   const logColsMcp = db.prepare('PRAGMA table_info(log_entries)').all().map(c => c.name);
   if (logColsMcp.length && !logColsMcp.includes('source')) {
     db.exec(`ALTER TABLE log_entries ADD COLUMN source TEXT NOT NULL DEFAULT 'app'`);
