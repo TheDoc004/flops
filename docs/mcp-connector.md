@@ -68,7 +68,7 @@ Optional hardening later: restrict `/mcp` to Anthropic egress `160.79.104.0/21` 
 | `list_supplements` | Full supplement library (IDs + per-label-serving macros/micros); optional `include_deleted` |
 | `get_micronutrient_totals` | Summed micros over a range |
 | `search_recipes` | Recipe library name search |
-| `search_ingredients` | Ingredient library by name/brand — use these IDs in `log_meal`. `per_100g` is null when `grams_per_serving` is missing or &lt; 3g (placeholders are never derived). |
+| `search_ingredients` | Ingredient library by name/brand — use these IDs in `log_meal`. `per_100g` is null when `grams_per_serving` is missing or &lt; 3g (placeholders are never derived). Unit-tracked foods also return `unit_name`, `serving_quantity`, `grams_per_unit` and a `log_by` hint; their `grams_per_serving` is derived from `grams_per_unit` (their only gram weight). |
 | `get_gym_today` | Schedule + session/sets for a date |
 | `get_gym_progress` | Working-set history for an exercise (id or name) |
 | `list_recent_mcp_writes` | Meals/foods/audit (with `audit_id`) written via MCP |
@@ -93,9 +93,9 @@ Writes **commit immediately**. Safety is undo, not a handshake: every MCP row is
 
 | Tool | Use |
 |---|---|
-| `log_meal` | Log a meal now; returns entry + day totals/`vs_goals`. Prefer `search_ingredients` IDs. Meal prep (limited-use) recipes take one use per serving (`LIMIT_USES` when out) and must be logged alone (`MEAL_PREP_MIXED` otherwise); delete / edit / revert hand uses back, matching `/api/log`. A single-recipe log stores the same per-serving ingredients snapshot as the app, so micros resolve live from the library; recipe items keep the `nutrition_source` you pass. |
+| `log_meal` | Log a meal now; returns entry + day totals/`vs_goals`. Prefer `search_ingredients` IDs. Meal prep (limited-use) recipes take one use per serving (`LIMIT_USES` when out) and must be logged alone (`MEAL_PREP_MIXED` otherwise); delete / edit / revert hand uses back, matching `/api/log`. A single-recipe log stores the same per-serving ingredients snapshot as the app, so micros resolve live from the library; recipe items keep the `nutrition_source` you pass. Library items take `quantity_g` **or** `quantity` + `unit` (e.g. `4` `egg`) and scale through the app's own converter; a unit-tracked food logged by grams without `grams_per_unit` is refused (`UNIT_NOT_CONVERTIBLE`). Library micros that could not be counted are listed in `warnings` — never a silent zero. |
 | `add_food_item` | Create a library food. Highly similar names are **refused** unless `allow_duplicate: true`. |
-| `update_food_item` | Patch a food (incl. `micros` per serving or `micros_per_100g`); before/after. Writes `label_ingredients.micros_json`. |
+| `update_food_item` | Patch a food (incl. `micros` per serving or `micros_per_100g`); before/after. Writes `label_ingredients.micros_json`. Gram weight: `grams_per_serving` for weight-tracked foods, `grams_per_unit` (grams in one unit) for unit-tracked ones — the other is refused. |
 | `update_meal_entry` | Change date/slot/items; before/after + day totals. Item replace soft-deletes old id. |
 | `delete_meal_entry` | Soft-delete a log row (revertible via `revert_mcp_write`). |
 | `update_supplement` | Dose fields and/or per-label-serving macros/micros; `historical_totals_recalculate` when nutrition changes (past taken days recalculate on read). |

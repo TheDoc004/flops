@@ -511,6 +511,25 @@ function searchRecipes(db, userId, query, { limit = 25 } = {}) {
   return filtered.slice(0, lim);
 }
 
+/**
+ * Grams in ONE stored serving — the weight micros_per_100g scales by.
+ * Weight-tracked rows store it as grams_per_serving; unit-tracked rows store
+ * grams_per_unit (the weight of one unit_name), so a serving is
+ * grams_per_unit × serving_quantity. grams_per_serving on a unit row is never
+ * read: grams_per_unit is that row's only gram weight (same as unitConvert).
+ */
+function servingGramsFor(row) {
+  if (!row) return null;
+  if (row.tracking_type === 'unit') {
+    const gpu = Number(row.grams_per_unit);
+    if (!Number.isFinite(gpu) || gpu <= 0) return null;
+    const qty = Number(row.serving_quantity) > 0 ? Number(row.serving_quantity) : 1;
+    return gpu * qty;
+  }
+  const gps = Number(row.grams_per_serving);
+  return Number.isFinite(gps) && gps > 0 ? gps : null;
+}
+
 function per100FromServing(row) {
   // Tiny placeholders (e.g. 1g) are not real serving weights — treat as unknown.
   const { isUsableGramsPerServing } = require('../gramsPerServing');
@@ -538,7 +557,8 @@ function searchIngredients(db, userId, query, { limit = 25 } = {}) {
     .prepare(
       `SELECT id, name, brand_name, serving_size_text, grams_per_serving,
               calories, protein_g, carbs_g, fat_g, fiber_g, micros_json,
-              weight_basis, nutrition_source, source_type, tracking_type, created_via, barcode
+              weight_basis, nutrition_source, source_type, tracking_type, created_via, barcode,
+              unit_name, serving_quantity, grams_per_unit
          FROM label_ingredients
         WHERE user_id = ?
         ORDER BY use_count DESC, name COLLATE NOCASE`
@@ -558,7 +578,18 @@ function searchIngredients(db, userId, query, { limit = 25 } = {}) {
       name: r.name,
       brand_name: r.brand_name || null,
       serving_size_text: r.serving_size_text,
-      grams_per_serving: r.grams_per_serving,
+      // Unit-tracked rows: derived from grams_per_unit (their only gram weight).
+      grams_per_serving: servingGramsFor(r),
+      ...(r.tracking_type === 'unit'
+        ? {
+            unit_name: r.unit_name || null,
+            serving_quantity: r.serving_quantity ?? null,
+            grams_per_unit: r.grams_per_unit ?? null,
+            log_by: r.grams_per_unit > 0
+              ? `count (quantity + unit "${r.unit_name || 'unit'}") or quantity_g`
+              : `count only (quantity + unit "${r.unit_name || 'unit'}") — no grams_per_unit`,
+          }
+        : {}),
       weight_basis: r.weight_basis || null,
       nutrition_source: r.nutrition_source || null,
       source_type: r.source_type || null,
@@ -572,7 +603,7 @@ function searchIngredients(db, userId, query, { limit = 25 } = {}) {
         fat_g: r.fat_g,
         fiber_g: r.fiber_g,
       },
-      per_100g: per100FromServing(r),
+      per_100g: per100FromServing({ ...r, grams_per_serving: servingGramsFor(r) }),
       has_micros: !!(micros?.micros && Object.keys(micros.micros).length),
       micros_confidence: micros?.confidence || null,
     };
@@ -1023,6 +1054,7 @@ function errorResult(message) {
 }
 
 module.exports = {
+  servingGramsFor,
   normalizeRange,
   isoDateOrNull,
   getLocalDateISO,

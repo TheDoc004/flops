@@ -18,7 +18,13 @@ const {
   isUsableGramsPerServing,
 } = require('../gramsPerServing');
 const { buildMicrosBlob } = require('../microNutrients');
-const { receiptFromRecipeTemplate } = require('../recipeIngredients');
+const {
+  receiptFromRecipeTemplate,
+  ingredientMacrosForAmount,
+  displayUnitForIngredient,
+} = require('../recipeIngredients');
+const { isMassUnit, amountInBasisUnit, basisUnitFor } = require('../unitConvert');
+const { labelMicrosForRows, storedMicros } = require('../labelMicros');
 
 const NUTRITION_SOURCES = new Set(['label', 'database', 'estimate']);
 const WEIGHT_BASES = new Set(['raw', 'cooked']);
@@ -46,7 +52,7 @@ const WRITE_ALLOWED_KEYS = {
     'nutrition_source', 'weight_basis', 'micros_per_100g', 'micros_confidence', 'allow_duplicate', 'operation_id',
   ]),
   [OPS.update_food_item]: new Set([
-    'op', 'label_ingredient_id', 'name', 'brand_name', 'serving_size_text', 'grams_per_serving',
+    'op', 'label_ingredient_id', 'name', 'brand_name', 'serving_size_text', 'grams_per_serving', 'grams_per_unit',
     'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'nutrition_source', 'weight_basis',
     'micros', 'micros_per_100g', 'micros_confidence', 'operation_id',
   ]),
@@ -221,17 +227,37 @@ function scalePer100g(macros, quantityG) {
   };
 }
 
-function scaleFromServing(row, quantityG) {
-  const gps = Number(row.grams_per_serving);
-  if (!Number.isFinite(gps) || gps <= 0) return null;
-  const f = Number(quantityG) / gps;
-  return {
-    calories: round((Number(row.calories) || 0) * f, 1),
-    protein_g: round((Number(row.protein_g) || 0) * f, 2),
-    carbs_g: round((Number(row.carbs_g) || 0) * f, 2),
-    fat_g: round((Number(row.fat_g) || 0) * f, 2),
-    fiber_g: row.fiber_g == null ? null : round((Number(row.fiber_g) || 0) * f, 2),
-  };
+/** Grams an amount comes to, or null when the ingredient has no gram weight. */
+function gramsForAmount(row, amount, unit) {
+  const inBasis = amountInBasisUnit(row, amount, unit);
+  if (inBasis == null) return null;
+  const gpu = basisUnitFor(row)?.gramsPerUnit;
+  if (row.tracking_type !== 'unit') return inBasis;
+  return gpu ? inBasis * gpu : null;
+}
+
+/**
+ * Library rows that carry micros but contributed none to the logged rows —
+ * the scaler couldn't convert the amount. Never let that be a silent zero.
+ */
+function droppedMicrosWarnings(db, userId, rows) {
+  const list = (rows || []).filter(r => Number(r?.label_ingredient_id) > 0);
+  if (!list.length) return [];
+  const { uncovered } = labelMicrosForRows(db, list, userId);
+  const get = db.prepare(
+    'SELECT name, micros_json, tracking_type, unit_name, grams_per_unit FROM label_ingredients WHERE id = ? AND user_id = ?'
+  );
+  const out = [];
+  for (const r of uncovered) {
+    const ing = get.get(Number(r.label_ingredient_id), userId);
+    if (!ing || !storedMicros(ing.micros_json)) continue;
+    out.push(
+      `Micros for "${ing.name}" were NOT counted: ${r.amount} ${r.unit || ''} can't be converted to its ` +
+      `serving${ing.tracking_type === 'unit' && !(Number(ing.grams_per_unit) > 0)
+        ? ` (counted in ${ing.unit_name || 'units'}, no grams_per_unit)` : ''}.`
+    );
+  }
+  return out;
 }
 
 function findIdempotent(db, userId, operationId) {
@@ -405,14 +431,22 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
     const row = db
       .prepare(
         `SELECT id, name, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
-                micros_json, weight_basis
+                micros_json, weight_basis, tracking_type, unit_name, serving_quantity, grams_per_unit
            FROM label_ingredients WHERE id = ? AND user_id = ?`
       )
       .get(id, userId);
     if (!row) return { error: `items[${index}]: label_ingredient_id ${id} not found` };
-    if (!Number.isFinite(quantity_g) || quantity_g <= 0) {
-      return { error: `items[${index}].quantity_g must be a positive number` };
+    // An amount is grams (quantity_g) or a count/measure in a unit (quantity + unit).
+    const hasGrams = working?.quantity_g != null;
+    const hasQty = working?.quantity != null;
+    if (hasGrams === hasQty) {
+      return { error: `items[${index}]: give quantity_g, or quantity (+ optional unit) — exactly one` };
     }
+    const amount = hasGrams ? quantity_g : Number(working.quantity);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { error: `items[${index}].${hasGrams ? 'quantity_g' : 'quantity'} must be a positive number` };
+    }
+    const unitIn = hasGrams ? 'g' : (working.unit != null && working.unit !== '' ? String(working.unit) : null);
     const storedBasis = normalizeWeightBasis(row.weight_basis);
     if (storedBasis && storedBasis !== weight_basis) {
       return {
@@ -423,16 +457,39 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
           `No raw↔cooked conversion is applied.`,
       };
     }
-    const macros = scaleFromServing(row, quantity_g);
-    if (!macros) {
-      return { error: `items[${index}]: ingredient "${row.name}" needs grams_per_serving` };
+    // Same scaler as app logging (unitConvert via ingredientMacrosForAmount),
+    // so macros and the micros derived later from this row always agree.
+    const unit = displayUnitForIngredient(row, unitIn ?? undefined);
+    const raw = ingredientMacrosForAmount(row, amount, unitIn ?? unit);
+    if (!raw) {
+      const basis = basisUnitFor(row);
+      const countWithoutGrams = row.tracking_type === 'unit' && isMassUnit(unitIn || '') && !basis?.gramsPerUnit;
+      return {
+        error: countWithoutGrams
+          ? `items[${index}]: "${row.name}" is counted in ${basis.unit} and has no grams_per_unit, so ` +
+            `${amount} ${unitIn} can't be converted. Log it by count (quantity + unit "${basis.unit}"), ` +
+            `or set grams_per_unit with update_food_item.`
+          : `items[${index}]: "${row.name}" can't be measured in "${unitIn || unit}" ` +
+            `(its serving is ${row.tracking_type === 'unit' ? basis?.unit : 'grams'}; set grams_per_serving / grams_per_unit if missing).`,
+        code: 'UNIT_NOT_CONVERTIBLE',
+      };
     }
+    const macros = {
+      calories: round(raw.calories, 1),
+      protein_g: round(raw.protein_g, 2),
+      carbs_g: round(raw.carbs_g, 2),
+      fat_g: round(raw.fat_g, 2),
+      fiber_g: row.fiber_g == null ? null : round(raw.fiber_g, 2),
+    };
+    const storedUnit = hasGrams ? 'g' : unit;
     return {
       item: {
         kind: 'label_ingredient',
         label_ingredient_id: row.id,
         name: row.name,
-        quantity_g,
+        amount,
+        unit: storedUnit,
+        quantity_g: hasGrams ? quantity_g : gramsForAmount(row, amount, storedUnit),
         weight_basis,
         resolved_weight_basis: weight_basis,
         library_weight_basis: storedBasis || null,
@@ -529,6 +586,8 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
     item: {
       kind: 'new_food',
       name,
+      amount: quantity_g,
+      unit: 'g',
       quantity_g,
       weight_basis,
       resolved_weight_basis: weight_basis,
@@ -673,16 +732,23 @@ function fetchLogEntryById(db, userId, id, { includeDeleted = false } = {}) {
  * come from the recipe row. A recipe with no library lines, or one whose
  * lines can't be scaled, keeps a null snapshot rather than refusing the log.
  */
-function recipeIngredientsSnapshotJson(db, userId, recipe) {
+function recipeIngredientsSnapshotJson(db, userId, recipe, warnings = null) {
   try {
     const receipt = receiptFromRecipeTemplate(db, recipe, userId);
     return receipt?.rows?.length ? JSON.stringify(receipt.rows) : null;
-  } catch {
+  } catch (e) {
+    if (warnings) {
+      const who = e.ingredientName ? ` ("${e.ingredientName}"${e.unit ? ` in ${e.unit}` : ''})` : '';
+      warnings.push(
+        `Micros for recipe "${recipe.name}" were NOT counted: a recipe line can't be scaled${who} ` +
+        `[${e.code || e.message}]. Macros come from the recipe row.`
+      );
+    }
     return null;
   }
 }
 
-function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, weight_basis, resolved, totals }) {
+function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, weight_basis, resolved, totals, warnings = null }) {
   const result = { log_entry_ids: [], label_ingredient_ids: [] };
   const ingredientRows = [];
 
@@ -691,14 +757,14 @@ function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, w
       const lid = createLabelFromNewFood(db, userId, item);
       result.label_ingredient_ids.push(lid);
       ingredientRows.push({
-        name: item.name, amount: item.quantity_g, unit: 'g', label_ingredient_id: lid,
+        name: item.name, amount: item.amount, unit: item.unit, label_ingredient_id: lid,
         calories: item.macros.calories, protein_g: item.macros.protein_g, carbs_g: item.macros.carbs_g,
         fat_g: item.macros.fat_g, fiber_g: item.macros.fiber_g, weight_basis: item.weight_basis,
         nutrition_source: item.nutrition_source,
       });
     } else if (item.kind === 'label_ingredient') {
       ingredientRows.push({
-        name: item.name, amount: item.quantity_g, unit: 'g', label_ingredient_id: item.label_ingredient_id,
+        name: item.name, amount: item.amount, unit: item.unit, label_ingredient_id: item.label_ingredient_id,
         calories: item.macros.calories, protein_g: item.macros.protein_g, carbs_g: item.macros.carbs_g,
         fat_g: item.macros.fat_g, fiber_g: item.macros.fiber_g, weight_basis: item.weight_basis,
         nutrition_source: item.nutrition_source,
@@ -723,7 +789,7 @@ function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, w
       )
       .get(onlyRecipe.recipe_id, userId);
     if (!recipe) throw Object.assign(new Error('Recipe missing'), { code: 'RECIPE_GONE' });
-    const ingredientsJson = recipeIngredientsSnapshotJson(db, userId, recipe);
+    const ingredientsJson = recipeIngredientsSnapshotJson(db, userId, recipe, warnings);
     const ins = db
       .prepare(
         `INSERT INTO log_entries (
@@ -834,8 +900,9 @@ function logMeal(db, userId, args = {}, { refMap = null, skipAudit = false } = {
     const mealWarnings = collectMealWarnings(built);
 
     const doWrite = () => {
-      const ids = insertMealFromResolved(db, userId, built);
+      const ids = insertMealFromResolved(db, userId, { ...built, warnings: mealWarnings });
       const entry = fetchLogEntryById(db, userId, ids.log_entry_ids[0]);
+      mealWarnings.push(...droppedMicrosWarnings(db, userId, entry?.ingredients));
       const day = reads.getDay(db, userId, built.date);
       const response = {
         op: OPS.log_meal,
@@ -862,7 +929,8 @@ function getFoodRow(db, userId, id) {
     .prepare(
       `SELECT id, name, brand_name, serving_size_text, grams_per_serving,
               calories, protein_g, carbs_g, fat_g, fiber_g, micros_json,
-              created_via, weight_basis, nutrition_source, source_type, tracking_type
+              created_via, weight_basis, nutrition_source, source_type, tracking_type,
+              unit_name, serving_quantity, grams_per_unit
          FROM label_ingredients WHERE id = ? AND user_id = ?`
     )
     .get(id, userId);
@@ -1021,10 +1089,32 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
     if (args.name != null) patch.name = String(args.name).trim();
     if (args.brand_name !== undefined) patch.brand_name = args.brand_name ? String(args.brand_name).trim() : null;
     if (args.serving_size_text != null) patch.serving_size_text = String(args.serving_size_text).trim();
+    const isUnit = before.tracking_type === 'unit';
     if (Object.prototype.hasOwnProperty.call(args, 'grams_per_serving')) {
+      if (isUnit) {
+        return {
+          error:
+            `"${before.name}" is counted in ${before.unit_name || 'units'}; its gram weight is grams_per_unit ` +
+            `(grams in one ${before.unit_name || 'unit'}), not grams_per_serving.`,
+          code: 'UNIT_TRACKED',
+        };
+      }
       const gps = normalizeGramsPerServingInput(args.grams_per_serving);
       if (gps.error) return { error: gps.error };
       patch.grams_per_serving = gps.value;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, 'grams_per_unit')) {
+      if (!isUnit) {
+        return {
+          error: `"${before.name}" is weight-tracked; set grams_per_serving instead of grams_per_unit.`,
+          code: 'WEIGHT_TRACKED',
+        };
+      }
+      const gpu = args.grams_per_unit == null || args.grams_per_unit === '' ? null : Number(args.grams_per_unit);
+      if (gpu != null && (!Number.isFinite(gpu) || gpu <= 0)) {
+        return { error: 'grams_per_unit must be a positive number (or null to clear)' };
+      }
+      patch.grams_per_unit = gpu;
     }
     if (args.calories != null) patch.calories = Number(args.calories);
     if (args.protein_g != null) patch.protein_g = Number(args.protein_g);
@@ -1071,7 +1161,14 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
         if (m.error) return { error: m.error };
         microsJson = m.micros_json;
       } else {
-        const m = microsJsonFromPer100g(args.micros_per_100g, patch.grams_per_serving, {
+        if (isUnit && reads.servingGramsFor(patch) == null) {
+          return {
+            error:
+              `micros_per_100g needs a gram weight: "${patch.name}" is counted in ${patch.unit_name || 'units'} ` +
+              `and has no grams_per_unit. Set grams_per_unit, or pass micros (per label serving) instead.`,
+          };
+        }
+        const m = microsJsonFromPer100g(args.micros_per_100g, reads.servingGramsFor(patch), {
           confidence: conf.confidence,
           notes: 'Updated via MCP (per_100g scaled to serving)',
         });
@@ -1085,12 +1182,12 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
     const doWrite = () => {
       db.prepare(
         `UPDATE label_ingredients
-            SET name = ?, brand_name = ?, serving_size_text = ?, grams_per_serving = ?,
+            SET name = ?, brand_name = ?, serving_size_text = ?, grams_per_serving = ?, grams_per_unit = ?,
                 calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
                 weight_basis = ?, nutrition_source = ?, micros_json = ?
           WHERE id = ? AND user_id = ?`
       ).run(
-        patch.name, patch.brand_name, patch.serving_size_text, patch.grams_per_serving,
+        patch.name, patch.brand_name, patch.serving_size_text, patch.grams_per_serving, patch.grams_per_unit ?? null,
         patch.calories, patch.protein_g, patch.carbs_g, patch.fat_g, patch.fiber_g,
         patch.weight_basis, patch.nutrition_source, microsJson, id, userId
       );
@@ -1161,9 +1258,10 @@ function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
       if (hasItems) {
         softDeleteEntry(db, userId, id);
         const ids = insertMealFromResolved(db, userId, {
-          date, name, meal_slot, time_min, weight_basis, resolved, totals,
+          date, name, meal_slot, time_min, weight_basis, resolved, totals, warnings,
         });
         const after = fetchLogEntryById(db, userId, ids.log_entry_ids[0]);
+        warnings.push(...droppedMicrosWarnings(db, userId, after?.ingredients));
         const result_row_ids = {
           log_entry_ids: ids.log_entry_ids,
           replaced_log_entry_id: id,
@@ -1182,6 +1280,8 @@ function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
             label_ingredient_id: it.label_ingredient_id || null,
             recipe_id: it.recipe_id || null,
             quantity_g: it.quantity_g ?? null,
+            amount: it.amount ?? null,
+            unit: it.unit ?? null,
             servings: it.servings ?? null,
             resolved_weight_basis: it.resolved_weight_basis || it.weight_basis,
             macros: it.macros,
@@ -1333,7 +1433,7 @@ function createMealPrep(db, userId, args = {}, { skipAudit = false, refMap = nul
     // not the whole pot (1.5kg of chicken across 5 containers is normal).
     warnings.push(...warningsForMealTotals(
       perServing,
-      resolved.map(it => ({ ...it, quantity_g: it.quantity_g / servings }))
+      resolved.map(it => ({ ...it, quantity_g: it.quantity_g == null ? null : it.quantity_g / servings }))
     ));
     const sameName = db
       .prepare(
@@ -1357,11 +1457,13 @@ function createMealPrep(db, userId, args = {}, { skipAudit = false, refMap = nul
         return {
           kind: 'ingredient',
           name: item.name,
-          amount: String(round(item.quantity_g / servings, 1)),
-          unit: 'g',
+          // Counts keep 2 decimals (4 eggs / 3 = 1.33 egg); grams keep 1.
+          amount: String(round(item.amount / servings, item.unit === 'g' ? 1 : 2)),
+          unit: item.unit,
           label_ingredient_id: lid,
         };
       });
+      warnings.push(...droppedMicrosWarnings(db, userId, ingredients));
       const meta = {
         source: MEAL_PREP_SOURCE,
         containers: servings,
@@ -1392,8 +1494,11 @@ function createMealPrep(db, userId, args = {}, { skipAudit = false, refMap = nul
         batch_totals: batchTotals,
         resolved_items: resolved.map(it => ({
           name: it.name,
-          batch_quantity_g: it.quantity_g,
-          per_serving_quantity_g: round(it.quantity_g / servings, 1),
+          batch_amount: it.amount,
+          per_serving_amount: round(it.amount / servings, it.unit === 'g' ? 1 : 2),
+          unit: it.unit,
+          batch_quantity_g: it.quantity_g ?? null,
+          per_serving_quantity_g: it.quantity_g == null ? null : round(it.quantity_g / servings, 1),
           resolved_weight_basis: it.resolved_weight_basis,
           nutrition_source: it.nutrition_source,
         })),
@@ -1784,6 +1889,11 @@ function revertOneResult(db, userId, result) {
       b.calories, b.protein_g, b.carbs_g, b.fat_g, b.fiber_g,
       b.weight_basis, b.nutrition_source, b.micros_json ?? null, b.id, userId
     );
+    // Audits written before grams_per_unit was snapshotted don't carry it — leave it alone then.
+    if (Object.prototype.hasOwnProperty.call(b, 'grams_per_unit')) {
+      db.prepare('UPDATE label_ingredients SET grams_per_unit = ? WHERE id = ? AND user_id = ?')
+        .run(b.grams_per_unit ?? null, b.id, userId);
+    }
     return;
   }
   if (op === OPS.update_supplement && result.before) {

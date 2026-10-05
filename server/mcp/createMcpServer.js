@@ -24,7 +24,16 @@ const mealItemSchema = z
     label_ingredient_id: z.number().int().positive().optional(),
     recipe_id: z.number().int().positive().optional(),
     name: z.string().optional(),
-    quantity_g: z.number().positive().optional(),
+    quantity_g: z.number().positive().optional().describe('Amount in grams'),
+    quantity: z
+      .number()
+      .positive()
+      .optional()
+      .describe('Amount in `unit` (e.g. 4 with unit "egg"). Library items: give quantity OR quantity_g.'),
+    unit: z
+      .string()
+      .optional()
+      .describe('Unit for quantity; defaults to the ingredient\'s own unit (unit_name from search_ingredients).'),
     servings: z.number().positive().optional(),
     calories_per_100g: z.number().nonnegative().optional(),
     protein_g_per_100g: z.number().nonnegative().optional(),
@@ -385,8 +394,11 @@ function createFlopsMcpServer(db, userId) {
     {
       title: 'Log meal',
       description:
-        `${WRITE_NOW} Log a meal immediately. Items: label_ingredient_id+quantity_g, recipe_id+servings, `
-        + 'or new per-100g food. Requires meal weight_basis; item weight_basis overrides it. '
+        `${WRITE_NOW} Log a meal immediately. Items: label_ingredient_id + (quantity_g | quantity+unit), `
+        + 'recipe_id+servings, or new per-100g food. Unit-tracked foods (tracking_type "unit", e.g. eggs) '
+        + 'should be logged by count (quantity: 4, unit: "egg"); grams only work when they have grams_per_unit, '
+        + 'otherwise the item is refused. Any library micros that could not be counted are listed in warnings. '
+        + 'Requires meal weight_basis; item weight_basis overrides it. '
         + 'If an item cites a library ingredient whose stored weight_basis disagrees, the write is refused. '
         + 'Requires per-item nutrition_source. Returns the entry, resolved_weight_basis per item, and day totals/vs_goals. '
         + 'Discover ingredient IDs with search_ingredients. '
@@ -463,7 +475,9 @@ function createFlopsMcpServer(db, userId) {
       title: 'Update food item',
       description:
         `${WRITE_NOW} Patch an existing label ingredient. Returns before/after. `
-        + 'Pass micros (per label serving) OR micros_per_100g (scaled using grams_per_serving ≥ 3); not both. '
+        + 'Pass micros (per label serving) OR micros_per_100g (scaled by the serving\'s gram weight); not both. '
+        + 'Gram weight: weight-tracked foods use grams_per_serving; unit-tracked foods (eggs, slices) use '
+        + 'grams_per_unit = grams in ONE unit — grams_per_serving is refused on them. '
         + 'When writing micros, micros_confidence is required (high|medium|low) — not hardcoded. '
         + 'Both write label_ingredients.micros_json in the standard per-serving blob shape Part B will read.',
       inputSchema: z
@@ -477,7 +491,13 @@ function createFlopsMcpServer(db, userId) {
             .min(3)
             .nullable()
             .optional()
-            .describe('Label serving weight in grams (min 3), or null to clear a placeholder.'),
+            .describe('Label serving weight in grams (min 3), or null to clear a placeholder. Weight-tracked foods only.'),
+          grams_per_unit: z
+            .number()
+            .positive()
+            .nullable()
+            .optional()
+            .describe('Unit-tracked foods only: grams in ONE unit (one egg ≈ 50). The app shows this as "1 egg = grams".'),
           calories: z.number().nonnegative().optional(),
           protein_g: z.number().nonnegative().optional(),
           carbs_g: z.number().nonnegative().optional(),
