@@ -105,7 +105,6 @@ export default function MealBuilder() {
       setMealName('');
       setMealSaveError('');
       setMealSaved(false);
-      setExpandedLines(new Set());
       return undefined;
     }
     setLoadingRecipe(true);
