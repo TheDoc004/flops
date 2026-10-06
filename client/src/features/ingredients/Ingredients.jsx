@@ -92,6 +92,7 @@ function emptyForm() {
     base_label: '',
     brand_name: '',
     ...emptyServing(), // serving_amount, serving_unit, serving_unit_custom, gram_equivalent
+    servings_per_container: '',
     calories: '',
     protein_g: '',
     carbs_g: '',
@@ -317,6 +318,7 @@ export default function Ingredients() {
       base_label: row.base_label || '',
       brand_name: row.brand_name || '',
       ...servingFromRow(row),
+      servings_per_container: row.servings_per_container == null ? '' : String(row.servings_per_container),
       calories: String(row.calories ?? ''),
       protein_g: String(row.protein_g ?? ''),
       carbs_g: String(row.carbs_g ?? ''),
@@ -354,6 +356,7 @@ export default function Ingredients() {
         unit_name: stored.unit_name,
         serving_quantity: stored.serving_quantity,
         grams_per_unit: stored.grams_per_unit,
+        servings_per_container: form.servings_per_container === '' ? null : Number(form.servings_per_container),
       };
       if (!editing && labelPhotoDataUri && labelPhotoDataUri.length < 350_000) {
         body.photo_data_uri = labelPhotoDataUri;
@@ -609,6 +612,21 @@ export default function Ingredients() {
                   <ServingUnitsHint serving={form} unitName={unitLabel(form)} />
                 </div>
               )}
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label htmlFor="ing-servings-per-container">
+                  Servings per container <span style={{ color: 'var(--color-text-muted)', fontSize: 13, fontWeight: 400 }}>(optional)</span>
+                </label>
+                <input
+                  id="ing-servings-per-container"
+                  type="number" min="0" step="0.1"
+                  value={form.servings_per_container}
+                  onChange={e => setForm(f => ({ ...f, servings_per_container: e.target.value }))}
+                  placeholder="e.g. 8"
+                />
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-text-faint)' }}>
+                  From the label. Lets the meal builder add a whole bag or box in one tap.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -840,6 +858,7 @@ export default function Ingredients() {
                         : <>{i.serving_size_text}{i.grams_per_serving != null ? ` · ${i.grams_per_serving}g/serving` : ''}</>
                       }
                       {' · '}{i.calories} cal
+                      {Number(i.servings_per_container) > 0 ? <>{' · '}{+Number(i.servings_per_container).toFixed(2)} servings/container</> : null}
                     </div>
                   </div>
                   <div className="ingredient-card-actions">

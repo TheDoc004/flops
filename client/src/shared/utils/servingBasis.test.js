@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pluralizeUnit, formatAmountWithUnit } from './servingBasis';
+import { pluralizeUnit, formatAmountWithUnit, containerAmount } from './servingBasis';
 
 describe('pluralizeUnit', () => {
   it('pluralizes countable units above one', () => {
@@ -60,5 +60,22 @@ describe('formatAmountWithUnit', () => {
   it('falls back when the amount is unusable', () => {
     expect(formatAmountWithUnit(null, 'g')).toBe('g');
     expect(formatAmountWithUnit(undefined, '')).toBe('—');
+  });
+});
+
+describe('containerAmount', () => {
+  it('is servings per container × the serving, in grams for weighed foods', () => {
+    expect(containerAmount({ tracking_type: 'weight', grams_per_serving: 113.4, servings_per_container: 8 }))
+      .toEqual({ amount: 907.2, unit: 'g' });
+  });
+
+  it('counts in the unit for unit-tracked foods', () => {
+    expect(containerAmount({ tracking_type: 'unit', unit_name: 'fillet', serving_quantity: 1, servings_per_container: 8 }))
+      .toEqual({ amount: 8, unit: 'fillet' });
+  });
+
+  it('is null when the label count is not recorded', () => {
+    expect(containerAmount({ tracking_type: 'weight', grams_per_serving: 100 })).toBeNull();
+    expect(containerAmount({ tracking_type: 'weight', servings_per_container: 4 })).toBeNull();
   });
 });

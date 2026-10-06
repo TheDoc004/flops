@@ -61,7 +61,7 @@ function createLabelIngredientsRouter(db) {
       .prepare(
         `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
                 source_type, use_count, last_used_at, barcode, micros_json,
-                tracking_type, unit_name, serving_quantity, grams_per_unit,
+                tracking_type, unit_name, serving_quantity, grams_per_unit, servings_per_container,
                 CASE WHEN photo_data_uri IS NOT NULL AND LENGTH(photo_data_uri) > 0 THEN 1 ELSE 0 END AS has_photo
          FROM label_ingredients WHERE user_id = ? ORDER BY name`
       )
@@ -77,7 +77,7 @@ function createLabelIngredientsRouter(db) {
       .prepare(
         `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri,
                 source_type, use_count, last_used_at, barcode, micros_json,
-                tracking_type, unit_name, serving_quantity, grams_per_unit
+                tracking_type, unit_name, serving_quantity, grams_per_unit, servings_per_container
          FROM label_ingredients WHERE id = ? AND user_id = ?`
       )
       .get(id, userId);
@@ -125,13 +125,15 @@ function createLabelIngredientsRouter(db) {
     const unit_name = normalizeOptionalString(req.body?.unit_name, { maxLen: 64 });
     const serving_quantity = normalizeOptionalNumber(req.body?.serving_quantity, { min: 0.0001 });
     const grams_per_unit = normalizeOptionalNumber(req.body?.grams_per_unit, { min: 0.0001 });
+    const servings_per_container = normalizeOptionalNumber(req.body?.servings_per_container, { min: 0.01 });
 
     const r = db
       .prepare(
         `INSERT INTO label_ingredients (
           user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri,
-          source_type, use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit, barcode, micros_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?, ?)`
+          source_type, use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit, barcode, micros_json,
+          servings_per_container
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         userId,
@@ -152,13 +154,14 @@ function createLabelIngredientsRouter(db) {
         serving_quantity,
         grams_per_unit,
         barcode,
-        micros_json
+        micros_json,
+        servings_per_container
       );
 
     const row = db
       .prepare(
         `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
-                source_type, use_count, last_used_at, barcode, micros_json, tracking_type, unit_name, serving_quantity, grams_per_unit,
+                source_type, use_count, last_used_at, barcode, micros_json, tracking_type, unit_name, serving_quantity, grams_per_unit, servings_per_container,
                 CASE WHEN photo_data_uri IS NOT NULL AND LENGTH(photo_data_uri) > 0 THEN 1 ELSE 0 END AS has_photo
          FROM label_ingredients WHERE id = ?`
       )
@@ -198,6 +201,7 @@ function createLabelIngredientsRouter(db) {
     const unit_name = normalizeOptionalString(req.body?.unit_name, { maxLen: 64 });
     const serving_quantity = normalizeOptionalNumber(req.body?.serving_quantity, { min: 0.0001 });
     const grams_per_unit = normalizeOptionalNumber(req.body?.grams_per_unit, { min: 0.0001 });
+    const servings_per_container = normalizeOptionalNumber(req.body?.servings_per_container, { min: 0.01 });
     // Only set when supplied (COALESCE below) — the edit form never sends a
     // barcode, and an edit must not wipe one an earlier scan attached.
     const barcode = normalizeBarcode(req.body?.barcode);
@@ -210,6 +214,7 @@ function createLabelIngredientsRouter(db) {
        SET name = ?, base_label = ?, brand_name = ?, serving_size_text = ?, grams_per_serving = ?,
            calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
            tracking_type = ?, unit_name = ?, serving_quantity = ?, grams_per_unit = ?,
+           servings_per_container = CASE WHEN ? THEN ? ELSE servings_per_container END,
            barcode = COALESCE(?, barcode),
            micros_json = COALESCE(?, micros_json)
        WHERE id = ? AND user_id = ?`
@@ -228,6 +233,9 @@ function createLabelIngredientsRouter(db) {
       unit_name,
       serving_quantity,
       grams_per_unit,
+      // Absent key keeps what's stored; an explicit null/"" clears it.
+      req.body && Object.prototype.hasOwnProperty.call(req.body, 'servings_per_container') ? 1 : 0,
+      servings_per_container,
       barcode,
       micros_json,
       id,
@@ -236,7 +244,7 @@ function createLabelIngredientsRouter(db) {
 
     const row = db.prepare(
       `SELECT id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
-              source_type, use_count, last_used_at, barcode, micros_json, tracking_type, unit_name, serving_quantity, grams_per_unit,
+              source_type, use_count, last_used_at, barcode, micros_json, tracking_type, unit_name, serving_quantity, grams_per_unit, servings_per_container,
               CASE WHEN photo_data_uri IS NOT NULL AND LENGTH(photo_data_uri) > 0 THEN 1 ELSE 0 END AS has_photo
        FROM label_ingredients WHERE id = ? AND user_id = ?`
     ).get(id, userId);

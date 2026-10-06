@@ -726,6 +726,11 @@ function createDb(dbPath) {
   if (labelCols.length && !labelCols.includes('grams_per_unit')) {
     db.exec(`ALTER TABLE label_ingredients ADD COLUMN grams_per_unit REAL`);
   }
+  // "Servings per container" off the label — lets meal prep enter a whole bag
+  // or box as an amount instead of doing the multiplication by hand.
+  if (labelCols.length && !labelCols.includes('servings_per_container')) {
+    db.exec(`ALTER TABLE label_ingredients ADD COLUMN servings_per_container REAL`);
+  }
   // Product barcode (EAN/UPC digits) when the ingredient came from a scan —
   // lets a re-scan find the saved item instead of adding a near-duplicate.
   if (labelCols.length && !labelCols.includes('barcode')) {

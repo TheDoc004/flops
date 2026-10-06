@@ -53,11 +53,12 @@ const WRITE_ALLOWED_KEYS = {
     'op', 'ref', 'name', 'brand_name', 'serving_size_text', 'grams_per_serving',
     'calories_per_100g', 'protein_g_per_100g', 'carbs_g_per_100g', 'fat_g_per_100g', 'fiber_g_per_100g',
     'nutrition_source', 'weight_basis', 'micros_per_100g', 'micros_confidence', 'allow_duplicate', 'operation_id',
+    'servings_per_container',
   ]),
   [OPS.update_food_item]: new Set([
     'op', 'label_ingredient_id', 'name', 'brand_name', 'serving_size_text', 'grams_per_serving', 'grams_per_unit',
     'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'nutrition_source', 'weight_basis',
-    'micros', 'micros_per_100g', 'micros_confidence', 'operation_id',
+    'micros', 'micros_per_100g', 'micros_confidence', 'operation_id', 'servings_per_container',
   ]),
   [OPS.update_meal_entry]: new Set([
     'op', 'log_entry_id', 'date', 'name', 'meal_slot', 'time_min', 'weight_basis', 'items', 'operation_id',
@@ -935,10 +936,18 @@ function getFoodRow(db, userId, id) {
       `SELECT id, name, brand_name, serving_size_text, grams_per_serving,
               calories, protein_g, carbs_g, fat_g, fiber_g, micros_json,
               created_via, weight_basis, nutrition_source, source_type, tracking_type,
-              unit_name, serving_quantity, grams_per_unit
+              unit_name, serving_quantity, grams_per_unit, servings_per_container
          FROM label_ingredients WHERE id = ? AND user_id = ?`
     )
     .get(id, userId);
+}
+
+/** servings_per_container arg -> { value } (null clears) or { error }. */
+function normalizeServingsPerContainer(raw) {
+  if (raw == null || raw === '') return { value: null };
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return { error: 'servings_per_container must be a positive number (or null to clear)' };
+  return { value: n };
 }
 
 function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null } = {}) {
@@ -982,6 +991,8 @@ function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null }
       };
     }
     const brand_name = args.brand_name ? String(args.brand_name).trim() : null;
+    const spc = normalizeServingsPerContainer(args.servings_per_container);
+    if (spc.error) return { error: spc.error };
     const library = loadLibraryForDupCheck(db, userId);
     const duplicates = findDuplicateMatches(library, name, {
       threshold: DUPLICATE_SIMILARITY_THRESHOLD,
@@ -1046,14 +1057,14 @@ function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null }
              user_id, name, base_label, brand_name, serving_size_text, grams_per_serving,
              calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri, source_type,
              use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit,
-             barcode, micros_json, created_via, weight_basis, nutrition_source
+             barcode, micros_json, created_via, weight_basis, nutrition_source, servings_per_container
            ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'manual',
-                     0, NULL, 'weight', NULL, NULL, NULL, NULL, ?, 'mcp', ?, ?)`
+                     0, NULL, 'weight', NULL, NULL, NULL, NULL, ?, 'mcp', ?, ?, ?)`
         )
         .run(
           userId, name, brand_name, serving_size_text, grams_per_serving,
           servingMacros.calories, servingMacros.protein_g, servingMacros.carbs_g,
-          servingMacros.fat_g, servingMacros.fiber_g, microsJson, weight_basis, nutrition_source
+          servingMacros.fat_g, servingMacros.fiber_g, microsJson, weight_basis, nutrition_source, spc.value
         );
       const id = r.lastInsertRowid;
       scheduleIngredientMicrosCompletion(db, userId, id);
@@ -1121,6 +1132,11 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
         return { error: 'grams_per_unit must be a positive number (or null to clear)' };
       }
       patch.grams_per_unit = gpu;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, 'servings_per_container')) {
+      const spc = normalizeServingsPerContainer(args.servings_per_container);
+      if (spc.error) return { error: spc.error };
+      patch.servings_per_container = spc.value;
     }
     if (args.calories != null) patch.calories = Number(args.calories);
     if (args.protein_g != null) patch.protein_g = Number(args.protein_g);
@@ -1190,12 +1206,12 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
         `UPDATE label_ingredients
             SET name = ?, brand_name = ?, serving_size_text = ?, grams_per_serving = ?, grams_per_unit = ?,
                 calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
-                weight_basis = ?, nutrition_source = ?, micros_json = ?
+                weight_basis = ?, nutrition_source = ?, micros_json = ?, servings_per_container = ?
           WHERE id = ? AND user_id = ?`
       ).run(
         patch.name, patch.brand_name, patch.serving_size_text, patch.grams_per_serving, patch.grams_per_unit ?? null,
         patch.calories, patch.protein_g, patch.carbs_g, patch.fat_g, patch.fiber_g,
-        patch.weight_basis, patch.nutrition_source, microsJson, id, userId
+        patch.weight_basis, patch.nutrition_source, microsJson, patch.servings_per_container ?? null, id, userId
       );
       scheduleIngredientMicrosCompletion(db, userId, id);
       const after = getFoodRow(db, userId, id);
@@ -2007,6 +2023,10 @@ function revertOneResult(db, userId, result) {
     if (Object.prototype.hasOwnProperty.call(b, 'grams_per_unit')) {
       db.prepare('UPDATE label_ingredients SET grams_per_unit = ? WHERE id = ? AND user_id = ?')
         .run(b.grams_per_unit ?? null, b.id, userId);
+    }
+    if (Object.prototype.hasOwnProperty.call(b, 'servings_per_container')) {
+      db.prepare('UPDATE label_ingredients SET servings_per_container = ? WHERE id = ? AND user_id = ?')
+        .run(b.servings_per_container ?? null, b.id, userId);
     }
     return;
   }

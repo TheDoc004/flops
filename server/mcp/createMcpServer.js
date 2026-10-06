@@ -327,6 +327,27 @@ function createFlopsMcpServer(db, userId) {
   );
 
   registerTool(
+    'get_ingredient',
+    {
+      title: 'Get ingredient',
+      description:
+        `${READ_ONLY} One ingredient-library row with its STORED micronutrients: per label serving `
+        + 'and per 100g, which nutrients were AI-estimated (estimated_keys) vs stored from a label or '
+        + 'an explicit write (stored_keys), which are stored as zero (zero_keys), and which are absent. '
+        + 'Meal micros are summed live from these values — use this to trace a suspicious meal total '
+        + 'to the ingredient behind it.',
+      inputSchema: {
+        label_ingredient_id: z.number().int().positive(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ label_ingredient_id }) => {
+      const ing = reads.getIngredient(db, userId, label_ingredient_id);
+      return ing ? reads.textResult(ing) : reads.errorResult(`No ingredient ${label_ingredient_id}`);
+    }
+  );
+
+  registerTool(
     'list_supplements',
     {
       title: 'List supplements',
@@ -440,6 +461,11 @@ function createFlopsMcpServer(db, userId) {
             .min(3)
             .optional()
             .describe('Label serving weight in grams (min 3). Omit to default 100g when creating from per-100g macros.'),
+          servings_per_container: z
+            .number()
+            .positive()
+            .optional()
+            .describe('"Servings per container" from the label (e.g. 8 for a 2 lb bag of 4 oz servings).'),
           calories_per_100g: z.number().nonnegative(),
           protein_g_per_100g: z.number().nonnegative(),
           carbs_g_per_100g: z.number().nonnegative(),
@@ -498,6 +524,12 @@ function createFlopsMcpServer(db, userId) {
             .nullable()
             .optional()
             .describe('Unit-tracked foods only: grams in ONE unit (one egg ≈ 50). The app shows this as "1 egg = grams".'),
+          servings_per_container: z
+            .number()
+            .positive()
+            .nullable()
+            .optional()
+            .describe('"Servings per container" from the label, or null to clear.'),
           calories: z.number().nonnegative().optional(),
           protein_g: z.number().nonnegative().optional(),
           carbs_g: z.number().nonnegative().optional(),

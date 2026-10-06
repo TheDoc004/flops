@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-06 (micros accuracy: complete ingredient micros, additive merge, "not counted" warnings)_
+_Last updated: 2026-10-06 (micros accuracy pass; `get_ingredient`; servings per container; Meal Builder crash fix)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -47,7 +47,12 @@ AI estimate per serving — stored/label values never overwritten, `filled_keys`
 `completed_at` on the blob; runs after ingredient create/edit and as a production boot
 backfill (`MICROS_BACKFILL=1` to run elsewhere). (3) log-time `mergeMicros` now ADDS label +
 estimate (they cover different rows) instead of label replacing estimate.
-Still open from the audit: salmon #98 omega-3 ~2–3× too high and no `grams_per_unit`.
+MCP `get_ingredient` shows one row's stored micros (per serving + per 100g, `estimated_keys`,
+`zero_keys`, `absent_keys`) for tracing a meal total to its ingredient. Note: a stored 0 blocks
+the gap-fill (pico de gallo vit C).
+**Servings per container (2026-10-06):** `label_ingredients.servings_per_container` (ingredient
+form, REST, MCP add/update; reads expose `container` totals). Meal Builder shows "+ 1 container"
+per row. Not yet in the Log Meal modal.
 
 **Last active work stream:** `create_meal_prep` MCP write tool — agents save a batch
 as an equal-split limited-use recipe (whole-batch grams in, per-container recipe out;

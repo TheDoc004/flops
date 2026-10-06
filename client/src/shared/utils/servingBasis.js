@@ -117,6 +117,23 @@ export function formatAmountWithUnit(amount, unit) {
   return u ? `${rounded} ${u}` : String(rounded);
 }
 
+/**
+ * One whole container of a stored ingredient as a loggable amount:
+ * servings_per_container × one serving, in grams for weight-tracked rows and
+ * in the row's own unit otherwise. null when the label count isn't recorded.
+ */
+export function containerAmount(row) {
+  const spc = Number(row?.servings_per_container);
+  if (!Number.isFinite(spc) || spc <= 0) return null;
+  if (row.tracking_type === 'unit') {
+    const qty = Number(row.serving_quantity) > 0 ? Number(row.serving_quantity) : 1;
+    return { amount: +(qty * spc).toFixed(3), unit: String(row.unit_name || '').trim() || 'unit' };
+  }
+  const gps = Number(row.grams_per_serving);
+  if (!Number.isFinite(gps) || gps <= 0) return null;
+  return { amount: +(gps * spc).toFixed(1), unit: 'g' };
+}
+
 /** Label for the chosen unit (resolves "custom"). */
 export function unitLabel({ serving_unit, serving_unit_custom }) {
   return serving_unit === 'custom' ? (String(serving_unit_custom || '').trim() || 'unit') : serving_unit;

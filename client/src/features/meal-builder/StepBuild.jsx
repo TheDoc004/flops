@@ -1,5 +1,44 @@
 import IngredientCombobox from './IngredientCombobox';
 import { newLine, macroSummaryText } from './builderUtils';
+import { containerAmount, formatAmountWithUnit } from '@shared/utils/servingBasis';
+
+const OZ_TO_G = 28.349523125;
+
+/**
+ * "+ 1 container" for ingredients whose label records servings per container:
+ * adds a whole bag/box to the line's amount, and says how many containers the
+ * current amount comes to — meal prep is usually whole containers.
+ */
+function ContainerShortcut({ line, ing, updateLine }) {
+  const box = containerAmount(ing);
+  if (!box) return null;
+  const isWeight = ing.tracking_type !== 'unit';
+  const raw = Number(line.amount);
+  const current = Number.isFinite(raw) && raw > 0
+    ? (isWeight && line.unit === 'oz' ? raw * OZ_TO_G : raw)
+    : 0;
+  const containers = current > 0 ? current / box.amount : 0;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+      <button
+        type="button"
+        className="btn-secondary"
+        style={{ minHeight: 32, padding: '4px 10px', fontSize: 12.5 }}
+        onClick={() => updateLine(line.id, {
+          amount: String(+(current + box.amount).toFixed(isWeight ? 1 : 3)),
+          ...(isWeight ? { unit: 'g' } : {}),
+        })}
+      >
+        + 1 container ({formatAmountWithUnit(box.amount, box.unit)})
+      </button>
+      {containers > 0 && (
+        <span style={{ fontSize: 12.5, color: 'var(--color-text-muted)' }}>
+          = {+containers.toFixed(2)} container{Math.abs(containers - 1) < 0.005 ? '' : 's'}
+        </span>
+      )}
+    </div>
+  );
+}
 
 /**
  * Wizard step 1 — assemble the meal from saved ingredients.
@@ -115,6 +154,10 @@ export default function StepBuild({
                 </div>
                 <button type="button" className="btn-secondary mb-remove" onClick={() => setLines(prev => prev.filter(l => l.id !== line.id))} disabled={lines.length <= 1}>Remove</button>
               </div>
+
+              {ingById[line.labelIngredientId] && (
+                <ContainerShortcut line={line} ing={ingById[line.labelIngredientId]} updateLine={updateLine} />
+              )}
 
               {m && (
                 <div className="mb-macro" style={{ marginTop: 6, fontSize: 13, color: 'var(--color-text-muted)' }}>

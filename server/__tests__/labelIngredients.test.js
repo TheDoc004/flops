@@ -62,5 +62,20 @@ describe('/api/label-ingredients', () => {
     expect(row.use_count).toBe(1);
     expect(row.last_used_at).toBeTruthy();
   });
-});
 
+  it('stores servings_per_container, keeps it when a PUT omits it, clears it on null', async () => {
+    const { app } = buildApp();
+    const base = {
+      user_id: 0, name: 'Salmon', serving_size_text: '113 g', grams_per_serving: 113.4,
+      calories: 140, protein_g: 23, carbs_g: 0, fat_g: 5,
+    };
+    const { body: ing } = await request(app).post('/api/label-ingredients').send({ ...base, servings_per_container: 8 });
+    expect(ing.servings_per_container).toBe(8);
+
+    const kept = await request(app).put(`/api/label-ingredients/${ing.id}`).send({ ...base, calories: 150 });
+    expect(kept.body.servings_per_container).toBe(8);
+
+    const cleared = await request(app).put(`/api/label-ingredients/${ing.id}`).send({ ...base, servings_per_container: null });
+    expect(cleared.body.servings_per_container).toBeNull();
+  });
+});

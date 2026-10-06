@@ -164,3 +164,47 @@ describe('resolveEntryMicros — rows without library micros', () => {
     expect(coverage.missing_ingredients).toEqual(['Blueberries, fresh']);
   });
 });
+
+describe('MCP getIngredient', () => {
+  const reads = require('../mcp/reads');
+
+  it('shows stored, estimated, zero and absent nutrients per serving and per 100g', async () => {
+    const db = createDb(':memory:');
+    seed(db, { id: 40, name: 'Pico', grams_per_serving: 30, micros: { sodium_mg: 120, vitamin_c_mg: 0 } });
+    await completeIngredientMicros(db, 1, 40, { estimate: fakeEstimate({ potassium_mg: 60, vitamin_c_mg: 4 }) });
+
+    const ing = reads.getIngredient(db, 1, 40);
+    expect(ing.name).toBe('Pico');
+    expect(ing.micros.per_serving).toMatchObject({ sodium_mg: 120, vitamin_c_mg: 0, potassium_mg: 60 });
+    expect(ing.micros.per_100g.sodium_mg).toBe(400);
+    expect(ing.micros.estimated_keys).toEqual(['potassium_mg']);
+    expect(ing.micros.zero_keys).toEqual(['vitamin_c_mg']);
+    expect(ing.micros.absent_keys).toContain('zinc_mg');
+    expect(reads.getIngredient(db, 2, 40)).toBeNull(); // another user's row
+  });
+});
+
+describe('servings_per_container via MCP', () => {
+  const { buildTestApp, createUser } = require('./helpers');
+  const reads = require('../mcp/reads');
+  const writes = require('../mcp/writes');
+
+  it('round-trips through add/update and reports the whole container', () => {
+    const { db } = buildTestApp();
+    const userId = createUser(db, 'container@test.test').id;
+    const added = writes.addFoodItem(db, userId, {
+      name: 'Frozen salmon portions', grams_per_serving: 113.4, servings_per_container: 8,
+      calories_per_100g: 123, protein_g_per_100g: 20, carbs_g_per_100g: 0, fat_g_per_100g: 4.4,
+      nutrition_source: 'label', weight_basis: 'raw',
+    });
+    expect(added.error).toBeUndefined();
+    let ing = reads.getIngredient(db, userId, added.label_ingredient_id);
+    expect(ing.servings_per_container).toBe(8);
+    expect(ing.container).toEqual({ servings: 8, grams: 907.2 });
+
+    const upd = writes.updateFoodItem(db, userId, { label_ingredient_id: added.label_ingredient_id, servings_per_container: null });
+    expect(upd.error).toBeUndefined();
+    ing = reads.getIngredient(db, userId, added.label_ingredient_id);
+    expect(ing.container).toBeNull();
+  });
+});

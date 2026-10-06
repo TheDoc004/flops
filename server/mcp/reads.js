@@ -565,10 +565,7 @@ function searchIngredients(db, userId, query, { limit = 25 } = {}) {
   const q = String(query || '').trim().toLowerCase();
   const rows = db
     .prepare(
-      `SELECT id, name, brand_name, serving_size_text, grams_per_serving,
-              calories, protein_g, carbs_g, fat_g, fiber_g, micros_json,
-              weight_basis, nutrition_source, source_type, tracking_type, created_via, barcode,
-              unit_name, serving_quantity, grams_per_unit
+      `SELECT ${INGREDIENT_COLUMNS}
          FROM label_ingredients
         WHERE user_id = ?
         ORDER BY use_count DESC, name COLLATE NOCASE`
@@ -581,43 +578,124 @@ function searchIngredients(db, userId, query, { limit = 25 } = {}) {
         return name.includes(q) || brand.includes(q);
       })
     : rows;
-  return filtered.slice(0, lim).map(r => {
-    const micros = parseMicrosBlob(r.micros_json);
-    return {
-      id: r.id,
-      name: r.name,
-      brand_name: r.brand_name || null,
-      serving_size_text: r.serving_size_text,
-      // Unit-tracked rows: derived from grams_per_unit (their only gram weight).
-      grams_per_serving: servingGramsFor(r),
-      ...(r.tracking_type === 'unit'
-        ? {
-            unit_name: r.unit_name || null,
-            serving_quantity: r.serving_quantity ?? null,
-            grams_per_unit: r.grams_per_unit ?? null,
-            log_by: r.grams_per_unit > 0
-              ? `count (quantity + unit "${r.unit_name || 'unit'}") or quantity_g`
-              : `count only (quantity + unit "${r.unit_name || 'unit'}") — no grams_per_unit`,
-          }
-        : {}),
-      weight_basis: r.weight_basis || null,
-      nutrition_source: r.nutrition_source || null,
-      source_type: r.source_type || null,
-      tracking_type: r.tracking_type || null,
-      barcode: r.barcode || null,
-      created_via: r.created_via || 'app',
-      per_serving: {
-        calories: r.calories,
-        protein_g: r.protein_g,
-        carbs_g: r.carbs_g,
-        fat_g: r.fat_g,
-        fiber_g: r.fiber_g,
-      },
-      per_100g: per100FromServing({ ...r, grams_per_serving: servingGramsFor(r) }),
-      has_micros: !!(micros?.micros && Object.keys(micros.micros).length),
-      micros_confidence: micros?.confidence || null,
-    };
-  });
+  return filtered.slice(0, lim).map(shapeIngredient);
+}
+
+/**
+ * A whole container as a loggable amount: servings_per_container × one serving,
+ * in grams (weight-tracked, or unit-tracked with grams_per_unit) and in units.
+ */
+function containerFor(r) {
+  const spc = Number(r.servings_per_container);
+  if (!Number.isFinite(spc) || spc <= 0) return null;
+  const grams = servingGramsFor(r);
+  const out = { servings: spc, grams: grams ? Math.round(grams * spc * 10) / 10 : null };
+  if (r.tracking_type === 'unit') {
+    const qty = Number(r.serving_quantity) > 0 ? Number(r.serving_quantity) : 1;
+    out.quantity = Math.round(qty * spc * 1000) / 1000;
+    out.unit = r.unit_name || 'unit';
+  }
+  return out;
+}
+
+/** One library row in the shape search_ingredients returns. */
+function shapeIngredient(r) {
+  const micros = parseMicrosBlob(r.micros_json);
+  return {
+    id: r.id,
+    name: r.name,
+    brand_name: r.brand_name || null,
+    serving_size_text: r.serving_size_text,
+    // Unit-tracked rows: derived from grams_per_unit (their only gram weight).
+    grams_per_serving: servingGramsFor(r),
+    ...(r.tracking_type === 'unit'
+      ? {
+          unit_name: r.unit_name || null,
+          serving_quantity: r.serving_quantity ?? null,
+          grams_per_unit: r.grams_per_unit ?? null,
+          log_by: r.grams_per_unit > 0
+            ? `count (quantity + unit "${r.unit_name || 'unit'}") or quantity_g`
+            : `count only (quantity + unit "${r.unit_name || 'unit'}") — no grams_per_unit`,
+        }
+      : {}),
+    weight_basis: r.weight_basis || null,
+    nutrition_source: r.nutrition_source || null,
+    source_type: r.source_type || null,
+    tracking_type: r.tracking_type || null,
+    barcode: r.barcode || null,
+    created_via: r.created_via || 'app',
+    per_serving: {
+      calories: r.calories,
+      protein_g: r.protein_g,
+      carbs_g: r.carbs_g,
+      fat_g: r.fat_g,
+      fiber_g: r.fiber_g,
+    },
+    per_100g: per100FromServing({ ...r, grams_per_serving: servingGramsFor(r) }),
+    has_micros: !!(micros?.micros && Object.keys(micros.micros).length),
+    micros_confidence: micros?.confidence || null,
+    servings_per_container: r.servings_per_container ?? null,
+    container: containerFor(r),
+  };
+}
+
+const INGREDIENT_COLUMNS = `id, name, brand_name, serving_size_text, grams_per_serving,
+              calories, protein_g, carbs_g, fat_g, fiber_g, micros_json,
+              weight_basis, nutrition_source, source_type, tracking_type, created_via, barcode,
+              unit_name, serving_quantity, grams_per_unit, servings_per_container`;
+
+/**
+ * One ingredient with its STORED micronutrients — the per-serving values every
+ * meal containing it is summed from. Says which nutrients were estimated
+ * (filled_keys) versus stored from a label or a deliberate write, and which
+ * are absent, so an audit can find the row behind a suspicious meal total.
+ */
+function getIngredient(db, userId, id) {
+  const row = db
+    .prepare(`SELECT ${INGREDIENT_COLUMNS} FROM label_ingredients WHERE id = ? AND user_id = ?`)
+    .get(id, userId);
+  if (!row) return null;
+  // Raw parse, not parseMicrosBlob: an audit needs stored zeros (a stored 0
+  // blocks the gap-fill) and the blob's filled_keys / completed_at.
+  let blob = null;
+  try {
+    const p = row.micros_json ? JSON.parse(row.micros_json) : null;
+    if (p?.micros && typeof p.micros === 'object') blob = p;
+  } catch { blob = null; }
+  let perServing = null;
+  if (blob) {
+    perServing = {};
+    for (const k of MICRO_KEYS) {
+      const v = blob.micros[k];
+      if (v != null && v !== '' && Number.isFinite(Number(v))) perServing[k] = Number(v);
+    }
+    if (!Object.keys(perServing).length) perServing = null;
+  }
+  const grams = servingGramsFor(row);
+  let per100 = null;
+  if (perServing && grams) {
+    per100 = {};
+    for (const [k, v] of Object.entries(perServing)) {
+      per100[k] = Math.round((Number(v) * 100 / grams) * 1000) / 1000;
+    }
+  }
+  const filled = Array.isArray(blob?.filled_keys) ? blob.filled_keys : [];
+  return {
+    ...shapeIngredient(row),
+    micros: perServing
+      ? {
+          per_serving: perServing,
+          per_100g: per100,
+          confidence: blob.confidence || null,
+          notes: blob.notes || null,
+          estimated_keys: filled,
+          stored_keys: Object.keys(perServing).filter(k => !filled.includes(k)),
+          zero_keys: Object.keys(perServing).filter(k => perServing[k] === 0),
+          absent_keys: MICRO_KEYS.filter(k => !(k in perServing)),
+          completed_at: blob.completed_at || null,
+        }
+      : null,
+  };
 }
 
 /**
@@ -1079,6 +1157,7 @@ module.exports = {
   getMicronutrientTotals,
   searchRecipes,
   searchIngredients,
+  getIngredient,
   listSupplements,
   getGymToday,
   getGymProgress,
