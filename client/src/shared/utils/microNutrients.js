@@ -49,15 +49,27 @@ export function parseMicros(entry) {
   return p; // { micros, confidence, notes, version, estimatedAt }
 }
 
+/**
+ * Logged foods the server could not count toward a blob's micros (no library
+ * data). Their share is absent from the numbers, so the UI must say so rather
+ * than let it read as zero.
+ */
+export function missingIngredients(blob) {
+  const list = blob?.missing_ingredients;
+  return Array.isArray(list) ? list.filter(n => typeof n === 'string' && n.trim()) : [];
+}
+
 /** Sum a day's micros across its entries (scaled by servings). Safe on empties. */
 export function sumDayMicros(entries) {
   const values = {};
   const confs = [];
+  const missing = new Set();
   let withMicros = 0;
   for (const e of entries || []) {
     const m = parseMicros(e);
     if (!m) continue;
     withMicros += 1;
+    for (const name of missingIngredients(m)) missing.add(name);
     if (m.confidence) confs.push(m.confidence);
     const mult = Number(e?.servings) > 0 ? Number(e.servings) : 1;
     for (const k of MICRO_KEYS) {
@@ -67,7 +79,7 @@ export function sumDayMicros(entries) {
   }
   return {
     values,
-    coverage: { withMicros, total: (entries || []).length },
+    coverage: { withMicros, total: (entries || []).length, missingIngredients: [...missing] },
     confidence: lowestConfidence(confs),
     hasMicros: withMicros > 0,
   };

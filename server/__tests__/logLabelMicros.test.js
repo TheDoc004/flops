@@ -116,7 +116,8 @@ describe('Part B: meal micros live from ingredient library', () => {
     expect(blob.micros.iron_mg).toBe(4.5);
     expect(blob.micros.zinc_mg).toBeUndefined();
     expect(blob.confidence).toBe('medium'); // partial → not high
-    expect(blob.notes).toMatch(/1 of 2/);
+    expect(blob.notes).toMatch(/Not counted.*blueberries/);
+    expect(blob.missing_ingredients).toEqual(['a handful of blueberries']);
   });
 
   it('falls back to legacy frozen meal blob when library has nothing', async () => {

@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-05 (MCP `log_body_weight`; server TZ = Pacific)_
+_Last updated: 2026-10-06 (micros accuracy: complete ingredient micros, additive merge, "not counted" warnings)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -37,6 +37,17 @@ onion bagel (11/22/34) to unit tracking.
 `log_entries.micros_json`. History/`get_day`/`get_micronutrient_totals` prefer live
 values; legacy frozen blobs remain as fallback. `get_micronutrient_totals` returns
 coverage + `avg_daily` + `pct_of_daily_target`.
+**Micros accuracy pass (2026-10-06):** an audit of 10/06 found foods silently counted as
+zero micros (blueberries, spinach, apple had no library micros) and label blobs carrying
+only the ~5 printed nutrients. Fixes: (1) `resolveEntryMicros` names uncovered rows in
+`missing_ingredients`; UI (meal + day panels), `get_day` (`micros_missing_ingredients`) and
+`get_micronutrient_totals` (`coverage.ingredients_missing_micros`) show them as "not counted".
+(2) `server/ingredientMicros.js` fills each library ingredient's ABSENT nutrients once with an
+AI estimate per serving — stored/label values never overwritten, `filled_keys` +
+`completed_at` on the blob; runs after ingredient create/edit and as a production boot
+backfill (`MICROS_BACKFILL=1` to run elsewhere). (3) log-time `mergeMicros` now ADDS label +
+estimate (they cover different rows) instead of label replacing estimate.
+Still open from the audit: salmon #98 omega-3 ~2–3× too high and no `grams_per_unit`.
 
 **Last active work stream:** `create_meal_prep` MCP write tool — agents save a batch
 as an equal-split limited-use recipe (whole-batch grams in, per-container recipe out;

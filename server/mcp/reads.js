@@ -124,6 +124,7 @@ function shapeEntry(row, db = null, userId = null) {
         micros: resolved.blob.micros,
         confidence: resolved.blob.confidence || null,
         notes: resolved.blob.notes || null,
+        missing_ingredients: resolved.blob.missing_ingredients || [],
       };
       microsSource = resolved.source;
     } else {
@@ -167,6 +168,9 @@ function shapeEntry(row, db = null, userId = null) {
     micros: micros?.micros || null,
     micros_confidence: micros?.confidence || null,
     micros_source: microsSource,
+    // Ingredients whose micros are NOT in `micros` (no library data) — the
+    // totals are a floor for these meals, not an exact sum.
+    micros_missing_ingredients: micros?.missing_ingredients || [],
     ingredients,
   };
 }
@@ -379,6 +383,7 @@ function getMicronutrientTotals(db, userId, start, end, { includeSupplements = t
   let mealsFromFrozen = 0;
   let ingredientRowsTotal = 0;
   let ingredientRowsCovered = 0;
+  const missingIngredients = new Set();
   for (const e of entries) {
     const resolved = resolveEntryMicros(db, userId, e);
     if (!resolved.blob?.micros) continue;
@@ -387,6 +392,9 @@ function getMicronutrientTotals(db, userId, start, end, { includeSupplements = t
     if (resolved.source === 'frozen') mealsFromFrozen += 1;
     ingredientRowsTotal += resolved.coverage.ingredient_rows;
     ingredientRowsCovered += resolved.coverage.covered;
+    if (resolved.source === 'ingredients') {
+      for (const name of resolved.coverage.missing_ingredients || []) missingIngredients.add(name);
+    }
     accumulateMicros(totals, resolved.blob.micros, Number(e.servings) || 1);
   }
   let supplementDays = 0;
@@ -445,6 +453,8 @@ function getMicronutrientTotals(db, userId, start, end, { includeSupplements = t
       meals_from_frozen: mealsFromFrozen,
       ingredient_rows_with_micros: ingredientRowsCovered,
       ingredient_rows_total: ingredientRowsTotal,
+      // Logged foods counted as zero micros because their library entry has none.
+      ingredients_missing_micros: [...missingIngredients].sort(),
     },
     daily_targets: { ...MICRO_DAILY_TARGETS },
     avg_daily,

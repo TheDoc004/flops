@@ -19,6 +19,7 @@
   --color-secondary-border: #e5e7eb;
   --color-link: #2563eb;             /* canonical link blue */
   --color-success: #047a55;
+  --color-warning-ink: #92400e;      /* caution text, e.g. "not counted" notes */
 
   /* ── Color · surfaces ── */
   --color-bg: #f3ede3;               /* app background */
@@ -146,6 +147,7 @@ html[data-notebook-day="future"] {
   --color-text-body: #e4e4e7;
   --color-text-muted: #c4c4c8;
   --color-text-faint: #a8a8b0;
+  --color-warning-ink: #fbbf24;
   --color-primary: #60a5fa;
   --color-primary-hover: #93c5fd;
   --color-primary-ink: #dbeafe;

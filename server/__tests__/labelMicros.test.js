@@ -61,10 +61,10 @@ describe('storedMicros', () => {
 });
 
 describe('mergeMicros', () => {
-  it('lets a measured value replace an estimate per nutrient', () => {
+  it('adds label and estimated values, since they describe different rows', () => {
     const merged = mergeMicros({ iron_mg: 4.5 }, { iron_mg: 2, zinc_mg: 3 });
-    // Iron was on a label, so the estimate loses; zinc had no label value.
-    expect(merged).toEqual({ iron_mg: 4.5, zinc_mg: 3 });
+    // Label iron is the bread's; estimated iron is the blueberries'. Both count.
+    expect(merged).toEqual({ iron_mg: 6.5, zinc_mg: 3 });
   });
 
   it('works with either side missing', () => {

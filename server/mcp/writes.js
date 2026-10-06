@@ -26,6 +26,7 @@ const {
 } = require('../recipeIngredients');
 const { isMassUnit, amountInBasisUnit, basisUnitFor } = require('../unitConvert');
 const { labelMicrosForRows, storedMicros } = require('../labelMicros');
+const { scheduleIngredientMicrosCompletion } = require('../ingredientMicros');
 
 const NUTRITION_SOURCES = new Set(['label', 'database', 'estimate']);
 const WEIGHT_BASES = new Set(['raw', 'cooked']);
@@ -674,6 +675,7 @@ function createLabelFromNewFood(db, userId, item) {
       userId, item.name, per100.calories, per100.protein_g, per100.carbs_g, per100.fat_g,
       per100.fiber_g, microsJson, item.weight_basis, item.nutrition_source
     );
+  scheduleIngredientMicrosCompletion(db, userId, r.lastInsertRowid);
   return r.lastInsertRowid;
 }
 
@@ -1054,6 +1056,7 @@ function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null }
           servingMacros.fat_g, servingMacros.fiber_g, microsJson, weight_basis, nutrition_source
         );
       const id = r.lastInsertRowid;
+      scheduleIngredientMicrosCompletion(db, userId, id);
       if (refMap && args.ref) refMap.set(String(args.ref), id);
       const food = getFoodRow(db, userId, id);
       const result_row_ids = { label_ingredient_ids: [id] };
@@ -1194,6 +1197,7 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
         patch.calories, patch.protein_g, patch.carbs_g, patch.fat_g, patch.fiber_g,
         patch.weight_basis, patch.nutrition_source, microsJson, id, userId
       );
+      scheduleIngredientMicrosCompletion(db, userId, id);
       const after = getFoodRow(db, userId, id);
       const result_row_ids = { label_ingredient_ids: [id] };
       const response = {

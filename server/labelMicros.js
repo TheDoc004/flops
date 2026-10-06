@@ -102,17 +102,21 @@ function labelMicrosForRows(db, rows, userId) {
 }
 
 /**
- * Merge label micros over estimated ones. A nutrient measured on a label always
- * replaces the estimate for that nutrient — mixing the two per-nutrient is the
- * point, since a label rarely lists all twelve.
+ * Combine label micros with estimated ones. The two describe DIFFERENT rows —
+ * labels cover the rows whose library entry carries micros, the estimate covers
+ * only the rest — so per nutrient they add. Letting a label value replace the
+ * estimate dropped the estimated rows' share whenever both reported a nutrient
+ * (bread's label iron erasing the blueberries' estimated iron).
  */
 function mergeMicros(labelValues, estimatedValues) {
   const out = {};
   for (const key of MICRO_KEYS) {
-    const estimated = Number(estimatedValues?.[key]);
-    if (Number.isFinite(estimated) && estimated > 0) out[key] = Math.round(estimated * 100) / 100;
-    const measured = Number(labelValues?.[key]);
-    if (Number.isFinite(measured) && measured > 0) out[key] = Math.round(measured * 100) / 100;
+    let total = 0;
+    for (const source of [labelValues, estimatedValues]) {
+      const v = Number(source?.[key]);
+      if (Number.isFinite(v) && v > 0) total += v;
+    }
+    if (total > 0) out[key] = Math.round(total * 100) / 100;
   }
   return out;
 }

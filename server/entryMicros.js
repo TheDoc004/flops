@@ -41,11 +41,16 @@ function parseFrozenBlob(micros_json) {
   }
 }
 
+/** Display names of logged rows that contributed no micros. */
+function missingIngredientNames(rows) {
+  return (rows || []).map(r => String(r?.name || '').trim() || 'Unnamed ingredient');
+}
+
 /**
  * @returns {{
  *   blob: object|null,
  *   source: 'ingredients'|'frozen'|null,
- *   coverage: { covered: number, uncovered: number, ingredient_rows: number }
+ *   coverage: { covered: number, uncovered: number, ingredient_rows: number, missing_ingredients: string[] }
  * }}
  */
 function resolveEntryMicros(db, userId, entry) {
@@ -54,10 +59,12 @@ function resolveEntryMicros(db, userId, entry) {
     ? labelMicrosForRows(db, ingredients, userId)
     : { micros: {}, covered: [], uncovered: [], confidences: [] };
 
+  const missing = missingIngredientNames(fromLib.uncovered);
   const coverage = {
     covered: fromLib.covered.length,
     uncovered: fromLib.uncovered.length,
     ingredient_rows: ingredients.length,
+    missing_ingredients: missing,
   };
 
   const liveKeys = Object.keys(fromLib.micros || {}).filter(k => Number(fromLib.micros[k]) > 0);
@@ -68,8 +75,11 @@ function resolveEntryMicros(db, userId, entry) {
     const notes =
       fromLib.uncovered.length === 0
         ? 'Live from ingredient library'
-        : `Live from ${fromLib.covered.length} of ${fromLib.covered.length + fromLib.uncovered.length} ingredients; rest missing library micros`;
+        : `Not counted (no micronutrient data yet): ${missing.join(', ')}`;
     const blob = buildMicrosBlob(fromLib.micros, { confidence, notes });
+    // Rows without library micros add nothing to these totals. Say which, so a
+    // missing food reads as "not counted" rather than as a real zero.
+    if (blob && missing.length) blob.missing_ingredients = missing;
     return { blob, source: blob ? 'ingredients' : null, coverage };
   }
 

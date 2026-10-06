@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MICRO_GROUPS } from '@shared/config/microNutrients';
-import { parseMicros, dominantNutrients, TRACE_FLOOR } from '@shared/utils/microNutrients';
+import { parseMicros, dominantNutrients, missingIngredients, TRACE_FLOOR } from '@shared/utils/microNutrients';
 
 const CONF_NOTE = {
   high: 'From product labels',
@@ -46,6 +46,13 @@ export default function MealMicrosPanel({ entry, caption, emptyNote }) {
     );
   }
 
+  const missing = missingIngredients(blob);
+  const missingNote = missing.length > 0 && (
+    <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--color-warning-ink)' }}>
+      Not counted — no micronutrient data yet for {missing.join(', ')}. Totals below leave {missing.length === 1 ? 'it' : 'them'} out.
+    </p>
+  );
+
   const servings = Number(entry?.servings) > 0 ? Number(entry.servings) : 1;
   const scaled = {};
   for (const [key, v] of Object.entries(blob.micros)) {
@@ -70,6 +77,8 @@ export default function MealMicrosPanel({ entry, caption, emptyNote }) {
     // Everything present is a trace amount — say so instead of a bare empty state.
     if (minorCount > 0) {
       return (
+        <>
+        {missingNote}
         <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>
           Nothing above {Math.round(TRACE_FLOOR * 100)}% of a daily target —{' '}
           <button
@@ -81,12 +90,16 @@ export default function MealMicrosPanel({ entry, caption, emptyNote }) {
           </button>
           .
         </p>
+        </>
       );
     }
     return (
-      <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>
-        No micronutrients recorded for this meal.
-      </p>
+      <>
+        {missingNote}
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-faint)' }}>
+          No micronutrients recorded for this meal.
+        </p>
+      </>
     );
   }
 
@@ -95,6 +108,7 @@ export default function MealMicrosPanel({ entry, caption, emptyNote }) {
 
   return (
     <div>
+      {missingNote}
       <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--color-text-muted)' }}>
         {caption || 'How much of your daily targets this meal covers'}
       </p>
@@ -146,7 +160,7 @@ export default function MealMicrosPanel({ entry, caption, emptyNote }) {
         </button>
       )}
       <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-text-faint)' }}>
-        {blob.notes || CONF_NOTE[blob.confidence] || ''}
+        {missing.length ? CONF_NOTE[blob.confidence] || '' : blob.notes || CONF_NOTE[blob.confidence] || ''}
       </p>
     </div>
   );

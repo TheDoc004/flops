@@ -75,6 +75,13 @@ export default function MicroNutrientPanel({ values, confidence = null, coverage
         )}
       </div>
 
+      {hasMicros && coverage?.missingIngredients?.length > 0 && (
+        <p style={{ margin: '-4px 0 12px', fontSize: 12.5, color: 'var(--color-warning-ink)' }}>
+          Not counted — no micronutrient data yet for {coverage.missingIngredients.join(', ')}.
+          These totals are low by whatever {coverage.missingIngredients.length === 1 ? 'it contributes' : 'they contribute'}.
+        </p>
+      )}
+
       {!hasMicros ? (
         <p className="empty-state" style={{ padding: 14 }}>
           No micronutrient estimates yet.

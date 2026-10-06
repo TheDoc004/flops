@@ -3,6 +3,7 @@ const { uid } = require('../userId');
 const { normalizeBarcode } = require('../openFoodFactsService');
 const { buildMicrosBlob } = require('../microNutrients');
 const { normalizeGramsPerServingInput } = require('../gramsPerServing');
+const { scheduleIngredientMicrosCompletion } = require('../ingredientMicros');
 
 /**
  * Micros supplied with an ingredient come off the manufacturer's panel (barcode
@@ -162,6 +163,8 @@ function createLabelIngredientsRouter(db) {
          FROM label_ingredients WHERE id = ?`
       )
       .get(r.lastInsertRowid);
+    // Fill nutrients the label didn't list (or all of them, for a manual entry).
+    scheduleIngredientMicrosCompletion(db, userId, r.lastInsertRowid);
     res.status(201).json(row);
   });
 
@@ -237,6 +240,7 @@ function createLabelIngredientsRouter(db) {
               CASE WHEN photo_data_uri IS NOT NULL AND LENGTH(photo_data_uri) > 0 THEN 1 ELSE 0 END AS has_photo
        FROM label_ingredients WHERE id = ? AND user_id = ?`
     ).get(id, userId);
+    scheduleIngredientMicrosCompletion(db, userId, id);
     res.json(row);
   });
 

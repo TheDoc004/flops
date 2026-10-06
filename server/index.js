@@ -24,4 +24,13 @@ const app = createApp(db);
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Nutrition tracker API running on http://localhost:${PORT}`);
+  // Give library ingredients missing nutrients a full set, once each. Runs in
+  // the background after boot; rows already completed cost nothing. Production
+  // only by default, so a dev boot doesn't spend AI calls on a local copy.
+  if (process.env.NODE_ENV === 'production' || process.env.MICROS_BACKFILL === '1') {
+    const { backfillIngredientMicros } = require('./ingredientMicros');
+    backfillIngredientMicros(db, { log: msg => console.log(msg) }).catch(err =>
+      console.error('ingredient micros backfill failed:', err?.message || err)
+    );
+  }
 });
