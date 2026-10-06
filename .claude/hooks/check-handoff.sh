@@ -29,8 +29,9 @@ CHANGED="$(
 )"
 [[ -z "$CHANGED" ]] && exit 0
 
-# Source = anything that isn't documentation, tooling config, or build output.
-SOURCE="$(printf '%s\n' "$CHANGED" | grep -vE '(\.md$|^\.claude/|^docs/|/dist/|^client/dist/|node_modules/|package-lock\.json$)' || true)"
+# Source = anything that isn't documentation, tooling config, build output, or
+# loose assets (assets/ holds images/media, not app code).
+SOURCE="$(printf '%s\n' "$CHANGED" | grep -vE '(\.md$|^\.claude/|^docs/|^assets/|/dist/|^client/dist/|node_modules/|package-lock\.json$)' || true)"
 [[ -z "$SOURCE" ]] && exit 0
 
 # Did any tracked doc move too?
