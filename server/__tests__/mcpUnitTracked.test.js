@@ -125,4 +125,25 @@ describe('MCP unit-tracked ingredients', () => {
     expect(egg).toMatchObject({ new_grams_per_unit: 50, skipped: false });
     expect(rows.find(r => r.id === placeholder).skipped).toBe(true);
   });
+
+  it('migration candidates: a volume unit is cleared, never turned into 1 ml = 1 g', () => {
+    const soy = db.prepare(
+      `INSERT INTO label_ingredients (
+         user_id, name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g,
+         source_type, tracking_type, unit_name, serving_quantity, grams_per_ml
+       ) VALUES (?, 'Soy sauce', '15 ml', 15, 10, 1, 2, 0, 'manual', 'unit', 'ml', 15, 1.2)`
+    ).run(userId).lastInsertRowid;
+    const row = candidates(db).find(r => r.id === soy);
+    expect(row).toMatchObject({ new_grams_per_unit: null, skipped: false });
+    expect(row.flags.join(' ')).toMatch(/volume unit/);
+  });
+
+  it('update_food_item can clear a stray grams_per_serving on a unit row, but not set one', () => {
+    db.prepare('UPDATE label_ingredients SET grams_per_serving = 50 WHERE id = ?').run(eggId);
+    expect(writes.updateFoodItem(db, userId, { label_ingredient_id: eggId, grams_per_serving: 60 }).code)
+      .toBe('UNIT_TRACKED');
+    const r = writes.updateFoodItem(db, userId, { label_ingredient_id: eggId, grams_per_serving: null });
+    expect(r.error).toBeUndefined();
+    expect(r.after).toMatchObject({ grams_per_serving: null, grams_per_unit: 50 });
+  });
 });
