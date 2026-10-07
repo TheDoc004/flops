@@ -18,6 +18,11 @@ const WRITE_NOW =
   + 'stored weight_basis is refused (no raw↔cooked conversion). '
   + 'Unknown parameters are refused (never silently ignored).';
 
+const DENSITY_DESCRIPTION =
+  'Density in grams per ml (soy sauce ≈ 1.2, milk ≈ 1.03, honey ≈ 1.42, oil ≈ 0.92). '
+  + 'Bridges weight and volume: a weighed food can then be logged by cup/tbsp/ml, and a '
+  + 'liquid saved per ml can be logged by grams. Only set it from a label or a reliable source.';
+
 const mealItemSchema = z
   .object({
     ref: z.string().optional().describe('Local batch ref from a prior add_food_item in write_batch'),
@@ -436,7 +441,9 @@ function createFlopsMcpServer(db, userId) {
         `${WRITE_NOW} Log a meal immediately. Items: label_ingredient_id + (quantity_g | quantity+unit), `
         + 'recipe_id+servings, or new per-100g food. Unit-tracked foods (tracking_type "unit", e.g. eggs) '
         + 'should be logged by count (quantity: 4, unit: "egg"); grams only work when they have grams_per_unit, '
-        + 'otherwise the item is refused. Any library micros that could not be counted are listed in warnings. '
+        + 'otherwise the item is refused. Any unit in the food\'s loggable_units (from search_ingredients) works — '
+        + 'foods with grams_per_ml convert between weight and volume (e.g. 50 g of a per-ml soy sauce, 1 cup of a weighed yogurt). '
+        + 'Any library micros that could not be counted are listed in warnings. '
         + 'Requires meal weight_basis; item weight_basis overrides it. '
         + 'If an item cites a library ingredient whose stored weight_basis disagrees, the write is refused. '
         + 'Requires per-item nutrition_source. Returns the entry, resolved_weight_basis per item, and day totals/vs_goals. '
@@ -484,6 +491,11 @@ function createFlopsMcpServer(db, userId) {
             .positive()
             .optional()
             .describe('"Servings per container" from the label (e.g. 8 for a 2 lb bag of 4 oz servings).'),
+          grams_per_ml: z
+            .number()
+            .positive()
+            .optional()
+            .describe(DENSITY_DESCRIPTION),
           calories_per_100g: z.number().nonnegative(),
           protein_g_per_100g: z.number().nonnegative(),
           carbs_g_per_100g: z.number().nonnegative(),
@@ -548,6 +560,12 @@ function createFlopsMcpServer(db, userId) {
             .nullable()
             .optional()
             .describe('"Servings per container" from the label, or null to clear.'),
+          grams_per_ml: z
+            .number()
+            .positive()
+            .nullable()
+            .optional()
+            .describe(`${DENSITY_DESCRIPTION} null clears it.`),
           calories: z.number().nonnegative().optional(),
           protein_g: z.number().nonnegative().optional(),
           carbs_g: z.number().nonnegative().optional(),

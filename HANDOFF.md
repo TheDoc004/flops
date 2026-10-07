@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-06 (micros accuracy pass; `get_ingredient`; servings per container; Meal Builder crash fix)_
+_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -65,6 +65,24 @@ and `revert_mcp_write` hand uses back / re-charge them.
 `recipeIngredients.js`), so their micros resolve live like app logs; recipe items keep
 the caller's `nutrition_source`. Boot repair `repairMcpRecipeEntrySnapshots` (db.js)
 backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
+
+**2026-10-07 — MCP logging friction (found by logging from a phone session):**
+- *Shipped (PR #28):* `search_ingredients` takes `queries[]`, so a whole meal resolves in one
+  call (one result group per query, `limit` per query, default 5). Write responses' `day.meals`
+  is now a compact `{id, name, time_min, servings, logged}` instead of a copy of every meal's
+  ingredients + micros (the written entry is already in the response; `get_day` has the full meals).
+- *Branch `claude/brave-hawking-hqd5h9`, not merged yet:* **ingredient density**.
+  `label_ingredients.grams_per_ml` is a second unitConvert bridge (beside `grams_per_unit`), and
+  every cross-family conversion goes through grams. A weighed food with a density takes volume
+  units; a per-ml liquid takes grams from the density alone; a counted food takes volume with both.
+  No density means no change. MCP add/update_food_item accept it (0.1–5, revertible);
+  `search_ingredients` returns `grams_per_ml` + `loggable_units`. The REST route reads/writes it and
+  an edit that omits it keeps it. **No UI field yet**: it is set via MCP only, though the Log Meal unit
+  picker already offers volume units once a row has one. After deploy, set soy sauce (#97) ≈ 1.2 and
+  chicken broth (#119) ≈ 1.0.
+- *Library data issues seen (not fixed):* duplicate rows (TJ sourdough #27 vs #136, avocado spray
+  #41 vs #138, 5 Greek yogurts); #49 small sourdough has `grams_per_unit` 0.01; #6 frozen
+  blueberries has 0 g protein. Day totals sometimes carry float noise (`182.42000000000002`).
 
 **2026-10-05 — `log_body_weight` + server TZ:** MCP can write weigh-ins (lb/kg, same-date
 overwrite like the Dashboard, `body_weights.source` = app|mcp, revertible, batchable) via the
@@ -323,8 +341,10 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - **Stale brand asset:** `flops-badge.png` (2MB amber lightbulb) clashes with navy/paper identity.
 - **No in-app data export** — SQLite on Render disk; `scripts/backup-sqlite.sh`.
 - **Meal Builder browser history** — mode/step pushes history entries (`{ replace: true }` fix deferred).
+- **`client/package-lock.json` out of sync** with `package.json` (`npm ci` fails: missing `esbuild@0.28.2`).
+  Regenerate with `npm install` in `client/`.
 
-**Tests (Aug 2026):** server ~301 Jest; client ~366 Vitest unit. Playwright e2e specs live under
+**Tests (Oct 2026):** server ~419 Jest; client ~381 Vitest unit. Playwright e2e specs live under
 `client/e2e/` and run via `npm run verify:layout-editor`, not `npm test`.
 
 ---

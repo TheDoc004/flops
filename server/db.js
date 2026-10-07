@@ -726,6 +726,11 @@ function createDb(dbPath) {
   if (labelCols.length && !labelCols.includes('grams_per_unit')) {
     db.exec(`ALTER TABLE label_ingredients ADD COLUMN grams_per_unit REAL`);
   }
+  // Density (g per ml): the bridge between weight and volume, so a weighed
+  // food can be logged by the cup and a liquid by the gram. See unitConvert.js.
+  if (labelCols.length && !labelCols.includes('grams_per_ml')) {
+    db.exec(`ALTER TABLE label_ingredients ADD COLUMN grams_per_ml REAL`);
+  }
   // "Servings per container" off the label — lets meal prep enter a whole bag
   // or box as an amount instead of doing the multiplication by hand.
   if (labelCols.length && !labelCols.includes('servings_per_container')) {

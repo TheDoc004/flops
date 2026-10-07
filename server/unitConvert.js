@@ -11,17 +11,22 @@
  *           serving, piece, <custom>       anything but itself
  *
  * Within a family conversion is free. ACROSS families it needs a bridge, and
- * the only bridge is `grams_per_unit` — the weight of ONE of the ingredient's
- * own serving units ("1 scoop = 31 g", "1 cup = 240 g"). That column has been
- * on `label_ingredients` all along and was never read by any scaling formula;
- * this module is what finally uses it.
+ * there are two, both stored on `label_ingredients`:
  *
- * Because the bridge is a WEIGHT, it only ever spans mass:
+ *   grams_per_unit  the weight of ONE of the ingredient's own serving units
+ *                   ("1 scoop = 31 g", "1 cup = 240 g")
+ *   grams_per_ml    the ingredient's density ("soy sauce: 1.2 g per ml") —
+ *                   the only thing that lets a weighed food take a volume
  *
+ * Every crossing goes through grams, so what each basis can reach is:
+ *
+ *   mass   basis                  -> mass; + volume when grams_per_ml is set
  *   volume basis + grams_per_unit -> mass <-> volume, both ways
- *   count  basis + grams_per_unit -> mass <-> count,  both ways
- *   mass   basis                  -> mass only (no density is knowable, so a
- *                                    grams-per-serving item can't take ml)
+ *          (grams_per_ml alone works too: it implies grams_per_unit)
+ *   count  basis + grams_per_unit -> mass <-> count; + volume with grams_per_ml
+ *
+ * Without a density a grams-per-serving item still can't take ml — nothing
+ * about "100 g of yogurt" says how many cups that is.
  *
  * `oz` is always MASS (28.35 g) and `fl oz` is always VOLUME (29.57 ml). They
  * are offered as separate choices rather than one word meaning two things.
@@ -147,23 +152,46 @@ const num = v => {
 
 /**
  * The measurement basis of a saved ingredient row:
- * `{ unit, family, gramsPerUnit }`, where gramsPerUnit is the weight of ONE
- * `unit` (null when unknown).
+ * `{ unit, family, gramsPerUnit, gramsPerMl }`, where gramsPerUnit is the
+ * weight of ONE `unit` and gramsPerMl the density (each null when unknown).
  *
  * Weight-tracked rows store grams_per_serving (the mass of one serving) and are
  * measured in grams by definition. Unit-tracked rows store unit_name plus the
- * optional grams_per_unit.
+ * optional grams_per_unit. Any row may carry grams_per_ml. For a volume basis
+ * the two bridges are the same fact, so either one supplies the other.
  */
 function basisUnitFor(ing) {
   if (!ing) return null;
+  const density = num(ing.grams_per_ml);
+  let gramsPerMl = density != null && density > 0 ? density : null;
   if (ing.tracking_type === 'unit') {
     // 'unit' matches what defaultAmountForIngredient and the server's
     // displayUnitForIngredient fall back to for a nameless count.
     const unit = canonicalUnit(ing.unit_name) || 'unit';
+    const family = unitFamily(unit);
     const gpu = num(ing.grams_per_unit);
-    return { unit, family: unitFamily(unit), gramsPerUnit: gpu != null && gpu > 0 ? gpu : null };
+    let gramsPerUnit = gpu != null && gpu > 0 ? gpu : null;
+    if (family === 'volume') {
+      if (gramsPerUnit == null && gramsPerMl != null) gramsPerUnit = gramsPerMl * VOLUME_TO_ML[unit];
+      if (gramsPerMl == null && gramsPerUnit != null) gramsPerMl = gramsPerUnit / VOLUME_TO_ML[unit];
+    }
+    return { unit, family, gramsPerUnit, gramsPerMl };
   }
-  return { unit: 'g', family: 'mass', gramsPerUnit: 1 };
+  return { unit: 'g', family: 'mass', gramsPerUnit: 1, gramsPerMl };
+}
+
+/** Grams in `v fromUnit`, or null when that unit has no route to a weight. */
+function gramsIn(basis, v, fromUnit) {
+  const family = unitFamily(fromUnit);
+  if (family === 'mass') return v * MASS_TO_G[fromUnit];
+  if (family === 'volume' && basis.gramsPerMl) return v * VOLUME_TO_ML[fromUnit] * basis.gramsPerMl;
+  return null;
+}
+
+/** Grams in one of the ingredient's own serving units, or null when unknown. */
+function gramsPerBasisUnit(basis) {
+  if (basis.family === 'mass') return MASS_TO_G[basis.unit];
+  return basis.gramsPerUnit;
 }
 
 /**
@@ -190,13 +218,12 @@ function amountInBasisUnit(ing, amount, fromUnit) {
     return null; // two differently-named count units are not comparable
   }
 
-  // Crossing families. The bridge is a weight, so the logged unit must be a
-  // mass — a volume can't reach a count or a grams-per-serving basis, and a
-  // foreign count unit tells us nothing at all.
-  if (ff !== 'mass') return null;
-  const gpu = basis.gramsPerUnit;
-  if (gpu == null || gpu <= 0) return null;
-  return (v * MASS_TO_G[from]) / gpu;
+  // Crossing families: through grams. A volume needs the density to get
+  // there, and a foreign count unit tells us nothing at all.
+  const grams = gramsIn(basis, v, from);
+  const perUnit = gramsPerBasisUnit(basis);
+  if (grams == null || !perUnit) return null;
+  return grams / perUnit;
 }
 
 /**
@@ -220,10 +247,12 @@ function basisAmountToUnit(ing, basisAmount, toUnit) {
     return null;
   }
 
-  if (tf !== 'mass') return null;
-  const gpu = basis.gramsPerUnit;
-  if (gpu == null || gpu <= 0) return null;
-  return (v * gpu) / MASS_TO_G[to];
+  const perUnit = gramsPerBasisUnit(basis);
+  if (!perUnit) return null;
+  const grams = v * perUnit;
+  if (tf === 'mass') return grams / MASS_TO_G[to];
+  if (tf === 'volume' && basis.gramsPerMl) return grams / basis.gramsPerMl / VOLUME_TO_ML[to];
+  return null;
 }
 
 /**
@@ -252,15 +281,19 @@ function loggableUnitsFor(ing) {
     if (c && !out.includes(c)) out.push(c);
   };
 
-  // A grams-per-serving item has no density, so mass is all it can ever take.
+  // A grams-per-serving item takes volume only once it has a density.
   if (basis.family === 'mass') {
     LOGGABLE_MASS_UNITS.forEach(push);
+    if (basis.gramsPerMl) LOGGABLE_VOLUME_UNITS.forEach(push);
     return out;
   }
 
   push(basis.unit);
   if (basis.family === 'volume') LOGGABLE_VOLUME_UNITS.forEach(push);
   if (basis.gramsPerUnit) LOGGABLE_MASS_UNITS.forEach(push);
+  if (basis.family === 'count' && basis.gramsPerUnit && basis.gramsPerMl) {
+    LOGGABLE_VOLUME_UNITS.forEach(push);
+  }
   return out;
 }
 

@@ -66,7 +66,7 @@ function labelMicrosForRows(db, rows, userId) {
   if (list.length === 0) return { micros, covered, uncovered, confidences };
 
   const get = db.prepare(
-    'SELECT id, micros_json, tracking_type, serving_quantity, grams_per_serving, unit_name, grams_per_unit FROM label_ingredients WHERE id = ? AND user_id = ?'
+    'SELECT id, micros_json, tracking_type, serving_quantity, grams_per_serving, unit_name, grams_per_unit, grams_per_ml FROM label_ingredients WHERE id = ? AND user_id = ?'
   );
   const cache = new Map();
 

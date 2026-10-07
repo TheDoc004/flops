@@ -74,12 +74,21 @@ describe('sameUnit', () => {
 
 describe('basisUnitFor', () => {
   it('reads a unit-tracked ingredient', () => {
-    expect(basisUnitFor(milk)).toEqual({ unit: 'cup', family: 'volume', gramsPerUnit: 245 });
-    expect(basisUnitFor(salmon)).toEqual({ unit: 'filet', family: 'count', gramsPerUnit: 170 });
+    // A volume basis with a gram weight implies its density.
+    expect(basisUnitFor(milk)).toEqual({
+      unit: 'cup', family: 'volume', gramsPerUnit: 245, gramsPerMl: 245 / 236.5882365,
+    });
+    expect(basisUnitFor(salmon)).toEqual({ unit: 'filet', family: 'count', gramsPerUnit: 170, gramsPerMl: null });
   });
 
   it('treats a weight-tracked ingredient as grams', () => {
-    expect(basisUnitFor(salmonByWeight)).toEqual({ unit: 'g', family: 'mass', gramsPerUnit: 1 });
+    expect(basisUnitFor(salmonByWeight)).toEqual({ unit: 'g', family: 'mass', gramsPerUnit: 1, gramsPerMl: null });
+  });
+
+  it('lets a weighed food with a density take volume units', () => {
+    const yogurt = { tracking_type: 'weight', grams_per_serving: 170, grams_per_ml: 1.05 };
+    expect(loggableUnitsFor(yogurt)).toEqual(['g', 'oz', 'ml', 'fl oz', 'cup', 'tbsp', 'tsp']);
+    expect(convertForIngredient(yogurt, 1, 'cup', 'g')).toBeCloseTo(236.5882365 * 1.05, 6);
   });
 
   it('drops a zero or missing gram equivalent', () => {
