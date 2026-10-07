@@ -134,6 +134,61 @@ describe('MCP /mcp auth', () => {
   });
 });
 
+describe('MCP search_ingredients batch', () => {
+  let app;
+  let db;
+  const prevToken = process.env.MCP_API_TOKEN;
+  const prevUser = process.env.MCP_USER_ID;
+
+  beforeEach(() => {
+    ({ app, db } = buildTestApp());
+    const userId = createUser(db, 'owner@mcp.test').id;
+    process.env.MCP_API_TOKEN = 'test-mcp-secret-token';
+    delete process.env.MCP_USER_ID;
+    const insert = db.prepare(
+      `INSERT INTO label_ingredients (user_id, name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g)
+       VALUES (?, ?, '100 g', 100, 100, 1, 1, 1)`
+    );
+    for (const name of ['eggs', 'greek yogurt', 'clover honey']) insert.run(userId, name);
+  });
+
+  afterEach(() => {
+    if (prevToken === undefined) delete process.env.MCP_API_TOKEN;
+    else process.env.MCP_API_TOKEN = prevToken;
+    if (prevUser === undefined) delete process.env.MCP_USER_ID;
+    else process.env.MCP_USER_ID = prevUser;
+  });
+
+  const call = args =>
+    request(app)
+      .post('/mcp')
+      .set('Authorization', 'Bearer test-mcp-secret-token')
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'search_ingredients', arguments: args } });
+
+  it('returns one result group per query', async () => {
+    const res = await call({ queries: ['egg', 'yogurt', 'nope'] });
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body.result.content[0].text);
+    expect(body.results.map(r => r.query)).toEqual(['egg', 'yogurt', 'nope']);
+    expect(body.results[0].ingredients.map(i => i.name)).toEqual(['eggs']);
+    expect(body.results[1].ingredients.map(i => i.name)).toEqual(['greek yogurt']);
+    expect(body.results[2].ingredients).toEqual([]);
+  });
+
+  it('still answers a single query in the old shape', async () => {
+    const res = await call({ query: 'honey' });
+    const body = JSON.parse(res.body.result.content[0].text);
+    expect(body.query).toBe('honey');
+    expect(body.ingredients.map(i => i.name)).toEqual(['clover honey']);
+  });
+
+  it('refuses query and queries together', async () => {
+    const res = await call({ query: 'egg', queries: ['honey'] });
+    expect(res.body.result.isError).toBe(true);
+  });
+});
+
 describe('MCP reads helpers', () => {
   let db;
   let userId;

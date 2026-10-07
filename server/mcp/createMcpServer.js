@@ -312,18 +312,36 @@ function createFlopsMcpServer(db, userId) {
         `${READ_ONLY} Search the ingredient library by name or brand substring. `
         + 'Returns label_ingredient_id, serving macros, derived per_100g when possible, '
         + 'weight_basis, nutrition_source, and whether micros exist. Prefer these IDs in log_meal '
-        + 'instead of creating duplicate foods.',
+        + 'instead of creating duplicate foods. To look up several foods at once (e.g. every item '
+        + 'in a meal), pass queries: one call returns a result group per query, '
+        + 'each ranked by use_count (limit defaults to 5 per query).',
       inputSchema: {
         query: z.string().optional().describe('Name or brand substring (case-insensitive)'),
-        limit: z.number().int().min(1).max(50).optional(),
+        queries: z
+          .array(z.string().min(1))
+          .min(1)
+          .max(20)
+          .optional()
+          .describe('Several searches in one call; returns results[] with one group per query'),
+        limit: z.number().int().min(1).max(50).optional().describe('Max matches (per query when using queries)'),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ query, limit }) =>
-      reads.textResult({
+    async ({ query, queries, limit }) => {
+      if (queries?.length) {
+        if (query) return reads.errorResult('Pass query or queries, not both');
+        return reads.textResult({
+          results: queries.map(q => ({
+            query: q,
+            ingredients: reads.searchIngredients(db, userId, q, { limit: limit ?? 5 }),
+          })),
+        });
+      }
+      return reads.textResult({
         query: query || '',
         ingredients: reads.searchIngredients(db, userId, query, { limit }),
-      })
+      });
+    }
   );
 
   registerTool(

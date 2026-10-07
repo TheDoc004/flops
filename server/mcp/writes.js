@@ -892,7 +892,16 @@ function daySlice(day) {
     meal_totals: day.meal_totals,
     combined_totals: day.combined_totals,
     vs_goals: day.vs_goals,
-    meals: day.meals,
+    // Compact on purpose: the written entry is already in the response, and
+    // repeating every meal's ingredients + micros doubled the payload.
+    // get_day returns the full meals.
+    meals: (day.meals || []).map(m => ({
+      id: m.id,
+      name: m.recipe_name,
+      time_min: m.time_min ?? null,
+      servings: m.servings,
+      logged: m.logged,
+    })),
   };
 }
 

@@ -62,6 +62,12 @@ describe('MCP Phase 3 direct writes', () => {
     expect(r.day.meal_totals.calories).toBeCloseTo(165 * 1.5, 0);
     expect(r.day.vs_goals).toBeTruthy();
     expect(r.day.vs_goals.calories).toBeTruthy();
+    // The day's meals are a compact summary; the full entry is only in r.entry.
+    expect(r.day.meals).toEqual([
+      expect.objectContaining({ id: r.entry.id, name: 'Lunch', logged: r.entry.logged }),
+    ]);
+    expect(r.day.meals[0].ingredients).toBeUndefined();
+    expect(r.day.meals[0].micros).toBeUndefined();
     expect(reads.getDay(db, userId, '2026-09-25').meals).toHaveLength(1);
   });
 
