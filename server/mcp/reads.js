@@ -3,6 +3,7 @@
  * All queries are scoped to userId — never trust client-supplied user_id.
  */
 const { MICRO_KEYS } = require('../microNutrients');
+const { basisUnitFor, loggableUnitsFor } = require('../unitConvert');
 const { doseMultiplier, scaleValues } = require('../supplementDose');
 const {
   isoDateOrNull,
@@ -531,8 +532,9 @@ function searchRecipes(db, userId, query, { limit = 25 } = {}) {
 function servingGramsFor(row) {
   if (!row) return null;
   if (row.tracking_type === 'unit') {
-    const gpu = Number(row.grams_per_unit);
-    if (!Number.isFinite(gpu) || gpu <= 0) return null;
+    // basisUnitFor also derives a volume unit's weight from grams_per_ml.
+    const gpu = basisUnitFor(row)?.gramsPerUnit;
+    if (!gpu) return null;
     const qty = Number(row.serving_quantity) > 0 ? Number(row.serving_quantity) : 1;
     return gpu * qty;
   }
@@ -601,6 +603,7 @@ function containerFor(r) {
 /** One library row in the shape search_ingredients returns. */
 function shapeIngredient(r) {
   const micros = parseMicrosBlob(r.micros_json);
+  const gramsPerUnit = r.tracking_type === 'unit' ? basisUnitFor(r)?.gramsPerUnit : null;
   return {
     id: r.id,
     name: r.name,
@@ -613,11 +616,14 @@ function shapeIngredient(r) {
           unit_name: r.unit_name || null,
           serving_quantity: r.serving_quantity ?? null,
           grams_per_unit: r.grams_per_unit ?? null,
-          log_by: r.grams_per_unit > 0
+          log_by: gramsPerUnit
             ? `count (quantity + unit "${r.unit_name || 'unit'}") or quantity_g`
             : `count only (quantity + unit "${r.unit_name || 'unit'}") — no grams_per_unit`,
         }
       : {}),
+    grams_per_ml: r.grams_per_ml ?? null,
+    // Every unit log_meal can take for this food (quantity + unit).
+    loggable_units: loggableUnitsFor(r),
     weight_basis: r.weight_basis || null,
     nutrition_source: r.nutrition_source || null,
     source_type: r.source_type || null,
@@ -642,7 +648,7 @@ function shapeIngredient(r) {
 const INGREDIENT_COLUMNS = `id, name, brand_name, serving_size_text, grams_per_serving,
               calories, protein_g, carbs_g, fat_g, fiber_g, micros_json,
               weight_basis, nutrition_source, source_type, tracking_type, created_via, barcode,
-              unit_name, serving_quantity, grams_per_unit, servings_per_container`;
+              unit_name, serving_quantity, grams_per_unit, servings_per_container, grams_per_ml`;
 
 /**
  * One ingredient with its STORED micronutrients — the per-serving values every

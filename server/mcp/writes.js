@@ -53,12 +53,12 @@ const WRITE_ALLOWED_KEYS = {
     'op', 'ref', 'name', 'brand_name', 'serving_size_text', 'grams_per_serving',
     'calories_per_100g', 'protein_g_per_100g', 'carbs_g_per_100g', 'fat_g_per_100g', 'fiber_g_per_100g',
     'nutrition_source', 'weight_basis', 'micros_per_100g', 'micros_confidence', 'allow_duplicate', 'operation_id',
-    'servings_per_container',
+    'servings_per_container', 'grams_per_ml',
   ]),
   [OPS.update_food_item]: new Set([
     'op', 'label_ingredient_id', 'name', 'brand_name', 'serving_size_text', 'grams_per_serving', 'grams_per_unit',
     'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'nutrition_source', 'weight_basis',
-    'micros', 'micros_per_100g', 'micros_confidence', 'operation_id', 'servings_per_container',
+    'micros', 'micros_per_100g', 'micros_confidence', 'operation_id', 'servings_per_container', 'grams_per_ml',
   ]),
   [OPS.update_meal_entry]: new Set([
     'op', 'log_entry_id', 'date', 'name', 'meal_slot', 'time_min', 'weight_basis', 'items', 'operation_id',
@@ -250,7 +250,7 @@ function droppedMicrosWarnings(db, userId, rows) {
   if (!list.length) return [];
   const { uncovered } = labelMicrosForRows(db, list, userId);
   const get = db.prepare(
-    'SELECT name, micros_json, tracking_type, unit_name, grams_per_unit FROM label_ingredients WHERE id = ? AND user_id = ?'
+    'SELECT name, micros_json, tracking_type, unit_name, grams_per_unit, grams_per_ml FROM label_ingredients WHERE id = ? AND user_id = ?'
   );
   const out = [];
   for (const r of uncovered) {
@@ -436,7 +436,7 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
     const row = db
       .prepare(
         `SELECT id, name, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g,
-                micros_json, weight_basis, tracking_type, unit_name, serving_quantity, grams_per_unit
+                micros_json, weight_basis, tracking_type, unit_name, serving_quantity, grams_per_unit, grams_per_ml
            FROM label_ingredients WHERE id = ? AND user_id = ?`
       )
       .get(id, userId);
@@ -475,7 +475,8 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
             `${amount} ${unitIn} can't be converted. Log it by count (quantity + unit "${basis.unit}"), ` +
             `or set grams_per_unit with update_food_item.`
           : `items[${index}]: "${row.name}" can't be measured in "${unitIn || unit}" ` +
-            `(its serving is ${row.tracking_type === 'unit' ? basis?.unit : 'grams'}; set grams_per_serving / grams_per_unit if missing).`,
+            `(its serving is ${row.tracking_type === 'unit' ? basis?.unit : 'grams'}; set grams_per_serving / grams_per_unit if missing, ` +
+            `or grams_per_ml with update_food_item to convert between weight and volume).`,
         code: 'UNIT_NOT_CONVERTIBLE',
       };
     }
@@ -945,10 +946,24 @@ function getFoodRow(db, userId, id) {
       `SELECT id, name, brand_name, serving_size_text, grams_per_serving,
               calories, protein_g, carbs_g, fat_g, fiber_g, micros_json,
               created_via, weight_basis, nutrition_source, source_type, tracking_type,
-              unit_name, serving_quantity, grams_per_unit, servings_per_container
+              unit_name, serving_quantity, grams_per_unit, servings_per_container, grams_per_ml
          FROM label_ingredients WHERE id = ? AND user_id = ?`
     )
     .get(id, userId);
+}
+
+/**
+ * grams_per_ml arg -> { value } (null clears) or { error }. Real foods sit
+ * between oils (~0.9) and syrups (~1.4); the wide bounds only catch a value
+ * entered in the wrong unit (ml per gram, or per 100 ml).
+ */
+function normalizeGramsPerMl(raw) {
+  if (raw == null || raw === '') return { value: null };
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0.1 || n > 5) {
+    return { error: 'grams_per_ml must be a density between 0.1 and 5 g/ml (e.g. 1.2 for soy sauce), or null to clear' };
+  }
+  return { value: n };
 }
 
 /** servings_per_container arg -> { value } (null clears) or { error }. */
@@ -1002,6 +1017,8 @@ function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null }
     const brand_name = args.brand_name ? String(args.brand_name).trim() : null;
     const spc = normalizeServingsPerContainer(args.servings_per_container);
     if (spc.error) return { error: spc.error };
+    const density = normalizeGramsPerMl(args.grams_per_ml);
+    if (density.error) return { error: density.error };
     const library = loadLibraryForDupCheck(db, userId);
     const duplicates = findDuplicateMatches(library, name, {
       threshold: DUPLICATE_SIMILARITY_THRESHOLD,
@@ -1066,14 +1083,16 @@ function addFoodItem(db, userId, args = {}, { skipAudit = false, refMap = null }
              user_id, name, base_label, brand_name, serving_size_text, grams_per_serving,
              calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri, source_type,
              use_count, last_used_at, tracking_type, unit_name, serving_quantity, grams_per_unit,
-             barcode, micros_json, created_via, weight_basis, nutrition_source, servings_per_container
+             barcode, micros_json, created_via, weight_basis, nutrition_source, servings_per_container,
+             grams_per_ml
            ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'manual',
-                     0, NULL, 'weight', NULL, NULL, NULL, NULL, ?, 'mcp', ?, ?, ?)`
+                     0, NULL, 'weight', NULL, NULL, NULL, NULL, ?, 'mcp', ?, ?, ?, ?)`
         )
         .run(
           userId, name, brand_name, serving_size_text, grams_per_serving,
           servingMacros.calories, servingMacros.protein_g, servingMacros.carbs_g,
-          servingMacros.fat_g, servingMacros.fiber_g, microsJson, weight_basis, nutrition_source, spc.value
+          servingMacros.fat_g, servingMacros.fiber_g, microsJson, weight_basis, nutrition_source, spc.value,
+          density.value
         );
       const id = r.lastInsertRowid;
       scheduleIngredientMicrosCompletion(db, userId, id);
@@ -1147,6 +1166,11 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
       if (spc.error) return { error: spc.error };
       patch.servings_per_container = spc.value;
     }
+    if (Object.prototype.hasOwnProperty.call(args, 'grams_per_ml')) {
+      const density = normalizeGramsPerMl(args.grams_per_ml);
+      if (density.error) return { error: density.error };
+      patch.grams_per_ml = density.value;
+    }
     if (args.calories != null) patch.calories = Number(args.calories);
     if (args.protein_g != null) patch.protein_g = Number(args.protein_g);
     if (args.carbs_g != null) patch.carbs_g = Number(args.carbs_g);
@@ -1215,12 +1239,14 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
         `UPDATE label_ingredients
             SET name = ?, brand_name = ?, serving_size_text = ?, grams_per_serving = ?, grams_per_unit = ?,
                 calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?,
-                weight_basis = ?, nutrition_source = ?, micros_json = ?, servings_per_container = ?
+                weight_basis = ?, nutrition_source = ?, micros_json = ?, servings_per_container = ?,
+                grams_per_ml = ?
           WHERE id = ? AND user_id = ?`
       ).run(
         patch.name, patch.brand_name, patch.serving_size_text, patch.grams_per_serving, patch.grams_per_unit ?? null,
         patch.calories, patch.protein_g, patch.carbs_g, patch.fat_g, patch.fiber_g,
-        patch.weight_basis, patch.nutrition_source, microsJson, patch.servings_per_container ?? null, id, userId
+        patch.weight_basis, patch.nutrition_source, microsJson, patch.servings_per_container ?? null,
+        patch.grams_per_ml ?? null, id, userId
       );
       scheduleIngredientMicrosCompletion(db, userId, id);
       const after = getFoodRow(db, userId, id);
@@ -2036,6 +2062,10 @@ function revertOneResult(db, userId, result) {
     if (Object.prototype.hasOwnProperty.call(b, 'servings_per_container')) {
       db.prepare('UPDATE label_ingredients SET servings_per_container = ? WHERE id = ? AND user_id = ?')
         .run(b.servings_per_container ?? null, b.id, userId);
+    }
+    if (Object.prototype.hasOwnProperty.call(b, 'grams_per_ml')) {
+      db.prepare('UPDATE label_ingredients SET grams_per_ml = ? WHERE id = ? AND user_id = ?')
+        .run(b.grams_per_ml ?? null, b.id, userId);
     }
     return;
   }

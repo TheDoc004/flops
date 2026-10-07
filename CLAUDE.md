@@ -70,9 +70,10 @@ Vite proxies `/api` → `localhost:3001` in dev. The SQLite DB lives at
 - **Schema migrations** are inline in `server/db.js` using `PRAGMA table_info()` + conditional `ALTER TABLE`. Follow this pattern when adding columns to existing tables.
 - **Unit conversion lives in one place.** `client/src/shared/utils/unitConvert.js` and its
   CommonJS twin `server/unitConvert.js` decide what a unit means. Units belong to three
-  families (mass / volume / count); within a family conversion is exact, and the only bridge
-  across them is `grams_per_unit` — the weight of one serving unit. Because that bridge is a
-  weight it only spans mass, so a grams-per-serving ingredient can never take a volume.
+  families (mass / volume / count); within a family conversion is exact, and every crossing goes
+  through grams via two bridges: `grams_per_unit` (the weight of one serving unit) and
+  `grams_per_ml` (density). A grams-per-serving ingredient takes a volume only once it has a
+  density; for a volume-basis row either bridge implies the other.
   Every scaling path goes through `amountInBasisUnit` (via `servingsForAmount` on the client,
   `servingsForIngredientAmount` on the server) rather than reading the unit itself.
   - **The two files must stay identical in body** — `server/__tests__/unitConvert.test.js` has
@@ -248,7 +249,7 @@ group.
 `body_weights` — `user_id, date, weight_kg`
 
 ### Ingredients
-`label_ingredients` — `id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri, source_type (manual|scanned_label|built_in|barcode), use_count, last_used_at, barcode, micros_json`
+`label_ingredients` — `id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri, source_type (manual|scanned_label|built_in|barcode), use_count, last_used_at, barcode, micros_json, grams_per_ml`
 
 **Micronutrient precedence (log time).** `server/labelMicros.js` sums micros from logged rows whose `label_ingredient_id` has a stored `micros_json` (captured on barcode import, per serving), scaled by the amount logged. The AI estimator is asked only about the remaining rows, and results merge **per nutrient** — a measured value always beats an estimate. All rows covered → no AI call and `high` confidence; a partial mix stores `medium`.
 

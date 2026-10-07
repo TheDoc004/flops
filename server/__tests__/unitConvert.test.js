@@ -34,8 +34,10 @@ describe('canonicalUnit / unitFamily', () => {
 
 describe('basisUnitFor', () => {
   it('reads unit- and weight-tracked rows', () => {
-    expect(basisUnitFor(milk)).toEqual({ unit: 'cup', family: 'volume', gramsPerUnit: 245 });
-    expect(basisUnitFor(salmonByWeight)).toEqual({ unit: 'g', family: 'mass', gramsPerUnit: 1 });
+    expect(basisUnitFor(milk)).toEqual({
+      unit: 'cup', family: 'volume', gramsPerUnit: 245, gramsPerMl: 245 / 236.5882365,
+    });
+    expect(basisUnitFor(salmonByWeight)).toEqual({ unit: 'g', family: 'mass', gramsPerUnit: 1, gramsPerMl: null });
     expect(basisUnitFor(scoop).gramsPerUnit).toBeNull();
   });
 });
@@ -126,6 +128,45 @@ describe('ingredients saved without a unit name', () => {
 
 // The client and server copies must not drift: the log-time picker offers units
 // the server then has to accept, so a rule that lives on only one side is a bug.
+describe('density (grams_per_ml)', () => {
+  // Greek yogurt saved per 170 g serving, with a measured density.
+  const yogurt = { tracking_type: 'weight', grams_per_serving: 170, grams_per_ml: 1.05 };
+  // Soy sauce saved per 15 ml, density only — no grams_per_unit.
+  const soy = { tracking_type: 'unit', unit_name: 'ml', serving_quantity: 15, grams_per_ml: 1.2 };
+  // Protein powder: 31 g per scoop, ~0.42 g/ml.
+  const powder = { tracking_type: 'unit', unit_name: 'scoop', serving_quantity: 1, grams_per_unit: 31, grams_per_ml: 0.42 };
+
+  it('lets a weighed food take a volume', () => {
+    expect(amountInBasisUnit(yogurt, 1, 'cup')).toBeCloseTo(236.5882365 * 1.05, 6);
+    expect(basisAmountToUnit(yogurt, 248.42, 'cup')).toBeCloseTo(1, 3);
+    expect(loggableUnitsFor(yogurt)).toEqual(['g', 'oz', 'ml', 'fl oz', 'cup', 'tbsp', 'tsp']);
+  });
+
+  it('still refuses volume on a weighed food without a density', () => {
+    expect(amountInBasisUnit(salmonByWeight, 1, 'cup')).toBeNull();
+    expect(loggableUnitsFor(salmonByWeight)).toEqual(['g', 'oz']);
+  });
+
+  it('gives a volume basis its grams without grams_per_unit', () => {
+    expect(basisUnitFor(soy).gramsPerUnit).toBeCloseTo(1.2, 6);
+    expect(amountInBasisUnit(soy, 50, 'g')).toBeCloseTo(50 / 1.2, 6);
+    expect(convertForIngredient(soy, 1, 'tbsp', 'g')).toBeCloseTo(14.78676478125 * 1.2, 6);
+    expect(loggableUnitsFor(soy)).toEqual(['ml', 'fl oz', 'cup', 'tbsp', 'tsp', 'g', 'oz']);
+  });
+
+  it('lets a counted food take a volume through grams', () => {
+    expect(amountInBasisUnit(powder, 100, 'ml')).toBeCloseTo((100 * 0.42) / 31, 6);
+    expect(loggableUnitsFor(powder)).toEqual(['scoop', 'g', 'oz', 'ml', 'fl oz', 'cup', 'tbsp', 'tsp']);
+    // A count without a gram weight has nothing to route a volume through.
+    expect(amountInBasisUnit({ ...powder, grams_per_unit: null }, 100, 'ml')).toBeNull();
+  });
+
+  it('ignores a zero or junk density', () => {
+    expect(amountInBasisUnit({ ...yogurt, grams_per_ml: 0 }, 1, 'cup')).toBeNull();
+    expect(amountInBasisUnit({ ...yogurt, grams_per_ml: 'abc' }, 1, 'cup')).toBeNull();
+  });
+});
+
 describe('parity with the client ES-module twin', () => {
   const strip = src =>
     src
