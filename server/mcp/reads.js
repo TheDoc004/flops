@@ -573,14 +573,36 @@ function searchIngredients(db, userId, query, { limit = 25 } = {}) {
         ORDER BY use_count DESC, name COLLATE NOCASE`
     )
     .all(userId);
-  const filtered = q
-    ? rows.filter(r => {
-        const name = String(r.name || '').toLowerCase();
-        const brand = String(r.brand_name || '').toLowerCase();
-        return name.includes(q) || brand.includes(q);
-      })
-    : rows;
-  return filtered.slice(0, lim).map(shapeIngredient);
+  if (!q) return rows.slice(0, lim).map(shapeIngredient);
+  const ranked = [];
+  rows.forEach(r => {
+    const tier = matchTier(q, r.name, r.brand_name);
+    if (tier != null) ranked.push({ r, tier });
+  });
+  // Stable sort: within a tier the use_count order from SQL holds.
+  ranked.sort((a, b) => a.tier - b.tier);
+  return ranked.slice(0, lim).map(({ r }) => shapeIngredient(r));
+}
+
+const escapeRegex = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * How well a lowercase query matches a library row, best first, or null for no
+ * match: 0 the exact name, 1 a whole word ("apple" in "Pink Lady Apple"),
+ * 2 the start of a word ("blueberr" in "Frozen blueberries"), 3 anywhere
+ * ("apple" in "pineapple"). The brand counts the same as the name. Without the
+ * tiers, use_count alone let four pineapple blends bury the actual apples.
+ */
+function matchTier(q, name, brand) {
+  const fields = [String(name || '').toLowerCase(), String(brand || '').toLowerCase()];
+  if (fields[0] === q) return 0;
+  const esc = escapeRegex(q);
+  const wholeWord = new RegExp(`(^|[^a-z0-9])${esc}($|[^a-z0-9])`);
+  const wordStart = new RegExp(`(^|[^a-z0-9])${esc}`);
+  if (fields.some(f => wholeWord.test(f))) return 1;
+  if (fields.some(f => wordStart.test(f))) return 2;
+  if (fields.some(f => f.includes(q))) return 3;
+  return null;
 }
 
 /**
