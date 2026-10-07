@@ -109,3 +109,72 @@ describe('ingredient density (grams_per_ml)', () => {
     expect(res.body.grams_per_ml).toBe(1.2);
   });
 });
+
+describe('update_food_item response over MCP', () => {
+  let app;
+  let db;
+  let soyId;
+  const prevToken = process.env.MCP_API_TOKEN;
+  const prevUser = process.env.MCP_USER_ID;
+
+  beforeEach(() => {
+    ({ app, db } = buildTestApp());
+    const userId = createUser(db, 'owner@mcp.test').id;
+    process.env.MCP_API_TOKEN = 'test-mcp-secret-token';
+    delete process.env.MCP_USER_ID;
+    soyId = db.prepare(
+      `INSERT INTO label_ingredients (
+         user_id, name, serving_size_text, calories, protein_g, carbs_g, fat_g,
+         source_type, tracking_type, unit_name, serving_quantity, micros_json
+       ) VALUES (?, 'Soy sauce', '15 ml', 10, 1, 2, 0, 'manual', 'unit', 'ml', 15, ?)`
+    ).run(userId, JSON.stringify({ micros: { sodium_mg: 880, potassium_mg: 65 }, confidence: 'medium' })).lastInsertRowid;
+  });
+
+  afterEach(() => {
+    if (prevToken === undefined) delete process.env.MCP_API_TOKEN;
+    else process.env.MCP_API_TOKEN = prevToken;
+    if (prevUser === undefined) delete process.env.MCP_USER_ID;
+    else process.env.MCP_USER_ID = prevUser;
+  });
+
+  const call = async (name, args) => {
+    const res = await request(app)
+      .post('/mcp')
+      .set('Authorization', 'Bearer test-mcp-secret-token')
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+    expect(res.status).toBe(200);
+    return { text: res.body.result.content[0].text, body: JSON.parse(res.body.result.content[0].text) };
+  };
+
+  it('returns only the changed fields, not two copies of the row', async () => {
+    const { text, body } = await call('update_food_item', { label_ingredient_id: soyId, grams_per_ml: 1.2 });
+    expect(body.changed).toEqual({ grams_per_ml: { before: null, after: 1.2 } });
+    expect(body).toMatchObject({ label_ingredient_id: soyId, name: 'Soy sauce' });
+    expect(body.before).toBeUndefined();
+    expect(body.after).toBeUndefined();
+    expect(text).not.toMatch(/micros_json/);
+    expect(body.micros_changed).toBeUndefined();
+  });
+
+  it('diffs micros per nutrient when they change', async () => {
+    const { body } = await call('update_food_item', {
+      label_ingredient_id: soyId, micros: { sodium_mg: 900, potassium_mg: 65 }, micros_confidence: 'high',
+    });
+    expect(body.micros_changed).toEqual({ sodium_mg: { before: 880, after: 900 } });
+  });
+
+  it('trims update steps inside write_batch and still reverts the full row', async () => {
+    const { text, body } = await call('write_batch', {
+      operations: [{ op: 'update_food_item', label_ingredient_id: soyId, grams_per_ml: 1.2, micros: { sodium_mg: 900 }, micros_confidence: 'high' }],
+    });
+    expect(text).not.toMatch(/micros_json/);
+    expect(body.results[0].changed.grams_per_ml).toEqual({ before: null, after: 1.2 });
+
+    const { body: reverted } = await call('revert_mcp_write', { audit_id: body.audit_id });
+    expect(reverted.error).toBeUndefined();
+    const row = db.prepare('SELECT grams_per_ml, micros_json FROM label_ingredients WHERE id = ?').get(soyId);
+    expect(row.grams_per_ml).toBeNull();
+    expect(JSON.parse(row.micros_json).micros).toEqual({ sodium_mg: 880, potassium_mg: 65 });
+  });
+});

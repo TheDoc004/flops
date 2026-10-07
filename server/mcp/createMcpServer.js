@@ -530,7 +530,8 @@ function createFlopsMcpServer(db, userId) {
     {
       title: 'Update food item',
       description:
-        `${WRITE_NOW} Patch an existing label ingredient. Returns before/after. `
+        `${WRITE_NOW} Patch an existing label ingredient. Returns only what changed: changed{field: {before, after}}, `
+        + 'plus micros_changed{nutrient: {before, after}} when micros were written (get_ingredient shows the full row). '
         + 'Pass micros (per label serving) OR micros_per_100g (scaled by the serving\'s gram weight); not both. '
         + 'Gram weight: weight-tracked foods use grams_per_serving; unit-tracked foods (eggs, slices) use '
         + 'grams_per_unit = grams in ONE unit — grams_per_serving is refused on them. '
@@ -594,7 +595,7 @@ function createFlopsMcpServer(db, userId) {
         .strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async (args) => wrapWrite(writes.updateFoodItem(db, userId, args))
+    async (args) => wrapWrite(writes.compactFoodUpdate(writes.updateFoodItem(db, userId, args)))
   );
 
   registerTool(
@@ -746,7 +747,7 @@ function createFlopsMcpServer(db, userId) {
         .strict(),
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
-    async (args) => wrapWrite(writes.writeBatch(db, userId, args))
+    async (args) => wrapWrite(writes.compactBatchResponse(writes.writeBatch(db, userId, args)))
   );
 
   registerTool(

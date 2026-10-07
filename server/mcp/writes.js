@@ -2307,8 +2307,49 @@ function bulkDeleteMcpFoods(db, userId, ids) {
   return { deleted: r.changes, ids: owned };
 }
 
+/**
+ * The caller-facing shape of an update_food_item result: only what changed.
+ * The full before/after rows (micros_json and all) stay in the audit row and
+ * in a write_batch's stored response, because revert reads them from there —
+ * this only trims what goes back over MCP, where a density tweak used to echo
+ * two copies of every micronutrient.
+ */
+function compactFoodUpdate(result) {
+  if (!result || result.error || result.op !== OPS.update_food_item || !result.before) return result;
+  const { before, after = {}, ...rest } = result;
+  const changed = {};
+  for (const key of Object.keys(after)) {
+    if (key === 'micros_json') continue;
+    if (before[key] !== after[key]) changed[key] = { before: before[key] ?? null, after: after[key] ?? null };
+  }
+  const out = {
+    ...rest,
+    label_ingredient_id: after.id ?? before.id,
+    name: after.name ?? before.name,
+    changed,
+  };
+  if (before.micros_json !== after.micros_json) {
+    const was = parseJson(before.micros_json, null)?.micros || {};
+    const now = parseJson(after.micros_json, null)?.micros || {};
+    const micros = {};
+    for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
+      if (was[key] !== now[key]) micros[key] = { before: was[key] ?? null, after: now[key] ?? null };
+    }
+    out.micros_changed = micros;
+  }
+  return out;
+}
+
+/** compactFoodUpdate applied to each update_food_item step of a write_batch. */
+function compactBatchResponse(result) {
+  if (!result || result.error || !Array.isArray(result.results)) return result;
+  return { ...result, results: result.results.map(compactFoodUpdate) };
+}
+
 module.exports = {
   OPS,
+  compactFoodUpdate,
+  compactBatchResponse,
   logMeal,
   addFoodItem,
   updateFoodItem,
