@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`)_
+_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -71,7 +71,7 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   call (one result group per query, `limit` per query, default 5). Write responses' `day.meals`
   is now a compact `{id, name, time_min, servings, logged}` instead of a copy of every meal's
   ingredients + micros (the written entry is already in the response; `get_day` has the full meals).
-- *Branch `claude/brave-hawking-hqd5h9`, not merged yet:* **ingredient density**.
+- *Shipped (PR #29):* **ingredient density**.
   `label_ingredients.grams_per_ml` is a second unitConvert bridge (beside `grams_per_unit`), and
   every cross-family conversion goes through grams. A weighed food with a density takes volume
   units; a per-ml liquid takes grams from the density alone; a counted food takes volume with both.
@@ -80,6 +80,14 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   an edit that omits it keeps it. **No UI field yet**: it is set via MCP only, though the Log Meal unit
   picker already offers volume units once a row has one. After deploy, set soy sauce (#97) ≈ 1.2 and
   chicken broth (#119) ≈ 1.0.
+- *update_food_item response trimmed:* over MCP it returns `changed{field:{before,after}}` plus
+  `micros_changed{nutrient:{before,after}}` instead of two full rows with raw `micros_json` (also
+  per step inside `write_batch`). The audit row and the batch's stored response still keep the full
+  before/after, because `revert_mcp_write` reads them. Trim happens in `createMcpServer.js` via
+  `compactFoodUpdate` / `compactBatchResponse`.
+- *Claude app tool cache:* after a deploy that adds a tool parameter, the Claude app keeps the old
+  schema until the connector is refreshed, so the direct call fails ("expected number, received
+  string"). `write_batch` passes operations through unchanged and works as a fallback.
 - *Library data issues seen (not fixed):* duplicate rows (TJ sourdough #27 vs #136, avocado spray
   #41 vs #138, 5 Greek yogurts); #49 small sourdough has `grams_per_unit` 0.01; #6 frozen
   blueberries has 0 g protein. Day totals sometimes carry float noise (`182.42000000000002`).
@@ -344,7 +352,7 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - **`client/package-lock.json` out of sync** with `package.json` (`npm ci` fails: missing `esbuild@0.28.2`).
   Regenerate with `npm install` in `client/`.
 
-**Tests (Oct 2026):** server ~419 Jest; client ~381 Vitest unit. Playwright e2e specs live under
+**Tests (Oct 2026):** server ~422 Jest; client ~381 Vitest unit. Playwright e2e specs live under
 `client/e2e/` and run via `npm run verify:layout-editor`, not `npm test`.
 
 ---
