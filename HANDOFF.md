@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses)_
+_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -85,6 +85,9 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   per step inside `write_batch`). The audit row and the batch's stored response still keep the full
   before/after, because `revert_mcp_write` reads them. Trim happens in `createMcpServer.js` via
   `compactFoodUpdate` / `compactBatchResponse`.
+- *Search ranking:* `searchIngredients` ranks by match quality before `use_count`. The tiers are:
+  exact name, whole word, word prefix, then substring, and the brand counts like the name.
+  Searching "apple" used to return pineapple blends and miss the Pink Lady apple.
 - *Claude app tool cache:* after a deploy that adds a tool parameter, the Claude app keeps the old
   schema until the connector is refreshed, so the direct call fails ("expected number, received
   string"). `write_batch` passes operations through unchanged and works as a fallback.
@@ -352,7 +355,7 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - **`client/package-lock.json` out of sync** with `package.json` (`npm ci` fails: missing `esbuild@0.28.2`).
   Regenerate with `npm install` in `client/`.
 
-**Tests (Oct 2026):** server ~422 Jest; client ~381 Vitest unit. Playwright e2e specs live under
+**Tests (Oct 2026):** server ~427 Jest; client ~381 Vitest unit. Playwright e2e specs live under
 `client/e2e/` and run via `npm run verify:layout-editor`, not `npm test`.
 
 ---
