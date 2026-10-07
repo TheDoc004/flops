@@ -8,7 +8,9 @@
  *   grams_per_serving = NULL
  *
  * Touches only rows with tracking_type='unit', no grams_per_unit, and a
- * positive grams_per_serving. Placeholder weights below MIN_GRAMS_PER_SERVING
+ * positive grams_per_serving. VOLUME units (ml, cup, tbsp…) only get the
+ * stray cleared: their "15 g" was a copy of "15 ml", and turning it into
+ * "1 ml = 1 g" would override a real density (grams_per_ml — soy sauce 1.2). Placeholder weights below MIN_GRAMS_PER_SERVING
  * (the 1 g stand-ins) are never moved — they'd become "1 slice = 1 g".
  * Macros and micros are never changed.
  *
@@ -20,6 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 const { MIN_GRAMS_PER_SERVING } = require('../gramsPerServing');
+const { isVolumeUnit } = require('../unitConvert');
 
 const args = process.argv.slice(2);
 const apply = args.includes('--apply');
@@ -47,12 +50,14 @@ function candidates(db) {
     .filter(r => !MASS_UNITS.has(String(r.unit_name || '').trim().toLowerCase()))
     .map(r => {
       const qty = Number(r.serving_quantity) > 0 ? Number(r.serving_quantity) : 1;
-      const gpu = Math.round((r.grams_per_serving / qty) * 1000) / 1000;
+      const volume = isVolumeUnit(r.unit_name);
+      const gpu = volume ? null : Math.round((r.grams_per_serving / qty) * 1000) / 1000;
       const kcalPer100g = r.grams_per_serving > 0 ? (r.calories / r.grams_per_serving) * 100 : null;
       const flags = [];
+      if (volume) flags.push('volume unit: clear only (set grams_per_ml for weight)');
       if (kcalPer100g != null && kcalPer100g > 900) flags.push(`${Math.round(kcalPer100g)} kcal/100g > 900`);
       if (!(Number(r.serving_quantity) > 0)) flags.push('no serving_quantity (assumed 1)');
-      const placeholder = r.grams_per_serving < MIN_GRAMS_PER_SERVING;
+      const placeholder = !volume && r.grams_per_serving < MIN_GRAMS_PER_SERVING;
       if (placeholder) flags.push(`placeholder ${r.grams_per_serving} g — left alone`);
       return { ...r, new_grams_per_unit: gpu, kcal_per_100g: kcalPer100g, flags, skipped: skip.has(r.id) || placeholder };
     });

@@ -68,6 +68,20 @@ describe('MCP Phase 3 direct writes', () => {
     ]);
     expect(r.day.meals[0].ingredients).toBeUndefined();
     expect(r.day.meals[0].micros).toBeUndefined();
+
+    // Totals are rounded once at the sum — no float noise like 184.82999999999998.
+    for (let i = 0; i < 3; i++) {
+      writes.logMeal(db, userId, {
+        date: '2026-09-24', weight_basis: 'cooked',
+        items: [{ label_ingredient_id: ingredientId, quantity_g: 33.3, nutrition_source: 'database' }],
+      });
+    }
+    const totals = reads.getDay(db, userId, '2026-09-24').meal_totals;
+    expect(totals.protein_g).toBe(30.96);
+    for (const [key, v] of Object.entries(totals)) {
+      const places = key === 'calories' ? 1 : 2;
+      expect(Math.round(v * 10 ** places) / 10 ** places).toBe(v);
+    }
     expect(reads.getDay(db, userId, '2026-09-25').meals).toHaveLength(1);
   });
 

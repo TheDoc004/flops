@@ -1136,17 +1136,22 @@ function updateFoodItem(db, userId, args = {}, { skipAudit = false } = {}) {
     if (args.serving_size_text != null) patch.serving_size_text = String(args.serving_size_text).trim();
     const isUnit = before.tracking_type === 'unit';
     if (Object.prototype.hasOwnProperty.call(args, 'grams_per_serving')) {
-      if (isUnit) {
+      // Clearing is always safe: on a unit row grams_per_serving is a stray
+      // left over from before grams_per_unit, and nothing scales by it.
+      if (isUnit && args.grams_per_serving === null) {
+        patch.grams_per_serving = null;
+      } else if (isUnit) {
         return {
           error:
             `"${before.name}" is counted in ${before.unit_name || 'units'}; its gram weight is grams_per_unit ` +
             `(grams in one ${before.unit_name || 'unit'}), not grams_per_serving.`,
           code: 'UNIT_TRACKED',
         };
+      } else {
+        const gps = normalizeGramsPerServingInput(args.grams_per_serving);
+        if (gps.error) return { error: gps.error };
+        patch.grams_per_serving = gps.value;
       }
-      const gps = normalizeGramsPerServingInput(args.grams_per_serving);
-      if (gps.error) return { error: gps.error };
-      patch.grams_per_serving = gps.value;
     }
     if (Object.prototype.hasOwnProperty.call(args, 'grams_per_unit')) {
       if (!isUnit) {

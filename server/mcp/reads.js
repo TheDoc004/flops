@@ -94,24 +94,38 @@ function entryMacros(entry) {
   };
 }
 
+/**
+ * Totals are sums of already-rounded entry values, so float noise is all that
+ * extra precision carries ("184.82999999999998"). Round once, at the total.
+ */
+function roundMacroTotals(m) {
+  const to = (v, places) => Math.round(v * 10 ** places) / 10 ** places;
+  return {
+    calories: to(m.calories, 1),
+    protein_g: to(m.protein_g, 2),
+    carbs_g: to(m.carbs_g, 2),
+    fat_g: to(m.fat_g, 2),
+  };
+}
+
 function sumMacros(entries) {
-  return (entries || []).reduce((acc, e) => {
+  return roundMacroTotals((entries || []).reduce((acc, e) => {
     const m = entryMacros(e);
     acc.calories += m.calories;
     acc.protein_g += m.protein_g;
     acc.carbs_g += m.carbs_g;
     acc.fat_g += m.fat_g;
     return acc;
-  }, emptyMacros());
+  }, emptyMacros()));
 }
 
 function addMacros(a, b) {
-  return {
+  return roundMacroTotals({
     calories: (a?.calories || 0) + (b?.calories || 0),
     protein_g: (a?.protein_g || 0) + (b?.protein_g || 0),
     carbs_g: (a?.carbs_g || 0) + (b?.carbs_g || 0),
     fat_g: (a?.fat_g || 0) + (b?.fat_g || 0),
-  };
+  });
 }
 
 function shapeEntry(row, db = null, userId = null) {

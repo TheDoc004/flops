@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking)_
+_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -88,12 +88,14 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
 - *Search ranking:* `searchIngredients` ranks by match quality before `use_count`. The tiers are:
   exact name, whole word, word prefix, then substring, and the brand counts like the name.
   Searching "apple" used to return pineapple blends and miss the Pink Lady apple.
+- *Day totals rounded:* `sumMacros` / `addMacros` round at the total (kcal 1 dp, grams 2 dp), so
+  responses no longer show float noise like `184.82999999999998`.
 - *Claude app tool cache:* after a deploy that adds a tool parameter, the Claude app keeps the old
   schema until the connector is refreshed, so the direct call fails ("expected number, received
   string"). `write_batch` passes operations through unchanged and works as a fallback.
 - *Library data issues seen (not fixed):* duplicate rows (TJ sourdough #27 vs #136, avocado spray
   #41 vs #138, 5 Greek yogurts); #49 small sourdough has `grams_per_unit` 0.01; #6 frozen
-  blueberries has 0 g protein. Day totals sometimes carry float noise (`182.42000000000002`).
+  blueberries has 0 g protein. 
 
 **2026-10-05 — `log_body_weight` + server TZ:** MCP can write weigh-ins (lb/kg, same-date
 overwrite like the Dashboard, `body_weights.source` = app|mcp, revertible, batchable) via the
@@ -109,7 +111,9 @@ logged as 200 g). MCP `log_meal` now uses the app's converter and takes `quantit
 ("4 egg"); grams without `grams_per_unit` are refused; dropped micros surface as warnings.
 **Pending:** run `server/scripts/migrateUnitGramsPerUnit.js` (dry run, then `--apply`) on
 Render to move `grams_per_serving` → `grams_per_unit` on unit rows — until then MCP can
-only log those foods by count. Historical log rows are NOT rewritten (their micros heal live
+only log those foods by count. Since 2026-10-07 the script clears volume-unit rows (ml, cup…)
+instead of writing "1 ml = 1 g" over a real `grams_per_ml`. Single rows can also be cleared
+over MCP: `update_food_item {grams_per_serving: null}` is accepted on unit rows. Historical log rows are NOT rewritten (their micros heal live
 once `grams_per_unit` is set).
 
 **Previous work stream:** `get_server_info` MCP tool + `/health` identity
@@ -355,7 +359,7 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - **`client/package-lock.json` out of sync** with `package.json` (`npm ci` fails: missing `esbuild@0.28.2`).
   Regenerate with `npm install` in `client/`.
 
-**Tests (Oct 2026):** server ~427 Jest; client ~381 Vitest unit. Playwright e2e specs live under
+**Tests (Oct 2026):** server ~429 Jest; client ~381 Vitest unit. Playwright e2e specs live under
 `client/e2e/` and run via `npm run verify:layout-editor`, not `npm test`.
 
 ---

@@ -548,7 +548,7 @@ function createFlopsMcpServer(db, userId) {
             .min(3)
             .nullable()
             .optional()
-            .describe('Label serving weight in grams (min 3), or null to clear a placeholder. Weight-tracked foods only.'),
+            .describe('Label serving weight in grams (min 3), or null to clear a placeholder. Weight-tracked foods only — on a unit-tracked food only null is accepted (clears a stray value; its weight is grams_per_unit).'),
           grams_per_unit: z
             .number()
             .positive()
