@@ -755,7 +755,67 @@ function recipeIngredientsSnapshotJson(db, userId, recipe, warnings = null) {
   }
 }
 
-function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, weight_basis, resolved, totals, warnings = null }) {
+/**
+ * One meal prep container plus add-on foods ("container + 21 g honey"), stored
+ * as ONE entry against the prep recipe so the use counts down and is handed
+ * back on delete like a plain container. log_entries hold per-serving values
+ * that reads multiply by servings, so the add-ons are divided by the
+ * container's servings before they sit next to the recipe's own rows.
+ */
+function insertMealPrepWithAddOns(db, userId, built, prep, addOnRows, nutrition_source, result) {
+  const { date, meal_slot, time_min, weight_basis, totals, warnings } = built;
+  const recipe = db
+    .prepare(
+      `SELECT id, name, serving_size, calories, protein_g, carbs_g, fat_g, fiber_g, is_quick_food,
+              ingredients, meal_builder_meta
+         FROM recipes WHERE id = ? AND user_id = ?`
+    )
+    .get(prep.recipe_id, userId);
+  if (!recipe) throw Object.assign(new Error('Recipe missing'), { code: 'RECIPE_GONE' });
+  const servings = Number(prep.servings) || 1;
+  const per = v => (v == null ? null : round(Number(v) / servings, 2));
+
+  const snapshot = recipeIngredientsSnapshotJson(db, userId, recipe, warnings);
+  let ingredientsJson = null;
+  if (snapshot) {
+    const addOnsPerServing = addOnRows.map(r => ({
+      ...r,
+      amount: per(r.amount),
+      calories: per(r.calories), protein_g: per(r.protein_g), carbs_g: per(r.carbs_g),
+      fat_g: per(r.fat_g), fiber_g: per(r.fiber_g),
+      add_on: true,
+    }));
+    ingredientsJson = JSON.stringify([...JSON.parse(snapshot), ...addOnsPerServing]);
+  } else if (warnings) {
+    warnings.push('Micros for this container + add-ons were NOT counted: the prep recipe could not be snapshotted.');
+  }
+
+  const name = built.explicitName
+    ? built.name
+    : `${recipe.name} + ${addOnRows.map(r => r.name).join(', ')}`;
+  const ins = db
+    .prepare(
+      `INSERT INTO log_entries (
+         user_id, recipe_id, date, time_min, servings, notes,
+         recipe_name, serving_size, recipe_calories, recipe_protein_g, recipe_carbs_g,
+         recipe_fat_g, recipe_fiber_g, recipe_is_quick_food, slot_selections_json,
+         ingredients_json, source, weight_basis, nutrition_source
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, 'mcp', ?, ?)`
+    )
+    .run(
+      userId, recipe.id, date, time_min, servings, meal_slot ? `slot:${meal_slot}` : null,
+      name, recipe.serving_size,
+      round(totals.calories / servings, 1), per(totals.protein_g), per(totals.carbs_g),
+      per(totals.fat_g), per(totals.fiber_g),
+      ingredientsJson, weight_basis, nutrition_source
+    );
+  consumeLimitedUses(db, userId, recipe.id, servings);
+  result.log_entry_ids.push(ins.lastInsertRowid);
+  return result;
+}
+
+function insertMealFromResolved(db, userId, built) {
+  const { date, name, meal_slot, time_min, weight_basis, resolved, totals, warnings = null } = built;
   const result = { log_entry_ids: [], label_ingredient_ids: [] };
   const ingredientRows = [];
 
@@ -817,7 +877,6 @@ function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, w
     return result;
   }
 
-  const recipeId = ensureQuickFoodRecipe(db, userId, name, totals);
   const nutrition_source = resolved.every(i => i.nutrition_source === 'label')
     ? 'label'
     : resolved.every(i => i.nutrition_source === 'database')
@@ -825,6 +884,14 @@ function insertMealFromResolved(db, userId, { date, name, meal_slot, time_min, w
       : resolved.some(i => i.nutrition_source === 'estimate')
         ? 'estimate'
         : 'database';
+
+  const prep = resolved.find(i => i.kind === 'recipe' && i.limited);
+  if (prep) {
+    const addOnRows = ingredientRows.filter(r => r.recipe_id == null);
+    return insertMealPrepWithAddOns(db, userId, built, prep, addOnRows, nutrition_source, result);
+  }
+
+  const recipeId = ensureQuickFoodRecipe(db, userId, name, totals);
 
   const ins = db
     .prepare(
@@ -859,14 +926,15 @@ function buildMealPayload(db, userId, args, refMap) {
     resolved.push(r.item);
     warnings.push(...(r.warnings || []));
   }
-  if (resolved.length > 1 && resolved.some(it => it.limited)) {
-    // Uses are charged to an entry whose recipe_id is the prep recipe; a mixed
-    // meal is stored against a quick-food recipe, so its use could never be
-    // handed back on delete. Log the container as its own entry.
+  const limitedItems = resolved.filter(it => it.limited);
+  if (limitedItems.length && (limitedItems.length > 1 || resolved.some(it => it.kind === 'recipe' && !it.limited))) {
+    // A container plus add-on foods is stored against the prep recipe (so its
+    // use is handed back on delete). Two preps, or a prep plus another recipe,
+    // have no single recipe to charge.
     return {
       error:
-        'Meal prep (limited-use) recipes must be logged on their own: items=[{recipe_id, servings}]. ' +
-        'Log other foods as a separate meal.',
+        'A meal prep (limited-use) recipe can be logged with add-on foods (label ingredients or new foods), ' +
+        'but not with another recipe or a second meal prep. Log those as separate meals.',
       code: 'MEAL_PREP_MIXED',
     };
   }
@@ -877,7 +945,8 @@ function buildMealPayload(db, userId, args, refMap) {
   if (time_min != null && (!Number.isFinite(time_min) || time_min < 0 || time_min > 1439)) {
     return { error: 'time_min must be minutes from midnight (0–1439)' };
   }
-  return { date, name, meal_slot, time_min, weight_basis, resolved, totals, warnings };
+  const explicitName = !!String(args.name || '').trim();
+  return { date, name, explicitName, meal_slot, time_min, weight_basis, resolved, totals, warnings };
 }
 
 function collectMealWarnings(built) {
@@ -1321,7 +1390,7 @@ function updateMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
       if (hasItems) {
         softDeleteEntry(db, userId, id);
         const ids = insertMealFromResolved(db, userId, {
-          date, name, meal_slot, time_min, weight_basis, resolved, totals, warnings,
+          date, name, explicitName: true, meal_slot, time_min, weight_basis, resolved, totals, warnings,
         });
         const after = fetchLogEntryById(db, userId, ids.log_entry_ids[0]);
         warnings.push(...droppedMicrosWarnings(db, userId, after?.ingredients));

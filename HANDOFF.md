@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses)_
+_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses; meal prep add-ons)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -85,6 +85,13 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   per step inside `write_batch`). The audit row and the batch's stored response still keep the full
   before/after, because `revert_mcp_write` reads them. Trim happens in `createMcpServer.js` via
   `compactFoodUpdate` / `compactBatchResponse`.
+- *Meal prep container + add-ons:* `log_meal` takes one limited recipe plus add-on foods (label
+  ingredients / new foods) as ONE entry against the prep recipe, so the use counts down and is handed
+  back on delete. Entry macros are per serving (totals ÷ servings); add-on rows are divided by servings
+  and flagged `add_on: true` in `ingredients_json` next to the recipe snapshot, so micros count both.
+  A prep with another recipe or a second prep is still refused (`MEAL_PREP_MIXED`). Default name:
+  "<prep> + <add-ons>". Prep #395 (soy chicken/russets/broccoli) has 2 honey (21 g) and 2 maple
+  (30 g, #64) containers. Maple duplicates #67/#71 were renamed "(old duplicate)".
 - *Meal update/delete responses trimmed:* over MCP, `delete_meal_entry` / `update_meal_entry`
   return `before` as a summary `{id, name, date, servings, logged}` plus one `day` (after the
   write) instead of the full entry + `day_before` + `day_after`. `write_batch` drops per-step days
@@ -364,7 +371,7 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - **`client/package-lock.json` out of sync** with `package.json` (`npm ci` fails: missing `esbuild@0.28.2`).
   Regenerate with `npm install` in `client/`.
 
-**Tests (Oct 2026):** server ~431 Jest; client ~381 Vitest unit. Playwright e2e specs live under
+**Tests (Oct 2026):** server ~435 Jest; client ~381 Vitest unit. Playwright e2e specs live under
 `client/e2e/` and run via `npm run verify:layout-editor`, not `npm test`.
 
 ---

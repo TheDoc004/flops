@@ -448,8 +448,10 @@ function createFlopsMcpServer(db, userId) {
         + 'If an item cites a library ingredient whose stored weight_basis disagrees, the write is refused. '
         + 'Requires per-item nutrition_source. Returns the entry, resolved_weight_basis per item, and day totals/vs_goals. '
         + 'Discover ingredient IDs with search_ingredients. '
-        + 'Meal prep (limited-use) recipes count down one use per serving and must be logged alone '
-        + '(items=[{recipe_id, servings}]); deleting or reverting the entry hands the uses back.',
+        + 'Meal prep (limited-use) recipes count down one use per serving; deleting or reverting the entry '
+        + 'hands the uses back. A container can carry add-on foods in the same entry — '
+        + 'items=[{recipe_id, servings: 1}, {label_ingredient_id, quantity_g}] (e.g. a prep bowl + 21 g honey) — '
+        + 'but not another recipe or a second meal prep.',
       inputSchema: z
         .object({
           date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
