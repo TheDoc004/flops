@@ -604,7 +604,7 @@ function createFlopsMcpServer(db, userId) {
       title: 'Update meal entry',
       description:
         `${WRITE_NOW} Change date/slot/name or replace items on a log entry (use id from get_day / get_log_range). `
-        + 'Returns before/after plus day_before/day_after totals. '
+        + 'Returns the new entry (after), a summary of the replaced one (before: id/name/logged), and the day after the change. '
         + 'Replacing items soft-deletes the old row and inserts a new log_entry_id (revert restores the old id).',
       inputSchema: z
         .object({
@@ -620,7 +620,7 @@ function createFlopsMcpServer(db, userId) {
         .strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async (args) => wrapWrite(writes.updateMealEntry(db, userId, args))
+    async (args) => wrapWrite(writes.compactWriteResult(writes.updateMealEntry(db, userId, args)))
   );
 
   registerTool(
@@ -629,7 +629,7 @@ function createFlopsMcpServer(db, userId) {
       title: 'Delete meal entry',
       description:
         `${WRITE_NOW} Soft-delete a log entry (is_deleted=1). Row stays for undo; day totals exclude it. `
-        + 'Revert with revert_mcp_write(audit_id). Returns day_before/day_after.',
+        + 'Revert with revert_mcp_write(audit_id). Returns a summary of the deleted entry (before: id/name/logged) and the day after the delete.',
       inputSchema: z
         .object({
           log_entry_id: z.number().int().positive(),
@@ -638,7 +638,7 @@ function createFlopsMcpServer(db, userId) {
         .strict(),
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
-    async (args) => wrapWrite(writes.deleteMealEntry(db, userId, args))
+    async (args) => wrapWrite(writes.compactWriteResult(writes.deleteMealEntry(db, userId, args)))
   );
 
   registerTool(

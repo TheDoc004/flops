@@ -2345,15 +2345,53 @@ function compactFoodUpdate(result) {
   return out;
 }
 
-/** compactFoodUpdate applied to each update_food_item step of a write_batch. */
+/** A log entry reduced to what identifies it: no ingredients, no micros. */
+function entrySummary(entry) {
+  if (!entry) return entry ?? null;
+  return { id: entry.id, name: entry.recipe_name, date: entry.date, servings: entry.servings, logged: entry.logged };
+}
+
+/**
+ * Caller-facing shape of a meal update/delete. The removed (or replaced) entry
+ * shrinks to a summary and only the day AFTER the write is returned — the full
+ * before/after entries and both days stay in the audit row for revert. An
+ * update keeps its full `after`: the new ingredients are the point of the call.
+ */
+function compactMealWrite(result) {
+  if (!result || result.error) return result;
+  if (result.op !== OPS.delete_meal_entry && result.op !== OPS.update_meal_entry) return result;
+  const { before, day_before: _dayBefore, day_after: dayAfter, ...rest } = result;
+  const out = { ...rest, before: entrySummary(before) };
+  if (dayAfter) out.day = dayAfter;
+  return out;
+}
+
+/** One step of any write, in its caller-facing shape. */
+function compactWriteResult(result) {
+  return compactMealWrite(compactFoodUpdate(result));
+}
+
+/**
+ * write_batch over MCP: every step compacted, and the day returned once (as it
+ * stands after the whole batch) instead of once per meal step.
+ */
 function compactBatchResponse(result) {
   if (!result || result.error || !Array.isArray(result.results)) return result;
-  return { ...result, results: result.results.map(compactFoodUpdate) };
+  let day = result.day ?? null;
+  const results = result.results.map(step => {
+    const { day: stepDay, ...rest } = compactWriteResult(step) || {};
+    if (stepDay) day = stepDay;
+    return rest;
+  });
+  const out = { ...result, results };
+  if (day) out.day = day;
+  return out;
 }
 
 module.exports = {
   OPS,
   compactFoodUpdate,
+  compactWriteResult,
   compactBatchResponse,
   logMeal,
   addFoodItem,
