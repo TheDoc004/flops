@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals)_
+_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -85,6 +85,11 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   per step inside `write_batch`). The audit row and the batch's stored response still keep the full
   before/after, because `revert_mcp_write` reads them. Trim happens in `createMcpServer.js` via
   `compactFoodUpdate` / `compactBatchResponse`.
+- *Meal update/delete responses trimmed:* over MCP, `delete_meal_entry` / `update_meal_entry`
+  return `before` as a summary `{id, name, date, servings, logged}` plus one `day` (after the
+  write) instead of the full entry + `day_before` + `day_after`. `write_batch` drops per-step days
+  and returns one `day` as it stands after the whole batch. Same boundary as the food-update trim
+  (`compactWriteResult` / `compactBatchResponse`), so audit rows keep everything revert needs.
 - *Search ranking:* `searchIngredients` ranks by match quality before `use_count`. The tiers are:
   exact name, whole word, word prefix, then substring, and the brand counts like the name.
   Searching "apple" used to return pineapple blends and miss the Pink Lady apple.
@@ -359,7 +364,7 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - **`client/package-lock.json` out of sync** with `package.json` (`npm ci` fails: missing `esbuild@0.28.2`).
   Regenerate with `npm install` in `client/`.
 
-**Tests (Oct 2026):** server ~429 Jest; client ~381 Vitest unit. Playwright e2e specs live under
+**Tests (Oct 2026):** server ~431 Jest; client ~381 Vitest unit. Playwright e2e specs live under
 `client/e2e/` and run via `npm run verify:layout-editor`, not `npm test`.
 
 ---

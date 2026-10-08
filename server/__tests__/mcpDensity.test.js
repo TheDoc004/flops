@@ -178,3 +178,83 @@ describe('update_food_item response over MCP', () => {
     expect(JSON.parse(row.micros_json).micros).toEqual({ sodium_mg: 880, potassium_mg: 65 });
   });
 });
+
+describe('meal update/delete responses over MCP', () => {
+  let app;
+  let db;
+  let foodId;
+  const prevToken = process.env.MCP_API_TOKEN;
+  const prevUser = process.env.MCP_USER_ID;
+
+  beforeEach(() => {
+    ({ app, db } = buildTestApp());
+    const userId = createUser(db, 'owner@mcp.test').id;
+    process.env.MCP_API_TOKEN = 'test-mcp-secret-token';
+    delete process.env.MCP_USER_ID;
+    foodId = db.prepare(
+      `INSERT INTO label_ingredients (user_id, name, serving_size_text, grams_per_serving,
+         calories, protein_g, carbs_g, fat_g, micros_json)
+       VALUES (?, 'Chicken breast', '100 g', 100, 120, 23, 0, 2.6, ?)`
+    ).run(userId, JSON.stringify({ micros: { niacin_mg: 10, selenium_mcg: 25 }, confidence: 'medium' })).lastInsertRowid;
+  });
+
+  afterEach(() => {
+    if (prevToken === undefined) delete process.env.MCP_API_TOKEN;
+    else process.env.MCP_API_TOKEN = prevToken;
+    if (prevUser === undefined) delete process.env.MCP_USER_ID;
+    else process.env.MCP_USER_ID = prevUser;
+  });
+
+  const call = async (name, args) => {
+    const res = await request(app)
+      .post('/mcp')
+      .set('Authorization', 'Bearer test-mcp-secret-token')
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+    return JSON.parse(res.body.result.content[0].text);
+  };
+  const meal = grams => ({
+    op: 'log_meal', date: '2026-10-07', weight_basis: 'raw', name: `Chicken ${grams}`,
+    items: [{ label_ingredient_id: foodId, quantity_g: grams, nutrition_source: 'database' }],
+  });
+
+  it('delete returns a summary of the meal and one day, not the full entry and two days', async () => {
+    const logged = await call('write_batch', { operations: [meal(200)] });
+    const id = logged.result_row_ids.log_entry_ids[0];
+    const del = await call('delete_meal_entry', { log_entry_id: id });
+    expect(del.before).toEqual({
+      id, name: 'Chicken 200', date: '2026-10-07', servings: 1,
+      logged: { calories: 240, protein_g: 46, carbs_g: 0, fat_g: 5.2 },
+    });
+    expect(del.day_before).toBeUndefined();
+    expect(del.day_after).toBeUndefined();
+    expect(del.day.meal_totals.calories).toBe(0);
+    // The full entry is still in the audit, so revert brings the meal back.
+    const reverted = await call('revert_mcp_write', { audit_id: del.audit_id });
+    expect(reverted.error).toBeUndefined();
+    expect((await call('get_day', { date: '2026-10-07' })).meals).toHaveLength(1);
+  });
+
+  it('write_batch returns the day once, as it stands after the whole batch', async () => {
+    const first = await call('write_batch', { operations: [meal(100)] });
+    const out = await call('write_batch', {
+      operations: [
+        { op: 'delete_meal_entry', log_entry_id: first.result_row_ids.log_entry_ids[0] },
+        meal(150),
+        meal(50),
+      ],
+    });
+    for (const step of out.results) {
+      expect(step.day).toBeUndefined();
+      expect(step.day_before).toBeUndefined();
+    }
+    expect(out.results[0].before.name).toBe('Chicken 100');
+    expect(out.day.meal_totals.calories).toBe(240);
+    expect(out.day.meals.map(m => m.name)).toEqual(['Chicken 150', 'Chicken 50']);
+
+    // Reverting the trimmed batch still restores the deleted meal and drops the new ones.
+    await call('revert_mcp_write', { audit_id: out.audit_id });
+    const day = await call('get_day', { date: '2026-10-07' });
+    expect(day.meals.map(m => m.recipe_name)).toEqual(['Chicken 100']);
+  });
+});
