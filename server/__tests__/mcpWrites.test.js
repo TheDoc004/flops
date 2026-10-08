@@ -601,17 +601,78 @@ describe('MCP Phase 3 direct writes', () => {
       expect(reads.getDay(db, userId, '2026-09-30').meals).toHaveLength(0);
     });
 
-    it('refuses mixing a prep container with other foods', () => {
-      const r = writes.logMeal(db, userId, {
+    describe('container + add-on foods', () => {
+      let honeyId;
+      beforeEach(() => {
+        honeyId = db.prepare(
+          `INSERT INTO label_ingredients (user_id, name, serving_size_text, grams_per_serving,
+             calories, protein_g, carbs_g, fat_g, micros_json)
+           VALUES (?, 'clover honey', '21 g', 21, 60, 0, 17, 0, ?)`
+        ).run(userId, JSON.stringify({ micros: { potassium_mg: 11 }, confidence: 'medium' })).lastInsertRowid;
+      });
+      const withHoney = (servings = 1, grams = 21) => writes.logMeal(db, userId, {
         date: '2026-09-30',
         weight_basis: 'cooked',
         items: [
-          { recipe_id: prepId, servings: 1, nutrition_source: 'database' },
-          { label_ingredient_id: ingredientId, quantity_g: 50, nutrition_source: 'database' },
+          { recipe_id: prepId, servings, nutrition_source: 'database' },
+          { label_ingredient_id: honeyId, quantity_g: grams, nutrition_source: 'database' },
         ],
       });
-      expect(r.code).toBe('MEAL_PREP_MIXED');
-      expect(uses().remaining_uses).toBe(3);
+
+      it('logs one entry against the prep, charges the use, and adds the honey', () => {
+        const r = withHoney();
+        expect(r.error).toBeUndefined();
+        expect(uses().remaining_uses).toBe(2);
+        // 200 g chicken (330 kcal) + 21 g honey (60 kcal)
+        expect(r.entry).toMatchObject({
+          recipe_id: prepId,
+          recipe_name: 'Countdown Prep + clover honey',
+          logged: { calories: 390, protein_g: 62, carbs_g: 17, fat_g: 7.2 },
+        });
+        const rows = r.entry.ingredients;
+        expect(rows.find(x => x.label_ingredient_id === honeyId)).toMatchObject({ amount: 21, add_on: true });
+        expect(rows.find(x => x.label_ingredient_id === ingredientId).amount).toBe(200);
+        // Honey micros are counted with the container's.
+        expect(r.entry.micros.potassium_mg).toBeGreaterThanOrEqual(11);
+        expect(reads.getDay(db, userId, '2026-09-30').meals).toHaveLength(1);
+      });
+
+      it('scales add-ons per serving when the container is logged twice over', () => {
+        const r = withHoney(2, 42);
+        expect(r.error).toBeUndefined();
+        expect(uses().remaining_uses).toBe(1);
+        expect(r.entry.logged).toMatchObject({ calories: 780, carbs_g: 34 });
+        expect(r.entry.ingredients.find(x => x.label_ingredient_id === honeyId).amount).toBe(21);
+      });
+
+      it('delete hands the use back; revert re-charges it', () => {
+        const r = withHoney();
+        const del = writes.deleteMealEntry(db, userId, { log_entry_id: r.entry.id });
+        expect(uses().remaining_uses).toBe(3);
+        writes.revertMcpWrite(db, userId, { audit_id: del.audit_id });
+        expect(uses().remaining_uses).toBe(2);
+      });
+
+      it('still refuses a prep with another recipe or a second prep', () => {
+        const other = writes.createMealPrep(db, userId, {
+          name: 'Other Prep', servings: 2, weight_basis: 'cooked',
+          items: [{ label_ingredient_id: ingredientId, quantity_g: 300, nutrition_source: 'database' }],
+        }).recipe.id;
+        const r = writes.logMeal(db, userId, {
+          date: '2026-09-30', weight_basis: 'cooked',
+          items: [
+            { recipe_id: prepId, servings: 1, nutrition_source: 'database' },
+            { recipe_id: other, servings: 1, nutrition_source: 'database' },
+          ],
+        });
+        expect(r.code).toBe('MEAL_PREP_MIXED');
+        expect(uses().remaining_uses).toBe(3);
+      });
+
+      it('respects remaining uses', () => {
+        expect(withHoney(4, 84).code).toBe('LIMIT_USES');
+        expect(uses().remaining_uses).toBe(3);
+      });
     });
 
     it('delete, revert and update hand uses back and re-charge them', () => {
