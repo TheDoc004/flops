@@ -518,6 +518,53 @@ function getProfile(db, userId) {
   return safe;
 }
 
+/**
+ * One recipe with its ingredient lines, each resolved at the saved amount
+ * (per serving) — the label_ingredient_ids log_meal's recipe `adjust` targets.
+ */
+function getRecipe(db, userId, recipeId) {
+  const { receiptFromRecipeTemplate } = require('../recipeIngredients');
+  const recipe = db
+    .prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ? AND COALESCE(is_deleted, 0) = 0')
+    .get(Number(recipeId), userId);
+  if (!recipe) return { error: `recipe_id ${recipeId} not found` };
+  let lines = [];
+  let linesError = null;
+  try {
+    const receipt = receiptFromRecipeTemplate(db, recipe, userId);
+    lines = (receipt?.rows || []).map(r => ({
+      label_ingredient_id: r.label_ingredient_id ?? null,
+      name: r.name,
+      amount: r.amount,
+      unit: r.unit,
+      calories: r.calories,
+      protein_g: r.protein_g,
+      carbs_g: r.carbs_g,
+      fat_g: r.fat_g,
+      fiber_g: r.fiber_g ?? null,
+    }));
+  } catch (e) {
+    linesError = `${e.ingredientName ? `"${e.ingredientName}": ` : ''}${e.code || e.message}`;
+  }
+  return {
+    id: recipe.id,
+    name: recipe.name,
+    serving_size: recipe.serving_size,
+    recipe_kind: recipe.recipe_kind,
+    remaining_uses: recipe.remaining_uses ?? null,
+    is_archived: !!recipe.is_archived,
+    per_serving: {
+      calories: recipe.calories,
+      protein_g: recipe.protein_g,
+      carbs_g: recipe.carbs_g,
+      fat_g: recipe.fat_g,
+      fiber_g: recipe.fiber_g ?? null,
+    },
+    lines,
+    ...(linesError ? { lines_error: linesError } : {}),
+  };
+}
+
 function searchRecipes(db, userId, query, { limit = 25 } = {}) {
   const lim = Math.min(50, Math.max(1, Number(limit) || 25));
   const q = String(query || '').trim().toLowerCase();
@@ -1198,6 +1245,7 @@ module.exports = {
   getSupplementsRange,
   getMicronutrientTotals,
   searchRecipes,
+  getRecipe,
   searchIngredients,
   getIngredient,
   listSupplements,

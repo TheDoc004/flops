@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses; meal prep add-ons)_
+_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses; meal prep add-ons; recipe adjust + get_recipe)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -85,6 +85,13 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   per step inside `write_batch`). The audit row and the batch's stored response still keep the full
   before/after, because `revert_mcp_write` reads them. Trim happens in `createMcpServer.js` via
   `compactFoodUpdate` / `compactBatchResponse`.
+- *Recipes with today's amounts:* new read tool `get_recipe` (lines with label_ingredient_id, amount,
+  unit, macros per serving). `log_meal` recipe items take `adjust: [{label_ingredient_id,
+  quantity_g | quantity+unit | remove: true}]` (per serving), resolved through `resolveReceiptForLog`
+  like the app's log-time receipt edits. One recipe plus adjust and/or extra foods is stored as ONE
+  entry linked to the recipe (`insertRecipeWithChanges`, which also handles meal prep add-ons); several
+  recipes still flatten to a quick-food meal. Diego's daily breakfast is recipe #108 "Egg Toast Yogurt
+  Wombo Combo". `update_meal_entry` no longer returns `items_resolved` over MCP.
 - *Meal prep container + add-ons:* `log_meal` takes one limited recipe plus add-on foods (label
   ingredients / new foods) as ONE entry against the prep recipe, so the use counts down and is handed
   back on delete. Entry macros are per serving (totals ÷ servings); add-on rows are divided by servings
@@ -371,7 +378,7 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - **`client/package-lock.json` out of sync** with `package.json` (`npm ci` fails: missing `esbuild@0.28.2`).
   Regenerate with `npm install` in `client/`.
 
-**Tests (Oct 2026):** server ~435 Jest; client ~381 Vitest unit. Playwright e2e specs live under
+**Tests (Oct 2026):** server ~440 Jest; client ~381 Vitest unit. Playwright e2e specs live under
 `client/e2e/` and run via `npm run verify:layout-editor`, not `npm test`.
 
 ---

@@ -51,6 +51,24 @@ const mealItemSchema = z
       .optional()
       .describe('Overrides meal weight_basis for this item. Must match library ingredient if set.'),
     micros_per_100g: z.record(z.string(), z.number()).optional(),
+    adjust: z
+      .array(
+        z
+          .object({
+            label_ingredient_id: z.number().int().positive(),
+            quantity_g: z.number().positive().optional(),
+            quantity: z.number().positive().optional(),
+            unit: z.string().optional(),
+            remove: z.boolean().optional(),
+          })
+          .strict()
+      )
+      .min(1)
+      .optional()
+      .describe(
+        'Recipe items only: change lines for this log, per ONE serving — {label_ingredient_id, quantity_g | quantity+unit} '
+        + 'or {label_ingredient_id, remove: true}. Line ids come from get_recipe. Add new foods as separate items.'
+      ),
   })
   .strict();
 
@@ -296,7 +314,8 @@ function createFlopsMcpServer(db, userId) {
     'search_recipes',
     {
       title: 'Search recipes',
-      description: `${READ_ONLY} Search the recipe library by name substring (excludes quick-food backing recipes).`,
+      description: `${READ_ONLY} Search the recipe library by name substring (excludes quick-food backing recipes). `
+        + 'Totals only — get_recipe lists a recipe\'s ingredient lines.',
       inputSchema: {
         query: z.string().optional().describe('Name substring (empty = first page of library)'),
         limit: z.number().int().min(1).max(50).optional(),
@@ -307,6 +326,24 @@ function createFlopsMcpServer(db, userId) {
       reads.textResult({
         recipes: reads.searchRecipes(db, userId, query, { limit }),
       })
+  );
+
+  registerTool(
+    'get_recipe',
+    {
+      title: 'Get recipe',
+      description:
+        `${READ_ONLY} One recipe with its ingredient lines (label_ingredient_id, amount, unit, macros) per serving. `
+        + 'Use the line ids with log_meal\'s recipe `adjust` to log the recipe with different amounts.',
+      inputSchema: {
+        recipe_id: z.number().int().positive(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ recipe_id }) => {
+      const r = reads.getRecipe(db, userId, recipe_id);
+      return r.error ? reads.errorResult(r.error) : reads.textResult(r);
+    }
   );
 
   registerTool(
@@ -448,6 +485,9 @@ function createFlopsMcpServer(db, userId) {
         + 'If an item cites a library ingredient whose stored weight_basis disagrees, the write is refused. '
         + 'Requires per-item nutrition_source. Returns the entry, resolved_weight_basis per item, and day totals/vs_goals. '
         + 'Discover ingredient IDs with search_ingredients. '
+        + 'A recipe can be logged with changed amounts via adjust (e.g. {recipe_id: 108, servings: 1, adjust: '
+        + '[{label_ingredient_id: 136, quantity_g: 73}]}) and/or extra foods as more items; it stays one entry '
+        + 'linked to the recipe, with macros recomputed from the library. '
         + 'Meal prep (limited-use) recipes count down one use per serving; deleting or reverting the entry '
         + 'hands the uses back. A container can carry add-on foods in the same entry — '
         + 'items=[{recipe_id, servings: 1}, {label_ingredient_id, quantity_g}] (e.g. a prep bowl + 21 g honey) — '
