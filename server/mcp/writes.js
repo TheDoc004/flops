@@ -23,6 +23,8 @@ const {
   receiptFromRecipeTemplate,
   ingredientMacrosForAmount,
   displayUnitForIngredient,
+  listRecipeIngredientLines,
+  resolveReceiptForLog,
 } = require('../recipeIngredients');
 const { isMassUnit, amountInBasisUnit, basisUnitFor } = require('../unitConvert');
 const { labelMicrosForRows, storedMicros } = require('../labelMicros');
@@ -406,6 +408,69 @@ function runWriteTx(db, fn) {
   }
 }
 
+/**
+ * A recipe's lines with per-serving overrides applied ("Wombo Combo, but 180 g
+ * yogurt and no honey"), resolved through the same receipt code the app uses
+ * when you edit amounts at log time — so macros and micros come from the
+ * library at the logged amounts, not from the recipe's saved totals.
+ * adjust: [{label_ingredient_id, quantity_g | quantity (+unit) | remove: true}]
+ */
+function adjustedRecipeReceipt(db, userId, recipeId, adjust, index) {
+  if (!Array.isArray(adjust) || !adjust.length) {
+    return { error: `items[${index}].adjust must be a non-empty array` };
+  }
+  const recipe = db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
+  const lines = listRecipeIngredientLines(recipe).map(l => ({
+    name: l.name,
+    amount: Number(l.amount),
+    unit: l.unit,
+    label_ingredient_id: l.label_ingredient_id != null ? Number(l.label_ingredient_id) : null,
+  }));
+  if (!lines.length) {
+    return { error: `items[${index}]: recipe #${recipeId} has no library ingredient lines to adjust` };
+  }
+  const adjusted = [];
+  for (const [j, a] of adjust.entries()) {
+    const where = `items[${index}].adjust[${j}]`;
+    const lid = Number(a?.label_ingredient_id);
+    if (!Number.isInteger(lid) || lid <= 0) return { error: `${where}.label_ingredient_id is required` };
+    const line = lines.find(l => l.label_ingredient_id === lid);
+    if (!line) {
+      return {
+        error:
+          `${where}: label_ingredient_id ${lid} is not in recipe #${recipeId} (get_recipe lists its lines). ` +
+          'To add a food, pass it as its own item next to the recipe.',
+        code: 'NOT_IN_RECIPE',
+      };
+    }
+    if (a.remove === true) {
+      line.removed = true;
+      adjusted.push({ label_ingredient_id: lid, name: line.name, removed: true });
+      continue;
+    }
+    const hasGrams = a.quantity_g != null;
+    const hasQty = a.quantity != null;
+    if (hasGrams === hasQty) return { error: `${where}: give quantity_g, quantity (+ unit), or remove: true` };
+    const amount = Number(hasGrams ? a.quantity_g : a.quantity);
+    if (!Number.isFinite(amount) || amount <= 0) return { error: `${where}: amount must be a positive number` };
+    adjusted.push({ label_ingredient_id: lid, name: line.name, from: `${line.amount} ${line.unit}`, to: null });
+    line.amount = amount;
+    line.unit = hasGrams ? 'g' : (a.unit != null && a.unit !== '' ? String(a.unit) : line.unit);
+    adjusted[adjusted.length - 1].to = `${line.amount} ${line.unit}`;
+  }
+  try {
+    const receipt = resolveReceiptForLog(db, lines.filter(l => !l.removed), userId);
+    return { ...receipt, adjusted };
+  } catch (e) {
+    return {
+      error:
+        `items[${index}].adjust: ${e.ingredientName ? `"${e.ingredientName}" ` : ''}` +
+        `can't be measured that way [${e.code || e.message}]`,
+      code: e.code === 'EMPTY_RECEIPT' ? 'EMPTY_RECEIPT' : 'UNIT_NOT_CONVERTIBLE',
+    };
+  }
+}
+
 function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
   const warnings = [];
   let working = item;
@@ -430,6 +495,9 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
 
   const quantity_g = Number(working?.quantity_g);
   const servings = working?.servings != null ? Number(working.servings) : null;
+  if (working?.adjust != null && working?.recipe_id == null) {
+    return { error: `items[${index}].adjust only applies to recipe items (recipe_id)` };
+  }
 
   if (working?.label_ingredient_id != null) {
     const id = Number(working.label_ingredient_id);
@@ -521,6 +589,11 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
     }
     const s = Number.isFinite(servings) && servings > 0 ? servings : null;
     if (s == null) return { error: `items[${index}]: recipe items need servings` };
+    let receipt = null;
+    if (working.adjust != null) {
+      receipt = adjustedRecipeReceipt(db, userId, id, working.adjust, index);
+      if (receipt.error) return receipt;
+    }
     const limited = isLimitedRecipe(recipe);
     if (limited && (recipe.is_archived || Number(recipe.remaining_uses) < usesOf(s))) {
       return {
@@ -549,6 +622,19 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
           fiber_g: recipe.fiber_g == null ? null : round((Number(recipe.fiber_g) || 0) * s, 2),
         },
         serving_size: recipe.serving_size,
+        ...(receipt
+          ? {
+              receipt_rows: receipt.rows,
+              adjusted: receipt.adjusted,
+              macros: {
+                calories: round(receipt.perServing.calories * s, 1),
+                protein_g: round(receipt.perServing.protein_g * s, 2),
+                carbs_g: round(receipt.perServing.carbs_g * s, 2),
+                fat_g: round(receipt.perServing.fat_g * s, 2),
+                fiber_g: receipt.perServing.fiber_g == null ? null : round(receipt.perServing.fiber_g * s, 2),
+              },
+            }
+          : {}),
       },
       warnings,
     };
@@ -756,13 +842,14 @@ function recipeIngredientsSnapshotJson(db, userId, recipe, warnings = null) {
 }
 
 /**
- * One meal prep container plus add-on foods ("container + 21 g honey"), stored
- * as ONE entry against the prep recipe so the use counts down and is handed
- * back on delete like a plain container. log_entries hold per-serving values
- * that reads multiply by servings, so the add-ons are divided by the
- * container's servings before they sit next to the recipe's own rows.
+ * One recipe changed at log time — lines adjusted ("Wombo Combo with 73 g
+ * bread") and/or add-on foods ("prep container + 21 g honey") — stored as ONE
+ * entry against that recipe. A meal prep's use counts down and is handed back
+ * on delete like a plain container. log_entries hold per-serving values that
+ * reads multiply by servings, so add-ons are divided by servings before they
+ * sit next to the recipe's own (already per-serving) rows.
  */
-function insertMealPrepWithAddOns(db, userId, built, prep, addOnRows, nutrition_source, result) {
+function insertRecipeWithChanges(db, userId, built, prep, addOnRows, nutrition_source, result) {
   const { date, meal_slot, time_min, weight_basis, totals, warnings } = built;
   const recipe = db
     .prepare(
@@ -775,7 +862,9 @@ function insertMealPrepWithAddOns(db, userId, built, prep, addOnRows, nutrition_
   const servings = Number(prep.servings) || 1;
   const per = v => (v == null ? null : round(Number(v) / servings, 2));
 
-  const snapshot = recipeIngredientsSnapshotJson(db, userId, recipe, warnings);
+  const snapshot = prep.receipt_rows
+    ? JSON.stringify(prep.receipt_rows)
+    : recipeIngredientsSnapshotJson(db, userId, recipe, warnings);
   let ingredientsJson = null;
   if (snapshot) {
     const addOnsPerServing = addOnRows.map(r => ({
@@ -787,11 +876,11 @@ function insertMealPrepWithAddOns(db, userId, built, prep, addOnRows, nutrition_
     }));
     ingredientsJson = JSON.stringify([...JSON.parse(snapshot), ...addOnsPerServing]);
   } else if (warnings) {
-    warnings.push('Micros for this container + add-ons were NOT counted: the prep recipe could not be snapshotted.');
+    warnings.push(`Micros for "${recipe.name}" + add-ons were NOT counted: the recipe could not be snapshotted.`);
   }
 
-  const name = built.explicitName
-    ? built.name
+  const name = built.explicitName || !addOnRows.length
+    ? (built.explicitName ? built.name : recipe.name)
     : `${recipe.name} + ${addOnRows.map(r => r.name).join(', ')}`;
   const ins = db
     .prepare(
@@ -809,7 +898,7 @@ function insertMealPrepWithAddOns(db, userId, built, prep, addOnRows, nutrition_
       per(totals.fat_g), per(totals.fiber_g),
       ingredientsJson, weight_basis, nutrition_source
     );
-  consumeLimitedUses(db, userId, recipe.id, servings);
+  if (prep.limited) consumeLimitedUses(db, userId, recipe.id, servings);
   result.log_entry_ids.push(ins.lastInsertRowid);
   return result;
 }
@@ -844,6 +933,17 @@ function insertMealFromResolved(db, userId, built) {
         nutrition_source: item.nutrition_source,
       });
     }
+  }
+
+  // One recipe changed at log time (adjusted lines and/or add-on foods) is
+  // stored against that recipe, not flattened into a quick-food meal.
+  const recipeItems = resolved.filter(i => i.kind === 'recipe');
+  if (recipeItems.length === 1 && (recipeItems[0].receipt_rows || resolved.length > 1)) {
+    const nutritionSource = resolved.every(i => i.nutrition_source === 'label')
+      ? 'label'
+      : resolved.some(i => i.nutrition_source === 'estimate') ? 'estimate' : 'database';
+    const addOnRows = ingredientRows.filter(r => r.recipe_id == null);
+    return insertRecipeWithChanges(db, userId, built, recipeItems[0], addOnRows, nutritionSource, result);
   }
 
   const onlyRecipe = resolved.length === 1 && resolved[0].kind === 'recipe' ? resolved[0] : null;
@@ -884,12 +984,6 @@ function insertMealFromResolved(db, userId, built) {
       : resolved.some(i => i.nutrition_source === 'estimate')
         ? 'estimate'
         : 'database';
-
-  const prep = resolved.find(i => i.kind === 'recipe' && i.limited);
-  if (prep) {
-    const addOnRows = ingredientRows.filter(r => r.recipe_id == null);
-    return insertMealPrepWithAddOns(db, userId, built, prep, addOnRows, nutrition_source, result);
-  }
 
   const recipeId = ensureQuickFoodRecipe(db, userId, name, totals);
 
@@ -2429,7 +2523,8 @@ function entrySummary(entry) {
 function compactMealWrite(result) {
   if (!result || result.error) return result;
   if (result.op !== OPS.delete_meal_entry && result.op !== OPS.update_meal_entry) return result;
-  const { before, day_before: _dayBefore, day_after: dayAfter, ...rest } = result;
+  // items_resolved repeats after.ingredients; drop it with day_before.
+  const { before, day_before: _dayBefore, day_after: dayAfter, items_resolved: _items, ...rest } = result;
   const out = { ...rest, before: entrySummary(before) };
   if (dayAfter) out.day = dayAfter;
   return out;

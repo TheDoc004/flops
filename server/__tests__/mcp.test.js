@@ -107,6 +107,7 @@ describe('MCP /mcp auth', () => {
         'get_supplements_range',
         'get_micronutrient_totals',
         'search_recipes',
+        'get_recipe',
         'search_ingredients',
         'get_ingredient',
         'list_supplements',
