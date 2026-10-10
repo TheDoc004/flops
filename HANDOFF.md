@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses; meal prep add-ons; recipe adjust + get_recipe)_
+_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses; meal prep add-ons; recipe adjust + get_recipe; micros AI-fill scaling fix)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -49,7 +49,31 @@ backfill (`MICROS_BACKFILL=1` to run elsewhere). (3) log-time `mergeMicros` now 
 estimate (they cover different rows) instead of label replacing estimate.
 MCP `get_ingredient` shows one row's stored micros (per serving + per 100g, `estimated_keys`,
 `zero_keys`, `absent_keys`) for tracing a meal total to its ingredient. Note: a stored 0 blocks
-the gap-fill (pico de gallo vit C).
+the gap-fill.
+**AI-fill scaling fix (2026-10-06, second audit):** asked for a whole weighed serving ("28 g
+feta", "85 g spinach"), the estimator returned food-table values **per 100 g** as the serving
+(feta P 400 mg/28 g; spinach = USDA raw per 100 g) → salmon pasta +~490 mg P / +~440 mg K,
+breakfast +230 mg K (sourdough). `servingLine` now asks for **100 g** (macros per 100 g) and
+`scaleEstimate` scales to the stored serving. Data fixed via MCP (audit #172): feta #133
+(USDA, label sodium kept), spinach #131 (K/C/K/Fe), sourdough #136 (K), apple #139 + blueberries
+#137 (vit A — **IU stored as mcg**, 54→~3/100 g). Rigatoni/marinara/yogurt verified correct.
+Estimator prompt (`microEstimateService.js`) now says vitamin A is mcg RAE, never IU.
+Pico #109 (USDA jarred-salsa match) left as-is by choice.
+**Library re-audit (done, 2026-10-06):** every ingredient row checked via MCP `get_ingredient`.
+Older app-era rows are fine: their AI-filled keys are small (biotin/B12/D/iodine), USDA keys are right.
+The per-100g-as-serving bug only hit whole-blob AI fills (feta, spinach, sourdough — fixed above).
+Second batch fixed (audit #173): #130 TJ Tomato Basil marinara vit A 500→38.75 (IU as mcg again);
+#79 diced tomatoes thiamin 0.68→0.05 (10×); #129 tilapia EPA 200→6 / DHA 100→147; #86 fat-free
+ranch "1 mL" carried a 30 g serving's micros (sodium 269 mg/mL) → rescaled from #88 — the row also
+has a stray `grams_per_serving: 30` on a unit-tracked food, likely the cause.
+**Left for the user (need a label or a decision):** #124 Classico Alfredo ~4× high (sodium 1554 /
+Ca 280 / P 249 per 60 g — looks like a dry-mix match); #135 stew spice mix sodium 0 though it
+contains Sazón; #63/#66/#91 cream of wheat vit A 1340 mcg/100g (possibly IU); #75/#93 fruit blend
+vit C 2.7/100g (strawberry/mango/pineapple should be ~35); #49 small sourdough `grams_per_unit` 0.01;
+#132 TJ almond beverage K 300 vs ~160 typical. Not scaling errors, but wrong-food matches: #18
+protein pasta = rigatoni, #19 vodka sauce = marinara, #21 banana+strawberry = banana+blueberry.
+Minor: #8/#26 Greek yogurt estimated copper/manganese ~5× (tiny absolute); avocado sprays #41/#138
+vit E disagree (21.7 vs 0.4 per 100 g).
 **Servings per container (2026-10-06):** `label_ingredients.servings_per_container` (ingredient
 form, REST, MCP add/update; reads expose `container` totals). Meal Builder shows "+ 1 container"
 per row. Not yet in the Log Meal modal.

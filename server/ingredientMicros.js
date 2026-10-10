@@ -56,17 +56,25 @@ function fmt(n) {
  * One stored serving as an estimator row. Macros go in the name: they anchor
  * the estimate to THIS product's serving (a "fillet" or "slice" is otherwise a
  * guess) and to its fat content (omega-3s can't exceed the fat).
+ *
+ * A weighed serving is asked about as 100 g, with macros per 100 g, and the
+ * answer is scaled back by `scale`. Asked for "28 g feta" or "85 g spinach",
+ * the model handed back food-table values per 100 g as if they were the
+ * serving — phosphorus and potassium 3–6× too high — because per 100 g is the
+ * basis it actually remembers. Asking in that basis removes the mismatch.
  */
 function servingLine(ing) {
   const brand = ing.brand_name ? ` (${ing.brand_name})` : '';
+  const gps = Number(ing.grams_per_serving);
+  const per100 = ing.tracking_type !== 'unit' && gps > 0;
+  const k = per100 ? 100 / gps : 1;
   const macros =
-    `per serving: ${fmt(ing.calories)} kcal, ${fmt(ing.protein_g)} g protein, ` +
-    `${fmt(ing.carbs_g)} g carbs, ${fmt(ing.fat_g)} g fat` +
-    (Number(ing.fiber_g) > 0 ? `, ${fmt(ing.fiber_g)} g fiber` : '');
+    `${per100 ? 'per 100 g' : 'per serving'}: ${fmt(ing.calories * k)} kcal, ${fmt(ing.protein_g * k)} g protein, ` +
+    `${fmt(ing.carbs_g * k)} g carbs, ${fmt(ing.fat_g * k)} g fat` +
+    (Number(ing.fiber_g) > 0 ? `, ${fmt(ing.fiber_g * k)} g fiber` : '');
   const name = `${ing.name}${brand} — ${macros}`;
 
-  const gps = Number(ing.grams_per_serving);
-  if (ing.tracking_type !== 'unit' && gps > 0) return { name, amount: gps, unit: 'g' };
+  if (per100) return { name, amount: 100, unit: 'g', scale: gps / 100 };
 
   const qty = Number(ing.serving_quantity) > 0 ? Number(ing.serving_quantity) : 1;
   const unit = String(ing.unit_name || '').trim() || 'serving';
@@ -74,6 +82,17 @@ function servingLine(ing) {
   return gpu > 0
     ? { name: `${name}; 1 ${unit} ≈ ${fmt(gpu)} g`, amount: qty, unit }
     : { name: `${name}; serving described as "${ing.serving_size_text || `${qty} ${unit}`}"`, amount: qty, unit };
+}
+
+/** Estimate for 100 g -> estimate for the stored serving. */
+function scaleEstimate(estimated, scale) {
+  if (!estimated?.micros || !(scale > 0) || scale === 1) return estimated;
+  const micros = {};
+  for (const [key, v] of Object.entries(estimated.micros)) {
+    const n = Number(v);
+    micros[key] = Number.isFinite(n) ? Math.round(n * scale * 1000) / 1000 : v;
+  }
+  return { ...estimated, micros };
 }
 
 /**
@@ -132,7 +151,8 @@ async function completeIngredientMicros(db, userId, id, { estimate = estimateMic
     const ing = select.get(id, userId);
     if (!ing || isComplete(ing.micros_json)) return 'skipped';
 
-    const estimated = await estimate([servingLine(ing)]);
+    const line = servingLine(ing);
+    const estimated = scaleEstimate(await estimate([line]), line.scale);
     if (!estimated?.micros) return 'failed';
 
     // Re-read: the row may have been edited while the estimate was in flight.
@@ -187,6 +207,7 @@ async function backfillIngredientMicros(db, { estimate = estimateMicrosFromIngre
 module.exports = {
   isComplete,
   servingLine,
+  scaleEstimate,
   completeBlob,
   completeIngredientMicros,
   scheduleIngredientMicrosCompletion,

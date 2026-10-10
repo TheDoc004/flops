@@ -42,10 +42,9 @@ describe('servingLine', () => {
       name: 'Sourdough', brand_name: "Trader Joe's", tracking_type: 'weight', grams_per_serving: 56,
       calories: 120, protein_g: 5, carbs_g: 25, fat_g: 0, fiber_g: 1,
     });
-    expect(line.amount).toBe(56);
-    expect(line.unit).toBe('g');
+    expect(line).toMatchObject({ amount: 100, unit: 'g', scale: 0.56 });
     expect(line.name).toContain("Trader Joe's");
-    expect(line.name).toContain('120 kcal');
+    expect(line.name).toContain('per 100 g: 214.3 kcal');
   });
 
   it('describes a counted serving by its unit and gram weight when known', () => {
@@ -61,7 +60,7 @@ describe('servingLine', () => {
 describe('completeIngredientMicros', () => {
   it('fills a label blob\'s gaps without touching what the label measured', async () => {
     const db = createDb(':memory:');
-    seed(db, { id: 1, name: 'Sourdough', micros: { iron_mg: 1.7, calcium_mg: 20 } });
+    seed(db, { id: 1, name: 'Sourdough', grams_per_serving: 100, micros: { iron_mg: 1.7, calcium_mg: 20 } });
     const estimate = fakeEstimate({ iron_mg: 9, thiamin_mg: 0.4, sodium_mg: 300 });
 
     expect(await completeIngredientMicros(db, 1, 1, { estimate })).toBe('completed');
@@ -83,6 +82,17 @@ describe('completeIngredientMicros', () => {
     expect(await completeIngredientMicros(db, 1, 2, { estimate })).toBe('completed');
     expect(stored(db, 2).micros).toMatchObject({ vitamin_c_mg: 9.7, vitamin_k_mcg: 19.3 });
     expect(estimate.mock.calls[0][0][0]).toMatchObject({ amount: 100, unit: 'g' });
+  });
+
+  it('asks for 100 g and scales the answer to a smaller serving', async () => {
+    const db = createDb(':memory:');
+    seed(db, { id: 7, name: 'Feta', grams_per_serving: 28 });
+    // Food-table values per 100 g — what came back as "per 28 g" before.
+    const estimate = fakeEstimate({ phosphorus_mg: 337, potassium_mg: 62, calcium_mg: 493 });
+
+    expect(await completeIngredientMicros(db, 1, 7, { estimate })).toBe('completed');
+    expect(estimate.mock.calls[0][0][0]).toMatchObject({ amount: 100, unit: 'g' });
+    expect(stored(db, 7).micros).toMatchObject({ phosphorus_mg: 94.36, potassium_mg: 17.36, calcium_mg: 138.04 });
   });
 
   it('costs one call per ingredient: completed blobs are skipped', async () => {
@@ -171,7 +181,7 @@ describe('MCP getIngredient', () => {
   it('shows stored, estimated, zero and absent nutrients per serving and per 100g', async () => {
     const db = createDb(':memory:');
     seed(db, { id: 40, name: 'Pico', grams_per_serving: 30, micros: { sodium_mg: 120, vitamin_c_mg: 0 } });
-    await completeIngredientMicros(db, 1, 40, { estimate: fakeEstimate({ potassium_mg: 60, vitamin_c_mg: 4 }) });
+    await completeIngredientMicros(db, 1, 40, { estimate: fakeEstimate({ potassium_mg: 200, vitamin_c_mg: 4 }) /* per 100 g */ });
 
     const ing = reads.getIngredient(db, 1, 40);
     expect(ing.name).toBe('Pico');
