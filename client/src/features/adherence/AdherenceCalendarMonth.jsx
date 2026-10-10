@@ -2,13 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchLogRange } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
 import { fetchSupplementRange } from '@shared/api/supplements';
+import { fetchDietPhases } from '@shared/api/dietPhases';
 import { groupByDate, sumSupplementMacros, addMacroTotals } from '@shared/utils/macros';
-import { addDaysLocal, getLocalDateISO, parseLocalDateISO } from '@shared/utils/dateLocal';
+import { addDaysLocal, formatDisplayDate, getLocalDateISO, parseLocalDateISO } from '@shared/utils/dateLocal';
 import { buildWeeklyAdherenceRows, hasAnyTarget } from './goalAdherence';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS, SUNDAY_FIRST_WEEKDAYS, sundayFirstIndex } from '@shared/utils/weekday';
 import GoalAdherenceDayDetailDialog from './GoalAdherenceDayDetailDialog';
 import DayAdherencePopover from './DayAdherencePopover';
 import { STATUS_META } from './statusMeta';
+import { PHASE_META, phaseTitle } from './phaseMeta';
+import DietPhaseDialog from './DietPhaseDialog';
 
 /**
  * How long a pointer must rest on a day before its detail appears. Long enough
@@ -92,6 +95,11 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
   // up from dayRows at render so it can never go stale behind a data reload.
   const [hovered, setHovered] = useState(null); // { date, rect }
   const hoverTimer = useRef(null);
+  // Diet-phase badges. Loaded apart from adherence so a failure here never
+  // blanks the month; phasesVersion bumps after an add/edit/delete.
+  const [phases, setPhases] = useState([]);
+  const [phasesVersion, setPhasesVersion] = useState(0);
+  const [phaseDialog, setPhaseDialog] = useState(null); // { phase } | { defaultStart }
 
   const monthDates = useMemo(() => datesInMonth(month), [month]);
   const selectedSet = useMemo(() => new Set(selectedDates || []), [selectedDates]);
@@ -199,9 +207,47 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
     return out;
   }, [month, blanks, monthDates.length]);
 
+  const gridStart = leadingDates[0] || monthStartIso(month);
+  const gridEnd = trailingDates[trailingDates.length - 1] || monthEndIso(month);
+  useEffect(() => {
+    let cancelled = false;
+    fetchDietPhases({ start: gridStart, end: gridEnd })
+      .then(list => { if (!cancelled) setPhases(Array.isArray(list) ? list : []); })
+      .catch(() => { if (!cancelled) setPhases([]); });
+    return () => { cancelled = true; };
+  }, [gridStart, gridEnd, phasesVersion]);
+
+  /** Phases covering a date, oldest first (as the server sorts them). */
+  const phasesOn = d => phases.filter(p => p.start_date <= d && p.effective_end_date >= d);
+
+  const monthPhases = useMemo(
+    () => phases.filter(p => p.start_date <= monthEndIso(month) && p.effective_end_date >= monthStartIso(month)),
+    [phases, month]
+  );
+
+  function openPhase(e, phase) {
+    e.stopPropagation();
+    closeDetail();
+    setPhaseDialog({ phase });
+  }
+
+  /** Thin colored bars along the tile's foot, one per phase covering the day. */
+  const renderPhaseBars = d => {
+    const on = phasesOn(d);
+    if (!on.length) return null;
+    return (
+      <div className="cal-phase-bars" aria-hidden="true">
+        {on.slice(0, 3).map(p => (
+          <span key={p.id} style={{ background: PHASE_META[p.kind]?.color || PHASE_META.other.color }} />
+        ))}
+      </div>
+    );
+  };
+
   const renderOutsideDay = d => (
     <div key={`out-${d}`} className="cal-day cal-day--outside" aria-hidden="true" style={{ minHeight: dayMinHeight }}>
       <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-faint)' }}>{Number(d.slice(8, 10))}</span>
+      {renderPhaseBars(d)}
     </div>
   );
 
@@ -218,12 +264,21 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
 
   const inner = (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: hideHeader ? 'flex-end' : 'space-between', gap: 12, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: hideHeader ? 'flex-end' : 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
         {!hideHeader && (
           <div>
             <h3 className="section-title">Adherence calendar</h3>
           </div>
         )}
+        <button
+          type="button"
+          className="btn-secondary cal-phase-add"
+          onClick={() => setPhaseDialog({ defaultStart: getLocalDateISO() })}
+          title="Mark when a cut, bulk, or maintenance stretch starts"
+          style={{ marginLeft: hideHeader ? 0 : 'auto', marginRight: hideHeader ? 'auto' : 0 }}
+        >
+          + Phase
+        </button>
         {showNav && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button type="button" className="day-nav-btn" onClick={prevMonth} aria-label="Previous month" style={{ width: 40, height: 40 }}>
@@ -231,7 +286,7 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
                 <path d="M15 6 9 12l6 6" />
               </svg>
             </button>
-            <strong style={{ fontSize: 14, color: 'var(--color-text-body)', minWidth: 160, textAlign: 'center' }}>
+            <strong style={{ fontSize: 14, color: 'var(--color-text-body)', minWidth: 128, textAlign: 'center' }}>
               {monthLabel(month)}
             </strong>
             <button type="button" className="day-nav-btn" onClick={nextMonth} aria-label="Next month" style={{ width: 40, height: 40 }}>
@@ -280,6 +335,8 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
           const dayNum = Number(row.date.slice(8, 10));
           const hasTarget = hasAnyTarget(row.targets);
           const isSelected = selectedSet.has(row.date);
+          const covering = phasesOn(row.date);
+          const starting = covering.filter(p => p.start_date === row.date);
           return (
             <div
               key={row.date}
@@ -306,13 +363,14 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
               onTouchMove={closeDetail}
               onFocus={e => openDetailAfterDelay(row.date, e.currentTarget, 0)}
               onBlur={closeDetail}
-              title={row.date}
+              title={covering.length ? `${row.date} · ${covering.map(phaseTitle).join(', ')}` : row.date}
               style={{
                 borderRadius: 10,
                 border: isSelected ? '2px solid var(--color-primary)' : `1px solid ${m.border}`,
                 background: isSelected ? 'var(--color-primary-subtle)' : (hasTarget ? m.bg : 'transparent'),
                 boxShadow: isSelected ? '0 0 0 2px rgba(29, 78, 216, 0.22)' : 'none',
                 minHeight: dayMinHeight,
+                position: 'relative',
                 cursor: 'pointer',
                 overflow: 'hidden',
                 display: 'flex',
@@ -323,9 +381,23 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <strong style={{ fontSize: 13, color: 'var(--color-text-strong)' }}>{dayNum}</strong>
               </div>
+              {starting.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="cal-phase-badge"
+                  style={{ '--phase-color': PHASE_META[p.kind]?.color || PHASE_META.other.color }}
+                  onClick={e => openPhase(e, p)}
+                  onKeyDown={e => e.stopPropagation()}
+                  aria-label={`${phaseTitle(p)} starts ${p.start_date}. Edit phase`}
+                >
+                  {phaseTitle(p)}
+                </button>
+              ))}
               <div className="cal-day-note" style={{ color: m.color }}>
                 {hasTarget && row.status !== 'no_target' ? (STATUS_META[row.status]?.label || '') : ''}
               </div>
+              {renderPhaseBars(row.date)}
             </div>
           );
         })}
@@ -341,6 +413,37 @@ export default function AdherenceCalendarMonth({ macroUnits, bare = false, showN
           </li>
         ))}
       </ul>
+
+      {monthPhases.length > 0 && (
+        <ul className="cal-phase-list" aria-label="Diet phases this month">
+          {monthPhases.map(p => (
+            <li key={p.id}>
+              <button
+                type="button"
+                className="cal-phase-chip"
+                style={{ '--phase-color': PHASE_META[p.kind]?.color || PHASE_META.other.color }}
+                onClick={e => openPhase(e, p)}
+              >
+                <span className="cal-phase-chip__dot" aria-hidden="true" />
+                <strong>{phaseTitle(p)}</strong>
+                <span className="cal-phase-chip__dates">
+                  {formatDisplayDate(p.start_date)} → {p.ongoing ? 'ongoing' : formatDisplayDate(p.effective_end_date)}
+                </span>
+                {p.source === 'mcp' && <span className="cal-phase-chip__src" title="Added by your AI assistant">AI</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {phaseDialog && (
+        <DietPhaseDialog
+          phase={phaseDialog.phase || null}
+          defaultStart={phaseDialog.defaultStart || null}
+          onClose={() => setPhaseDialog(null)}
+          onSaved={() => setPhasesVersion(v => v + 1)}
+        />
+      )}
 
       {(offscreenSelected.before > 0 || offscreenSelected.after > 0) && (
         <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--color-text-faint)' }}>

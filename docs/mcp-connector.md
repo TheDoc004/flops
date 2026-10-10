@@ -62,6 +62,7 @@ Optional hardening later: restrict `/mcp` to Anthropic egress `160.79.104.0/21` 
 | `get_log_range` | Daily summaries (optional full entries with ids); max 90 days |
 | `get_goals` | Weekly min/max macros for a date |
 | `get_body_weights` | Weight history |
+| `get_diet_phases` | Diet-phase calendar badges (free-text name + color category) with `effective_end_date` + `ongoing`. `date` = phases covering one day; `start`/`end` = phases touching a range; no args = all. `get_day` also returns `diet_phases`. |
 | `get_intake_weight_trend` | Intake averages + OLS weight slope/SE + inferred maintenance (max 90 days; optional `split_at`) |
 | `get_profile` | Profile / units |
 | `get_supplements_range` | Taken supplements with dose-scaled macros/micros |
@@ -100,6 +101,7 @@ Writes **commit immediately**. Safety is undo, not a handshake: every MCP row is
 | `delete_meal_entry` | Soft-delete a log row (revertible via `revert_mcp_write`). |
 | `update_supplement` | Dose fields and/or per-label-serving macros/micros; `historical_totals_recalculate` when nutrition changes (past taken days recalculate on read). |
 | `log_body_weight` | Weigh-in: `weight` + `unit` (`lb`/`kg`, required) + optional `date` (default: today, Pacific). Stored in kg exactly like the app (lb ÷ 2.20462), `source=mcp`. Same date **overwrites** (like the app) and returns `replaced`. 20–300 kg accepted; >3 kg jump warns. Revert restores the replaced value (or deletes a new row); refuses if the app re-entered that date since. Also a `write_batch` op. |
+| `add_diet_phase` / `update_diet_phase` / `delete_diet_phase` | Calendar badges marking diet changes. `label` (free-text badge name, required) + `start_date`, optional `kind` (color category, default `other`), optional `end_date` (omit = **ongoing** until the next open-ended phase starts, or today), optional `notes`. Update moves/renames/recolors/ends a phase (`end_date: null` reopens it). Delete is soft. All `source=mcp`, revertible (refused if the phase was edited in the app since), and `write_batch` ops. |
 | `create_meal_prep` | Batch-cooked meal prep → equal-split **limited-use recipe** (`servings` = containers, 2–50). `items` are the **whole batch** in grams (library id, `ref`, or new per-100g food — not recipes); the recipe stores one container's macros/amounts with N uses, same format as the app's Save as Meal Prep (`meal_builder_meta.source = "mcp_meal_prep"`). Log a container with `log_meal` `{recipe_id, servings: 1}`. Revert soft-deletes the recipe. |
 | `write_batch` | Multiple ops in one transaction. `add_food_item` can set `ref`; later `log_meal` / `create_meal_prep` items use that `ref`. Failure rolls back all. |
 | `revert_mcp_write` | Undo a prior MCP write by `audit_id` (creates soft-removed, updates restored, soft-deletes undeleted). |

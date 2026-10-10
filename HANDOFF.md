@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-07 (MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses; meal prep add-ons; recipe adjust + get_recipe; micros AI-fill scaling fix)_
+_Last updated: 2026-10-10 (diet-phase calendar badges; MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses; meal prep add-ons; recipe adjust + get_recipe; micros AI-fill scaling fix)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -24,6 +24,13 @@ _current-state_ companion to it.
 ---
 
 ## Where Diego left off (read this first)
+
+**Diet-phase badges (2026-10-09):** the adherence calendar (Review + Today's calendar card) has a
+`+ Phase` button; phases (free-text **name**, required; optional color category cut / bulk /
+maintenance / recovery / other that auto-guesses from the name; optional notes; optional end = ongoing) show as a badge on the start day, colored bars on covered days, and a chip
+list under the legend (click to edit/delete). Table `diet_phases`, logic in `server/dietPhases.js`,
+route `/api/diet-phases`. MCP: `get_diet_phases`, `add_/update_/delete_diet_phase` (+ `write_batch`,
+revert); `get_day` returns `diet_phases`. Tests: `server/__tests__/dietPhases.test.js`.
 
 **Status:** Active. Nutrition daily driver + Log Meal UX; MCP Phase 3 + lookup tools.
 **Part A shipped:** placeholder `grams_per_serving` (&lt;3g) no longer derives `per_100g`;

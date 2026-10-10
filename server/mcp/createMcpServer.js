@@ -120,7 +120,7 @@ function createFlopsMcpServer(db, userId) {
       title: 'Get day summary',
       description:
         `${READ_ONLY} One calendar day: meals (each with id + ingredients including label_ingredient_id when present), `
-        + 'meal totals, supplements taken, combined totals, goals for that weekday, vs-goal status, and body weight if logged.',
+        + 'meal totals, supplements taken, combined totals, goals for that weekday, vs-goal status, body weight if logged, and diet_phases covering the day (see get_diet_phases).',
       inputSchema: {
         date: z
           .string()
@@ -470,6 +470,42 @@ function createFlopsMcpServer(db, userId) {
     }
   );
 
+  const phaseKindSchema = z
+    .enum(['cut', 'bulk', 'maintenance', 'recovery', 'other'])
+    .describe('Optional color category: cut | bulk | maintenance | recovery | other (default). Pick the closest; the name goes in label.');
+  const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+  const PHASE_RULES =
+    'Diet phases are the badges on the app\'s adherence calendar marking when the user changed '
+    + 'what they are doing with their diet (started a cut, began bulking, a maintenance/recovery week, '
+    + 'or anything else they name). The badge NAME is free text (label, required); kind only picks its color. '
+    + 'A phase has start_date and an OPTIONAL end_date. Leave end_date off for "I started X" — the phase '
+    + 'is then ongoing until the next open-ended phase starts (that start ends it the day before) or today. '
+    + 'A bounded phase (e.g. a one-week maintenance break) sits on top of the ongoing one without ending it. '
+    + 'Phases are notes only: they never change goals or adherence. ';
+
+  registerTool(
+    'get_diet_phases',
+    {
+      title: 'Get diet phases',
+      description:
+        `${READ_ONLY} ${PHASE_RULES}`
+        + 'Returns phases with id, kind, label, start_date, end_date, notes, source (app|mcp), and the resolved '
+        + 'effective_end_date + ongoing flag (what the calendar shows). Pass date for just the phases covering one '
+        + 'day, or start/end to filter to phases touching a range; no arguments returns every phase. '
+        + 'Use the ids with update_diet_phase / delete_diet_phase.',
+      inputSchema: {
+        date: isoDate.optional().describe('YYYY-MM-DD: only phases covering this day'),
+        start: isoDate.optional().describe('YYYY-MM-DD range start (phases ending on/after this)'),
+        end: isoDate.optional().describe('YYYY-MM-DD range end (phases starting on/before this)'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async (args) => {
+      const r = reads.getDietPhases(db, userId, args);
+      return r.error ? reads.errorResult(r.error) : reads.textResult(r);
+    }
+  );
+
   registerTool(
     'log_meal',
     {
@@ -775,12 +811,81 @@ function createFlopsMcpServer(db, userId) {
   );
 
   registerTool(
+    'add_diet_phase',
+    {
+      title: 'Add diet phase',
+      description:
+        `${WRITE_NOW} ${PHASE_RULES}`
+        + 'Add a badge to the calendar when the user says they are starting/started a phase '
+        + '("I started cutting today", "bulk from Sept 1", "maintenance week next week"). '
+        + 'Use the user\'s own dates; for "today" pass today\'s date. label is the badge name the user sees — use '
+        + 'their wording (e.g. "Bulk", "Summer cut", "No-alcohol month"); notes hold any detail. A same-kind phase already starting that '
+        + 'day adds a duplicate warning. Returns the phase (with effective_end_date) and audit_id.',
+      inputSchema: z
+        .object({
+          label: z.string().min(1).max(60).describe('Badge name, free text, e.g. "Bulk", "Summer cut"'),
+          kind: phaseKindSchema.optional(),
+          start_date: isoDate.describe('YYYY-MM-DD first day of the phase'),
+          end_date: isoDate.optional().describe('YYYY-MM-DD last day (inclusive). Omit for an ongoing phase.'),
+          notes: z.string().max(500).optional(),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.addDietPhase(db, userId, args))
+  );
+
+  registerTool(
+    'update_diet_phase',
+    {
+      title: 'Update diet phase',
+      description:
+        `${WRITE_NOW} ${PHASE_RULES}`
+        + 'Change a phase by id (from get_diet_phases): move it (start_date / end_date), end an ongoing phase '
+        + '(set end_date), reopen it as ongoing (end_date: null), rename (label), change color (kind), or edit notes. '
+        + 'Only the fields you pass change. Returns before/after and audit_id.',
+      inputSchema: z
+        .object({
+          diet_phase_id: z.number().int().positive(),
+          kind: phaseKindSchema.optional(),
+          start_date: isoDate.optional(),
+          end_date: isoDate.nullable().optional().describe('YYYY-MM-DD, or null to make the phase ongoing'),
+          label: z.string().min(1).max(60).optional().describe('New badge name'),
+          notes: z.string().max(500).nullable().optional().describe('null clears notes'),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.updateDietPhase(db, userId, args))
+  );
+
+  registerTool(
+    'delete_diet_phase',
+    {
+      title: 'Delete diet phase',
+      description:
+        `${WRITE_NOW} Remove a diet-phase badge by id (from get_diet_phases). Soft delete — undo with `
+        + 'revert_mcp_write(audit_id). Deleting an ongoing phase lets the previous ongoing phase run on in its place.',
+      inputSchema: z
+        .object({
+          diet_phase_id: z.number().int().positive(),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.deleteDietPhase(db, userId, args))
+  );
+
+  registerTool(
     'write_batch',
     {
       title: 'Write batch',
       description:
         `${WRITE_NOW} Run multiple write ops in one all-or-nothing transaction. `
-        + 'add_food_item may set ref; later log_meal or create_meal_prep items can use that ref. Ops: add_food_item, log_meal, update_food_item, update_meal_entry, delete_meal_entry, update_supplement, create_meal_prep, log_body_weight. Any failure rolls back all.',
+        + 'add_food_item may set ref; later log_meal or create_meal_prep items can use that ref. Ops: add_food_item, log_meal, update_food_item, update_meal_entry, delete_meal_entry, update_supplement, create_meal_prep, log_body_weight, add_diet_phase, update_diet_phase, delete_diet_phase. Any failure rolls back all.',
       inputSchema: z
         .object({
           operations: z.array(z.record(z.string(), z.any())).min(1),

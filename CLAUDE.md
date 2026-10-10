@@ -135,7 +135,7 @@ and `@` → `src`); within a feature use relative paths. Import a cross-cutting 
 | `/recipes` | Recipe Library | Browse, expand to macros/micros/ingredients, archive, delete |
 | `/ingredients` | Ingredient Library | Label ingredients (OCR + barcode); also logged directly as one-off foods |
 | `/meal-builder` | Meal Builder | The recipe EDITOR. Reached from the Recipes & Ingredients section, not from logging |
-| `/history` | History ("Review") | Charts, weight trend, micronutrients, adherence, past-day drill-down |
+| `/history` | History ("Review") | Charts, weight trend, micronutrients, adherence, past-day drill-down. The adherence calendar carries **diet-phase badges** (`+ Phase`) |
 | `/training` | GymToday | Live session logger (default gym tab) |
 | `/training/schedule` | GymSchedule | Weekly template assignments |
 | `/training/workouts` | GymWorkouts | Template builder, exercise library |
@@ -220,6 +220,15 @@ group.
 - `POST /api/supplements/estimate` — AI estimate from a product name, for what DSLD lacks. Capped at `medium` confidence in both the service and the route; never `high`.
 - Storing micros accepts optional `micros_confidence` / `micros_source`; anything but `medium`/`low` falls back to label confidence.
 
+### Diet phases (calendar badges)
+`server/dietPhases.js` owns storage + resolution, shared by `/api/diet-phases` and the MCP tools
+(`get_diet_phases`, `add_/update_/delete_diet_phase`). A phase is a free-text name (`label`, required)
++ `start_date` + optional `end_date`; `kind` (cut|bulk|maintenance|recovery|other, default other) only picks the color; no end = **ongoing** until the next open-ended phase starts (else today).
+Bounded phases sit on top without ending it. Notes only — never touch goals or adherence.
+Kinds are mirrored in `client/src/features/adherence/phaseMeta.js`.
+- `GET /api/diet-phases?start=&end=&today=` — phases touching the range, with `effective_end_date` + `ongoing`
+- `POST /api/diet-phases`, `PUT /api/diet-phases/:id`, `DELETE /api/diet-phases/:id` (soft delete)
+
 ### Barcode
 - `GET /api/barcode/:code` — proxies Open Food Facts (free, no API key) and normalizes the product into ingredient-form fields. Returns `basis` (`serving` | `serving_derived` | `100g` | `none`) so the UI can say where the numbers came from, plus `existing_ingredient` when that barcode is already saved. 404 = not on record, 502 = database unreachable.
 
@@ -247,6 +256,7 @@ group.
 ### Profile
 `user_profile` — `user_id, height_cm, weight_kg, age, sex, goal_weight_kg, activity_level, maintenance_calories, macro_units, body_units, dash_weight_chart_enabled, dash_weight_days` — plus three RETAINED-UNUSED columns from the archived fuel features (`dash_training_fuel_enabled, digestion_pref, training_goal`); nothing reads or writes them from the UI
 `body_weights` — `user_id, date, weight_kg`
+`diet_phases` — `id, user_id, kind, label, start_date, end_date (NULL = ongoing), notes, source (app|mcp), is_deleted, created_at, updated_at`
 
 ### Ingredients
 `label_ingredients` — `id, user_id, name, base_label, brand_name, serving_size_text, grams_per_serving, calories, protein_g, carbs_g, fat_g, fiber_g, photo_data_uri, source_type (manual|scanned_label|built_in|barcode), use_count, last_used_at, barcode, micros_json, grams_per_ml`

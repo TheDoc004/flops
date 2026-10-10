@@ -51,6 +51,15 @@
   --status-none-bg: #f3f4f6;      --status-none-border: #e5e7eb;     --status-none-text: #6b7280;
   --status-upcoming-bg: #eff6ff;  --status-upcoming-border: #bfdbfe; --status-upcoming-text: #1d4ed8;
 
+  /* ── Color · diet phases (calendar badges) ──
+     Hues kept clear of the adherence greens/ambers/reds so a badge never
+     reads as a hit or a miss. */
+  --phase-cut: #c2410c;
+  --phase-bulk: #4338ca;
+  --phase-maintenance: #0f766e;
+  --phase-recovery: #be185d;
+  --phase-other: #57534e;
+
   /* ── Typography · families ──
      Warm & Friendly pairing: Nunito (headings / wordmark), Open Sans (UI + body). */
   --font-sans: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -161,6 +170,11 @@ html[data-notebook-day="future"] {
   --status-hit-bg: #2f3d38;
   --status-hit-border: #4a6b5c;
   --status-hit-text: #8fbfa8;
+  --phase-cut: #fb923c;
+  --phase-bulk: #a5b4fc;
+  --phase-maintenance: #5eead4;
+  --phase-recovery: #f9a8d4;
+  --phase-other: #d6d3d1;
   --bd-panel-border: #52525b;
   --bd-divider: #3f4246;
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.28);
@@ -1350,8 +1364,124 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
   text-overflow: ellipsis;
 }
 
+/* ── Diet-phase badges on the calendar ──
+   Badge = the day a phase starts (click to edit). Bars along a tile's foot =
+   every day a phase covers. Colors come from --phase-color set inline. */
+.cal-phase-badge {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  margin: 2px 0;
+  padding: 1px 5px;
+  border: none;
+  border-left: 3px solid var(--phase-color);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--phase-color) 16%, var(--color-surface));
+  color: var(--color-text-strong);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: none;
+  cursor: pointer;
+}
+.cal-phase-badge:focus-visible {
+  outline: 2px solid var(--phase-color);
+  outline-offset: 1px;
+}
+.cal-phase-bars {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  pointer-events: none;
+}
+.cal-phase-bars span {
+  display: block;
+  height: 3px;
+  opacity: 0.85;
+}
+.cal-day--outside { position: relative; overflow: hidden; }
+.cal-phase-add {
+  min-height: 40px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.cal-phase-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.cal-phase-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--phase-color) 45%, var(--color-surface));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--phase-color) 10%, var(--color-surface));
+  color: var(--color-text-body);
+  font-size: 12px;
+  box-shadow: none;
+  cursor: pointer;
+}
+.cal-phase-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--phase-color);
+  flex-shrink: 0;
+}
+.cal-phase-chip__dates { color: var(--color-text-muted); }
+.cal-phase-chip__src {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--color-secondary-bg);
+  color: var(--color-text-muted);
+}
+.phase-kind-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.phase-kind {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-body);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.phase-kind.is-on {
+  border-color: var(--phase-color);
+  background: color-mix(in srgb, var(--phase-color) 16%, var(--color-surface));
+  color: var(--color-text-strong);
+  box-shadow: inset 0 0 0 1px var(--phase-color);
+}
+
 @media (max-width: 600px) {
   .cal-grid { gap: 4px; }
+  .cal-phase-badge { font-size: 9px; padding: 0 3px; border-left-width: 2px; }
   .cal-day {
     padding: 6px;
     min-height: 44px;

@@ -309,6 +309,24 @@ function createDb(dbPath) {
       PRIMARY KEY (user_id, date)
     );
 
+    /* Diet phases: calendar badges marking a cut / bulk / maintenance stretch.
+       end_date NULL = ongoing (see server/dietPhases.js). Soft-deleted so MCP
+       deletes can be reverted. */
+    CREATE TABLE IF NOT EXISTS diet_phases (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL,
+      kind        TEXT NOT NULL,
+      label       TEXT,
+      start_date  TEXT NOT NULL,
+      end_date    TEXT,
+      notes       TEXT,
+      source      TEXT NOT NULL DEFAULT 'app',
+      is_deleted  INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT,
+      updated_at  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_diet_phases_user_start ON diet_phases(user_id, start_date);
+
     /* Weekly recurring workout schedule (single-user v1) */
     CREATE TABLE IF NOT EXISTS training_schedule (
       user_id        INTEGER NOT NULL DEFAULT 0,

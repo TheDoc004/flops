@@ -19,6 +19,7 @@ const { createPrepRouter } = require('./routes/prep');
 const { createPreppedBatchesRouter } = require('./routes/preppedBatches');
 const { createMcpRouter } = require('./mcp/createMcpRouter');
 const { createMcpWritesRouter } = require('./routes/mcpWrites');
+const { createDietPhasesRouter } = require('./routes/dietPhases');
 const { getHealthInfo } = require('./buildInfo');
 
 /**
@@ -72,6 +73,7 @@ function createApp(db = createDb(process.env.DB_PATH || './nutrition.db'), opts 
   app.use('/api/goals', createGoalsRouter(db));
   app.use('/api/profile', createProfileRouter(db));
   app.use('/api/body-weights', createBodyWeightsRouter(db));
+  app.use('/api/diet-phases', createDietPhasesRouter(db));
   app.use('/api/training', createTrainingRouter(db));
   app.use('/api/workouts', createWorkoutsRouter(db));
   app.use('/api/gym', createGymRouter(db));

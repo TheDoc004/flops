@@ -19,6 +19,7 @@ const {
 } = require('../gramsPerServing');
 const { buildMicrosBlob } = require('../microNutrients');
 const { LB_PER_KG, getBodyWeight, upsertBodyWeight } = require('../bodyWeights');
+const dietPhases = require('../dietPhases');
 const {
   receiptFromRecipeTemplate,
   ingredientMacrosForAmount,
@@ -42,6 +43,9 @@ const OPS = {
   update_supplement: 'update_supplement',
   create_meal_prep: 'create_meal_prep',
   log_body_weight: 'log_body_weight',
+  add_diet_phase: 'add_diet_phase',
+  update_diet_phase: 'update_diet_phase',
+  delete_diet_phase: 'delete_diet_phase',
   write_batch: 'write_batch',
   revert_mcp_write: 'revert_mcp_write',
 };
@@ -74,6 +78,11 @@ const WRITE_ALLOWED_KEYS = {
     'op', 'name', 'servings', 'weight_basis', 'items', 'operation_id',
   ]),
   [OPS.log_body_weight]: new Set(['op', 'weight', 'unit', 'date', 'operation_id']),
+  [OPS.add_diet_phase]: new Set(['op', 'kind', 'label', 'start_date', 'end_date', 'notes', 'operation_id']),
+  [OPS.update_diet_phase]: new Set([
+    'op', 'diet_phase_id', 'kind', 'label', 'start_date', 'end_date', 'notes', 'operation_id',
+  ]),
+  [OPS.delete_diet_phase]: new Set(['op', 'diet_phase_id', 'operation_id']),
   [OPS.write_batch]: new Set(['operations', 'operation_id']),
   [OPS.revert_mcp_write]: new Set(['audit_id', 'operation_id']),
 };
@@ -1830,6 +1839,147 @@ function logBodyWeight(db, userId, args = {}, { skipAudit = false } = {}) {
   });
 }
 
+// ── Diet phases (calendar badges) ────────────────────────────────────────────
+// Storage is shared with /api/diet-phases (server/dietPhases.js). Deletes are
+// soft so every one of these is revertible.
+
+function phaseResponse(db, userId, op, { phase, before, after, warnings = [] }) {
+  const today = getLocalDateISO();
+  // Return the phase with its resolved end, as the calendar will show it.
+  const id = (phase || after || before)?.id;
+  const resolved = id
+    ? dietPhases.listPhases(db, userId, { today }).find(p => p.id === id) || null
+    : null;
+  return {
+    op,
+    diet_phase: resolved || phase || after || null,
+    before: before ?? null,
+    after: after ?? phase ?? null,
+    result_row_ids: { diet_phase_ids: id ? [id] : [] },
+    warnings,
+    source: 'mcp',
+  };
+}
+
+function overlapWarnings(db, userId, phase) {
+  if (!phase) return [];
+  const today = getLocalDateISO();
+  return dietPhases
+    .listPhases(db, userId, { start: phase.start_date, end: phase.end_date || phase.start_date, today })
+    .filter(p => p.id !== phase.id && p.start_date === phase.start_date
+      && String(p.label || '').toLowerCase() === String(phase.label || '').toLowerCase())
+    .map(p => `Another "${p.label}" phase (#${p.id}) already starts on ${p.start_date} — possible duplicate.`);
+}
+
+function addDietPhase(db, userId, args = {}, { skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.add_diet_phase);
+  if (badKeys) return badKeys;
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const doWrite = () => {
+      const { op: _op, operation_id: _oid, ...input } = args;
+      const r = dietPhases.createPhase(db, userId, input, 'mcp');
+      if (r.error) return { error: r.error, code: 'INVALID' };
+      const warnings = overlapWarnings(db, userId, r.phase);
+      const response = phaseResponse(db, userId, OPS.add_diet_phase, { phase: r.phase, after: r.phase, warnings });
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.add_diet_phase, operationId, before: null, after: r.phase,
+          result_row_ids: response.result_row_ids, warnings, response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : runWriteTx(db, doWrite);
+  });
+}
+
+function updateDietPhase(db, userId, args = {}, { skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.update_diet_phase);
+  if (badKeys) return badKeys;
+  const id = Number(args.diet_phase_id);
+  if (!Number.isInteger(id) || id <= 0) return { error: 'diet_phase_id is required' };
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const doWrite = () => {
+      const { op: _op, operation_id: _oid, diet_phase_id: _id, ...patch } = args;
+      if (!Object.keys(patch).length) {
+        return { error: 'Nothing to update: pass kind, label, start_date, end_date, or notes' };
+      }
+      const r = dietPhases.updatePhase(db, userId, id, patch, 'mcp');
+      if (r.error) return { error: r.error, code: r.status === 404 ? 'NOT_FOUND' : 'INVALID' };
+      const warnings = overlapWarnings(db, userId, r.after);
+      const response = phaseResponse(db, userId, OPS.update_diet_phase, { before: r.before, after: r.after, warnings });
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.update_diet_phase, operationId, before: r.before, after: r.after,
+          result_row_ids: response.result_row_ids, warnings, response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : runWriteTx(db, doWrite);
+  });
+}
+
+function deleteDietPhase(db, userId, args = {}, { skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.delete_diet_phase);
+  if (badKeys) return badKeys;
+  const id = Number(args.diet_phase_id);
+  if (!Number.isInteger(id) || id <= 0) return { error: 'diet_phase_id is required' };
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const doWrite = () => {
+      const before = dietPhases.getPhase(db, userId, id);
+      if (!before) return { error: `Diet phase #${id} not found`, code: 'NOT_FOUND' };
+      dietPhases.setPhaseDeleted(db, userId, id, true);
+      const after = dietPhases.getPhase(db, userId, id, { includeDeleted: true });
+      const response = {
+        op: OPS.delete_diet_phase,
+        deleted: before,
+        before,
+        after,
+        result_row_ids: { diet_phase_ids: [id] },
+        warnings: [],
+        source: 'mcp',
+      };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.delete_diet_phase, operationId, before, after,
+          result_row_ids: response.result_row_ids, warnings: [], response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : runWriteTx(db, doWrite);
+  });
+}
+
+const PHASE_SNAPSHOT_KEYS = ['kind', 'label', 'start_date', 'end_date', 'notes', 'is_deleted'];
+
+/** Undo only what MCP wrote: refuse if the phase was changed since (e.g. in the app). */
+function assertPhaseUnchanged(db, userId, snap) {
+  const current = dietPhases.getPhase(db, userId, snap.id, { includeDeleted: true });
+  const same = current && PHASE_SNAPSHOT_KEYS.every(k => (current[k] ?? null) === (snap[k] ?? null));
+  if (!same) {
+    throw Object.assign(
+      new Error(`Diet phase #${snap.id} changed after this MCP write; not reverting.`),
+      { code: 'NOT_REVERTIBLE' }
+    );
+  }
+}
+
+function revertDietPhaseResult(db, userId, result) {
+  const op = result.op;
+  if (op === OPS.add_diet_phase && result.after?.id) {
+    assertPhaseUnchanged(db, userId, result.after);
+    dietPhases.setPhaseDeleted(db, userId, result.after.id, true);
+  } else if ((op === OPS.update_diet_phase || op === OPS.delete_diet_phase) && result.before?.id) {
+    if (result.after?.id) assertPhaseUnchanged(db, userId, result.after);
+    dietPhases.restorePhase(db, userId, result.before);
+  }
+}
+
 function shapeSupplement(db, userId, id) {
   const row = db
     .prepare(
@@ -2061,6 +2211,12 @@ function writeBatch(db, userId, args = {}) {
             result = createMealPrep(db, userId, step, { skipAudit: true, refMap });
           } else if (op === OPS.log_body_weight) {
             result = logBodyWeight(db, userId, step, { skipAudit: true });
+          } else if (op === OPS.add_diet_phase) {
+            result = addDietPhase(db, userId, step, { skipAudit: true });
+          } else if (op === OPS.update_diet_phase) {
+            result = updateDietPhase(db, userId, step, { skipAudit: true });
+          } else if (op === OPS.delete_diet_phase) {
+            result = deleteDietPhase(db, userId, step, { skipAudit: true });
           } else {
             throw Object.assign(new Error(`operations[${i}]: unsupported op "${op}"`), { code: 'BAD_OP' });
           }
@@ -2087,6 +2243,7 @@ function writeBatch(db, userId, args = {}) {
           supplement_ids: results.flatMap(r => r.result_row_ids?.supplement_ids || []),
           recipe_ids: results.flatMap(r => r.result_row_ids?.recipe_ids || []),
           body_weight_dates: results.flatMap(r => r.result_row_ids?.body_weight_dates || []),
+          diet_phase_ids: results.flatMap(r => r.result_row_ids?.diet_phase_ids || []),
         };
         response.audit_id = recordAudit(db, userId, {
           op: OPS.write_batch,
@@ -2160,6 +2317,10 @@ function restoreMealFromBefore(db, userId, before) {
 function revertOneResult(db, userId, result) {
   const op = result?.op;
   const ids = result?.result_row_ids || {};
+  if (op === OPS.add_diet_phase || op === OPS.update_diet_phase || op === OPS.delete_diet_phase) {
+    revertDietPhaseResult(db, userId, result);
+    return;
+  }
   if (op === OPS.delete_meal_entry) {
     for (const id of ids.deleted_log_entry_ids || []) undeleteEntry(db, userId, id);
     return;
@@ -2438,7 +2599,16 @@ function listRecentMcpWrites(db, userId, daysRaw = 7) {
       warnings: parseJson(a.warnings_json, []),
     }));
 
-  return { days, since, meals, foods, audits };
+  const diet_phases = db
+    .prepare(
+      `SELECT id, kind, label, start_date, end_date, notes, updated_at
+         FROM diet_phases
+        WHERE user_id = ? AND source = 'mcp' AND COALESCE(is_deleted, 0) = 0
+        ORDER BY id DESC LIMIT 100`
+    )
+    .all(userId);
+
+  return { days, since, meals, foods, diet_phases, audits };
 }
 
 function bulkDeleteMcpLogEntries(db, userId, ids) {
@@ -2565,6 +2735,9 @@ module.exports = {
   updateSupplement,
   createMealPrep,
   logBodyWeight,
+  addDietPhase,
+  updateDietPhase,
+  deleteDietPhase,
   writeBatch,
   revertMcpWrite,
   listRecentMcpWrites,

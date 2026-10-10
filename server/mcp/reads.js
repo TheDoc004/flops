@@ -5,6 +5,7 @@
 const { MICRO_KEYS } = require('../microNutrients');
 const { basisUnitFor, loggableUnitsFor } = require('../unitConvert');
 const { doseMultiplier, scaleValues } = require('../supplementDose');
+const dietPhases = require('../dietPhases');
 const {
   isoDateOrNull,
   getLocalDateISO,
@@ -1020,6 +1021,31 @@ function getDay(db, userId, dateRaw) {
     goals: goals.for_weekday,
     vs_goals: vsGoals(combinedTotals, goals.for_weekday),
     body_weight_kg: weight?.weight_kg ?? null,
+    diet_phases: dietPhases.phasesOnDate(db, userId, date, getLocalDateISO()),
+  };
+}
+
+/**
+ * Diet phases (calendar badges). Without bounds returns every phase; with
+ * `date` returns only the phases covering that day.
+ */
+function getDietPhases(db, userId, { start, end, date } = {}) {
+  const today = getLocalDateISO();
+  if (date != null) {
+    const d = isoDateOrNull(date);
+    if (!d) return { error: 'date must be YYYY-MM-DD' };
+    return { date: d, today, phases: dietPhases.phasesOnDate(db, userId, d, today) };
+  }
+  if ((start != null && !isoDateOrNull(start)) || (end != null && !isoDateOrNull(end))) {
+    return { error: 'start/end must be YYYY-MM-DD' };
+  }
+  if (start && end && start > end) return { error: 'start must be on or before end' };
+  return {
+    start: start || null,
+    end: end || null,
+    today,
+    kinds: dietPhases.PHASE_KINDS,
+    phases: dietPhases.listPhases(db, userId, { start: start || null, end: end || null, today }),
   };
 }
 
@@ -1252,6 +1278,7 @@ module.exports = {
   getGymToday,
   getGymProgress,
   getIntakeWeightTrend,
+  getDietPhases,
   textResult,
   errorResult,
 };
