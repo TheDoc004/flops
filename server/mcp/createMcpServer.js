@@ -250,6 +250,28 @@ function createFlopsMcpServer(db, userId) {
   );
 
   registerTool(
+    'estimate_maintenance',
+    {
+      title: 'Estimate maintenance calories',
+      description:
+        `${READ_ONLY} Infers maintenance calories from logged intake vs the weight trend `
+        + '(default: the 28 days ending yesterday). Returns estimate_kcal, a plausible range '
+        + '(all-fat 3500 vs mixed-tissue 2500 kcal/lb, ±1 SE of the slope), confidence, coverage warnings, '
+        + 'and the profile\'s current maintenance_calories for comparison. Changing the profile is '
+        + 'set_maintenance_calories — only when the user asks.',
+      inputSchema: {
+        days: z.number().int().min(14).max(90).optional().describe('Window length (default 28)'),
+        end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Last day (default yesterday)'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ days, end }) => {
+      const r = reads.estimateMaintenance(db, userId, { days, end });
+      return r.error ? reads.errorResult(r.error) : reads.textResult(r);
+    }
+  );
+
+  registerTool(
     'get_profile',
     {
       title: 'Get profile',
@@ -811,6 +833,25 @@ function createFlopsMcpServer(db, userId) {
   );
 
   registerTool(
+    'set_maintenance_calories',
+    {
+      title: 'Set maintenance calories',
+      description:
+        `${WRITE_NOW} Set the profile's stated maintenance calories (shown on Profile and in the PDF report) `
+        + 'when the user asks — e.g. after estimate_maintenance. 1000–6000 kcal, or null to clear. '
+        + 'Returns previous and new value; revertible.',
+      inputSchema: z
+        .object({
+          maintenance_calories: z.number().min(1000).max(6000).nullable(),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.setMaintenanceCalories(db, userId, args))
+  );
+
+  registerTool(
     'add_diet_phase',
     {
       title: 'Add diet phase',
@@ -885,7 +926,7 @@ function createFlopsMcpServer(db, userId) {
       title: 'Write batch',
       description:
         `${WRITE_NOW} Run multiple write ops in one all-or-nothing transaction. `
-        + 'add_food_item may set ref; later log_meal or create_meal_prep items can use that ref. Ops: add_food_item, log_meal, update_food_item, update_meal_entry, delete_meal_entry, update_supplement, create_meal_prep, log_body_weight, add_diet_phase, update_diet_phase, delete_diet_phase. Any failure rolls back all.',
+        + 'add_food_item may set ref; later log_meal or create_meal_prep items can use that ref. Ops: add_food_item, log_meal, update_food_item, update_meal_entry, delete_meal_entry, update_supplement, create_meal_prep, log_body_weight, set_maintenance_calories, add_diet_phase, update_diet_phase, delete_diet_phase. Any failure rolls back all.',
       inputSchema: z
         .object({
           operations: z.array(z.record(z.string(), z.any())).min(1),

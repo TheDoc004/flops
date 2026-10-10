@@ -1135,6 +1135,79 @@ function summarizeIntakeWeightSegment(summaries, weights, { start, end, energyDe
 /**
  * Intake vs weight trend over a window, optional split into baseline/current.
  */
+function shiftDate(iso, days) {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return getLocalDateISO(d);
+}
+
+/**
+ * Maintenance calories inferred from what was eaten vs how weight moved:
+ * avg intake − (weight slope × energy density / 7). Defaults to the 28 days
+ * ending YESTERDAY (today is usually half-logged). Brackets the tissue energy
+ * density: 3500 kcal/lb assumes the change was all fat; ~2500 fits a mixed
+ * lean/fat/glycogen change, typical when lifting in a surplus. Reads only —
+ * set_maintenance_calories is what changes the profile.
+ */
+function estimateMaintenance(db, userId, { days, end } = {}) {
+  const n = days == null ? 28 : Number(days);
+  if (!Number.isInteger(n) || n < 14 || n > 90) return { error: 'days must be an integer 14–90' };
+  if (end != null && !isoDateOrNull(end)) return { error: 'end must be YYYY-MM-DD' };
+  const endDate = isoDateOrNull(end) || shiftDate(getLocalDateISO(), -1);
+  const startDate = shiftDate(endDate, -(n - 1));
+
+  const summaries = getDailySummaries(db, userId, startDate, endDate);
+  const weights = getBodyWeights(db, userId, startDate, endDate);
+  const seg = summarizeIntakeWeightSegment(summaries, weights, { start: startDate, end: endDate, energyDensity: 3500 });
+  const profileKcal = getProfile(db, userId).maintenance_calories ?? null;
+
+  const warnings = [];
+  if (seg.days_with_food_log < n * 0.8) {
+    warnings.push(
+      `Only ${seg.days_with_food_log}/${n} days have food logged; unlogged days are skipped, ` +
+      'but a half-logged day still counts as a full one and pulls the estimate low.'
+    );
+  }
+  if (seg.weigh_in_count < 8) warnings.push(`Only ${seg.weigh_in_count} weigh-ins; the weight trend is shaky.`);
+
+  const intake = seg.avg_daily_calories;
+  const slope = seg.slope_lb_per_week;
+  const base = {
+    window: { start: startDate, end: endDate, days: n, days_with_food_log: seg.days_with_food_log, weigh_ins: seg.weigh_in_count },
+    avg_intake_kcal: intake,
+    weight_trend_lb_per_week: slope,
+    weight_trend_se_lb_per_week: seg.slope_se_lb_per_week,
+    confidence: seg.confidence,
+    confidence_reason: seg.confidence_reason,
+    profile_maintenance_kcal: profileKcal,
+  };
+  if (intake == null || slope == null) {
+    return { ...base, estimate_kcal: null, warnings: [...warnings, 'Not enough food logs or weigh-ins in the window.'] };
+  }
+
+  const at = density => intake - (slope * density) / 7;
+  const fatOnly = at(3500);
+  const mixed = at(2500);
+  // ±1 SE of the slope, carried through the 3500 kcal/lb conversion.
+  const noise = seg.slope_se_lb_per_week != null ? (seg.slope_se_lb_per_week * 3500) / 7 : 0;
+  const low = Math.min(fatOnly, mixed) - noise;
+  const high = Math.max(fatOnly, mixed) + noise;
+  const mid = (fatOnly + mixed) / 2;
+  const r10 = v => Math.round(v / 10) * 10;
+  return {
+    ...base,
+    estimate_kcal: r10(mid),
+    plausible_range_kcal: [r10(low), r10(high)],
+    if_change_was_all_fat_kcal: r10(fatOnly),
+    if_change_was_mixed_tissue_kcal: r10(mixed),
+    difference_vs_profile_kcal: profileKcal == null ? null : r10(mid - profileKcal),
+    method:
+      'avg intake − weight slope × energy density / 7, at 3500 (all fat) and 2500 (mixed) kcal/lb; '
+      + 'range adds ±1 SE of the slope. An inference from your logs, not a measurement.',
+    warnings,
+  };
+}
+
 function getIntakeWeightTrend(
   db,
   userId,
@@ -1278,6 +1351,7 @@ module.exports = {
   getGymToday,
   getGymProgress,
   getIntakeWeightTrend,
+  estimateMaintenance,
   getDietPhases,
   textResult,
   errorResult,

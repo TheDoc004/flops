@@ -43,6 +43,7 @@ const OPS = {
   update_supplement: 'update_supplement',
   create_meal_prep: 'create_meal_prep',
   log_body_weight: 'log_body_weight',
+  set_maintenance_calories: 'set_maintenance_calories',
   add_diet_phase: 'add_diet_phase',
   update_diet_phase: 'update_diet_phase',
   delete_diet_phase: 'delete_diet_phase',
@@ -78,6 +79,7 @@ const WRITE_ALLOWED_KEYS = {
     'op', 'name', 'servings', 'weight_basis', 'items', 'operation_id',
   ]),
   [OPS.log_body_weight]: new Set(['op', 'weight', 'unit', 'date', 'operation_id']),
+  [OPS.set_maintenance_calories]: new Set(['op', 'maintenance_calories', 'operation_id']),
   [OPS.add_diet_phase]: new Set(['op', 'kind', 'label', 'start_date', 'end_date', 'notes', 'operation_id']),
   [OPS.update_diet_phase]: new Set([
     'op', 'diet_phase_id', 'kind', 'label', 'start_date', 'end_date', 'notes', 'operation_id',
@@ -1839,6 +1841,60 @@ function logBodyWeight(db, userId, args = {}, { skipAudit = false } = {}) {
   });
 }
 
+// ── Maintenance calories (profile) ───────────────────────────────────────────
+// The profile's stated maintenance — the number the Profile page and the PDF
+// report show. Separate from estimate_maintenance, which only reads.
+
+const MIN_MAINTENANCE_KCAL = 1000;
+const MAX_MAINTENANCE_KCAL = 6000;
+
+function readMaintenance(db, userId) {
+  const row = db.prepare('SELECT maintenance_calories FROM user_profile WHERE user_id = ?').get(userId);
+  return row?.maintenance_calories ?? null;
+}
+
+function setMaintenanceCalories(db, userId, args = {}, { skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.set_maintenance_calories);
+  if (badKeys) return badKeys;
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const kcal = args.maintenance_calories === null ? null : Number(args.maintenance_calories);
+    if (kcal !== null && (!Number.isFinite(kcal) || kcal < MIN_MAINTENANCE_KCAL || kcal > MAX_MAINTENANCE_KCAL)) {
+      return {
+        error: `maintenance_calories must be ${MIN_MAINTENANCE_KCAL}–${MAX_MAINTENANCE_KCAL} kcal (or null to clear). Nothing was written.`,
+        code: 'OUT_OF_RANGE',
+      };
+    }
+    const value = kcal === null ? null : Math.round(kcal);
+    const doWrite = () => {
+      const before = { maintenance_calories: readMaintenance(db, userId) };
+      db.prepare(
+        `INSERT INTO user_profile (user_id, maintenance_calories) VALUES (?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET maintenance_calories = excluded.maintenance_calories`
+      ).run(userId, value);
+      const after = { maintenance_calories: readMaintenance(db, userId) };
+      const result_row_ids = { profile_user_ids: [userId] };
+      const response = {
+        op: OPS.set_maintenance_calories,
+        maintenance_calories: after.maintenance_calories,
+        previous: before.maintenance_calories,
+        before,
+        after,
+        result_row_ids,
+        warnings: [],
+        source: 'mcp',
+      };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.set_maintenance_calories, operationId, before, after, result_row_ids, warnings: [], response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : db.transaction(doWrite)();
+  });
+}
+
 // ── Diet phases (calendar badges) ────────────────────────────────────────────
 // Storage is shared with /api/diet-phases (server/dietPhases.js). Deletes are
 // soft so every one of these is revertible.
@@ -2211,6 +2267,8 @@ function writeBatch(db, userId, args = {}) {
             result = createMealPrep(db, userId, step, { skipAudit: true, refMap });
           } else if (op === OPS.log_body_weight) {
             result = logBodyWeight(db, userId, step, { skipAudit: true });
+          } else if (op === OPS.set_maintenance_calories) {
+            result = setMaintenanceCalories(db, userId, step, { skipAudit: true });
           } else if (op === OPS.add_diet_phase) {
             result = addDietPhase(db, userId, step, { skipAudit: true });
           } else if (op === OPS.update_diet_phase) {
@@ -2347,6 +2405,21 @@ function revertOneResult(db, userId, result) {
         `DELETE FROM label_ingredients WHERE id = ? AND user_id = ? AND created_via = 'mcp'`
       ).run(id, userId);
     }
+    return;
+  }
+  if (op === OPS.set_maintenance_calories) {
+    // Undo only what MCP wrote: if the value changed since (edited on the
+    // Profile page), refuse rather than overwrite the newer number.
+    const current = readMaintenance(db, userId);
+    const wrote = result.after?.maintenance_calories ?? null;
+    if (current !== wrote) {
+      throw Object.assign(
+        new Error(`Maintenance calories changed after this MCP write (now ${current ?? 'unset'}); not reverting.`),
+        { code: 'NOT_REVERTIBLE' }
+      );
+    }
+    db.prepare('UPDATE user_profile SET maintenance_calories = ? WHERE user_id = ?')
+      .run(result.before?.maintenance_calories ?? null, userId);
     return;
   }
   if (op === OPS.log_body_weight) {
@@ -2735,6 +2808,7 @@ module.exports = {
   updateSupplement,
   createMealPrep,
   logBodyWeight,
+  setMaintenanceCalories,
   addDietPhase,
   updateDietPhase,
   deleteDietPhase,
