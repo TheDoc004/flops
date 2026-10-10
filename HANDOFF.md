@@ -116,6 +116,12 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   per step inside `write_batch`). The audit row and the batch's stored response still keep the full
   before/after, because `revert_mcp_write` reads them. Trim happens in `createMcpServer.js` via
   `compactFoodUpdate` / `compactBatchResponse`.
+- *Maintenance calories:* read tool `estimate_maintenance` (default 28 days ending yesterday)
+  infers maintenance as avg intake − weight slope × density / 7 at 3500 (all fat) and 2500 (mixed
+  tissue) kcal/lb, plus ±1 SE of the slope; returns estimate, range, confidence, coverage warnings
+  and the profile value. Write tool `set_maintenance_calories` (1000–6000 or null, revertible,
+  batchable; revert refuses if the Profile page changed it since). As of 2026-10-10 Diego's data
+  said ~2,800 vs a profile value of 2,500.
 - *Recipes with today's amounts:* new read tool `get_recipe` (lines with label_ingredient_id, amount,
   unit, macros per serving). `log_meal` recipe items take `adjust: [{label_ingredient_id,
   quantity_g | quantity+unit | remove: true}]` (per serving), resolved through `resolveReceiptForLog`
@@ -409,7 +415,7 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - **`client/package-lock.json` out of sync** with `package.json` (`npm ci` fails: missing `esbuild@0.28.2`).
   Regenerate with `npm install` in `client/`.
 
-**Tests (Oct 2026):** server ~440 Jest; client ~381 Vitest unit. Playwright e2e specs live under
+**Tests (Oct 2026):** server ~459 Jest; client ~381 Vitest unit. Playwright e2e specs live under
 `client/e2e/` and run via `npm run verify:layout-editor`, not `npm test`.
 
 ---
