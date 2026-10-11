@@ -116,6 +116,10 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   per step inside `write_batch`). The audit row and the batch's stored response still keep the full
   before/after, because `revert_mcp_write` reads them. Trim happens in `createMcpServer.js` via
   `compactFoodUpdate` / `compactBatchResponse`.
+- *get_recipe per-line errors:* each line resolves on its own, so a broken line comes back with
+  `error` + `hint` (the units its food can be measured in) instead of an empty `lines` array.
+  Eggs (#4) now have `grams_per_unit` 50 and the old per-slice TJ sourdough (#27) 56 g so Wombo
+  Combo (#108) lines can resolve.
 - *Maintenance calories:* read tool `estimate_maintenance` (default 28 days ending yesterday)
   infers maintenance as avg intake − weight slope × density / 7 at 3500 (all fat) and 2500 (mixed
   tissue) kcal/lb, plus ±1 SE of the slope; returns estimate, range, confidence, coverage warnings
@@ -415,7 +419,7 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - **`client/package-lock.json` out of sync** with `package.json` (`npm ci` fails: missing `esbuild@0.28.2`).
   Regenerate with `npm install` in `client/`.
 
-**Tests (Oct 2026):** server ~459 Jest; client ~381 Vitest unit. Playwright e2e specs live under
+**Tests (Oct 2026):** server ~460 Jest; client ~381 Vitest unit. Playwright e2e specs live under
 `client/e2e/` and run via `npm run verify:layout-editor`, not `npm test`.
 
 ---
