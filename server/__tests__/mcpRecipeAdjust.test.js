@@ -73,6 +73,25 @@ describe('log_meal recipe adjust + get_recipe', () => {
     expect(body.lines[1]).toMatchObject({ calories: 224, protein_g: 8.96 });
   });
 
+  it('get_recipe reports a broken line on its own instead of hiding every line', async () => {
+    const slices = db.prepare(
+      `INSERT INTO label_ingredients (user_id, name, serving_size_text, calories, protein_g, carbs_g, fat_g,
+         tracking_type, unit_name, serving_quantity)
+       VALUES (?, 'Old sourdough', '1 slice', 120, 4, 24, 1, 'unit', 'slice', 1)`
+    ).run(userId).lastInsertRowid;
+    const lines = JSON.parse(db.prepare('SELECT ingredients FROM recipes WHERE id = ?').get(wombo).ingredients);
+    lines.push({ kind: 'ingredient', name: 'Old sourdough', amount: '100', unit: 'g', label_ingredient_id: slices });
+    db.prepare('UPDATE recipes SET ingredients = ? WHERE id = ?').run(JSON.stringify(lines), wombo);
+
+    const { body } = await call('get_recipe', { recipe_id: wombo });
+    expect(body.lines).toHaveLength(4);
+    expect(body.lines.slice(0, 3).every(l => !l.error && l.calories > 0)).toBe(true);
+    expect(body.lines[3]).toMatchObject({ label_ingredient_id: slices, amount: 100, unit: 'g' });
+    expect(body.lines[3].error).toMatch(/NOT_CONVERTIBLE/);
+    expect(body.lines[3].hint).toMatch(/can be measured in: slice/);
+    expect(body.broken_lines).toBe(1);
+  });
+
   it('logs the recipe with changed amounts, a removed line, and an add-on — as one linked entry', async () => {
     const { isError, body } = await call('log_meal', {
       date: '2026-10-09',

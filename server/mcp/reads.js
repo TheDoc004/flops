@@ -524,29 +524,48 @@ function getProfile(db, userId) {
  * (per serving) — the label_ingredient_ids log_meal's recipe `adjust` targets.
  */
 function getRecipe(db, userId, recipeId) {
-  const { receiptFromRecipeTemplate } = require('../recipeIngredients');
+  const { listRecipeIngredientLines, resolveReceiptForLog } = require('../recipeIngredients');
+  const { loggableUnitsFor } = require('../unitConvert');
   const recipe = db
     .prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ? AND COALESCE(is_deleted, 0) = 0')
     .get(Number(recipeId), userId);
   if (!recipe) return { error: `recipe_id ${recipeId} not found` };
-  let lines = [];
-  let linesError = null;
-  try {
-    const receipt = receiptFromRecipeTemplate(db, recipe, userId);
-    lines = (receipt?.rows || []).map(r => ({
-      label_ingredient_id: r.label_ingredient_id ?? null,
-      name: r.name,
-      amount: r.amount,
-      unit: r.unit,
-      calories: r.calories,
-      protein_g: r.protein_g,
-      carbs_g: r.carbs_g,
-      fat_g: r.fat_g,
-      fiber_g: r.fiber_g ?? null,
-    }));
-  } catch (e) {
-    linesError = `${e.ingredientName ? `"${e.ingredientName}": ` : ''}${e.code || e.message}`;
-  }
+
+  // Each line is resolved on its own, so one unconvertible line (say "100 g"
+  // of a food counted only in slices) is reported against that line instead
+  // of hiding every line behind one error.
+  const getIng = db.prepare(
+    'SELECT name, tracking_type, unit_name, grams_per_unit, grams_per_serving, grams_per_ml FROM label_ingredients WHERE id = ? AND user_id = ?'
+  );
+  const lines = listRecipeIngredientLines(recipe).map(l => {
+    const lid = l.label_ingredient_id != null ? Number(l.label_ingredient_id) : null;
+    const base = { label_ingredient_id: lid, name: l.name, amount: Number(l.amount), unit: l.unit };
+    if (!lid) return { ...base, error: 'NOT_LINKED', hint: 'Line is not linked to a library ingredient.' };
+    try {
+      const r = resolveReceiptForLog(db, [{ name: l.name, amount: Number(l.amount), unit: l.unit, label_ingredient_id: lid }], userId).rows[0];
+      return {
+        ...base,
+        amount: r.amount,
+        unit: r.unit,
+        calories: r.calories,
+        protein_g: r.protein_g,
+        carbs_g: r.carbs_g,
+        fat_g: r.fat_g,
+        fiber_g: r.fiber_g ?? null,
+      };
+    } catch (e) {
+      const ing = getIng.get(lid, userId);
+      return {
+        ...base,
+        error: e.code || e.message,
+        hint: ing
+          ? `"${ing.name}" (#${lid}) can be measured in: ${loggableUnitsFor(ing).join(', ') || 'nothing yet'}. `
+            + 'Give it a gram weight (grams_per_unit / grams_per_ml) or change the recipe line\'s unit.'
+          : `Library ingredient #${lid} is missing.`,
+      };
+    }
+  });
+  const broken = lines.filter(l => l.error).length;
   return {
     id: recipe.id,
     name: recipe.name,
@@ -562,7 +581,9 @@ function getRecipe(db, userId, recipeId) {
       fiber_g: recipe.fiber_g ?? null,
     },
     lines,
-    ...(linesError ? { lines_error: linesError } : {}),
+    ...(broken
+      ? { broken_lines: broken, note: 'log_meal adjust needs every line to resolve; fix the lines with error first.' }
+      : {}),
   };
 }
 
