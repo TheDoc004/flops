@@ -42,6 +42,7 @@ const OPS = {
   delete_meal_entry: 'delete_meal_entry',
   update_supplement: 'update_supplement',
   create_meal_prep: 'create_meal_prep',
+  update_recipe: 'update_recipe',
   log_body_weight: 'log_body_weight',
   set_maintenance_calories: 'set_maintenance_calories',
   add_diet_phase: 'add_diet_phase',
@@ -75,6 +76,7 @@ const WRITE_ALLOWED_KEYS = {
     'op', 'supplement_id', 'dose_text', 'dose_qty', 'label_serving_qty', 'label_serving_unit',
     'calories', 'protein_g', 'carbs_g', 'fat_g', 'micros', 'taken', 'taken_date', 'operation_id',
   ]),
+  [OPS.update_recipe]: new Set(['op', 'recipe_id', 'name', 'lines', 'operation_id']),
   [OPS.create_meal_prep]: new Set([
     'op', 'name', 'servings', 'weight_basis', 'items', 'operation_id',
   ]),
@@ -1605,6 +1607,116 @@ function deleteMealEntry(db, userId, args = {}, { skipAudit = false } = {}) {
 const MEAL_PREP_SOURCE = 'mcp_meal_prep';
 const MAX_MEAL_PREP_SERVINGS = 50;
 
+/**
+ * Replace a saved recipe's lines (and optionally its name). Each line is a
+ * library food at an amount per serving; macros are recomputed from the
+ * library through the same receipt code logging uses, so the recipe's totals
+ * can't drift from its lines. Old log entries are untouched (they hold their
+ * own copies). Meal preps are refused — their lines are a split batch.
+ * lines: [{label_ingredient_id, quantity_g | quantity (+unit)}]
+ */
+function updateRecipe(db, userId, args = {}, { skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.update_recipe);
+  if (badKeys) return badKeys;
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const id = Number(args.recipe_id);
+    const row = db
+      .prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ? AND COALESCE(is_deleted, 0) = 0')
+      .get(id, userId);
+    if (!row) return { error: `recipe_id ${args.recipe_id} not found` };
+    if (row.recipe_kind === 'limited') {
+      return { error: `"${row.name}" is a meal prep; its lines are a split batch and can't be edited here.`, code: 'MEAL_PREP' };
+    }
+    if (row.is_quick_food) return { error: `recipe_id ${id} is a logged quick meal, not a saved recipe.` };
+    const lines = Array.isArray(args.lines) ? args.lines : null;
+    if (!lines || !lines.length) return { error: 'lines must be a non-empty array' };
+
+    const getIng = db.prepare('SELECT * FROM label_ingredients WHERE id = ? AND user_id = ?');
+    const raw = [];
+    for (const [i, l] of lines.entries()) {
+      const lid = Number(l?.label_ingredient_id);
+      const ing = Number.isInteger(lid) && lid > 0 ? getIng.get(lid, userId) : null;
+      if (!ing) return { error: `lines[${i}]: label_ingredient_id ${l?.label_ingredient_id} not found` };
+      const hasGrams = l.quantity_g != null;
+      if (hasGrams === (l.quantity != null)) return { error: `lines[${i}]: give quantity_g, or quantity (+ unit)` };
+      const amount = Number(hasGrams ? l.quantity_g : l.quantity);
+      if (!Number.isFinite(amount) || amount <= 0) return { error: `lines[${i}]: amount must be a positive number` };
+      const unit = hasGrams ? 'g' : (l.unit != null && l.unit !== '' ? String(l.unit) : displayUnitForIngredient(ing));
+      raw.push({ name: ing.name, amount, unit, label_ingredient_id: lid });
+    }
+    let receipt;
+    try {
+      receipt = resolveReceiptForLog(db, raw, userId);
+    } catch (e) {
+      return {
+        error: `${e.ingredientName ? `"${e.ingredientName}" ` : ''}can't be measured that way [${e.code || e.message}]`,
+        code: 'UNIT_NOT_CONVERTIBLE',
+      };
+    }
+    const ingredients = receipt.rows.map(r => ({
+      kind: 'ingredient',
+      name: r.name,
+      amount: String(r.amount),
+      unit: r.unit,
+      label_ingredient_id: r.label_ingredient_id,
+    }));
+    // Meal Builder "line" entries read their amounts from meta.lines; the new
+    // lines are self-contained, so drop that index rather than leave it stale.
+    const meta = parseJson(row.meal_builder_meta, null);
+    if (meta && typeof meta === 'object') delete meta.lines;
+    const name = args.name != null && String(args.name).trim() ? String(args.name).trim() : row.name;
+    const ps = receipt.perServing;
+    const before = {
+      id, name: row.name, ingredients: row.ingredients, meal_builder_meta: row.meal_builder_meta,
+      calories: row.calories, protein_g: row.protein_g, carbs_g: row.carbs_g, fat_g: row.fat_g, fiber_g: row.fiber_g,
+    };
+
+    const doWrite = () => {
+      db.prepare(
+        `UPDATE recipes SET name = ?, ingredients = ?, meal_builder_meta = ?,
+                calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?
+          WHERE id = ? AND user_id = ?`
+      ).run(
+        name, JSON.stringify(ingredients), meta ? JSON.stringify(meta) : null,
+        round(ps.calories, 1), round(ps.protein_g, 2), round(ps.carbs_g, 2), round(ps.fat_g, 2),
+        ps.fiber_g == null ? null : round(ps.fiber_g, 2), id, userId
+      );
+      const after = db.prepare(
+        'SELECT id, name, ingredients, meal_builder_meta, calories, protein_g, carbs_g, fat_g, fiber_g FROM recipes WHERE id = ?'
+      ).get(id);
+      const result_row_ids = { recipe_ids: [id] };
+      const response = {
+        op: OPS.update_recipe,
+        recipe_id: id,
+        name,
+        per_serving_before: {
+          calories: row.calories, protein_g: row.protein_g, carbs_g: row.carbs_g, fat_g: row.fat_g, fiber_g: row.fiber_g,
+        },
+        per_serving: {
+          calories: after.calories, protein_g: after.protein_g, carbs_g: after.carbs_g, fat_g: after.fat_g, fiber_g: after.fiber_g,
+        },
+        lines: receipt.rows.map(r => ({
+          label_ingredient_id: r.label_ingredient_id, name: r.name, amount: r.amount, unit: r.unit,
+          calories: r.calories, protein_g: r.protein_g, carbs_g: r.carbs_g, fat_g: r.fat_g,
+        })),
+        before,
+        after,
+        result_row_ids,
+        warnings: [],
+        source: 'mcp',
+      };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.update_recipe, operationId, before, after, result_row_ids, warnings: [], response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : db.transaction(doWrite)();
+  });
+}
+
 function fetchRecipeById(db, userId, id) {
   const row = db
     .prepare(
@@ -2263,6 +2375,8 @@ function writeBatch(db, userId, args = {}) {
             result = deleteMealEntry(db, userId, step, { skipAudit: true });
           } else if (op === OPS.update_supplement) {
             result = updateSupplement(db, userId, step, { skipAudit: true });
+          } else if (op === OPS.update_recipe) {
+            result = updateRecipe(db, userId, step, { skipAudit: true });
           } else if (op === OPS.create_meal_prep) {
             result = createMealPrep(db, userId, step, { skipAudit: true, refMap });
           } else if (op === OPS.log_body_weight) {
@@ -2391,6 +2505,23 @@ function revertOneResult(db, userId, result) {
         ).run(id, userId);
       }
     }
+    return;
+  }
+  if (op === OPS.update_recipe && result.before) {
+    // Restore only if the recipe still holds what MCP wrote.
+    const b = result.before;
+    const current = db.prepare('SELECT ingredients FROM recipes WHERE id = ? AND user_id = ?').get(b.id, userId);
+    if (!current || current.ingredients !== result.after?.ingredients) {
+      throw Object.assign(
+        new Error(`Recipe #${b.id} changed after this MCP write; not reverting.`),
+        { code: 'NOT_REVERTIBLE' }
+      );
+    }
+    db.prepare(
+      `UPDATE recipes SET name = ?, ingredients = ?, meal_builder_meta = ?,
+              calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?
+        WHERE id = ? AND user_id = ?`
+    ).run(b.name, b.ingredients, b.meal_builder_meta, b.calories, b.protein_g, b.carbs_g, b.fat_g, b.fiber_g, b.id, userId);
     return;
   }
   if (op === OPS.create_meal_prep) {
@@ -2773,9 +2904,16 @@ function compactMealWrite(result) {
   return out;
 }
 
+/** update_recipe: per_serving_before/per_serving/lines say it all; the raw rows stay in the audit. */
+function compactRecipeUpdate(result) {
+  if (!result || result.error || result.op !== OPS.update_recipe) return result;
+  const { before: _before, after: _after, ...rest } = result;
+  return rest;
+}
+
 /** One step of any write, in its caller-facing shape. */
 function compactWriteResult(result) {
-  return compactMealWrite(compactFoodUpdate(result));
+  return compactRecipeUpdate(compactMealWrite(compactFoodUpdate(result)));
 }
 
 /**
@@ -2807,6 +2945,7 @@ module.exports = {
   deleteMealEntry,
   updateSupplement,
   createMealPrep,
+  updateRecipe,
   logBodyWeight,
   setMaintenanceCalories,
   addDietPhase,

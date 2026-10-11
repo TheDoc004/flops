@@ -778,6 +778,39 @@ function createFlopsMcpServer(db, userId) {
   );
 
   registerTool(
+    'update_recipe',
+    {
+      title: 'Update recipe',
+      description:
+        `${WRITE_NOW} Replace a saved recipe's ingredient lines (per serving) and optionally rename it. `
+        + 'Macros are recomputed from the library at those amounts; past log entries keep their own copies. '
+        + 'Use get_recipe first to see the current lines. Meal preps are refused. Returns old vs new per-serving '
+        + 'macros and the resolved lines; revertible.',
+      inputSchema: z
+        .object({
+          recipe_id: z.number().int().positive(),
+          name: z.string().min(1).optional(),
+          lines: z
+            .array(
+              z
+                .object({
+                  label_ingredient_id: z.number().int().positive(),
+                  quantity_g: z.number().positive().optional(),
+                  quantity: z.number().positive().optional(),
+                  unit: z.string().optional(),
+                })
+                .strict()
+            )
+            .min(1),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.compactWriteResult(writes.updateRecipe(db, userId, args)))
+  );
+
+  registerTool(
     'create_meal_prep',
     {
       title: 'Create meal prep',
@@ -926,7 +959,7 @@ function createFlopsMcpServer(db, userId) {
       title: 'Write batch',
       description:
         `${WRITE_NOW} Run multiple write ops in one all-or-nothing transaction. `
-        + 'add_food_item may set ref; later log_meal or create_meal_prep items can use that ref. Ops: add_food_item, log_meal, update_food_item, update_meal_entry, delete_meal_entry, update_supplement, create_meal_prep, log_body_weight, set_maintenance_calories, add_diet_phase, update_diet_phase, delete_diet_phase. Any failure rolls back all.',
+        + 'add_food_item may set ref; later log_meal or create_meal_prep items can use that ref. Ops: add_food_item, log_meal, update_food_item, update_meal_entry, delete_meal_entry, update_supplement, create_meal_prep, update_recipe, log_body_weight, set_maintenance_calories, add_diet_phase, update_diet_phase, delete_diet_phase. Any failure rolls back all.',
       inputSchema: z
         .object({
           operations: z.array(z.record(z.string(), z.any())).min(1),
