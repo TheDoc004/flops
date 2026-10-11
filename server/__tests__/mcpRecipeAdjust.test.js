@@ -169,4 +169,56 @@ describe('log_meal recipe adjust + get_recipe', () => {
     expect(body.after.recipe_id).toBe(wombo);
     expect(body.after.ingredients.find(r => r.name === 'Honey').amount).toBe(16);
   });
+
+  it('update_recipe replaces the lines, recomputes macros, and reverts', async () => {
+    const eggs = db.prepare(
+      `INSERT INTO label_ingredients (user_id, name, serving_size_text, calories, protein_g, carbs_g, fat_g,
+         tracking_type, unit_name, serving_quantity, grams_per_unit)
+       VALUES (?, 'eggs', '1 egg', 70, 6, 0.5, 5, 'unit', 'egg', 1, 50)`
+    ).run(userId).lastInsertRowid;
+    const { isError, body } = await call('update_recipe', {
+      recipe_id: wombo,
+      lines: [
+        { label_ingredient_id: eggs, quantity: 4, unit: 'egg' },
+        { label_ingredient_id: ids.yogurt, quantity_g: 180 },
+        { label_ingredient_id: ids.bread, quantity_g: 112 },
+      ],
+    });
+    expect(isError).toBe(false);
+    expect(body.per_serving_before.calories).toBe(488);
+    // 4 eggs 280 + yogurt 180 g 108 + bread 112 g 224
+    expect(body.per_serving).toMatchObject({ calories: 612, protein_g: 50.96 });
+    expect(body.before).toBeUndefined();
+    expect(body.lines.map(l => [l.name, l.amount, l.unit])).toEqual([
+      ['eggs', 4, 'egg'], ['Greek yogurt', 180, 'g'], ['Sourdough', 112, 'g'],
+    ]);
+
+    const recipe = (await call('get_recipe', { recipe_id: wombo })).body;
+    expect(recipe.broken_lines).toBeUndefined();
+    expect(recipe.per_serving.calories).toBe(612);
+
+    // adjust now works against the new lines
+    const logged = writes.logMeal(db, userId, {
+      date: '2026-10-11', weight_basis: 'raw',
+      items: [{ recipe_id: wombo, servings: 1, nutrition_source: 'database',
+        adjust: [{ label_ingredient_id: ids.bread, quantity_g: 56 }] }],
+    });
+    expect(logged.entry.logged.calories).toBe(500);
+
+    const rev = await call('revert_mcp_write', { audit_id: body.audit_id });
+    expect(rev.isError).toBe(false);
+    expect(db.prepare('SELECT calories FROM recipes WHERE id = ?').get(wombo).calories).toBe(488);
+  });
+
+  it('update_recipe refuses meal preps and unconvertible lines', () => {
+    const prep = writes.createMealPrep(db, userId, {
+      name: 'Prep', servings: 2, weight_basis: 'raw',
+      items: [{ label_ingredient_id: ids.yogurt, quantity_g: 400, nutrition_source: 'database' }],
+    }).recipe.id;
+    expect(writes.updateRecipe(db, userId, { recipe_id: prep, lines: [{ label_ingredient_id: ids.yogurt, quantity_g: 100 }] }).code)
+      .toBe('MEAL_PREP');
+    expect(writes.updateRecipe(db, userId, { recipe_id: wombo, lines: [{ label_ingredient_id: ids.yogurt, quantity: 1, unit: 'cup' }] }).code)
+      .toBe('UNIT_NOT_CONVERTIBLE');
+    expect(db.prepare('SELECT calories FROM recipes WHERE id = ?').get(wombo).calories).toBe(488);
+  });
 });
