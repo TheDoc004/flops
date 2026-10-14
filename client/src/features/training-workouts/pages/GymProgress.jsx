@@ -144,10 +144,10 @@ export default function GymProgress() {
               </select>
             </label>
             <label>Reps
-              <input type="number" min="1" value={estReps} onChange={e => setEstReps(e.target.value)} />
+              <input type="number" inputMode="decimal" min="1" value={estReps} onChange={e => setEstReps(e.target.value)} />
             </label>
             <label>Weight ({unit})
-              <input type="number" min="0" step="0.5" value={estWeight} onChange={e => setEstWeight(e.target.value)} placeholder={lastSet?.weight ?? ''} />
+              <input type="number" inputMode="decimal" min="0" step="0.5" value={estWeight} onChange={e => setEstWeight(e.target.value)} placeholder={lastSet?.weight ?? ''} />
             </label>
           </div>
           <p style={{ margin: '12px 0', fontSize: 18, fontWeight: 600 }}>

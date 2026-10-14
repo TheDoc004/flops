@@ -1297,7 +1297,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                       <label htmlFor="log-prep-servings" style={{ margin: 0, fontSize: 13 }}>Custom count:</label>
                       <input
                         id="log-prep-servings"
-                        type="number"
+                        type="number" inputMode="numeric"
                         min="2"
                         max="50"
                         step="1"
@@ -1329,7 +1329,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                       <label htmlFor="log-prep-containers" style={{ margin: 0, fontSize: 13 }}>Containers:</label>
                       <input
                         id="log-prep-containers"
-                        type="number"
+                        type="number" inputMode="numeric"
                         min="2"
                         max="12"
                         step="1"
@@ -1358,7 +1358,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                           </label>
                           <input
                             id={`log-prep-pct-${i}`}
-                            type="number"
+                            type="number" inputMode="decimal"
                             min="0.1"
                             max="99.9"
                             step="0.1"

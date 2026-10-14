@@ -16,8 +16,9 @@ recommendations, and food logs informing training readiness.
 (decision: July 2026). Nutrition is feature-complete for daily use. Training is a **gym dashboard** at
 `/training` with its own nav chrome (Today / Schedule / Workouts / Progress) and `/api/gym`
 backend — rebuilt Aug 2026 as a set-by-set logger (templates, schedule, progress, 1RM).
-**Today dashboard layout customization** (`?editLayout=1`, card drag/resize) shipped Aug 2026 but
-visual polish is parked — see `HANDOFF.md`.
+**Today dashboard layout editor** (`?editLayout=1`, card drag/resize) was **vaulted Oct 2026** —
+code lives on the branch `archive/dashboard-layout-editor`. Today's card order is fixed in
+`features/dashboard/dashboardLayout.js` (supplements first); Profile toggles show/hide.
 The earlier cross-domain fuel/readiness features were removed from the active app and are
 preserved on the branch `archive/nutrition-training-integration` — see
 `docs/future/nutrition-training-bridge.md`. Do not add new cross-domain features:

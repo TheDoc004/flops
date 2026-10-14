@@ -361,8 +361,10 @@ export default function LogEntryRow({
   // Inline variant (History page, etc.)
   return (
     <div style={{ borderBottom: '1px solid var(--color-divider)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      {/* Wraps on narrow screens: the name keeps a real width (macros + buttons
+          drop beneath it) instead of being squeezed to 0 and overflowing them. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px', padding: '10px 0' }}>
+        <div style={{ flex: '1 1 200px', minWidth: 0, overflowWrap: 'anywhere' }}>
           <strong>{entry.recipe_name}</strong>
           {entry.source === 'mcp' && (
             <span className="mcp-source-badge" title="Logged via MCP assistant">MCP</span>
@@ -380,28 +382,31 @@ export default function LogEntryRow({
           <span>C: {formatMacroMass(m.carbs_g, macroUnits)}</span>
           <span>F: {formatMacroMass(m.fat_g, macroUnits)}</span>
         </div>
-        {(hasBreakdown || hasMicros) && (
-          <ViewToggle view={view} setView={openView} hasMicros={hasMicros} compact />
-        )}
-        {onEdit && (
-          <button
-            type="button"
-            className="btn-secondary"
-            style={{ padding: '4px 10px', fontSize: 12 }}
-            onClick={() => onEdit(entry)}
-          >
-            Edit
-          </button>
-        )}
-        {onDelete && (
-          <button
-            className="btn-danger-ghost"
-            style={{ padding: '4px 10px', fontSize: 12 }}
-            onClick={() => onDelete(entry)}
-          >
-            Delete
-          </button>
-        )}
+        {/* Actions wrap as one group so Delete never strands on its own line. */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
+          {(hasBreakdown || hasMicros) && (
+            <ViewToggle view={view} setView={openView} hasMicros={hasMicros} compact />
+          )}
+          {onEdit && (
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ padding: '4px 10px', fontSize: 12 }}
+              onClick={() => onEdit(entry)}
+            >
+              Edit
+            </button>
+          )}
+          {onDelete && (
+            <button
+              className="btn-danger-ghost"
+              style={{ padding: '4px 10px', fontSize: 12 }}
+              onClick={() => onDelete(entry)}
+            >
+              Delete
+            </button>
+          )}
+        </div>
       </div>
       {(hasBreakdown || hasMicros) && (
         <div className={`collapse${expanded ? ' is-open' : ''}`}>

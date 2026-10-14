@@ -89,7 +89,7 @@ export default function StepIngredients({
             <label htmlFor="mb-serving-amount">Serving amount</label>
             <input
               id="mb-serving-amount"
-              type="number" min="0" step="0.01"
+              type="number" inputMode="decimal" min="0" step="0.01"
               className={scanFieldClass(labelScanFieldStatus?.grams_per_serving)}
               value={labelDraft.serving_amount}
               onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, serving_amount: e.target.value })); }}
@@ -125,7 +125,7 @@ export default function StepIngredients({
               </label>
               <input
                 id="mb-gram-equiv"
-                type="number" min="0" step="0.01"
+                type="number" inputMode="decimal" min="0" step="0.01"
                 value={labelDraft.gram_equivalent}
                 onChange={e => setLabelDraft(d => ({ ...d, gram_equivalent: e.target.value }))}
                 placeholder="e.g. 31"
@@ -138,23 +138,23 @@ export default function StepIngredients({
           <div className="form-grid-2" style={{ gridColumn: '1 / -1' }}>
             <div>
               <label>Calories</label>
-              <input type="number" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.calories)} value={labelDraft.calories} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, calories: e.target.value })); }} required />
+              <input type="number" inputMode="decimal" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.calories)} value={labelDraft.calories} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, calories: e.target.value })); }} required />
             </div>
             <div>
               <label>Protein (g)</label>
-              <input type="number" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.protein_g)} value={labelDraft.protein_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, protein_g: e.target.value })); }} required />
+              <input type="number" inputMode="decimal" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.protein_g)} value={labelDraft.protein_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, protein_g: e.target.value })); }} required />
             </div>
             <div>
               <label>Carbs (g)</label>
-              <input type="number" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.carbs_g)} value={labelDraft.carbs_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, carbs_g: e.target.value })); }} required />
+              <input type="number" inputMode="decimal" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.carbs_g)} value={labelDraft.carbs_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, carbs_g: e.target.value })); }} required />
             </div>
             <div>
               <label>Fat (g)</label>
-              <input type="number" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.fat_g)} value={labelDraft.fat_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, fat_g: e.target.value })); }} required />
+              <input type="number" inputMode="decimal" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.fat_g)} value={labelDraft.fat_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, fat_g: e.target.value })); }} required />
             </div>
             <div>
               <label>Fiber (g) <span style={{ fontSize: 12, color: 'var(--color-text-faint)', fontWeight: 400 }}>(optional)</span></label>
-              <input type="number" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.fiber_g)} value={labelDraft.fiber_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, fiber_g: e.target.value })); }} placeholder="Optional" />
+              <input type="number" inputMode="decimal" min="0" step="0.1" className={scanFieldClass(labelScanFieldStatus?.fiber_g)} value={labelDraft.fiber_g} onChange={e => { clearLabelScanHints(); setLabelDraft(d => ({ ...d, fiber_g: e.target.value })); }} placeholder="Optional" />
             </div>
           </div>
 

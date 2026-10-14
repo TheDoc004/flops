@@ -738,6 +738,15 @@ input, select, textarea {
   color: var(--color-text);
 }
 
+/* iOS Safari zooms the whole page when a focused field's text is under 16px.
+   Phones/touch get 16px fields; !important because many inputs set a smaller
+   fontSize inline. */
+@media (max-width: 768px), (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* Checkboxes and radios opt out of the full-width control styling above
    (otherwise the global input rule stretches them into 44px bordered boxes). */
 input[type="checkbox"], input[type="radio"] {

@@ -880,7 +880,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
               <label htmlFor="ai-recipe-servings">Servings</label>
               <input
                 id="ai-recipe-servings"
-                type="number" min="0.1" step="0.1"
+                type="number" inputMode="decimal" min="0.1" step="0.1"
                 value={recipeServings}
                 onChange={e => setRecipeServings(e.target.value)}
               />
@@ -1140,7 +1140,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           <div>
                             <label style={{ fontSize: 11 }}>Amount used</label>
-                            <input type="number" min="0" step="0.1" value={ing.quantity} onChange={e => updateAmount(idx, e.target.value)} />
+                            <input type="number" inputMode="decimal" min="0" step="0.1" value={ing.quantity} onChange={e => updateAmount(idx, e.target.value)} />
                           </div>
                           <div>
                             <label style={{ fontSize: 11 }}>Unit</label>
@@ -1157,7 +1157,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(64px, 1fr))', gap: 8 }}>
                           <div>
                             <label style={{ fontSize: 11 }}>Basis amt</label>
-                            <input type="number" min="0" step="0.1" value={basis.amount} onChange={e => updateBasisAmount(idx, e.target.value)} />
+                            <input type="number" inputMode="decimal" min="0" step="0.1" value={basis.amount} onChange={e => updateBasisAmount(idx, e.target.value)} />
                           </div>
                           {[
                             ['calories', 'Cal'],
@@ -1167,7 +1167,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
                           ].map(([field, label]) => (
                             <div key={field}>
                               <label style={{ fontSize: 11 }}>{label}</label>
-                              <input type="number" min="0" step="0.1" value={basis[field]} onChange={e => updateBasisMacro(idx, field, e.target.value)} />
+                              <input type="number" inputMode="decimal" min="0" step="0.1" value={basis[field]} onChange={e => updateBasisMacro(idx, field, e.target.value)} />
                             </div>
                           ))}
                         </div>
@@ -1239,7 +1239,7 @@ export default function AiMacroLogger({ inModal = false, onClose, onLogged, init
                 <label htmlFor="prep-servings" style={{ margin: 0, fontSize: 13 }}>Custom count:</label>
                 <input
                   id="prep-servings"
-                  type="number" min="2" max="50" step="1"
+                  type="number" inputMode="numeric" min="2" max="50" step="1"
                   value={prep.servings ?? ''}
                   onChange={e => {
                     const v = Math.floor(Number(e.target.value));

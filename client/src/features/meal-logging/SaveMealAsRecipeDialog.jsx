@@ -121,7 +121,7 @@ export default function SaveMealAsRecipeDialog({ entry, onClose, onSaved }) {
               <label htmlFor="save-meal-prep-count" style={{ margin: 0, fontSize: 13 }}>Custom:</label>
               <input
                 id="save-meal-prep-count"
-                type="number"
+                type="number" inputMode="numeric"
                 min="2"
                 max="50"
                 step="1"

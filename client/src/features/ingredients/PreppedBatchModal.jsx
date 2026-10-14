@@ -58,29 +58,29 @@ export default function PreppedBatchModal({ onClose, onSaved }) {
         <input id="prep-name" value={name} onChange={e => setName(e.target.value)} required style={{ marginBottom: 10 }} />
 
         <label htmlFor="prep-weight">Total cooked weight (g)</label>
-        <input id="prep-weight" type="number" min="1" step="any" value={totalWeightG} onChange={e => setTotalWeightG(e.target.value)} required style={{ marginBottom: 10 }} />
+        <input id="prep-weight" type="number" inputMode="decimal" min="1" step="any" value={totalWeightG} onChange={e => setTotalWeightG(e.target.value)} required style={{ marginBottom: 10 }} />
 
         <div className="form-grid-2" style={{ marginBottom: 10 }}>
           <div>
             <label htmlFor="prep-cal">Total calories</label>
-            <input id="prep-cal" type="number" min="0" step="any" value={calories} onChange={e => setCalories(e.target.value)} required />
+            <input id="prep-cal" type="number" inputMode="decimal" min="0" step="any" value={calories} onChange={e => setCalories(e.target.value)} required />
           </div>
           <div>
             <label htmlFor="prep-protein">Total protein (g)</label>
-            <input id="prep-protein" type="number" min="0" step="any" value={proteinG} onChange={e => setProteinG(e.target.value)} required />
+            <input id="prep-protein" type="number" inputMode="decimal" min="0" step="any" value={proteinG} onChange={e => setProteinG(e.target.value)} required />
           </div>
           <div>
             <label htmlFor="prep-carbs">Total carbs (g)</label>
-            <input id="prep-carbs" type="number" min="0" step="any" value={carbsG} onChange={e => setCarbsG(e.target.value)} required />
+            <input id="prep-carbs" type="number" inputMode="decimal" min="0" step="any" value={carbsG} onChange={e => setCarbsG(e.target.value)} required />
           </div>
           <div>
             <label htmlFor="prep-fat">Total fat (g)</label>
-            <input id="prep-fat" type="number" min="0" step="any" value={fatG} onChange={e => setFatG(e.target.value)} required />
+            <input id="prep-fat" type="number" inputMode="decimal" min="0" step="any" value={fatG} onChange={e => setFatG(e.target.value)} required />
           </div>
         </div>
 
         <label htmlFor="prep-fiber">Total fiber (g, optional)</label>
-        <input id="prep-fiber" type="number" min="0" step="any" value={fiberG} onChange={e => setFiberG(e.target.value)} style={{ marginBottom: 12 }} />
+        <input id="prep-fiber" type="number" inputMode="decimal" min="0" step="any" value={fiberG} onChange={e => setFiberG(e.target.value)} style={{ marginBottom: 12 }} />
 
         {error && <p className="error">{error}</p>}
 

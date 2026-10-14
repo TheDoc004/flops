@@ -568,7 +568,7 @@ export default function Ingredients() {
                 <label htmlFor="ing-serving-amount">Serving amount</label>
                 <input
                   id="ing-serving-amount"
-                  type="number" min="0" step="0.01"
+                  type="number" inputMode="decimal" min="0" step="0.01"
                   className={scanFieldClass(labelScanFieldStatus?.grams_per_serving)}
                   value={form.serving_amount}
                   onChange={e => { clearScanHints(); setForm(f => ({ ...f, serving_amount: e.target.value })); }}
@@ -604,7 +604,7 @@ export default function Ingredients() {
                   </label>
                   <input
                     id="ing-gram-equiv"
-                    type="number" min="0" step="0.01"
+                    type="number" inputMode="decimal" min="0" step="0.01"
                     value={form.gram_equivalent}
                     onChange={e => setForm(f => ({ ...f, gram_equivalent: e.target.value }))}
                     placeholder="e.g. 31"
@@ -618,7 +618,7 @@ export default function Ingredients() {
                 </label>
                 <input
                   id="ing-servings-per-container"
-                  type="number" min="0" step="0.1"
+                  type="number" inputMode="decimal" min="0" step="0.1"
                   value={form.servings_per_container}
                   onChange={e => setForm(f => ({ ...f, servings_per_container: e.target.value }))}
                   placeholder="e.g. 8"
@@ -640,7 +640,7 @@ export default function Ingredients() {
               <div>
                 <label>Calories</label>
                 <input
-                  type="number"
+                  type="number" inputMode="decimal"
                   min="0"
                   step="0.1"
                   className={scanFieldClass(labelScanFieldStatus?.calories)}
@@ -655,7 +655,7 @@ export default function Ingredients() {
               <div>
                 <label>Protein (g)</label>
                 <input
-                  type="number"
+                  type="number" inputMode="decimal"
                   min="0"
                   step="0.1"
                   className={scanFieldClass(labelScanFieldStatus?.protein_g)}
@@ -670,7 +670,7 @@ export default function Ingredients() {
               <div>
                 <label>Carbs (g)</label>
                 <input
-                  type="number"
+                  type="number" inputMode="decimal"
                   min="0"
                   step="0.1"
                   className={scanFieldClass(labelScanFieldStatus?.carbs_g)}
@@ -685,7 +685,7 @@ export default function Ingredients() {
               <div>
                 <label>Fat (g)</label>
                 <input
-                  type="number"
+                  type="number" inputMode="decimal"
                   min="0"
                   step="0.1"
                   className={scanFieldClass(labelScanFieldStatus?.fat_g)}
@@ -700,7 +700,7 @@ export default function Ingredients() {
               <div>
                 <label>Fiber (g) <span style={{ color: 'var(--color-text-faint)', fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
                 <input
-                  type="number"
+                  type="number" inputMode="decimal"
                   min="0"
                   step="0.1"
                   className={scanFieldClass(labelScanFieldStatus?.fiber_g)}

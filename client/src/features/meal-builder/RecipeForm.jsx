@@ -202,23 +202,23 @@ export default function RecipeForm({ initial = EMPTY, onSubmit, onLogOnce = null
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 10 }}>
           <div>
             <label>Calories</label>
-            <input type="number" min="0" step="any" value={form.calories} onChange={set('calories')} required />
+            <input type="number" inputMode="decimal" min="0" step="any" value={form.calories} onChange={set('calories')} required />
           </div>
           <div>
             <label>Protein (g)</label>
-            <input type="number" min="0" step="any" value={form.protein_g} onChange={set('protein_g')} required />
+            <input type="number" inputMode="decimal" min="0" step="any" value={form.protein_g} onChange={set('protein_g')} required />
           </div>
           <div>
             <label>Carbs (g)</label>
-            <input type="number" min="0" step="any" value={form.carbs_g} onChange={set('carbs_g')} required />
+            <input type="number" inputMode="decimal" min="0" step="any" value={form.carbs_g} onChange={set('carbs_g')} required />
           </div>
           <div>
             <label>Fat (g)</label>
-            <input type="number" min="0" step="any" value={form.fat_g} onChange={set('fat_g')} required />
+            <input type="number" inputMode="decimal" min="0" step="any" value={form.fat_g} onChange={set('fat_g')} required />
           </div>
           <div>
             <label>Fiber (g)</label>
-            <input type="number" min="0" step="any" value={form.fiber_g} onChange={set('fiber_g')} />
+            <input type="number" inputMode="decimal" min="0" step="any" value={form.fiber_g} onChange={set('fiber_g')} />
           </div>
         </div>
 

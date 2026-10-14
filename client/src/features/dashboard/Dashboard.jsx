@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { LogEntryRow } from '@features/meal-logging';
 import { LogMealModal } from '@features/meal-logging';
 import { SaveMealAsRecipeDialog } from '@features/meal-logging';
@@ -8,15 +8,9 @@ import MacroTotals from '@shared/ui/MacroTotals';
 import Reveal from '@shared/ui/Reveal';
 import { fetchLogRange, createLogEntry, createCustomLog, updateLogEntry, deleteLogEntry } from '@shared/api/log';
 import { fetchGoals } from '@shared/api/goals';
-import { fetchProfile, saveProfile } from '@shared/api/profile';
+import { fetchProfile } from '@shared/api/profile';
 import DashboardCanvas from './DashboardCanvas';
-import DashboardLayoutToolbar from './DashboardLayoutToolbar';
-import { useDashboardEdit } from './DashboardEditContext';
-import { layoutForEditSession, mergeDashLayout, profilePatchForLayout, setCardVisible } from './dashboardLayout';
-import {
-  EDIT_MEALS_PREVIEW_ENTRIES,
-  editMealsPreviewTotals,
-} from './dashboardEditMealsPreview';
+import { dashboardCards as resolveDashboardCards, visibleCardIds } from './dashboardLayout';
 import WeightTrendMini from '@features/history/WeightTrendMini';
 import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
@@ -139,15 +133,6 @@ function initialBannerDismissed(viewing, cal) {
 export default function Dashboard() {
   const { bodyUnits } = useMacroUnits();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const editLayout = searchParams.get('editLayout') === '1';
-  const editLayoutRef = useRef(editLayout);
-  editLayoutRef.current = editLayout;
-  const dashEdit = useDashboardEdit();
-  const savedLayoutRef = useRef(null);
-  const profileLayoutRef = useRef(null);
-  const editSeededRef = useRef(false);
-  const profileLoadedRef = useRef(false);
 
   useEffect(() => {
     if (location.state?.scrollToTop) {
@@ -177,11 +162,7 @@ export default function Dashboard() {
   const pasteDoneTimerRef = useRef(null);
   const [pasteUi, setPasteUi] = useState('idle'); // idle | pasting | done
   const [dashSupplementsEnabled, setDashSupplementsEnabled] = useState(true);
-  const [dashLayout, setDashLayout] = useState(() => mergeDashLayout(null));
-  const [exitingCardIds, setExitingCardIds] = useState([]);
-  const [enteringCardIds, setEnteringCardIds] = useState([]);
-  const [togglingCardId, setTogglingCardId] = useState(null);
-  const [editSessionKey, setEditSessionKey] = useState(0);
+  const [dashCards, setDashCards] = useState(() => resolveDashboardCards());
   const [supplementMacros, setSupplementMacros] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 
   const greeting = useMemo(() => getGreeting(), []);
@@ -295,30 +276,13 @@ export default function Dashboard() {
     return () => root.removeAttribute('data-notebook-day');
   }, [isPastDay, isFutureDay]);
 
-  const seedEditLayout = useCallback((sourceLayout) => {
-    savedLayoutRef.current = sourceLayout;
-    const seeded = layoutForEditSession(sourceLayout);
-    setDashLayout(seeded);
-    dashEdit?.beginSession(seeded);
-    editSeededRef.current = true;
-    setEditSessionKey(k => k + 1);
-  }, [dashEdit]);
-
   const applyProfileToDashboard = useCallback((p) => {
     const se = p.dash_supplements_enabled;
     setDashSupplementsEnabled(se !== 0 && se !== false && se !== '0');
-    const merged = mergeDashLayout(p.dash_layout_json, p);
-    profileLayoutRef.current = merged;
-    profileLoadedRef.current = true;
-    if (editLayoutRef.current) {
-      if (!editSeededRef.current) seedEditLayout(merged);
-      return;
-    }
-    setDashLayout(merged);
-  }, [seedEditLayout]);
+    setDashCards(resolveDashboardCards(p));
+  }, []);
 
   const refetchDashPrefs = useCallback(async () => {
-    if (editLayoutRef.current) return;
     try {
       const p = await fetchProfile();
       applyProfileToDashboard(p);
@@ -543,87 +507,7 @@ export default function Dashboard() {
     minHeight: '44px',
   };
 
-  const handleLayoutChange = useCallback((nextLayout) => {
-    setDashLayout(nextLayout);
-    dashEdit?.markDirty(nextLayout);
-  }, [dashEdit]);
-
-  const persistLayout = useCallback(async (layout) => {
-    await saveProfile({
-      dash_layout_json: layout,
-      ...profilePatchForLayout(layout),
-    });
-    const se = profilePatchForLayout(layout).dash_supplements_enabled;
-    if (se != null) setDashSupplementsEnabled(se === 1);
-  }, []);
-
-  useEffect(() => {
-    if (!editLayout) {
-      editSeededRef.current = false;
-      return;
-    }
-    if (editSeededRef.current || !profileLoadedRef.current) return;
-    seedEditLayout(profileLayoutRef.current ?? mergeDashLayout(null));
-  }, [editLayout, seedEditLayout]);
-
-  useEffect(() => {
-    if (!editLayout || !dashEdit) return undefined;
-    dashEdit.registerHandlers({
-      onSave: async () => {
-        await persistLayout(dashLayout);
-        savedLayoutRef.current = dashLayout;
-        dashEdit.beginSession(dashLayout);
-      },
-      onDiscard: () => {
-        if (savedLayoutRef.current) setDashLayout(savedLayoutRef.current);
-      },
-    });
-    return () => dashEdit.registerHandlers(null);
-  }, [editLayout, dashEdit, dashLayout, persistLayout]);
-
-  const displayLayout = useMemo(() => {
-    if (!exitingCardIds.length) return dashLayout;
-    const cards = dashLayout.cards.map(c =>
-      (exitingCardIds.includes(c.id) ? { ...c, visible: true } : c),
-    );
-    return { ...dashLayout, cards };
-  }, [dashLayout, exitingCardIds]);
-
-  const handleToggleCard = useCallback(async (cardId, visible) => {
-    setTogglingCardId(cardId);
-    try {
-      if (!visible) {
-        setExitingCardIds(prev => (prev.includes(cardId) ? prev : [...prev, cardId]));
-        await new Promise(r => setTimeout(r, 300));
-        setExitingCardIds(prev => prev.filter(id => id !== cardId));
-        const next = setCardVisible(dashLayout, cardId, false);
-        setDashLayout(next);
-        if (cardId === 'supplements') setDashSupplementsEnabled(false);
-        dashEdit?.markDirty(next);
-      } else {
-        const next = setCardVisible(dashLayout, cardId, true);
-        setDashLayout(next);
-        if (cardId === 'supplements') setDashSupplementsEnabled(true);
-        setEnteringCardIds(prev => (prev.includes(cardId) ? prev : [...prev, cardId]));
-        setTimeout(() => {
-          setEnteringCardIds(prev => prev.filter(id => id !== cardId));
-        }, 400);
-        dashEdit?.markDirty(next);
-      }
-    } finally {
-      setTogglingCardId(null);
-    }
-  }, [dashLayout, dashEdit]);
-
-  const handleFinishEdit = useCallback(() => {
-    if (!dashEdit?.dirty) {
-      dashEdit?.finishExit();
-      return;
-    }
-    dashEdit.requestExit({ type: 'close' });
-  }, [dashEdit]);
-
-  const mealsPreviewTotals = useMemo(() => editMealsPreviewTotals(), []);
+  const cardOrder = useMemo(() => visibleCardIds(dashCards), [dashCards]);
 
   const dashboardCards = useMemo(() => ({
     macros: <MacroTotals totals={combinedTotals} targets={targets} />,
@@ -637,40 +521,7 @@ export default function Dashboard() {
         <WeightTrendMini today={today} bodyUnits={bodyUnits} />
       </div>
     ),
-    meals: editLayout ? (
-      <div className="dashboard-meals-preview" data-layout-preview>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 'clamp(14px, 1.4vw, 18px)',
-          gap: 8,
-        }}>
-          <div>
-            <h2 className="section-title" style={{ margin: 0 }}>Today&apos;s meals</h2>
-            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-secondary)', color: 'var(--color-text-muted)' }}>
-              {mealsPreviewTotals.count} meals · {mealsPreviewTotals.calories.toLocaleString()} kcal
-            </p>
-          </div>
-        </div>
-        <div style={{
-          background: 'var(--color-surface)',
-          borderRadius: 14,
-          border: '1px solid var(--color-surface-border)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-          overflow: 'visible',
-        }}>
-          {EDIT_MEALS_PREVIEW_ENTRIES.map((entry, idx) => (
-            <div
-              key={entry.id}
-              style={{ borderBottom: idx < EDIT_MEALS_PREVIEW_ENTRIES.length - 1 ? '1px solid var(--color-divider-warm)' : 'none' }}
-            >
-              <LogEntryRow entry={entry} variant="dashboard" />
-            </div>
-          ))}
-        </div>
-      </div>
-    ) : (
+    meals: (
       <div>
         <div style={{
           display: 'flex',
@@ -751,7 +602,7 @@ export default function Dashboard() {
       </div>
     ),
   }), [
-    editLayout, mealsPreviewTotals, combinedTotals, targets, dashSupplementsEnabled, today, bodyUnits, entries, totalLoggedCal,
+    combinedTotals, targets, dashSupplementsEnabled, today, bodyUnits, entries, totalLoggedCal,
     mealClipboard, pasteUi, calendarToday, handlePasteMeal, handleDelete, handleCopyMeal, handleSaveMealAsRecipe,
   ]);
 
@@ -760,37 +611,9 @@ export default function Dashboard() {
     : ` dashboard-day-body--${dayShiftDir.current}`;
 
   return (
-    <div className={`dashboard${editLayout ? ' dashboard--layout-edit' : ''}`}>
-      {editLayout && (
-        <div className="dash-edit-mode-banner" role="status">
-          <div className="dash-edit-mode-banner__head">
-            <div className="dash-edit-mode-banner__copy">
-              <strong>Customizing Today</strong>
-              <span>Drag by the handle, resize from corners. Press Esc to exit.</span>
-            </div>
-            <div className="dash-edit-mode-banner__actions">
-              {dashEdit?.dirty && (
-                <button type="button" className="btn-primary" onClick={() => { void persistLayout(dashLayout).then(() => dashEdit?.finishExit()); }}>
-                  Save &amp; close
-                </button>
-              )}
-              <button type="button" className="btn-secondary" onClick={handleFinishEdit}>
-                {dashEdit?.dirty ? 'Exit…' : 'Done'}
-              </button>
-            </div>
-          </div>
-          <DashboardLayoutToolbar
-            variant="banner"
-            layout={dashLayout}
-            onToggleCard={handleToggleCard}
-            busyId={togglingCardId}
-          />
-        </div>
-      )}
+    <div className="dashboard">
       {/* ── Day ← / → row stays fixed in Y; banner animates below and may push the greeting ── */}
-      {!editLayout && (
-        <McpWritesBanner onChanged={() => load()} />
-      )}
+      <McpWritesBanner onChanged={() => load()} />
       <Reveal className="dash-toolbar">
         <div className="dash-day">
           <button
@@ -833,8 +656,6 @@ export default function Dashboard() {
           </button>
         </div>
         <div className="dash-actions">
-          {!editLayout && (
-          <>
           <button
             type="button"
             className="btn-ai"
@@ -860,8 +681,6 @@ export default function Dashboard() {
           >
             Training
           </Link>
-          </>
-          )}
         </div>
       </Reveal>
 
@@ -931,15 +750,7 @@ export default function Dashboard() {
         </p>
       )}
 
-      <DashboardCanvas
-        layout={displayLayout}
-        editMode={editLayout}
-        layoutSessionKey={editSessionKey}
-        onLayoutChange={handleLayoutChange}
-        cards={dashboardCards}
-        exitingIds={exitingCardIds}
-        enteringIds={enteringCardIds}
-      />
+      <DashboardCanvas order={cardOrder} cards={dashboardCards} />
       </div>
 
       {showModal && (

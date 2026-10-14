@@ -160,11 +160,11 @@ export default function Coach() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <label style={{ fontSize: 12 }}>
                 kcal
-                <input type="number" min="0" value={slotCal} onChange={e => setSlotCal(e.target.value)} />
+                <input type="number" inputMode="decimal" min="0" value={slotCal} onChange={e => setSlotCal(e.target.value)} />
               </label>
               <label style={{ fontSize: 12 }}>
                 Protein g
-                <input type="number" min="0" value={slotProtein} onChange={e => setSlotProtein(e.target.value)} />
+                <input type="number" inputMode="decimal" min="0" value={slotProtein} onChange={e => setSlotProtein(e.target.value)} />
               </label>
             </div>
             <button type="submit" className="btn-primary" disabled={suggestBusy || !slotName.trim()}>

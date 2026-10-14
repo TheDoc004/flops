@@ -79,7 +79,7 @@ export default function GymSchedule() {
                   </label>
                   <label>Minutes
                     <input
-                      type="number"
+                      type="number" inputMode="decimal"
                       min="0"
                       value={d.duration_min ?? ''}
                       onChange={e => patch(w, { duration_min: e.target.value })}

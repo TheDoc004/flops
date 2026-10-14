@@ -31,6 +31,8 @@ maintenance / recovery / other that auto-guesses from the name; optional notes; 
 list under the legend (click to edit/delete). Table `diet_phases`, logic in `server/dietPhases.js`,
 route `/api/diet-phases`. MCP: `get_diet_phases`, `add_/update_/delete_diet_phase` (+ `write_batch`,
 revert); `get_day` returns `diet_phases`. Tests: `server/__tests__/dietPhases.test.js`.
+**Diego's phases (live):** **Bulk** started **2026-09-11**, ongoing (diet phase #1, kind `bulk`,
+added via MCP `write_batch` on 2026-10-10, audit_id 196).
 
 **Status:** Active. Nutrition daily driver + Log Meal UX; MCP Phase 3 + lookup tools.
 **Part A shipped:** placeholder `grams_per_serving` (&lt;3g) no longer derives `per_100g`;
@@ -194,7 +196,7 @@ verified without failing a write — see `docs/mcp-connector.md`.
 1. **Backfill** — use `update_food_item` + `micros_per_100g` + `micros_confidence` (`medium` for USDA, `high` for labels); past meals pick them up live.
 2. **Claude connector** — after Render redeploy, call `get_server_info` (or `curl /health`) and confirm `git_sha` matches the merged commit; refresh the connector if `tool_count` looks stale client-side.
 3. **Gym UX / progressive overload** — agent can already call `get_gym_progress`.
-4. **Dashboard layout editor polish** — see [§ Dashboard layout editor](#dashboard-layout-editor--last-touched-aug-2026).
+4. **Dashboard layout editor** — **vaulted Oct 2026** (too wonky); see [§ Dashboard layout editor](#dashboard-layout-editor--vaulted-oct-2026).
 5. **Ops:** Resend domain verification for production OTP email (if not done yet).
 
 ---
@@ -277,7 +279,9 @@ Goals, Report, Profile, Adherence, supplements, prep strip, coach, and AI Estima
 `Dashboard.jsx` → `AiLoggerModal` / `LogMealModal`. Meal rows' ⋯ menu includes **Edit meal**,
 Copy / Save as Recipe / Remove. **Training** hop (`Link` to `/training`) beside them.
 
-**Customize layout:** Profile → customize dashboard, or `/?editLayout=1`. See layout editor section below.
+**Today card order (Oct 2026):** fixed stack — Supplements, Macros, Weight, Weight trend, Meals —
+from `dashboardLayout.js`. Supplements sit first so they can be checked off without scrolling.
+Show/hide = tap the badges on Profile → Dashboard. Saved `dash_layout_json` is ignored (column kept).
 
 **Prepped ingredient batches:** Cooked batches with known total weight + macros (`prepped_batches`).
 **Prepped badge** (Aug 2026): active batches show a badge in ingredient library, combobox, and
@@ -295,7 +299,13 @@ Servings UI only for limited meal prep (see Parked).
 **Units & save-as-recipe:** See prior handoff detail in git history; `unitConvert.js` twin files,
 Save as Recipe / Meal Prep from log modal and meal ⋯ menu. Still accurate.
 
-### Dashboard layout editor — last touched Aug 2026
+### Dashboard layout editor — VAULTED Oct 2026
+
+> Removed from the active app because drag/resize never behaved the way Diego wanted. The full
+> editor (react-grid-layout canvas, edit context, toolbar, card scaling, Playwright verify harness)
+> is preserved on the branch **`archive/dashboard-layout-editor`**. `react-grid-layout` was
+> uninstalled. The notes below describe the archived code — read them before reviving it.
+
 
 Today is a **card canvas** (not a fixed section stack). Registry cards:
 

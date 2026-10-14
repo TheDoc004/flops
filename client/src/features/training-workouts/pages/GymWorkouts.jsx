@@ -98,9 +98,12 @@ export default function GymWorkouts() {
     setItems(await fetchTemplateExercises(selected.id));
   }
 
-  async function patchItem(item, patch) {
-    await updateTemplateExercise(selected.id, item.id, { ...item, ...patch });
-    setItems(await fetchTemplateExercises(selected.id));
+  // Show the keystroke immediately and send ONLY the changed field. Sending the
+  // whole row (as captured at render) and refetching per keystroke let quick
+  // edits clobber each other and out-of-order responses blank the inputs.
+  function patchItem(item, patch) {
+    setItems(rows => rows.map(r => (r.id === item.id ? { ...r, ...patch } : r)));
+    updateTemplateExercise(selected.id, item.id, patch).catch(e => setError(e.message));
   }
 
   return (
@@ -193,16 +196,16 @@ export default function GymWorkouts() {
                       <div style={{ fontWeight: 600 }}>{it.name}</div>
                       <div className={styles.targets} style={{ marginTop: 8 }}>
                         <label style={{ fontSize: 12 }}>Sets
-                          <input type="number" min="0" value={it.target_sets ?? ''} onChange={e => void patchItem(it, { target_sets: e.target.value })} />
+                          <input type="number" inputMode="numeric" min="0" value={it.target_sets ?? ''} onChange={e => patchItem(it, { target_sets: e.target.value })} />
                         </label>
                         <label style={{ fontSize: 12 }}>Reps
-                          <input type="number" min="0" value={it.target_reps ?? ''} onChange={e => void patchItem(it, { target_reps: e.target.value })} />
+                          <input type="number" inputMode="numeric" min="0" value={it.target_reps ?? ''} onChange={e => patchItem(it, { target_reps: e.target.value })} />
                         </label>
                         <label style={{ fontSize: 12 }}>Weight
-                          <input type="number" min="0" step="0.5" value={it.target_weight ?? ''} onChange={e => void patchItem(it, { target_weight: e.target.value })} />
+                          <input type="number" inputMode="decimal" min="0" step="0.5" value={it.target_weight ?? ''} onChange={e => patchItem(it, { target_weight: e.target.value })} />
                         </label>
                         <label style={{ fontSize: 12 }}>Rest s
-                          <input type="number" min="0" value={it.rest_sec ?? ''} onChange={e => void patchItem(it, { rest_sec: e.target.value })} />
+                          <input type="number" inputMode="numeric" min="0" value={it.rest_sec ?? ''} onChange={e => patchItem(it, { rest_sec: e.target.value })} />
                         </label>
                       </div>
                     </div>

@@ -166,7 +166,7 @@ export default function AugmentMealPrepModal({ recipe, onClose, onSaved }) {
                   <div className="slot-row">
                     <div className="slot-row__name">{lineDisplayName(line)}</div>
                     <input
-                      type="number"
+                      type="number" inputMode="decimal"
                       min="0"
                       step="any"
                       value={line.amount}

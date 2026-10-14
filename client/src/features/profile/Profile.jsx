@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { fetchProfile, saveProfile } from '@shared/api/profile';
-import { DEFAULT_DASH_LAYOUT, DASH_LAYOUT_VERSION } from '../dashboard/dashboardLayout';
 import { getInviteCode, linkCoach, myCoaches, revokeCoach } from '@shared/api/coach';
 import { useAuth } from '@shared/context/AuthContext';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
@@ -210,7 +208,7 @@ export default function Profile() {
     }
   }
 
-  // Auto-save adherence view only — card visibility is edited in the layout editor.
+  // Auto-save adherence view. Card visibility saves on toggle (handleToggleDashCard).
   useEffect(() => {
     if (!dashInteracted.current) return;
     let cancelled = false;
@@ -227,6 +225,19 @@ export default function Profile() {
     return () => { cancelled = true; };
   }, [dashAdherenceView]);
 
+  async function handleToggleDashCard(profileKey, setter, next) {
+    setter(next);
+    setDashPrefsError('');
+    try {
+      await saveProfile({ [profileKey]: next ? 1 : 0 });
+      setDashPrefsSaved(true);
+      setTimeout(() => setDashPrefsSaved(false), 2000);
+    } catch (err) {
+      setter(!next);
+      setDashPrefsError(err.message);
+    }
+  }
+
   async function handleResetDashboardLayout() {
     dashInteracted.current = true;
     setDashResetBusy(true);
@@ -237,7 +248,7 @@ export default function Profile() {
     setDashWeightChartCardEnabled(false);
     try {
       await saveProfile({
-        dash_layout_json: { version: DASH_LAYOUT_VERSION, cards: DEFAULT_DASH_LAYOUT },
+        dash_layout_json: null,
         dash_supplements_enabled: 1,
         dash_weight_enabled: 1,
         dash_meals_enabled: 1,
@@ -429,29 +440,37 @@ export default function Profile() {
         <div className="card settings-grid__card">
           <H3>Dashboard</H3>
           <p style={{ margin: '0 0 12px', color: 'var(--color-text-muted)', fontSize: 13 }}>
-            Customize which cards appear on Today and how they&apos;re arranged.
+            Choose which cards appear on Today. Tap a badge to show or hide.
           </p>
           <ul className="dash-pref-hints">
             {[
               {
                 title: 'Take the same stack daily?',
-                sub: 'Show a check-off strip under your macros',
+                sub: 'Show a check-off strip at the top of Today',
                 on: dashSupplementsEnabled,
+                key: 'dash_supplements_enabled',
+                set: setDashSupplementsEnabled,
               },
               {
                 title: 'Weigh in on Today?',
                 sub: "Show today's weight field on the dashboard",
                 on: dashWeightEnabled,
+                key: 'dash_weight_enabled',
+                set: setDashWeightEnabled,
               },
               {
                 title: 'Want a quick weight trend?',
-                sub: 'Add a 14-day sparkline card (desktop layout)',
+                sub: 'Add a 14-day sparkline card',
                 on: dashWeightChartCardEnabled,
+                key: 'dash_weight_chart_card_enabled',
+                set: setDashWeightChartCardEnabled,
               },
               {
                 title: 'Log meals from Today?',
                 sub: "Show today's meal list on the dashboard",
                 on: dashMealsEnabled,
+                key: 'dash_meals_enabled',
+                set: setDashMealsEnabled,
               },
             ].map(hint => (
               <li key={hint.title} className="dash-pref-hint">
@@ -459,21 +478,18 @@ export default function Profile() {
                   <div className="dash-pref-hint__title">{hint.title}</div>
                   <div className="dash-pref-hint__sub">{hint.sub}</div>
                 </div>
-                <span className={`dash-pref-hint__badge${hint.on ? ' is-on' : ''}`}>
+                <button
+                  type="button"
+                  className={`dash-pref-hint__badge${hint.on ? ' is-on' : ''}`}
+                  style={{ cursor: 'pointer' }}
+                  aria-pressed={hint.on}
+                  onClick={() => { void handleToggleDashCard(hint.key, hint.set, !hint.on); }}
+                >
                   {hint.on ? 'On Today' : 'Hidden'}
-                </span>
+                </button>
               </li>
             ))}
           </ul>
-          <div style={{ marginTop: 'auto', paddingTop: 14 }}>
-            <Link
-              to="/?editLayout=1"
-              className="btn-primary"
-              style={{ display: 'inline-block', textDecoration: 'none', width: '100%', textAlign: 'center' }}
-            >
-              Customize dashboard
-            </Link>
-          </div>
           <div style={{ marginTop: 14 }}>
             <label style={{ marginBottom: 4 }}>Goal adherence view</label>
             <select
@@ -497,7 +513,7 @@ export default function Profile() {
               disabled={dashResetBusy}
               onClick={() => { void handleResetDashboardLayout(); }}
             >
-              {dashResetBusy ? 'Resetting…' : 'Reset layout to defaults'}
+              {dashResetBusy ? 'Resetting…' : 'Reset dashboard to defaults'}
             </button>
           </div>
           {dashPrefsError && <p className="error" style={{ marginTop: 8 }}>{dashPrefsError}</p>}
@@ -538,19 +554,19 @@ export default function Profile() {
           ) : (
             <div>
               <label>{heightLabel}</label>
-              <input type="number" min="0" step="0.1" value={form.height_cm} onChange={set('height_cm')} placeholder="Optional" />
+              <input type="number" inputMode="decimal" min="0" step="0.1" value={form.height_cm} onChange={set('height_cm')} placeholder="Optional" />
             </div>
           )}
 
           <div>
             <label>{bodyUnits === 'us' ? 'Current weight (lb)' : 'Current weight (kg)'}</label>
-            <input type="number" min="0" step="0.1"
+            <input type="number" inputMode="decimal" min="0" step="0.1"
               value={kgToWeightInputValue(form.weight_kg, bodyUnits)}
               onChange={setWeightField('weight_kg')} placeholder="Optional" />
           </div>
           <div>
             <label>Age</label>
-            <input type="number" min="0" max="130" step="1" value={form.age} onChange={set('age')} placeholder="Optional" />
+            <input type="number" inputMode="numeric" min="0" max="130" step="1" value={form.age} onChange={set('age')} placeholder="Optional" />
           </div>
           <div>
             <label>Sex</label>
@@ -563,7 +579,7 @@ export default function Profile() {
           </div>
           <div>
             <label>{bodyUnits === 'us' ? 'Goal weight (lb)' : 'Goal weight (kg)'}</label>
-            <input type="number" min="0" step="0.1"
+            <input type="number" inputMode="decimal" min="0" step="0.1"
               value={kgToWeightInputValue(form.goal_weight_kg, bodyUnits)}
               onChange={setWeightField('goal_weight_kg')} placeholder="Optional" />
           </div>
@@ -577,7 +593,7 @@ export default function Profile() {
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <label>Estimated maintenance calories</label>
-            <input type="number" min="0" step="1" value={form.maintenance_calories} onChange={set('maintenance_calories')} placeholder="Optional" />
+            <input type="number" inputMode="numeric" min="0" step="1" value={form.maintenance_calories} onChange={set('maintenance_calories')} placeholder="Optional" />
           </div>
         </div>
         {saved && <p style={{ color: '#059669', fontSize: 14, marginTop: 12 }}>Profile saved.</p>}

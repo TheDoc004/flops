@@ -667,7 +667,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                     <label style={FIELD_LABEL}>The label calls one serving</label>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <input
-                        type="number" min="0" step="any" style={{ width: 70 }}
+                        type="number" inputMode="decimal" min="0" step="any" style={{ width: 70 }}
                         value={form.label_serving_qty}
                         onChange={e => setForm(f => ({ ...f, label_serving_qty: e.target.value }))}
                         aria-label="Label serving amount"
@@ -685,7 +685,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                     <label style={FIELD_LABEL}>You actually take</label>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <input
-                        type="number" min="0" step="any" style={{ width: 70 }}
+                        type="number" inputMode="decimal" min="0" step="any" style={{ width: 70 }}
                         value={form.dose_qty}
                         onChange={e => setForm(f => ({ ...f, dose_qty: e.target.value }))}
                         aria-label="Amount you take"
@@ -724,7 +724,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
               {[['calories', 'Cal'], ['protein_g', 'P (g)'], ['carbs_g', 'C (g)'], ['fat_g', 'F (g)']].map(([key, label]) => (
                 <div key={key}>
                   <label style={FIELD_LABEL}>{label}</label>
-                  <input type="number" min="0" step="0.1" value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
+                  <input type="number" inputMode="decimal" min="0" step="0.1" value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
                 </div>
               ))}
             </div>
@@ -761,7 +761,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                         <div key={n.key}>
                           <label style={FIELD_LABEL}>{n.name} ({n.unit})</label>
                           <input
-                            type="number" min="0" step="any"
+                            type="number" inputMode="decimal" min="0" step="any"
                             value={form.micros?.[n.key] ?? ''}
                             onChange={e => setForm(f => ({ ...f, micros: { ...f.micros, [n.key]: e.target.value } }))}
                           />

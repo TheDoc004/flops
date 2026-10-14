@@ -130,7 +130,7 @@ export default function StepBuild({
                   <label style={{ fontSize: 13 }}>Amount</label>
                   <input
                     ref={el => { if (el) amountRefs.current[line.id] = el; else delete amountRefs.current[line.id]; }}
-                    type="number" min="0.01" step="0.01"
+                    type="number" inputMode="decimal" min="0.01" step="0.01"
                     value={line.amount}
                     onChange={e => updateLine(line.id, { amount: e.target.value })}
                     onKeyDown={e => handleAmountKeyDown(e, line.id, idx)}

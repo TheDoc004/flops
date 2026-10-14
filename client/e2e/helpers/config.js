@@ -19,7 +19,6 @@ export const cfg = {
   authToken: process.env.FLOPS_E2E_TOKEN || '',
   /** Dev login email when AUTH_DEV=1 */
   email: process.env.FLOPS_E2E_EMAIL || `e2e-${Date.now()}@example.com`,
-  editPath: process.env.FLOPS_EDIT_PATH || '/?editLayout=1',
   thresholds: {
     macrosMaxHeightPx: num('FLOPS_LAYOUT_MACROS_MAX_HEIGHT', 280),
     minDragDeltaPx: num('FLOPS_LAYOUT_MIN_DRAG_DELTA', 20),

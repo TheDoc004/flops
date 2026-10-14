@@ -203,7 +203,7 @@ export default function PrepStrip({ date, onLogged }) {
               <label key={key} style={{ fontSize: 12 }}>
                 {label}
                 <input
-                  type="number"
+                  type="number" inputMode="decimal"
                   min="0"
                   step="any"
                   value={draft[key]}

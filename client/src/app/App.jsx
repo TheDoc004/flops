@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { MacroUnitsProvider } from '@shared/context/MacroUnitsContext';
 import { useAuth } from '@shared/context/AuthContext';
-import { DashboardEditProvider } from '@features/dashboard/DashboardEditContext';
 import Navbar from '@shared/ui/Navbar';
 import BottomNav from '@shared/ui/BottomNav';
 import Dashboard from '@features/dashboard';
@@ -26,7 +25,7 @@ function AppShell() {
   const { isCoach } = useAuth();
   const wide = pathname === '/' || pathname === '/training' || pathname.startsWith('/training/');
   return (
-    <DashboardEditProvider>
+    <>
       <Navbar />
       <main className={`app-main${wide ? ' app-main--wide' : ''}`}>
         <Routes>
@@ -59,7 +58,7 @@ function AppShell() {
         </Routes>
       </main>
       <BottomNav />
-    </DashboardEditProvider>
+    </>
   );
 }
 
