@@ -145,6 +145,10 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   A prep with another recipe or a second prep is still refused (`MEAL_PREP_MIXED`). Default name:
   "<prep> + <add-ons>". Prep #395 (soy chicken/russets/broccoli) has 2 honey (21 g) and 2 maple
   (30 g, #64) containers. Maple duplicates #67/#71 were renamed "(old duplicate)".
+- *log_meal defaults for recipes:* a meal of only saved recipes / preps no longer needs `weight_basis`
+  (defaults to raw) and recipe items no longer need `nutrition_source` (defaults to database — the
+  lines carry their own). Single foods still require both. Unknown params get a "did you mean" hint
+  (`slot` → `meal_slot`).
 - *Meal update/delete responses trimmed:* over MCP, `delete_meal_entry` / `update_meal_entry`
   return `before` as a summary `{id, name, date, servings, logged}` plus one `day` (after the
   write) instead of the full entry + `day_before` + `day_after`. `write_batch` drops per-step days

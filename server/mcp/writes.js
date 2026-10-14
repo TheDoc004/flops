@@ -96,9 +96,18 @@ function rejectUnknownArgs(args, opName) {
   if (!allowed) return null;
   const unknown = Object.keys(args || {}).filter(k => !allowed.has(k));
   if (!unknown.length) return null;
+  // Point a near-miss at the real field ("slot" → "meal_slot") so the retry is one step.
+  const hints = unknown
+    .map(k => {
+      const lk = k.toLowerCase();
+      const match = [...allowed].find(a => a !== 'op' && (a.endsWith(`_${lk}`) || lk.endsWith(`_${a}`)));
+      return match ? `"${k}" → did you mean "${match}"?` : null;
+    })
+    .filter(Boolean);
   return {
     error:
       `${opName} does not accept parameter(s): ${unknown.join(', ')}. ` +
+      (hints.length ? `${hints.join(' ')} ` : '') +
       `Unknown fields are refused (not ignored) so a write cannot look successful while dropping data.`,
     code: 'UNKNOWN_PARAM',
     unknown,
@@ -497,7 +506,12 @@ function resolveMealItem(db, userId, item, mealWeightBasis, index, refMap) {
     };
   }
 
-  const nutrition_source = normalizeNutritionSource(working?.nutrition_source);
+  // A saved recipe's lines already carry their own sources, so the item-level
+  // field only matters for single foods; recipe items default to 'database'.
+  const isRecipeItem = working?.recipe_id != null && working?.label_ingredient_id == null;
+  const nutrition_source =
+    normalizeNutritionSource(working?.nutrition_source) ||
+    (isRecipeItem && working?.nutrition_source == null ? 'database' : null);
   if (!nutrition_source) {
     return { error: `items[${index}].nutrition_source must be label|database|estimate` };
   }
@@ -1020,10 +1034,19 @@ function insertMealFromResolved(db, userId, built) {
 
 function buildMealPayload(db, userId, args, refMap) {
   const date = isoDateOrNull(args.date) || getLocalDateISO();
-  const weight_basis = normalizeWeightBasis(args.weight_basis);
-  if (!weight_basis) return { error: 'weight_basis is required (raw|cooked)' };
   const itemsIn = Array.isArray(args.items) ? args.items : null;
   if (!itemsIn || !itemsIn.length) return { error: 'items must be a non-empty array' };
+  // A meal of only saved recipes / preps has nothing weighed at log time —
+  // recipes are built from raw amounts — so the basis defaults to raw there.
+  const onlyRecipes = itemsIn.every(
+    it => it?.recipe_id != null && it?.label_ingredient_id == null
+  );
+  let weight_basis = normalizeWeightBasis(args.weight_basis);
+  if (!weight_basis && args.weight_basis != null) return { error: 'weight_basis must be raw|cooked' };
+  if (!weight_basis && onlyRecipes) weight_basis = 'raw';
+  if (!weight_basis) {
+    return { error: 'weight_basis is required (raw|cooked) when the meal has foods other than saved recipes' };
+  }
 
   const resolved = [];
   const warnings = [];
