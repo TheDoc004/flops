@@ -23,7 +23,7 @@ function setDismissed() {
 }
 
 /**
- * Dismissible banner when MCP wrote meals in the last 24h, plus bulk-undo dialog.
+ * Compact dismissible pill (beside the greeting) when MCP wrote meals in the last 24h, plus bulk-undo dialog.
  */
 export default function McpWritesBanner({ onChanged }) {
   const [data, setData] = useState(null);
@@ -85,23 +85,26 @@ export default function McpWritesBanner({ onChanged }) {
 
   return (
     <>
-      <div className="mcp-writes-banner" role="status">
-        <div className="mcp-writes-banner__copy">
-          <strong>Assistant logged {count} meal{count === 1 ? '' : 's'}</strong>
-          <span>MCP writes in the last 24h — review or undo in bulk.</span>
-        </div>
-        <div className="mcp-writes-banner__actions">
-          <button type="button" className="btn-secondary" onClick={() => { setOpen(true); setSelected(new Set(allIds)); }}>
-            Review / undo
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => { setDismissed(); setHidden(true); }}
-          >
-            Dismiss
-          </button>
-        </div>
+      <div className="mcp-writes-pill" role="status">
+        <button
+          type="button"
+          className="mcp-writes-pill__review"
+          onClick={() => { setOpen(true); setSelected(new Set(allIds)); }}
+          title="MCP writes in the last 24h — review or undo in bulk"
+        >
+          Assistant logged {count} meal{count === 1 ? '' : 's'}
+          <span className="mcp-writes-pill__cta">Review</span>
+        </button>
+        <button
+          type="button"
+          className="mcp-writes-pill__dismiss"
+          aria-label="Dismiss"
+          onClick={() => { setDismissed(); setHidden(true); }}
+        >
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
       </div>
 
       {open && (

@@ -14,7 +14,7 @@ import { dashboardCards as resolveDashboardCards, visibleCardIds } from './dashb
 import WeightTrendMini from '@features/history/WeightTrendMini';
 import { sumMacros } from '@shared/utils/macros';
 import { getIsoWeekday, ISO_WEEKDAY_LABELS } from '@shared/utils/weekday';
-import { getLocalDateISO, parseLocalDateISO, loadViewingDate, saveViewingDate, shouldOfferNewDay, dismissNewDayOffer, goToCalendarToday, addDaysLocal, formatMealsSectionTitle, formatDisplayDate } from '@shared/utils/dateLocal';
+import { getLocalDateISO, parseLocalDateISO, loadViewingDate, saveViewingDate, goToCalendarToday, addDaysLocal, formatMealsSectionTitle, formatDisplayDate } from '@shared/utils/dateLocal';
 import { goalsToTargets, resolveGoalRowForDate } from '@features/adherence';
 import DashboardWeightRow from './DashboardWeightRow';
 import PrepStrip from './PrepStrip';
@@ -73,9 +73,6 @@ function clampViewingDate(viewing, cal = getLocalDateISO()) {
   return viewing;
 }
 
-/** Dwell on a viewing date before slide-down so ←/→ scrubbing doesn't spam the banner. */
-const BANNER_DWELL_MS = 5000;
-
 /** Parse ingredients_json into POST /api/log(…/custom) ingredient rows. Never throws. */
 function ingredientsPayloadFromEntry(entry) {
   const raw = entry?.ingredients_json;
@@ -123,13 +120,6 @@ function getGreeting() {
   return 'Late night check-in!';
 }
 
-/** Initial dismiss: respect day-hold stay for past dates; future always offers. */
-function initialBannerDismissed(viewing, cal) {
-  if (viewing === cal) return true;
-  if (viewing < cal) return !shouldOfferNewDay(viewing, cal);
-  return false;
-}
-
 export default function Dashboard() {
   const { bodyUnits } = useMacroUnits();
   const location = useLocation();
@@ -141,11 +131,6 @@ export default function Dashboard() {
   }, [location.state?.scrollToTop]);
   const [today, setToday] = useState(() => clampViewingDate(loadViewingDate()));
   const [calendarToday, setCalendarToday] = useState(() => getLocalDateISO());
-  const [bannerDismissed, setBannerDismissed] = useState(() =>
-    initialBannerDismissed(clampViewingDate(loadViewingDate()), getLocalDateISO()),
-  );
-  const [bannerOpen, setBannerOpen] = useState(false);
-  const bannerDelayRef = useRef(null);
   const [entries, setEntries] = useState([]);
   const [targets, setTargets] = useState({ calories: null, protein_g: null, carbs_g: null, fat_g: null });
   const [goalsLabel, setGoalsLabel] = useState('');
@@ -170,7 +155,6 @@ export default function Dashboard() {
   const isPastDay = today < calendarToday;
   const isOffToday = today !== calendarToday;
   const canGoForward = ALLOW_FUTURE_DAYS || today < calendarToday;
-  const bannerDesired = isOffToday && !bannerDismissed;
   const dayShiftDir = useRef('fwd');
   const skipDayAnim = useRef(true);
 
@@ -181,50 +165,14 @@ export default function Dashboard() {
     skipDayAnim.current = false;
     dayShiftDir.current = delta < 0 ? 'back' : 'fwd';
     setToday(next);
-    // Arrow navigation always re-offers the off-today banner (fixes past-day miss).
-    setBannerDismissed(next === cal);
   }
-
-  // Delayed reveal: cancel while scrubbing dates, then slide open.
-  useEffect(() => {
-    if (bannerDelayRef.current != null) {
-      clearTimeout(bannerDelayRef.current);
-      bannerDelayRef.current = null;
-    }
-    if (!bannerDesired) {
-      setBannerOpen(false);
-      return undefined;
-    }
-    setBannerOpen(false);
-    bannerDelayRef.current = setTimeout(() => {
-      setBannerOpen(true);
-      bannerDelayRef.current = null;
-    }, BANNER_DWELL_MS);
-    return () => {
-      if (bannerDelayRef.current != null) {
-        clearTimeout(bannerDelayRef.current);
-        bannerDelayRef.current = null;
-      }
-    };
-  }, [bannerDesired, today]);
 
   // Notebook day-hold: watch the calendar clock, but never auto-flip the viewing date.
   useEffect(() => {
     function syncCalendar() {
       const n = getLocalDateISO();
       setCalendarToday(n);
-      if (!ALLOW_FUTURE_DAYS && today > n) {
-        setToday(n);
-        setBannerDismissed(true);
-        return;
-      }
-      if (today === n) {
-        setBannerDismissed(true);
-      } else if (today < n) {
-        // Overnight roll: respect stay dismiss for day-hold.
-        setBannerDismissed(!shouldOfferNewDay(today, n));
-      }
-      // Future day while calendar ticks: leave session dismiss alone.
+      if (!ALLOW_FUTURE_DAYS && today > n) setToday(n);
     }
     const id = setInterval(syncCalendar, 60_000);
     const onVis = () => {
@@ -243,14 +191,6 @@ export default function Dashboard() {
     const n = goToCalendarToday(getLocalDateISO());
     setCalendarToday(n);
     setToday(n);
-    setBannerDismissed(true);
-    setBannerOpen(false);
-  }
-
-  function handleStayOnDay() {
-    if (today < calendarToday) dismissNewDayOffer(today, calendarToday);
-    setBannerDismissed(true);
-    setBannerOpen(false);
   }
 
   useEffect(() => {
@@ -612,8 +552,6 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard">
-      {/* ── Day ← / → row stays fixed in Y; banner animates below and may push the greeting ── */}
-      <McpWritesBanner onChanged={() => load()} />
       <Reveal className="dash-toolbar">
         <div className="dash-day">
           <button
@@ -654,6 +592,16 @@ export default function Dashboard() {
               <path d="m9 6 6 6-6 6" />
             </svg>
           </button>
+          {isOffToday && (
+            <button
+              type="button"
+              className="day-nav-btn day-nav-btn--today"
+              onClick={handleGoToToday}
+              title={`Jump to ${formatDisplayDate(calendarToday)}`}
+            >
+              Today
+            </button>
+          )}
         </div>
         <div className="dash-actions">
           <button
@@ -684,59 +632,13 @@ export default function Dashboard() {
         </div>
       </Reveal>
 
-      <div
-        className={`day-off-banner-slot${bannerOpen ? ' is-open' : ''}`}
-        aria-hidden={!bannerOpen}
-      >
-        <div className="day-off-banner-slot-inner">
-          <div
-            className={`day-off-banner${isFutureDay ? ' day-off-banner--future' : ''}`}
-            role="status"
-          >
-            <div className="day-off-banner-copy">
-              {isFutureDay ? (
-                <>
-                  <strong>Planning ahead</strong>
-                  <span>
-                    {formatDisplayDate(today)} is ahead of today. Plan ahead here, or jump back to {formatDisplayDate(calendarToday)}.
-                  </span>
-                </>
-              ) : (
-                <>
-                  <strong>You’re looking at {formatDisplayDate(today)}</strong>
-                  <span>
-                    {' '}Go to today ({formatDisplayDate(calendarToday)})?
-                  </span>
-                </>
-              )}
-            </div>
-            <div className="day-off-banner-actions">
-              <button type="button" className="btn-primary" onClick={handleGoToToday} style={{ minHeight: 40, padding: '8px 16px' }}>
-                Go to today
-              </button>
-              <button type="button" className="btn-secondary" onClick={handleStayOnDay} style={{ minHeight: 40, padding: '8px 16px' }}>
-                {isFutureDay ? 'Stay & plan' : `Stay on ${formatDisplayDate(today)}`}
-              </button>
-              <button
-                type="button"
-                className="modal-close-x"
-                aria-label="Dismiss"
-                onClick={handleStayOnDay}
-                style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}
-              >
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                  <path d="M6 6l12 12M18 6 6 18" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div key={today} className={`dashboard-day-body${dayBodyAnim}`}>
-      <h1 className="page-title dash-greeting">
-        {isFutureDay ? 'Planning ahead' : isPastDay ? 'Looking back' : greeting}
-      </h1>
+      <div className="dash-greeting-row">
+        <h1 className="page-title dash-greeting">
+          {isFutureDay ? 'Planning ahead' : isPastDay ? 'Looking back' : greeting}
+        </h1>
+        <McpWritesBanner onChanged={() => load()} />
+      </div>
 
       {error && <p className="error" style={{ marginTop: 0, marginBottom: 16 }}>{error}</p>}
       {copyStatus && (
