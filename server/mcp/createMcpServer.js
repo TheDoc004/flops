@@ -45,7 +45,10 @@ const mealItemSchema = z
     carbs_g_per_100g: z.number().nonnegative().optional(),
     fat_g_per_100g: z.number().nonnegative().optional(),
     fiber_g_per_100g: z.number().nonnegative().optional(),
-    nutrition_source: z.enum(['label', 'database', 'estimate']),
+    nutrition_source: z
+      .enum(['label', 'database', 'estimate'])
+      .optional()
+      .describe('Required for single foods. Recipe items default to "database" (their lines carry their own sources).'),
     weight_basis: z
       .enum(['raw', 'cooked'])
       .optional()
@@ -539,9 +542,11 @@ function createFlopsMcpServer(db, userId) {
         + 'otherwise the item is refused. Any unit in the food\'s loggable_units (from search_ingredients) works — '
         + 'foods with grams_per_ml convert between weight and volume (e.g. 50 g of a per-ml soy sauce, 1 cup of a weighed yogurt). '
         + 'Any library micros that could not be counted are listed in warnings. '
-        + 'Requires meal weight_basis; item weight_basis overrides it. '
+        + 'Requires meal weight_basis unless every item is a saved recipe/meal prep (then it defaults to raw); '
+        + 'item weight_basis overrides it. '
         + 'If an item cites a library ingredient whose stored weight_basis disagrees, the write is refused. '
-        + 'Requires per-item nutrition_source. Returns the entry, resolved_weight_basis per item, and day totals/vs_goals. '
+        + 'Requires per-item nutrition_source for foods; recipe items default to "database". '
+        + 'The slot field is meal_slot (e.g. "breakfast"). Returns the entry, resolved_weight_basis per item, and day totals/vs_goals. '
         + 'Discover ingredient IDs with search_ingredients. '
         + 'A recipe can be logged with changed amounts via adjust (e.g. {recipe_id: 108, servings: 1, adjust: '
         + '[{label_ingredient_id: 136, quantity_g: 73}]}) and/or extra foods as more items; it stays one entry '
@@ -556,7 +561,7 @@ function createFlopsMcpServer(db, userId) {
           name: z.string().optional(),
           meal_slot: z.string().optional(),
           time_min: z.number().int().min(0).max(1439).optional(),
-          weight_basis: z.enum(['raw', 'cooked']),
+          weight_basis: z.enum(['raw', 'cooked']).optional(),
           items: z.array(mealItemSchema).min(1),
           operation_id: z.string().optional(),
         })
