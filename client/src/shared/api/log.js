@@ -21,6 +21,16 @@ export async function fetchLogDays({ limit = 60, offset = 0 } = {}) {
   return res.json();
 }
 
+/** Latest logged ingredient receipt for a recipe, or ingredients: null if none. */
+export async function fetchLastLogForRecipe(recipeId) {
+  const res = await apiFetch(`/api/log/last-for-recipe?recipe_id=${encodeURIComponent(recipeId)}`);
+  if (!res.ok) {
+    const e = await res.json().catch(() => null);
+    throw new Error(e?.error || 'Failed to fetch last log for recipe');
+  }
+  return res.json();
+}
+
 export async function createLogEntry(data) {
   const res = await apiFetch('/api/log', {
     method: 'POST',
