@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
 
 /**
