@@ -20,6 +20,7 @@ const { createPreppedBatchesRouter } = require('./routes/preppedBatches');
 const { createMcpRouter } = require('./mcp/createMcpRouter');
 const { createMcpWritesRouter } = require('./routes/mcpWrites');
 const { createDietPhasesRouter } = require('./routes/dietPhases');
+const { createProblemReportsRouter } = require('./routes/problemReports');
 const { getHealthInfo } = require('./buildInfo');
 
 /**
@@ -58,6 +59,7 @@ function createApp(db = createDb(process.env.DB_PATH || './nutrition.db'), opts 
   app.use('/mcp', createMcpRouter(db));
 
   app.use('/api/auth', createAuthRouter(db));
+  app.use('/api/problem-reports', createProblemReportsRouter(db, { requireAuth, rateLimit }));
 
   // All other /api/* require a session (Jest falls back to owner via attachUser).
   app.use('/api', (req, res, next) => {

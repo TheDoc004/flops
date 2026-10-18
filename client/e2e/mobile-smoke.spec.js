@@ -36,4 +36,24 @@ test.describe('Mobile smoke (390px)', () => {
     const cols = await grid.evaluate(el => getComputedStyle(el).gridTemplateColumns);
     expect(cols.split(' ').length).toBe(1);
   });
+
+  test('report a problem opens from the screen and submits', async ({ page, request }) => {
+    await openAuthed(page, request, '/history');
+
+    const trigger = page.getByRole('button', { name: 'Report a problem' });
+    await trigger.scrollIntoViewIfNeeded();
+    const box = await trigger.boundingBox();
+    expect(box.height, 'touch target').toBeGreaterThanOrEqual(44);
+    await trigger.click();
+
+    const dialog = page.getByRole('dialog', { name: 'Report a problem' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('What went wrong').fill('E2E smoke: chart looked blank');
+    const sent = page.waitForResponse(r => r.url().includes('/api/problem-reports') && r.request().method() === 'POST');
+    await dialog.getByRole('button', { name: 'Send report' }).click();
+    const res = await sent;
+    expect(res.status()).toBe(201);
+    expect((await res.json()).route).toBe('/history');
+    await expect(dialog.getByText(/on the list/i)).toBeVisible();
+  });
 });

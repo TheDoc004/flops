@@ -35,6 +35,13 @@ cd server && npm run dev
 cd client && npm run dev
 ```
 
+**Demo data + screenshots (local only):** `cd server && npm run demo:seed` writes a fake demo
+user into `.demo/demo.db` (refuses any other path but the OS temp dir). `cd client && npm run
+demo:screenshots` reseeds, boots its own API + Vite on that DB (fails if 3001/5173 are busy, never
+reuses a running server), signs in as `demo@flops.example` via AUTH_DEV and writes one 390px PNG
+per main route to `.demo/screenshots/`. `.demo/` is gitignored. `FLOPS_PW_CHANNEL=chrome` uses an
+installed Chrome.
+
 Vite proxies `/api` → `localhost:3001` in dev. The SQLite DB lives at
 `server/nutrition.db`. There is also a stale `nutrition.db` at the root — ignore it.
 
@@ -229,6 +236,11 @@ Bounded phases sit on top without ending it. Notes only — never touch goals or
 Kinds are mirrored in `client/src/features/adherence/phaseMeta.js`.
 - `GET /api/diet-phases?start=&end=&today=` — phases touching the range, with `effective_end_date` + `ongoing`
 - `POST /api/diet-phases`, `PUT /api/diet-phases/:id`, `DELETE /api/diet-phases/:id` (soft delete)
+
+### Problem reports
+`problem_reports` holds only `text`, `route` (path, no query), `app_version` (server git sha), `user_id`, `created_at`, `status`. The "Report a problem" link (`shared/ui/ReportProblem.jsx`) sits under every app screen.
+- `POST /api/problem-reports` — signed-in user files a report (rate limited)
+- `GET /api/problem-reports` — reports-only inbox of `status = 'new'`; needs `x-api-key: $PROBLEM_REPORTS_TOKEN`, never a user session. 503 when the env var is unset
 
 ### Barcode
 - `GET /api/barcode/:code` — proxies Open Food Facts (free, no API key) and normalizes the product into ingredient-form fields. Returns `basis` (`serving` | `serving_derived` | `100g` | `none`) so the UI can say where the numbers came from, plus `existing_ingredient` when that barcode is already saved. 404 = not on record, 502 = database unreachable.

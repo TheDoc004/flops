@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-10 (diet-phase calendar badges; MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses; meal prep add-ons; recipe adjust + get_recipe; micros AI-fill scaling fix)_
+_Last updated: 2026-10-18 (Report a problem + reports-only inbox; privacy isolation tests; demo seed + 390px screenshots — branch `noggin/flops/launch`, not merged yet)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -24,6 +24,22 @@ _current-state_ companion to it.
 ---
 
 ## Where Diego left off (read this first)
+
+**Launch prep (2026-10-18, branch `noggin/flops/launch`, awaiting 🔀):**
+- **Report a problem:** a quiet link under every app screen (`shared/ui/ReportProblem.jsx`) posts to
+  `POST /api/problem-reports`. The table `problem_reports` holds only text, route (path only),
+  app_version (server git sha), user_id, created_at and status. `GET /api/problem-reports` lists `new`
+  report rows only and needs `x-api-key: $PROBLEM_REPORTS_TOKEN`. **Diego sets that env var on Render**,
+  and the inbox answers 503 until he does. Tests: `server/__tests__/problemReports.test.js`, the vitest
+  for the form, and a mobile smoke step.
+- **Privacy isolation:** `server/__tests__/privacyIsolation.test.js` checks that user B can't touch A's
+  rows via REST, `/api/gym`, the MCP tools, `write_batch` or revert, and that coach access follows the
+  consent scopes and stops on revoke. No gaps found. Note: MCP is still single-user (`MCP_USER_ID`),
+  so the public connector needs per-user auth.
+- **Demo data:** `cd client && npm run demo:screenshots` seeds `.demo/demo.db` (fake user
+  `demo@flops.example`) and writes 390px PNGs per route to `.demo/screenshots/` (gitignored).
+  Known quirks: in full-page shots the fixed bottom nav lands mid-page, and Today's meal card can
+  come out blank.
 
 **Diet-phase badges (2026-10-09):** the adherence calendar (Review + Today's calendar card) has a
 `+ Phase` button; phases (free-text **name**, required; optional color category cut / bulk /

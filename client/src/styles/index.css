@@ -2023,6 +2023,18 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
 @media (min-width: 1536px) {
   .app-main--wide { max-width: 1440px; }
 }
+/* "Report a problem": a quiet link under every screen's content. */
+.report-problem {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-24);
+}
+.report-problem__trigger {
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+html[data-notebook-day] .report-problem__trigger { color: inherit; opacity: 0.75; }
+
 /* Clear the fixed bottom navigation bar (shown ≤768px) */
 @media (max-width: 768px) {
   .app-main {

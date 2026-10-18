@@ -10,6 +10,9 @@ client/playwright-report/
 client/blob-report/
 client/e2e/reports/
 
+# Demo seed + screenshots (scripts/seed-demo.js, npm run demo:screenshots)
+.demo/
+
 # Design canvas working files: keep .dc.html sources, skip the ~2MB seeded payload
 .design/**/*.html
 !.design/**/*.dc.html
