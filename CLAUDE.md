@@ -35,6 +35,13 @@ cd server && npm run dev
 cd client && npm run dev
 ```
 
+**Demo data + screenshots (local only):** `cd server && npm run demo:seed` writes a fake demo
+user into `.demo/demo.db` (refuses any other path but the OS temp dir). `cd client && npm run
+demo:screenshots` reseeds, boots its own API + Vite on that DB (fails if 3001/5173 are busy, never
+reuses a running server), signs in as `demo@flops.example` via AUTH_DEV and writes one 390px PNG
+per main route to `.demo/screenshots/`. `.demo/` is gitignored. `FLOPS_PW_CHANNEL=chrome` uses an
+installed Chrome.
+
 Vite proxies `/api` → `localhost:3001` in dev. The SQLite DB lives at
 `server/nutrition.db`. There is also a stale `nutrition.db` at the root — ignore it.
 
