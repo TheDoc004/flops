@@ -891,6 +891,22 @@ function createDb(dbPath) {
     db.exec(`ALTER TABLE supplements ADD COLUMN created_via TEXT NOT NULL DEFAULT 'app'`);
   }
 
+  // In-app "Report a problem". Deliberately holds only what the reporter typed
+  // plus where they were — never a copy of their logs.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS problem_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      route TEXT,
+      app_version TEXT,
+      created_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'new'
+    );
+    CREATE INDEX IF NOT EXISTS idx_problem_reports_status_created
+      ON problem_reports(status, created_at);
+  `);
+
   // Phase 3: proposals handshake removed — drop leftover Phase 2 table.
   db.exec(`DROP TABLE IF EXISTS mcp_proposals`);
 

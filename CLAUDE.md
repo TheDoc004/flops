@@ -230,6 +230,11 @@ Kinds are mirrored in `client/src/features/adherence/phaseMeta.js`.
 - `GET /api/diet-phases?start=&end=&today=` — phases touching the range, with `effective_end_date` + `ongoing`
 - `POST /api/diet-phases`, `PUT /api/diet-phases/:id`, `DELETE /api/diet-phases/:id` (soft delete)
 
+### Problem reports
+`problem_reports` holds only `text`, `route` (path, no query), `app_version` (server git sha), `user_id`, `created_at`, `status`. The "Report a problem" link (`shared/ui/ReportProblem.jsx`) sits under every app screen.
+- `POST /api/problem-reports` — signed-in user files a report (rate limited)
+- `GET /api/problem-reports` — reports-only inbox of `status = 'new'`; needs `x-api-key: $PROBLEM_REPORTS_TOKEN`, never a user session. 503 when the env var is unset
+
 ### Barcode
 - `GET /api/barcode/:code` — proxies Open Food Facts (free, no API key) and normalizes the product into ingredient-form fields. Returns `basis` (`serving` | `serving_derived` | `100g` | `none`) so the UI can say where the numbers came from, plus `existing_ingredient` when that barcode is already saved. 404 = not on record, 502 = database unreachable.
 
