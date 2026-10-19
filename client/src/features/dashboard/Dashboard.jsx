@@ -467,7 +467,7 @@ export default function Dashboard() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 'clamp(14px, 1.4vw, 18px)',
+          marginBottom: 12,
           gap: 8,
         }}>
           <div>
@@ -514,11 +514,10 @@ export default function Dashboard() {
             </button>
           </div>
         ) : (
+          // Rows run edge to edge of the Today card instead of sitting in a card of their own.
           <div style={{
-            background: 'var(--color-surface)',
-            borderRadius: 14,
-            border: '1px solid var(--color-surface-border)',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            margin: '0 calc(-1 * var(--space-20)) calc(-1 * var(--space-16))',
+            borderTop: '1px solid var(--color-divider-warm)',
             overflow: 'visible',
           }}>
             {entries.map((entry, idx) => (

@@ -131,10 +131,7 @@ export default function DashboardWeightRow({ today, bodyUnits, onWeightSaved, no
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
         <h3 className="section-title" style={{ margin: 0 }}>Today&apos;s weight</h3>
         {/* Full history means the weight trend, which lives in Review. */}
-        <Link
-          to="/history#weight-trend"
-          style={{ fontSize: 13, color: 'var(--color-link)', flexShrink: 0 }}
-        >
+        <Link to="/history#weight-trend" className="dash-card-link">
           Full history
         </Link>
       </div>

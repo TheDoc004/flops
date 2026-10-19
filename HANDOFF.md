@@ -25,6 +25,14 @@ _current-state_ companion to it.
 
 ## Where Diego left off (read this first)
 
+**UI polish 1/35 — Today at 390px (2026-10-19, branch `noggin/flops/polish-today-dashboard-390px-s-956687-1`, awaiting ✅):**
+- One surface per Today card: `SupplementStrip` no longer draws its own `.card` inside the dashboard
+  card, and the meals list runs edge to edge of its card (dividers only) instead of a nested box.
+- Card headers share one 12px rhythm; "Manage" / "Full history" use `.dash-card-link` (13px text,
+  44px hit area). The toolbar's Profile link and the MCP-writes pill buttons also reach 44px.
+- `.dashboard-stack` dropped its top margin, so the greeting → first card gap is the row's 24px.
+- Adherence and Prep are not rendered on Today (Prep is vaulted behind `SHOW_PREP_PLAN`), so nothing changed there.
+
 **Privacy readiness (a) — data export (2026-10-18, branch `noggin/flops/privacy-readiness-a-user-data--6ee8c6-1`, awaiting 🔀):**
 - `GET /api/me/export` (`server/routes/me.js`, own 10/min rate limit) returns the caller's own rows as
   one JSON file: account, nutrition (`server/nutritionExport.js`), training (`server/gymExport.js`,
