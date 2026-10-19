@@ -37,6 +37,24 @@ test.describe('Mobile smoke (390px)', () => {
     expect(cols.split(' ').length).toBe(1);
   });
 
+  test('download my data saves a JSON file of the signed-in user', async ({ page, request }) => {
+    await openAuthed(page, request, '/plan/profile');
+
+    const trigger = page.getByRole('button', { name: 'Download', exact: true });
+    await trigger.scrollIntoViewIfNeeded();
+    const box = await trigger.boundingBox();
+    expect(box.height, 'touch target').toBeGreaterThanOrEqual(44);
+
+    const download = page.waitForEvent('download');
+    await trigger.click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(/^flops-export-\d{4}-\d{2}-\d{2}\.json$/);
+    const fs = await import('node:fs/promises');
+    const body = JSON.parse(await fs.readFile(await file.path(), 'utf8'));
+    expect(body.format).toBe('flops-export');
+    expect(body.account.email).toMatch(/^e2e-/);
+  });
+
   test('report a problem opens from the screen and submits', async ({ page, request }) => {
     await openAuthed(page, request, '/history');
 
