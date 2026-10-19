@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-18 (Report a problem + reports-only inbox; privacy isolation tests; demo seed + 390px screenshots — branch `noggin/flops/launch`, not merged yet)_
+_Last updated: 2026-10-18 (Download my data: `GET /api/me/export` + Profile row — branch `noggin/flops/privacy-readiness-a-user-data--6ee8c6-1`, awaiting 🔀; earlier the same day: Report a problem, privacy isolation tests, demo seed)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -24,6 +24,20 @@ _current-state_ companion to it.
 ---
 
 ## Where Diego left off (read this first)
+
+**Privacy readiness (a) — data export (2026-10-18, branch `noggin/flops/privacy-readiness-a-user-data--6ee8c6-1`, awaiting 🔀):**
+- `GET /api/me/export` (`server/routes/me.js`, own 10/min rate limit) returns the caller's own rows as
+  one JSON file: account, nutrition (`server/nutritionExport.js`), training (`server/gymExport.js`,
+  gym + legacy presets/exercise logs), coach links (ids + scopes only, both directions) and
+  `mcp_write_audit` rows. Soft-deleted rows are left out; no migration.
+- "Download my data" row in the Account card on Plan → Profile (`.data-export-row` in `index.css`).
+  The client names the file (`flops-export-YYYY-MM-DD.json`) because the API is cross-origin and
+  the browser hides `Content-Disposition`.
+- Tests: new export block in `privacyIsolation.test.js` (A↔B in every section, soft deletes, 401,
+  coach link doesn't widen) and a mobile smoke step that downloads the file at 390px.
+- **Not exported yet:** coach suggestions, `day_prep_items`, `prepped_batches`, legacy
+  `training_*` schedule/feedback/context, problem reports. Add them before the delete endpoint
+  (item 7a8b342283), so delete and export cover the same tables.
 
 **Launch prep (2026-10-18, branch `noggin/flops/launch`, awaiting 🔀):**
 - **Report a problem:** a quiet link under every app screen (`shared/ui/ReportProblem.jsx`) posts to

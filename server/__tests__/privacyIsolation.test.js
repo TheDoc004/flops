@@ -498,3 +498,160 @@ describe('privacy isolation — coach consent scopes', () => {
     expect(coachPatch.status).toBe(404);
   });
 });
+
+/** Every array of rows anywhere in an export body, keyed by its path. */
+function exportSections(body, prefix = '') {
+  const out = {};
+  for (const [key, value] of Object.entries(body || {})) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (Array.isArray(value)) out[path] = value;
+    else if (value && typeof value === 'object') Object.assign(out, exportSections(value, path));
+  }
+  return out;
+}
+
+describe('privacy isolation — data export (GET /api/me/export)', () => {
+  let app;
+  let db;
+  let alice;
+  let bob;
+  let A;
+  let B;
+
+  const EXPECTED_NONEMPTY = [
+    'nutrition.log_entries',
+    'nutrition.recipes',
+    'nutrition.ingredients',
+    'nutrition.supplements',
+    'nutrition.supplement_checks',
+    'nutrition.body_weights',
+    'nutrition.diet_phases',
+    'training.exercises',
+    'training.templates',
+    'training.template_exercises',
+    'training.sessions',
+    'training.sets',
+    'training.one_rep_maxes',
+    'mcp_writes',
+  ];
+
+  function expectOnlyOwnRows(body, ownerId, otherTag) {
+    expect(body.account.id).toBe(ownerId);
+    for (const [path, rows] of Object.entries(exportSections(body))) {
+      for (const row of rows) {
+        if ('user_id' in row) {
+          expect({ path, user_id: row.user_id }).toEqual({ path, user_id: ownerId });
+        }
+      }
+      expect({ path, leaked: JSON.stringify(rows).includes(otherTag) }).toEqual({ path, leaked: false });
+    }
+  }
+
+  beforeEach(async () => {
+    ({ app, db } = buildTestApp());
+    alice = createUser(db, 'alice@export.test');
+    bob = createUser(db, 'bob@export.test');
+    A = await seedUser(app, db, alice, 'Alice');
+    B = await seedUser(app, db, bob, 'Bob');
+    for (const [user, tag] of [[alice, 'Alice'], [bob, 'Bob']]) {
+      const h = authHeader(db, user.id);
+      await request(app).put('/api/goals').set(h)
+        .send({ effective_start_date: '2026-08-01', goals: [{ weekday: 1, calories_min: 2000, calories_max: 2400 }] })
+        .expect(200);
+      await request(app).put('/api/profile').set(h).send({ height_cm: tag === 'Alice' ? 170 : 190 }).expect(200);
+      const w = writes.logBodyWeight(db, user.id, { weight: 81, unit: 'kg', date: '2026-08-04' });
+      expect(w.error).toBeUndefined();
+    }
+  });
+
+  it('A\'s export holds every section of A\'s data and none of B\'s rows', async () => {
+    const res = await request(app).get('/api/me/export').set(A.h);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toMatch(/^attachment; filename="flops-export-\d{4}-\d{2}-\d{2}\.json"$/);
+    const sections = exportSections(res.body);
+    for (const path of EXPECTED_NONEMPTY) {
+      expect({ path, rows: sections[path]?.length > 0 }).toEqual({ path, rows: true });
+    }
+    expect(res.body.nutrition.goals.versions.length).toBeGreaterThan(0);
+    expect(res.body.nutrition.profile.user_id).toBe(alice.id);
+    expect(res.body.nutrition.profile.height_cm).toBe(170);
+    expect(JSON.stringify(res.body)).toContain('Alice');
+    expectOnlyOwnRows(res.body, alice.id, 'Bob');
+  });
+
+  it('B\'s export holds none of A\'s rows', async () => {
+    const res = await request(app).get('/api/me/export').set(B.h);
+    expect(res.status).toBe(200);
+    expect(res.body.nutrition.profile.height_cm).toBe(190);
+    expectOnlyOwnRows(res.body, bob.id, 'Alice');
+    const ids = exportSections(res.body);
+    expect(ids['nutrition.recipes'].map(r => r.id)).not.toContain(A.recipeId);
+    expect(ids['nutrition.log_entries'].map(r => r.id)).not.toContain(A.entryId);
+    expect(ids['training.sets'].map(r => r.id)).not.toContain(A.setId);
+  });
+
+  it('soft-deleted rows stay out of the export', async () => {
+    await request(app).delete(`/api/recipes/${A.recipeId}`).set(A.h).expect(204);
+    await request(app).delete(`/api/log/${A.entryId}`).set(A.h).expect(204);
+    await request(app).delete(`/api/diet-phases/${A.phaseId}`).set(A.h);
+    await request(app).delete(`/api/supplements/${A.supplementId}`).set(A.h);
+    await request(app).delete(`/api/gym/templates/${A.templateId}`).set(A.h);
+    const res = await request(app).get('/api/me/export').set(A.h);
+    const s = exportSections(res.body);
+    expect(s['nutrition.recipes'].map(r => r.id)).not.toContain(A.recipeId);
+    expect(s['nutrition.log_entries'].map(r => r.id)).not.toContain(A.entryId);
+    expect(s['nutrition.diet_phases'].map(r => r.id)).not.toContain(A.phaseId);
+    expect(s['nutrition.supplements'].map(r => r.id)).not.toContain(A.supplementId);
+    expect(s['nutrition.supplement_checks']).toEqual([]);
+    expect(s['training.templates'].map(r => r.id)).not.toContain(A.templateId);
+    expect(s['training.template_exercises']).toEqual([]);
+  });
+
+  it('an unauthenticated request gets 401 and no data', async () => {
+    const prevJest = process.env.JEST_WORKER_ID;
+    delete process.env.JEST_WORKER_ID;
+    try {
+      const none = await request(app).get('/api/me/export');
+      expect(none.status).toBe(401);
+      const bad = await request(app).get('/api/me/export').set({ Authorization: 'Bearer not-a-real-token' });
+      expect(bad.status).toBe(401);
+      for (const res of [none, bad]) {
+        expect(bodyText(res)).not.toMatch(/Alice|Bob/);
+      }
+    } finally {
+      process.env.JEST_WORKER_ID = prevJest;
+    }
+  });
+
+  it('a coach link does not widen either side\'s export', async () => {
+    const coach = createUser(db, 'coach@export.test');
+    const coachH = authHeader(db, coach.id);
+    await request(app).patch('/api/auth/me').set(coachH).send({ is_coach: true, display_name: 'CoachName' }).expect(200);
+    const invite = await request(app).get('/api/coach/invite-code').set(coachH);
+    await request(app).post('/api/coach/link').set(A.h)
+      .send({ invite_code: invite.body.invite_code, scope_nutrition: true, scope_training: true, scope_weight: true })
+      .expect(201);
+
+    const coachExport = await request(app).get('/api/me/export').set(coachH);
+    expect(coachExport.status).toBe(200);
+    expectOnlyOwnRows(coachExport.body, coach.id, 'Alice');
+    expect(coachExport.body.coach_links).toEqual([
+      expect.objectContaining({ coach_user_id: coach.id, client_user_id: alice.id, role: 'coach', scope_nutrition: 1 }),
+    ]);
+    expect(Object.keys(coachExport.body.coach_links[0]).sort()).toEqual([
+      'client_user_id', 'coach_user_id', 'created_at', 'id', 'role',
+      'scope_nutrition', 'scope_training', 'scope_weight', 'status',
+    ]);
+    expect(bodyText(coachExport)).not.toContain('alice@export.test');
+
+    const clientExport = await request(app).get('/api/me/export').set(A.h);
+    expectOnlyOwnRows(clientExport.body, alice.id, 'Bob');
+    expect(clientExport.body.coach_links).toEqual([
+      expect.objectContaining({ coach_user_id: coach.id, client_user_id: alice.id, role: 'client' }),
+    ]);
+    expect(bodyText(clientExport)).not.toMatch(/CoachName|coach@export\.test/);
+
+    const bobExport = await request(app).get('/api/me/export').set(B.h);
+    expect(bobExport.body.coach_links).toEqual([]);
+  });
+});

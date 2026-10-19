@@ -242,6 +242,9 @@ Kinds are mirrored in `client/src/features/adherence/phaseMeta.js`.
 - `POST /api/problem-reports` — signed-in user files a report (rate limited)
 - `GET /api/problem-reports` — reports-only inbox of `status = 'new'`; needs `x-api-key: $PROBLEM_REPORTS_TOKEN`, never a user session. 503 when the env var is unset
 
+### Data export
+- `GET /api/me/export` — the signed-in user's own rows as one JSON download (`flops-export-YYYY-MM-DD.json`): account, nutrition (`server/nutritionExport.js`), training (`server/gymExport.js`), coach links (ids + scopes only, both directions) and `mcp_write_audit` rows. Soft-deleted rows are left out. "Download my data" on Plan → Profile. Isolation is proven in `privacyIsolation.test.js`.
+
 ### Barcode
 - `GET /api/barcode/:code` — proxies Open Food Facts (free, no API key) and normalizes the product into ingredient-form fields. Returns `basis` (`serving` | `serving_derived` | `100g` | `none`) so the UI can say where the numbers came from, plus `existing_ingredient` when that barcode is already saved. 404 = not on record, 502 = database unreachable.
 

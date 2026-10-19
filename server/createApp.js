@@ -21,6 +21,7 @@ const { createMcpRouter } = require('./mcp/createMcpRouter');
 const { createMcpWritesRouter } = require('./routes/mcpWrites');
 const { createDietPhasesRouter } = require('./routes/dietPhases');
 const { createProblemReportsRouter } = require('./routes/problemReports');
+const { createMeRouter } = require('./routes/me');
 const { getHealthInfo } = require('./buildInfo');
 
 /**
@@ -85,6 +86,7 @@ function createApp(db = createDb(process.env.DB_PATH || './nutrition.db'), opts 
   app.use('/api/prep', createPrepRouter(db));
   app.use('/api/prepped-batches', createPreppedBatchesRouter(db));
   app.use('/api/mcp-writes', createMcpWritesRouter(db));
+  app.use('/api/me', rateLimit({ windowMs: 60_000, max: 10 }), createMeRouter(db));
 
   const ai = createAiRouter();
   app.use('/api/ai', rateLimit({ windowMs: 60_000, max: 40 }), aiGuard, ai);
