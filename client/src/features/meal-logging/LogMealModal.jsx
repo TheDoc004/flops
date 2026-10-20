@@ -827,10 +827,10 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
       ref={ref}
       onClose={onClose}
       onKeyDown={onDialogKeyDown}
-      style={{ width: 'min(560px, 94vw)', maxHeight: '92vh', overflowY: 'auto' }}
+      className="log-meal-modal"
     >
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-        <h2 className="section-title" style={{ margin: 0 }}>{title || 'Log a Meal'}</h2>
+      <div className="log-meal-modal__header">
+        <h2 className="section-title log-meal-modal__title">{title || 'Log a Meal'}</h2>
         <button type="button" className="modal-close-x" aria-label="Close" onClick={close}>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
             <path d="M6 6l12 12M18 6 6 18" />
@@ -902,14 +902,14 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           </div>
         )}
 
-        <div className="panel-in modal-subpanel" style={{ padding: 10, borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-secondary-bg)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 28, marginBottom: 8 }}>
+        <div className="panel-in modal-subpanel log-meal-items">
+          <div className="log-meal-items__head">
             <div>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-text-strong)' }}>
+              <p className="log-meal-items__title">
                 What&apos;s in this meal
               </p>
               {mealStarted && (
-                <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-text-muted)' }}>
+                <p className="log-meal-items__hint">
                   ↑↓ move · ⌘⌫ remove · ⌘↵ log
                 </p>
               )}
@@ -917,9 +917,8 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
             {selectedRecipe && receipt.length > 0 && (
               <button
                 type="button"
-                className="btn-secondary"
+                className="btn-secondary log-meal-items__reset"
                 onClick={resetToRecipeAmounts}
-                style={{ minHeight: 0, padding: '5px 12px', fontSize: 12, whiteSpace: 'nowrap' }}
               >
                 Reset to recipe
               </button>
@@ -927,7 +926,7 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           </div>
 
           {receipt.length === 0 ? (
-            <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            <p className="log-meal-items__empty">
               {mealStarted
                 ? 'Add foods with the row below.'
                 : 'Search above to start, then add more below.'}
@@ -956,46 +955,27 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                       onPointerDown={() => setActiveLineId(line.id)}
                     >
                       <div className="slot-row__name" title={lineDisplayName(line)}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <div className="log-meal-line__name">
                           {SHOW_MEAL_SUBSTITUTES ? (
                             <button
                               type="button"
+                              className="log-meal-line__sub-toggle"
                               onClick={() => (open ? setSubLineId(null) : openSubstitutes(line))}
                               aria-expanded={open}
                               aria-label={`Find substitutes for ${line.name}`}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                padding: 0,
-                                margin: 0,
-                                textAlign: 'left',
-                                cursor: 'pointer',
-                                color: 'var(--color-text-strong)',
-                                font: 'inherit',
-                                textDecoration: 'underline',
-                                textDecorationStyle: 'dotted',
-                              }}
                               title="Find substitutes from your library"
                             >
                               {line.name}
                             </button>
                           ) : (
-                            <span style={{ color: 'var(--color-text-strong)', font: 'inherit' }}>
-                              {line.name}
-                            </span>
+                            <span>{line.name}</span>
                           )}
                         </div>
                         {line.calories != null && (
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: 'var(--color-text-muted)',
-                              marginTop: 2,
-                              opacity: ghost ? 0.65 : 1,
-                            }}
-                          >
-                            {Math.round(line.calories)} cal · P {Number(line.protein_g).toFixed(1)} · C{' '}
-                            {Number(line.carbs_g).toFixed(1)} · F {Number(line.fat_g).toFixed(1)}
+                          <div className={`log-meal-line__macros${ghost ? ' is-ghost' : ''}`}>
+                            {/* Non-breaking spaces keep each letter on the line with its number. */}
+                            {Math.round(line.calories)}{'\u00a0'}cal · P{'\u00a0'}{Number(line.protein_g).toFixed(1)} · C{'\u00a0'}
+                            {Number(line.carbs_g).toFixed(1)} · F{'\u00a0'}{Number(line.fat_g).toFixed(1)}
                             {ghost ? ' · suggested' : ''}
                           </div>
                         )}
@@ -1041,8 +1021,8 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                     </div>
                     {open && (
                       <div className="slot-list__subs">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                          <div style={{ fontWeight: 600 }}>
+                        <div className="log-meal-subs__head">
+                          <div className="log-meal-subs__title">
                             Substitutes from your library
                             {subSource === 'ai' ? ' (AI)' : subSource === 'heuristic' ? ' (similar)' : ''}
                           </div>
@@ -1055,28 +1035,21 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
                             ✕
                           </button>
                         </div>
-                        {subBusy && <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>Looking…</p>}
+                        {subBusy && <p className="log-meal-subs__note">Looking…</p>}
                         {subError && !subBusy && (
-                          <p style={{ margin: '0 0 6px', color: '#92400e' }}>{subError}</p>
+                          <p className="log-meal-subs__error">{subError}</p>
                         )}
                         {!subBusy && subSuggestions.length === 0 && (
-                          <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>No close matches found.</p>
+                          <p className="log-meal-subs__note">No close matches found.</p>
                         )}
                         {!subBusy && subSuggestions.length > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <div className="log-meal-subs__list">
                             {subSuggestions.map(ing => (
                               <button
                                 key={ing.id}
                                 type="button"
-                                className="btn-secondary"
+                                className="btn-secondary log-meal-subs__option"
                                 onClick={() => applySubstitute(line.id, ing)}
-                                style={{
-                                  justifyContent: 'flex-start',
-                                  textAlign: 'left',
-                                  minHeight: 0,
-                                  padding: '6px 10px',
-                                  fontSize: 12,
-                                }}
                               >
                                 {ing.name}
                                 {ing.brand_name ? ` (${ing.brand_name})` : ''}
@@ -1112,66 +1085,34 @@ export default function LogMealModal({ onLog, onClose, initialEntry, title, subm
           )}
 
           {receiptTotals && (
-            <div
-              className="modal-highlight-panel"
-              style={{
-                marginTop: 8,
-                padding: '7px 10px',
-                borderRadius: 8,
-                border: '1px solid var(--color-border)',
-                background: 'var(--color-primary-subtle)',
-                fontSize: 12,
-                color: 'var(--color-primary-ink)',
-              }}
-            >
+            <div className="modal-highlight-panel log-meal-total">
               <strong>Meal total:</strong>{' '}
               {Math.round(receiptTotals.calories)} cal · P {receiptTotals.protein_g.toFixed(1)}g · C{' '}
               {receiptTotals.carbs_g.toFixed(1)}g · F {receiptTotals.fat_g.toFixed(1)}g
               {receiptTotals.fiber_g > 0 && ` · Fiber ${receiptTotals.fiber_g.toFixed(1)}g`}
               {showServingsField && logServingsDisplay !== 1 && (
-                <span style={{ color: 'var(--color-text-muted)' }}>
+                <span className="log-meal-total__servings">
                   {'. This log '}({logServingsDisplay} servings):{' '}
-                  <strong style={{ color: 'var(--color-text-strong)' }}>
+                  <strong>
                     {Math.round(receiptTotals.calories * logServingsDisplay)} cal
                   </strong>
                 </span>
               )}
               {projectedDay && (
-                <div
-                  className="log-meal-day-preview"
-                  style={{
-                    marginTop: 8,
-                    paddingTop: 8,
-                    borderTop: '1px solid color-mix(in srgb, var(--color-primary) 22%, var(--color-border))',
-                  }}
-                >
-                  <div style={{ fontWeight: 700, marginBottom: 6 }}>After this meal</div>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr',
-                      gap: 3,
-                    }}
-                  >
+                <div className="log-meal-day-preview">
+                  <div className="log-meal-day-preview__title">After this meal</div>
+                  <div className="log-meal-day-preview__rows">
                     {DAY_PREVIEW_MACROS.map(({ key, label, targetKey, isCalories }) => {
                       const value = projectedDay[key];
                       const status = macroGoalStatus(value, targets?.[targetKey]);
                       return (
-                        <div
-                          key={key}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'baseline',
-                            justifyContent: 'space-between',
-                            gap: 10,
-                          }}
-                        >
+                        <div key={key} className="log-meal-day-preview__row">
                           <span>
-                            <span style={{ fontWeight: 600, minWidth: 28, display: 'inline-block' }}>{label}</span>
+                            <span className="log-meal-day-preview__label">{label}</span>
                             {' '}
                             {formatDayPreviewValue(value, isCalories, macroUnits)}
                           </span>
-                          <span className={`macro-status is-${status.mod}`} style={{ fontSize: 11 }}>
+                          <span className={`macro-status is-${status.mod}`}>
                             {dayPreviewStatusText(status, isCalories, macroUnits)}
                           </span>
                         </div>
