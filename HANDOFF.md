@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-18 (Download my data: `GET /api/me/export` + Profile row — branch `noggin/flops/privacy-readiness-a-user-data--6ee8c6-1`, awaiting 🔀; earlier the same day: Report a problem, privacy isolation tests, demo seed)_
+_Last updated: 2026-10-19 (Delete my account: `DELETE /api/me` + Profile row, export gap closed — branch `noggin/flops/privacy-readiness-b-account-de-7a8b34-1`, awaiting 🔀)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -33,6 +33,31 @@ _current-state_ companion to it.
 - `.dashboard-stack` dropped its top margin, so the greeting → first card gap is the row's 24px.
 - Adherence and Prep are not rendered on Today (Prep is vaulted behind `SHOW_PREP_PLAN`), so nothing changed there.
 
+**Privacy readiness (b) — account delete (2026-10-19, branch `noggin/flops/privacy-readiness-b-account-de-7a8b34-1`, awaiting 🔀; not a bugfix, never auto-ships):**
+- `POST /api/me/delete-request` emails a one-time 6-digit code (Apple-only accounts get a challenge
+  for an Apple re-sign-in instead; that path is AUTH_DEV-only, like Apple sign-in itself).
+  `DELETE /api/me` with the code then deletes. Codes live in their own table
+  (`account_delete_challenges`, hashed, 10 min, 5 tries), so a login code never confirms a delete; a
+  used, superseded or expired code is refused with 403 (not 401, which the client treats as signed out).
+- The delete (`deleteAccount` in `server/routes/me.js`, one transaction) sets `users.deleted_at`, flags
+  the user's rows that have a soft-delete column (`softDeleteNutrition` / `softDeleteGym`, each in its
+  own export module), dismisses their prep items, marks their open problem reports `account_deleted`,
+  revokes coach links both ways, removes their sessions and pending codes, and writes an
+  `account_deletions` row listing every flagged id (so a restore can undo exactly that). Tables
+  without a soft-delete column keep their rows untouched. Nothing user-owned is hard-deleted.
+- A deleted account is shut out everywhere: session lookup ignores it, sign-in again answers 403,
+  `/mcp` answers 401 for it (and a deleted owner is refused, never replaced by the next user), and
+  coach roster / my-coaches / invite codes / suggestion inbox skip it.
+- Schema: two new tables + `users.deleted_at` (added columns only, no existing data edited).
+- Export now also covers coach suggestions, `day_prep_items` (minus dismissed), `prepped_batches`,
+  problem reports and the legacy `training_*` / `workout_day_selections` tables (export `version: 2`).
+- Profile: "Delete my account" row under "Download my data" → dialog with two steps (what it means
+  plus "Download your data first", then the code). Component `features/profile/DeleteAccount.jsx`.
+- Tests: new export + delete blocks in `privacyIsolation.test.js`, `DeleteAccount.test.jsx`, and a
+  390px mobile smoke step that deletes a throwaway local account.
+- **Flaky:** `privacyIsolation.test.js` run alone 10× passed 8/10. Both failures were supertest
+  `socket hang up`, each in a different test (none an assertion). Not fixed here.
+
 **Privacy readiness (a) — data export (2026-10-18, branch `noggin/flops/privacy-readiness-a-user-data--6ee8c6-1`, awaiting 🔀):**
 - `GET /api/me/export` (`server/routes/me.js`, own 10/min rate limit) returns the caller's own rows as
   one JSON file: account, nutrition (`server/nutritionExport.js`), training (`server/gymExport.js`,
@@ -43,9 +68,7 @@ _current-state_ companion to it.
   the browser hides `Content-Disposition`.
 - Tests: new export block in `privacyIsolation.test.js` (A↔B in every section, soft deletes, 401,
   coach link doesn't widen) and a mobile smoke step that downloads the file at 390px.
-- **Not exported yet:** coach suggestions, `day_prep_items`, `prepped_batches`, legacy
-  `training_*` schedule/feedback/context, problem reports. Add them before the delete endpoint
-  (item 7a8b342283), so delete and export cover the same tables.
+- The tables it skipped are covered since privacy readiness (b) above.
 
 **Launch prep (2026-10-18, branch `noggin/flops/launch`, awaiting 🔀):**
 - **Report a problem:** a quiet link under every app screen (`shared/ui/ReportProblem.jsx`) posts to
@@ -471,7 +494,6 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - **Oversized components:** `AiMacroLogger.jsx`, `Ingredients.jsx`, `MealBuilder.jsx`, `LogMealModal.jsx`.
 - **AiMacroLogger** hardcoded light-theme inline colors in review panels (notebook-day risk).
 - **Stale brand asset:** `flops-badge.png` (2MB amber lightbulb) clashes with navy/paper identity.
-- **No in-app data export** — SQLite on Render disk; `scripts/backup-sqlite.sh`.
 - **Meal Builder browser history** — mode/step pushes history entries (`{ replace: true }` fix deferred).
 - **`client/package-lock.json` out of sync** with `package.json` (`npm ci` fails: missing `esbuild@0.28.2`).
   Regenerate with `npm install` in `client/`.
