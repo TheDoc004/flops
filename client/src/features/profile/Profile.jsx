@@ -10,6 +10,8 @@ import {
   parseWeightInputToKg,
 } from '@shared/utils/bodyUnits';
 import Reveal from '@shared/ui/Reveal';
+import { clearAuthToken } from '@shared/api/base';
+import DeleteAccount from './DeleteAccount';
 
 const ACTIVITY_OPTIONS = [
   { value: '', label: '—' },
@@ -22,7 +24,7 @@ const ACTIVITY_OPTIONS = [
 
 export default function Profile() {
   const { macroUnits, setMacroUnits, bodyUnits, setBodyUnits } = useMacroUnits();
-  const { user, isCoach, updateMe, logout } = useAuth();
+  const { user, isCoach, updateMe, logout, setUser } = useAuth();
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -355,6 +357,11 @@ export default function Profile() {
           </button>
         </div>
         {exportError && <p className="error" style={{ marginTop: 8 }}>{exportError}</p>}
+        <DeleteAccount
+          email={user?.email}
+          onDownload={() => { void handleDownloadData(); }}
+          onDeleted={() => { clearAuthToken(); setUser(null); }}
+        />
       </Reveal>
 
       <Reveal delay={50} className="card" style={{ marginBottom: 16 }}>

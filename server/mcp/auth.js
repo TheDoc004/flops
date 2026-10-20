@@ -12,6 +12,8 @@
  * can make Claude incorrectly start an OAuth flow.
  */
 
+const ACCOUNT_DELETED = 'This account was deleted.';
+
 function resolveMcpUserId(db) {
   const raw = process.env.MCP_USER_ID;
   if (raw != null && String(raw).trim() !== '') {
@@ -19,12 +21,16 @@ function resolveMcpUserId(db) {
     if (!Number.isInteger(id) || id <= 0) {
       return { error: 'MCP_USER_ID must be a positive integer' };
     }
-    const row = db.prepare('SELECT id FROM users WHERE id = ?').get(id);
+    const row = db.prepare('SELECT id, deleted_at FROM users WHERE id = ?').get(id);
     if (!row) return { error: `MCP_USER_ID ${id} not found` };
+    if (row.deleted_at) return { error: ACCOUNT_DELETED, status: 401 };
     return { userId: id };
   }
-  const owner = db.prepare('SELECT id FROM users ORDER BY id ASC LIMIT 1').get();
+  // A deleted owner is refused rather than skipped: falling through to the next
+  // user would hand the owner's MCP token someone else's notebook.
+  const owner = db.prepare('SELECT id, deleted_at FROM users ORDER BY id ASC LIMIT 1').get();
   if (!owner) return { error: 'No users in database; sign up in FLOPS first' };
+  if (owner.deleted_at) return { error: ACCOUNT_DELETED, status: 401 };
   return { userId: owner.id };
 }
 
@@ -64,7 +70,7 @@ function createMcpAuthMiddleware(db) {
     }
     const resolved = resolveMcpUserId(db);
     if (resolved.error) {
-      return res.status(503).json({ error: resolved.error });
+      return res.status(resolved.status || 503).json({ error: resolved.error });
     }
     req.mcpUserId = resolved.userId;
     return next();

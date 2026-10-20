@@ -69,3 +69,23 @@ export async function fetchMyDataExport() {
   // browser hides that header from fetch().
   return { blob: await res.blob(), filename: `flops-export-${getLocalDateISO()}.json` };
 }
+
+/** Starts an account delete: emails a one-time code (or, Apple-only, returns a challenge). */
+export async function requestAccountDelete() {
+  const res = await apiFetch('/api/me/delete-request', { method: 'POST' });
+  if (!res.ok) {
+    const e = await readJsonIfPresent(res);
+    throw new Error(e?.error || 'Could not start the delete.');
+  }
+  return res.json();
+}
+
+/** Deletes the signed-in account once the code checks out. The session ends with it. */
+export async function deleteAccount(body) {
+  const res = await apiFetch('/api/me', { method: 'DELETE', body: JSON.stringify(body) });
+  if (!res.ok) {
+    const e = await readJsonIfPresent(res);
+    throw new Error(e?.error || 'Could not delete the account.');
+  }
+  return res.json();
+}

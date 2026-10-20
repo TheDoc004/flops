@@ -72,7 +72,30 @@ function ensureAuthTables(db) {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (coach_user_id, client_user_id)
     );
+    /* One pending "delete my account" confirmation per user. Separate from
+       email_otps so a login code can never confirm a delete, and vice versa. */
+    CREATE TABLE IF NOT EXISTS account_delete_challenges (
+      user_id    INTEGER PRIMARY KEY,
+      method     TEXT NOT NULL,
+      code_hash  TEXT NOT NULL,
+      attempts   INTEGER NOT NULL DEFAULT 0,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    /* Audit trail of account deletions. flagged_json lists every row the delete
+       flagged, so a restore can undo exactly that and nothing the user deleted earlier. */
+    CREATE TABLE IF NOT EXISTS account_deletions (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL,
+      method       TEXT NOT NULL,
+      flagged_json TEXT NOT NULL DEFAULT '{}',
+      created_at   TEXT NOT NULL
+    );
   `);
+  const userCols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+  if (!userCols.includes('deleted_at')) {
+    db.exec(`ALTER TABLE users ADD COLUMN deleted_at TEXT`);
+  }
 }
 
 /** One-shot: create owner user and reassign legacy user_id=0 rows to them. */
@@ -163,7 +186,7 @@ function userFromToken(db, token) {
     .prepare(
       `SELECT u.* FROM sessions s
        JOIN users u ON u.id = s.user_id
-       WHERE s.token = ? AND s.expires_at > ?`
+       WHERE s.token = ? AND s.expires_at > ? AND u.deleted_at IS NULL`
     )
     .get(token, new Date().toISOString());
   return row || null;
@@ -183,6 +206,47 @@ function verifyOtp(db, email, code) {
   if (row.expires_at < new Date().toISOString()) return false;
   if (String(row.code) !== String(code)) return false;
   db.prepare('DELETE FROM email_otps WHERE email = ?').run(email);
+  return true;
+}
+
+function hashCode(code) {
+  return crypto.createHash('sha256').update(String(code)).digest('hex');
+}
+
+const DELETE_CHALLENGE_MAX_ATTEMPTS = 5;
+
+/**
+ * Starts a fresh delete confirmation and returns its code. A new one replaces
+ * any earlier code, so an older code stops working the moment a new one is asked for.
+ */
+function startAccountDeleteChallenge(db, userId, method) {
+  const code = method === 'email' ? randomOtp() : randomToken();
+  const expires = new Date(Date.now() + OTP_TTL_MS).toISOString();
+  db.prepare(
+    `INSERT INTO account_delete_challenges (user_id, method, code_hash, attempts, expires_at, created_at)
+     VALUES (?, ?, ?, 0, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       method = excluded.method, code_hash = excluded.code_hash, attempts = 0,
+       expires_at = excluded.expires_at, created_at = excluded.created_at`
+  ).run(userId, method, hashCode(code), expires, new Date().toISOString());
+  return code;
+}
+
+/** True once per challenge: a match consumes it, so a replayed code is refused. */
+function consumeAccountDeleteChallenge(db, userId, method, code) {
+  const row = db.prepare('SELECT * FROM account_delete_challenges WHERE user_id = ?').get(userId);
+  if (!row || row.method !== method || !code) return false;
+  if (row.expires_at < new Date().toISOString() || row.attempts >= DELETE_CHALLENGE_MAX_ATTEMPTS) {
+    db.prepare('DELETE FROM account_delete_challenges WHERE user_id = ?').run(userId);
+    return false;
+  }
+  const given = Buffer.from(hashCode(code));
+  const expected = Buffer.from(row.code_hash);
+  if (!crypto.timingSafeEqual(given, expected)) {
+    db.prepare('UPDATE account_delete_challenges SET attempts = attempts + 1 WHERE user_id = ?').run(userId);
+    return false;
+  }
+  db.prepare('DELETE FROM account_delete_challenges WHERE user_id = ?').run(userId);
   return true;
 }
 
@@ -272,6 +336,8 @@ module.exports = {
   userFromToken,
   storeOtp,
   verifyOtp,
+  startAccountDeleteChallenge,
+  consumeAccountDeleteChallenge,
   findOrCreateEmailUser,
   findOrCreateAppleUser,
   publicUser,

@@ -12,6 +12,7 @@ const request = require('supertest');
 const { buildTestApp, authHeader, createUser } = require('./helpers');
 const writes = require('../mcp/writes');
 const reads = require('../mcp/reads');
+const { startAccountDeleteChallenge, consumeAccountDeleteChallenge } = require('../authService');
 
 const DAY = '2026-08-03';
 
@@ -30,6 +31,11 @@ const USER_TABLES = [
   'gym_sets',
   'gym_one_rep_maxes',
   'mcp_write_audit',
+  'day_prep_items',
+  'prepped_batches',
+  'training_schedule',
+  'training_feedback',
+  'problem_reports',
 ];
 
 function snapshot(db, userId) {
@@ -653,5 +659,333 @@ describe('privacy isolation — data export (GET /api/me/export)', () => {
 
     const bobExport = await request(app).get('/api/me/export').set(B.h);
     expect(bobExport.body.coach_links).toEqual([]);
+  });
+});
+
+/** Rows for the tables the first export skipped, tagged so a leak is visible. */
+async function seedExtras(app, user, h, tag) {
+  await request(app).post('/api/prep').set(h)
+    .send({ date: DAY, payload: { name: `${tag} prep oats` } }).expect(201);
+  await request(app).post('/api/prepped-batches').set(h).send({
+    name: `${tag} rice batch`, total_weight_g: 600,
+    total_calories: 780, total_protein_g: 16, total_carbs_g: 170, total_fat_g: 2,
+  }).expect(201);
+  await request(app).put('/api/training/schedule').set(h)
+    .send({ schedule: [{ weekday: 1, enabled: 1, workout_type: `${tag} lift` }] }).expect(200);
+  await request(app).put('/api/training/feedback').set(h)
+    .send({ date: DAY, energy: 'good', notes: `${tag} felt strong` }).expect(200);
+  await request(app).post('/api/problem-reports').set(h)
+    .send({ text: `${tag} chart looked blank`, route: '/history' }).expect(201);
+  return user;
+}
+
+async function makeCoach(app, h, name) {
+  await request(app).patch('/api/auth/me').set(h).send({ is_coach: true, display_name: name }).expect(200);
+  return (await request(app).get('/api/coach/invite-code').set(h)).body.invite_code;
+}
+
+/** Runs fn with the Jest owner fallback off, so a dead token really gets 401. */
+async function withoutJestFallback(fn) {
+  const prevJest = process.env.JEST_WORKER_ID;
+  delete process.env.JEST_WORKER_ID;
+  try {
+    return await fn();
+  } finally {
+    process.env.JEST_WORKER_ID = prevJest;
+  }
+}
+
+function mcpInitialize(app) {
+  return request(app)
+    .post('/mcp')
+    .set('x-api-key', 'privacy-mcp-token')
+    .set('Accept', 'application/json, text/event-stream')
+    .send({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'jest', version: '1.0.0' } },
+    });
+}
+
+describe('privacy isolation — the new export sections', () => {
+  let app;
+  let db;
+  let alice;
+  let bob;
+  let A;
+  let B;
+
+  beforeEach(async () => {
+    ({ app, db } = buildTestApp());
+    alice = createUser(db, 'alice@export2.test');
+    bob = createUser(db, 'bob@export2.test');
+    A = await seedUser(app, db, alice, 'Alice');
+    B = await seedUser(app, db, bob, 'Bob');
+    await seedExtras(app, alice, A.h, 'Alice');
+    await seedExtras(app, bob, B.h, 'Bob');
+    // A neutral third-party coach, so a suggestion carries neither side's tag.
+    const coach = createUser(db, 'coach@export2.test');
+    const coachH = authHeader(db, coach.id);
+    const invite = await makeCoach(app, coachH, 'Coach');
+    for (const [u, h] of [[alice, A.h], [bob, B.h]]) {
+      await request(app).post('/api/coach/link').set(h).send({ invite_code: invite }).expect(201);
+      await request(app).post(`/api/coach/clients/${u.id}/suggestions`).set(coachH)
+        .send({ for_date: DAY, note: 'more protein' }).expect(201);
+    }
+  });
+
+  const NEW_SECTIONS = [
+    'nutrition.prep_items',
+    'nutrition.prepped_batches',
+    'training.legacy_workouts.training_schedule',
+    'training.legacy_workouts.training_feedback',
+    'coach_suggestions',
+    'problem_reports',
+  ];
+
+  it.each([['Alice', 'Bob'], ['Bob', 'Alice']])('%s\'s export holds their new sections and none of %s\'s rows', async (own, other) => {
+    const [me, h] = own === 'Alice' ? [alice, A.h] : [bob, B.h];
+    const res = await request(app).get('/api/me/export').set(h);
+    expect(res.status).toBe(200);
+    const sections = exportSections(res.body);
+    for (const path of NEW_SECTIONS) {
+      const rows = sections[path];
+      expect({ path, rows: rows?.length > 0 }).toEqual({ path, rows: true });
+      for (const row of rows) {
+        if ('user_id' in row) expect({ path, user_id: row.user_id }).toEqual({ path, user_id: me.id });
+      }
+      expect({ path, leaked: JSON.stringify(rows).includes(other) }).toEqual({ path, leaked: false });
+    }
+    expect(JSON.stringify(sections['nutrition.prep_items'])).toContain(own);
+    expect(sections.coach_suggestions.map(s => s.client_user_id)).toEqual([me.id]);
+  });
+
+  it('a dismissed prep item stays out of the export', async () => {
+    const before = await request(app).get('/api/me/export').set(A.h);
+    const [item] = before.body.nutrition.prep_items;
+    await request(app).delete(`/api/prep/${item.id}`).set(A.h).expect(200);
+    const after = await request(app).get('/api/me/export').set(A.h);
+    expect(after.body.nutrition.prep_items).toEqual([]);
+  });
+});
+
+describe('privacy isolation — account delete (DELETE /api/me)', () => {
+  let app;
+  let db;
+  let alice;
+  let bob;
+  let A;
+  let B;
+  const prevToken = process.env.MCP_API_TOKEN;
+  const prevUser = process.env.MCP_USER_ID;
+
+  async function requestCode(h) {
+    const res = await request(app).post('/api/me/delete-request').set(h);
+    expect(res.status).toBe(200);
+    expect(res.body.method).toBe('email');
+    return res.body.dev_code;
+  }
+
+  async function deleteAlice() {
+    const code = await requestCode(A.h);
+    const res = await request(app).delete('/api/me').set(A.h).send({ code });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  }
+
+  beforeEach(async () => {
+    ({ app, db } = buildTestApp());
+    alice = createUser(db, 'alice@delete.test');
+    bob = createUser(db, 'bob@delete.test');
+    A = await seedUser(app, db, alice, 'Alice');
+    B = await seedUser(app, db, bob, 'Bob');
+    await seedExtras(app, alice, A.h, 'Alice');
+    await seedExtras(app, bob, B.h, 'Bob');
+    // Coach links both ways: Bob coaches Alice, and Alice coaches Bob.
+    const bobInvite = await makeCoach(app, B.h, 'Bob Coach');
+    const aliceInvite = await makeCoach(app, A.h, 'Alice Coach');
+    await request(app).post('/api/coach/link').set(A.h).send({ invite_code: bobInvite }).expect(201);
+    await request(app).post('/api/coach/link').set(B.h).send({ invite_code: aliceInvite }).expect(201);
+    await request(app).post(`/api/coach/clients/${bob.id}/suggestions`).set(A.h)
+      .send({ for_date: DAY, note: 'Alice says more protein' }).expect(201);
+    process.env.MCP_API_TOKEN = 'privacy-mcp-token';
+    process.env.MCP_USER_ID = String(alice.id);
+  });
+
+  afterEach(() => {
+    if (prevToken === undefined) delete process.env.MCP_API_TOKEN;
+    else process.env.MCP_API_TOKEN = prevToken;
+    if (prevUser === undefined) delete process.env.MCP_USER_ID;
+    else process.env.MCP_USER_ID = prevUser;
+  });
+
+  it('after the delete every one of A\'s tokens gets 401 on REST and on /mcp', async () => {
+    const secondDevice = authHeader(db, alice.id);
+    expect((await mcpInitialize(app)).status).toBe(200);
+
+    await deleteAlice();
+
+    await withoutJestFallback(async () => {
+      for (const h of [A.h, secondDevice]) {
+        for (const path of ['/api/recipes', '/api/me/export', '/api/auth/me']) {
+          const res = await request(app).get(path).set(h);
+          expect({ path, status: res.status }).toEqual({ path, status: 401 });
+          expect(bodyText(res)).not.toMatch(/Alice|Bob/);
+        }
+      }
+      const mcp = await mcpInitialize(app);
+      expect(mcp.status).toBe(401);
+      expect(bodyText(mcp)).not.toMatch(/Alice|Bob/);
+    });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?').get(alice.id).n).toBe(0);
+    // B is still signed in and served as B.
+    const bobOwn = await request(app).get('/api/recipes').set(B.h);
+    expect(bobOwn.status).toBe(200);
+    expect(bodyText(bobOwn)).toContain('Bob');
+  });
+
+  it('a deleted owner\'s MCP token does not fall through to the next user', async () => {
+    delete process.env.MCP_USER_ID;
+    expect(db.prepare('SELECT id FROM users ORDER BY id LIMIT 1').get().id).toBe(alice.id);
+    expect((await mcpInitialize(app)).status).toBe(200);
+    await deleteAlice();
+    const mcp = await mcpInitialize(app);
+    expect(mcp.status).toBe(401);
+  });
+
+  it('signing in again does not reopen the deleted account', async () => {
+    await deleteAlice();
+    const otp = await request(app).post('/api/auth/request-otp').send({ email: 'alice@delete.test' });
+    const res = await request(app).post('/api/auth/verify-otp')
+      .send({ email: 'alice@delete.test', code: otp.body.dev_code });
+    expect(res.status).toBe(403);
+    expect(res.body.token).toBeUndefined();
+  });
+
+  it('A disappears from B-coach\'s roster and both coach links end', async () => {
+    const before = await request(app).get('/api/coach/roster').set(B.h);
+    expect(before.body.map(r => r.client_user_id)).toEqual([alice.id]);
+    const inboxBefore = await request(app).get('/api/coach/suggestions').set(B.h);
+    expect(inboxBefore.body).toHaveLength(1);
+
+    await deleteAlice();
+
+    const roster = await request(app).get('/api/coach/roster').set(B.h);
+    expect(roster.status).toBe(200);
+    expect(roster.body).toEqual([]);
+    expect(bodyText(roster)).not.toContain('Alice');
+    const myCoaches = await request(app).get('/api/coach/my-coaches').set(B.h);
+    expect(myCoaches.body).toEqual([]);
+    const inbox = await request(app).get('/api/coach/suggestions').set(B.h);
+    expect(inbox.body).toEqual([]);
+    const drill = await request(app).get(`/api/coach/clients/${alice.id}/log?start=2026-08-01&end=2026-08-05`).set(B.h);
+    expect(drill.status).toBe(403);
+    const links = db.prepare('SELECT status FROM coach_links WHERE coach_user_id = ? OR client_user_id = ?')
+      .all(alice.id, alice.id);
+    expect(links.map(l => l.status)).toEqual(['revoked', 'revoked']);
+
+    const aliceInvite = db.prepare('SELECT invite_code FROM users WHERE id = ?').get(alice.id).invite_code;
+    const stranger = createUser(db, 'stranger@delete.test');
+    const relink = await request(app).post('/api/coach/link').set(authHeader(db, stranger.id))
+      .send({ invite_code: aliceInvite });
+    expect(relink.status).toBe(404);
+  });
+
+  it('B\'s rows are untouched and A\'s rows are soft-deleted, still in the DB', async () => {
+    const bobBefore = snapshot(db, bob.id);
+    const aliceBefore = snapshot(db, alice.id);
+
+    await deleteAlice();
+
+    expect(snapshot(db, bob.id)).toEqual(bobBefore);
+    const aliceAfter = snapshot(db, alice.id);
+    for (const t of USER_TABLES) {
+      expect({ t, rows: aliceAfter[t].length }).toEqual({ t, rows: aliceBefore[t].length });
+    }
+    for (const t of ['recipes', 'log_entries', 'supplements', 'diet_phases', 'gym_exercises', 'gym_templates']) {
+      expect({ t, live: aliceAfter[t].filter(r => !r.is_deleted).length }).toEqual({ t, live: 0 });
+    }
+    expect(aliceAfter.day_prep_items.every(r => r.status === 'dismissed')).toBe(true);
+    expect(aliceAfter.problem_reports.every(r => r.status === 'account_deleted')).toBe(true);
+    // The shared gym catalog (user_id 0) is never flagged.
+    expect(db.prepare('SELECT COUNT(*) AS n FROM gym_exercises WHERE user_id = 0 AND is_deleted = 1').get().n).toBe(0);
+
+    const user = db.prepare('SELECT deleted_at FROM users WHERE id = ?').get(alice.id);
+    expect(user.deleted_at).toBeTruthy();
+    const audit = db.prepare('SELECT * FROM account_deletions WHERE user_id = ?').all(alice.id);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].method).toBe('email');
+    const flagged = JSON.parse(audit[0].flagged_json);
+    expect(flagged.nutrition.recipes).toContain(A.recipeId);
+    expect(flagged.nutrition.log_entries).toContain(A.entryId);
+    expect(flagged.training.gym_templates).toEqual([A.templateId]);
+    expect(flagged.coach_links).toHaveLength(2);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM account_deletions WHERE user_id = ?').get(bob.id).n).toBe(0);
+  });
+
+  it('a replayed, superseded, expired or login code is refused, and nothing is deleted', async () => {
+    const before = snapshot(db, alice.id);
+    const refused = async body => {
+      const res = await request(app).delete('/api/me').set(A.h).send(body);
+      expect({ body, status: res.status }).toEqual({ body, status: 403 });
+    };
+
+    await refused({});
+    const first = await requestCode(A.h);
+    const second = await requestCode(A.h);
+    if (first !== second) await refused({ code: first });
+
+    // A login code for the same email is not a delete code.
+    const login = await request(app).post('/api/auth/request-otp').send({ email: 'alice@delete.test' });
+    if (login.body.dev_code !== second) await refused({ code: login.body.dev_code });
+
+    db.prepare('UPDATE account_delete_challenges SET expires_at = ? WHERE user_id = ?')
+      .run('2000-01-01T00:00:00.000Z', alice.id);
+    await refused({ code: second });
+    await refused({ code: second });
+
+    expect(snapshot(db, alice.id)).toEqual(before);
+    expect(db.prepare('SELECT deleted_at FROM users WHERE id = ?').get(alice.id).deleted_at).toBeNull();
+    expect((await request(app).get('/api/recipes').set(A.h)).status).toBe(200);
+  });
+
+  it('five wrong guesses burn the code even when the right one comes next', async () => {
+    const code = await requestCode(A.h);
+    const wrong = code === '000000' ? '111111' : '000000';
+    for (let i = 0; i < 5; i++) {
+      expect((await request(app).delete('/api/me').set(A.h).send({ code: wrong })).status).toBe(403);
+    }
+    expect((await request(app).delete('/api/me').set(A.h).send({ code })).status).toBe(403);
+    expect(db.prepare('SELECT deleted_at FROM users WHERE id = ?').get(alice.id).deleted_at).toBeNull();
+  });
+
+  it('a delete code confirms once: the same code cannot be used twice', () => {
+    const code = startAccountDeleteChallenge(db, alice.id, 'email');
+    expect(consumeAccountDeleteChallenge(db, alice.id, 'email', code)).toBe(true);
+    expect(consumeAccountDeleteChallenge(db, alice.id, 'email', code)).toBe(false);
+  });
+
+  it('B\'s code cannot delete A, and A\'s delete never touches B', async () => {
+    const bobCode = await requestCode(B.h);
+    const res = await request(app).delete('/api/me').set(A.h).send({ code: bobCode });
+    if (res.status === 200) throw new Error('B\'s code deleted A');
+    expect(res.status).toBe(403);
+    expect(db.prepare('SELECT deleted_at FROM users WHERE id = ?').get(alice.id).deleted_at).toBeNull();
+    expect(db.prepare('SELECT deleted_at FROM users WHERE id = ?').get(bob.id).deleted_at).toBeNull();
+  });
+
+  it('an Apple-only account confirms with a fresh Apple re-sign-in, not a replayed challenge', async () => {
+    const signIn = await request(app).post('/api/auth/apple').send({ apple_sub: 'apple-only-sub', display_name: 'Apple person' });
+    expect(signIn.status).toBe(200);
+    const h = { Authorization: `Bearer ${signIn.body.token}` };
+    const start = await request(app).post('/api/me/delete-request').set(h);
+    expect(start.body.method).toBe('apple');
+
+    const wrongSub = await request(app).delete('/api/me').set(h).send({ challenge: start.body.challenge, apple_sub: 'someone-else' });
+    expect(wrongSub.status).toBe(403);
+    const fresh = await request(app).post('/api/me/delete-request').set(h);
+    const ok = await request(app).delete('/api/me').set(h).send({ challenge: fresh.body.challenge, apple_sub: 'apple-only-sub' });
+    expect(ok.status).toBe(200);
+    const audit = db.prepare('SELECT method FROM account_deletions WHERE user_id = ?').get(signIn.body.user.id);
+    expect(audit.method).toBe('apple');
   });
 });
