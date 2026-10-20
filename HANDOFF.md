@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-18 (Download my data: `GET /api/me/export` + Profile row — branch `noggin/flops/privacy-readiness-a-user-data--6ee8c6-1`, awaiting 🔀; earlier the same day: Report a problem, privacy isolation tests, demo seed)_
+_Last updated: 2026-10-20 (privacyIsolation "socket hang up" flake fixed in the test harness — branch `noggin/flops/stability-privacyisolation-tes-013e6a-1`, awaiting 🔀; 2026-10-19: Today 390px polish; 2026-10-18: Download my data: `GET /api/me/export` + Profile row — branch `noggin/flops/privacy-readiness-a-user-data--6ee8c6-1`, awaiting 🔀; earlier the same day: Report a problem, privacy isolation tests, demo seed)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -24,6 +24,15 @@ _current-state_ companion to it.
 ---
 
 ## Where Diego left off (read this first)
+
+**Stability — privacyIsolation flake (2026-10-20, branch `noggin/flops/stability-privacyisolation-tes-013e6a-1`, awaiting 🔀):**
+- Cause: `request(app)` opens a server per request with `app.listen(0)`, which binds `::`, then
+  supertest dials `127.0.0.1:<port>`. On macOS that wildcard bind can share a port another local
+  process holds on 127.0.0.1, and the connection goes to that process instead ("socket hang up").
+- Fix, test harness only: `listenTestServer(app)` / `closeTestServer(server)` in
+  `server/__tests__/helpers.js` listen once per test on 127.0.0.1; `privacyIsolation.test.js` passes
+  that server to supertest. No app code, assertions or timeouts changed.
+- Other suites still use `request(app)`; switch them to the helpers if they ever hang up the same way.
 
 **UI polish 1/35 — Today at 390px (2026-10-19, branch `noggin/flops/polish-today-dashboard-390px-s-956687-1`, awaiting ✅):**
 - One surface per Today card: `SupplementStrip` no longer draws its own `.card` inside the dashboard
