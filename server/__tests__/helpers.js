@@ -12,6 +12,26 @@ function buildTestApp() {
 }
 
 /**
+ * Listens once on 127.0.0.1 for supertest to reuse. `request(app)` instead opens
+ * a server per request on `::` and then dials 127.0.0.1 — on macOS that can land
+ * on a port another local process holds on 127.0.0.1, and the request is reset
+ * ("socket hang up"). Close it with closeTestServer().
+ */
+function listenTestServer(app) {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, '127.0.0.1');
+    server.once('listening', () => resolve(server));
+    server.once('error', reject);
+  });
+}
+
+function closeTestServer(server) {
+  if (!server) return Promise.resolve();
+  server.closeAllConnections();
+  return new Promise(resolve => server.close(() => resolve()));
+}
+
+/**
  * Mini app: attach Jest owner fallback + one router.
  * Prefer buildTestApp() when possible.
  */
@@ -36,6 +56,8 @@ function createUser(db, email) {
 
 module.exports = {
   buildTestApp,
+  listenTestServer,
+  closeTestServer,
   wrapWithAuth,
   authHeader,
   createUser,

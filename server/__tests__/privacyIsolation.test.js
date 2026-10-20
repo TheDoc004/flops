@@ -9,7 +9,7 @@
  * rather than fixed here, so the district can turn it into a bug item.
  */
 const request = require('supertest');
-const { buildTestApp, authHeader, createUser } = require('./helpers');
+const { buildTestApp, listenTestServer, closeTestServer, authHeader, createUser } = require('./helpers');
 const writes = require('../mcp/writes');
 const reads = require('../mcp/reads');
 
@@ -41,9 +41,9 @@ function snapshot(db, userId) {
 }
 
 /** Seeds one user's data through the same REST routes the app uses. */
-async function seedUser(app, db, user, tag) {
+async function seedUser(server, db, user, tag) {
   const h = authHeader(db, user.id);
-  const api = () => request(app);
+  const api = () => request(server);
 
   const recipe = await api().post('/api/recipes').set(h).send({
     name: `${tag} Bowl`,
@@ -118,6 +118,7 @@ function bodyText(res) {
 
 describe('privacy isolation — REST API', () => {
   let app;
+  let server;
   let db;
   let alice;
   let bob;
@@ -126,11 +127,14 @@ describe('privacy isolation — REST API', () => {
 
   beforeEach(async () => {
     ({ app, db } = buildTestApp());
+    server = await listenTestServer(app);
     alice = createUser(db, 'alice@privacy.test');
     bob = createUser(db, 'bob@privacy.test');
-    A = await seedUser(app, db, alice, 'Alice');
-    B = await seedUser(app, db, bob, 'Bob');
+    A = await seedUser(server, db, alice, 'Alice');
+    B = await seedUser(server, db, bob, 'Bob');
   });
+
+  afterEach(() => closeTestServer(server));
 
   it('list/read endpoints never return the other user\'s rows', async () => {
     const reads = [
@@ -155,11 +159,11 @@ describe('privacy isolation — REST API', () => {
       '/api/prepped-batches',
     ];
     for (const path of reads) {
-      const res = await request(app).get(path).set(B.h);
+      const res = await request(server).get(path).set(B.h);
       expect({ path, leaked: bodyText(res).includes('Alice') }).toEqual({ path, leaked: false });
     }
     // Control: the same probe does see A's rows when A asks, so the check above can fail.
-    const own = await request(app).get('/api/recipes').set(A.h);
+    const own = await request(server).get('/api/recipes').set(A.h);
     expect(bodyText(own)).toContain('Alice');
   });
 
@@ -171,13 +175,13 @@ describe('privacy isolation — REST API', () => {
       `/api/gym/templates/${A.templateId}/exercises`,
     ];
     for (const path of paths) {
-      const res = await request(app).get(path).set(B.h);
+      const res = await request(server).get(path).set(B.h);
       expect({ path, status: res.status }).toEqual({ path, status: 404 });
       expect(bodyText(res)).not.toContain('Alice');
     }
-    const oneRm = await request(app).get(`/api/gym/one-rm/${A.exerciseId}`).set(B.h);
+    const oneRm = await request(server).get(`/api/gym/one-rm/${A.exerciseId}`).set(B.h);
     expect(oneRm.body.estimated).toBeNull();
-    const progress = await request(app).get(`/api/gym/progress?exercise_id=${A.exerciseId}`).set(B.h);
+    const progress = await request(server).get(`/api/gym/progress?exercise_id=${A.exerciseId}`).set(B.h);
     expect(progress.body.sets).toEqual([]);
   });
 
@@ -210,7 +214,7 @@ describe('privacy isolation — REST API', () => {
     ];
     // POST endpoints may answer 200 with nothing to do; the snapshot is what proves them.
     for (const [method, path, body] of attempts) {
-      const res = await request(app)[method](path).set(B.h).send(body);
+      const res = await request(server)[method](path).set(B.h).send(body);
       const accepted = method !== 'post' && res.status >= 200 && res.status < 300;
       expect({ method, path, accepted }).toEqual({ method, path, accepted: false });
     }
@@ -218,26 +222,26 @@ describe('privacy isolation — REST API', () => {
   });
 
   it('B cannot use A\'s recipe, ingredient or template as a source for B\'s own writes', async () => {
-    const logRecipe = await request(app).post('/api/log').set(B.h)
+    const logRecipe = await request(server).post('/api/log').set(B.h)
       .send({ recipe_id: A.recipeId, date: DAY, servings: 1 });
     expect(logRecipe.status).toBe(404);
 
-    const session = await request(app).post('/api/gym/sessions').set(B.h)
+    const session = await request(server).post('/api/gym/sessions').set(B.h)
       .send({ date: '2026-08-04', template_id: A.templateId });
     expect(session.status).toBe(400);
 
-    const addToOwn = await request(app).post(`/api/gym/templates/${B.templateId}/exercises`).set(B.h)
+    const addToOwn = await request(server).post(`/api/gym/templates/${B.templateId}/exercises`).set(B.h)
       .send({ exercise_id: A.exerciseId });
     expect(addToOwn.status).toBe(400);
 
-    const setOnOwn = await request(app).post(`/api/gym/sessions/${B.sessionId}/sets`).set(B.h)
+    const setOnOwn = await request(server).post(`/api/gym/sessions/${B.sessionId}/sets`).set(B.h)
       .send({ exercise_id: A.exerciseId, reps: 5, weight: 100 });
     expect(setOnOwn.status).toBe(400);
   });
 
   it('body-weight delete by date only removes the caller\'s own row', async () => {
-    await request(app).delete(`/api/body-weights/${DAY}`).set(B.h).expect(204);
-    const aliceWeights = await request(app).get('/api/body-weights').set(A.h);
+    await request(server).delete(`/api/body-weights/${DAY}`).set(B.h).expect(204);
+    const aliceWeights = await request(server).get('/api/body-weights').set(A.h);
     expect(aliceWeights.body).toEqual([expect.objectContaining({ date: DAY, weight_kg: 80 })]);
   });
 
@@ -245,7 +249,7 @@ describe('privacy isolation — REST API', () => {
     const prevJest = process.env.JEST_WORKER_ID;
     delete process.env.JEST_WORKER_ID;
     try {
-      const res = await request(app).get('/api/recipes').set({ Authorization: 'Bearer not-a-real-token' });
+      const res = await request(server).get('/api/recipes').set({ Authorization: 'Bearer not-a-real-token' });
       expect(res.status).toBe(401);
       expect(bodyText(res)).not.toContain('Alice');
     } finally {
@@ -256,6 +260,7 @@ describe('privacy isolation — REST API', () => {
 
 describe('privacy isolation — MCP tools', () => {
   let app;
+  let server;
   let db;
   let alice;
   let bob;
@@ -265,14 +270,17 @@ describe('privacy isolation — MCP tools', () => {
 
   beforeEach(async () => {
     ({ app, db } = buildTestApp());
+    server = await listenTestServer(app);
     alice = createUser(db, 'alice@mcp-privacy.test');
     bob = createUser(db, 'bob@mcp-privacy.test');
-    A = await seedUser(app, db, alice, 'Alice');
-    B = await seedUser(app, db, bob, 'Bob');
+    A = await seedUser(server, db, alice, 'Alice');
+    B = await seedUser(server, db, bob, 'Bob');
     const w = writes.logBodyWeight(db, alice.id, { weight: 81, unit: 'kg', date: '2026-08-04' });
     expect(w.error).toBeUndefined();
     aliceAudit = w.audit_id;
   });
+
+  afterEach(() => closeTestServer(server));
 
   it('read tools scoped to B never return A\'s data', () => {
     const outputs = [
@@ -387,6 +395,7 @@ describe('privacy isolation — MCP tools', () => {
 
 describe('privacy isolation — coach consent scopes', () => {
   let app;
+  let server;
   let db;
   let coach;
   let client;
@@ -395,8 +404,8 @@ describe('privacy isolation — coach consent scopes', () => {
   let clientH;
 
   async function link(scopes) {
-    const invite = await request(app).get('/api/coach/invite-code').set(coachH);
-    return request(app).post('/api/coach/link').set(clientH)
+    const invite = await request(server).get('/api/coach/invite-code').set(coachH);
+    return request(server).post('/api/coach/link').set(clientH)
       .send({ invite_code: invite.body.invite_code, ...scopes })
       .expect(201);
   }
@@ -409,38 +418,41 @@ describe('privacy isolation — coach consent scopes', () => {
 
   beforeEach(async () => {
     ({ app, db } = buildTestApp());
+    server = await listenTestServer(app);
     coach = createUser(db, 'coach@privacy.test');
     client = createUser(db, 'client@privacy.test');
     stranger = createUser(db, 'stranger@privacy.test');
     coachH = authHeader(db, coach.id);
     clientH = authHeader(db, client.id);
-    await request(app).patch('/api/auth/me').set(coachH).send({ is_coach: true, display_name: 'Coach' }).expect(200);
-    await seedUser(app, db, client, 'Client');
-    await seedUser(app, db, stranger, 'Stranger');
+    await request(server).patch('/api/auth/me').set(coachH).send({ is_coach: true, display_name: 'Coach' }).expect(200);
+    await seedUser(server, db, client, 'Client');
+    await seedUser(server, db, stranger, 'Stranger');
   });
+
+  afterEach(() => closeTestServer(server));
 
   it('an unlinked coach gets nothing for anyone', async () => {
     for (const id of [client.id, stranger.id]) {
       for (const [method, path] of coachReads(id)) {
-        const res = await request(app)[method](path).set(coachH).send({});
+        const res = await request(server)[method](path).set(coachH).send({});
         expect({ path, status: res.status }).toEqual({ path, status: 403 });
       }
     }
-    const roster = await request(app).get('/api/coach/roster').set(coachH);
+    const roster = await request(server).get('/api/coach/roster').set(coachH);
     expect(roster.body).toEqual([]);
   });
 
   it('a linked coach reads only the linked client, never another user', async () => {
     await link({ scope_nutrition: true, scope_training: true, scope_weight: true });
-    const ok = await request(app).get(coachReads(client.id)[0][1]).set(coachH);
+    const ok = await request(server).get(coachReads(client.id)[0][1]).set(coachH);
     expect(ok.status).toBe(200);
     expect(bodyText(ok)).toContain('Client meal');
 
     for (const [method, path] of coachReads(stranger.id)) {
-      const res = await request(app)[method](path).set(coachH).send({});
+      const res = await request(server)[method](path).set(coachH).send({});
       expect({ path, status: res.status }).toEqual({ path, status: 403 });
     }
-    const roster = await request(app).get('/api/coach/roster').set(coachH);
+    const roster = await request(server).get('/api/coach/roster').set(coachH);
     expect(roster.body.map(r => r.client_user_id)).toEqual([client.id]);
     expect(bodyText(roster)).not.toContain('Stranger');
   });
@@ -448,14 +460,14 @@ describe('privacy isolation — coach consent scopes', () => {
   it('a coach without the nutrition scope cannot read nutrition', async () => {
     await link({ scope_nutrition: false, scope_training: true, scope_weight: true });
     for (const [method, path] of coachReads(client.id)) {
-      const res = await request(app)[method](path).set(coachH).send({});
+      const res = await request(server)[method](path).set(coachH).send({});
       expect({ path, status: res.status }).toEqual({ path, status: 403 });
     }
-    const suggest = await request(app).post(`/api/coach/clients/${client.id}/suggestions`).set(coachH)
+    const suggest = await request(server).post(`/api/coach/clients/${client.id}/suggestions`).set(coachH)
       .send({ for_date: DAY, note: 'eat more' });
     expect(suggest.status).toBe(403);
 
-    const roster = await request(app).get('/api/coach/roster').set(coachH);
+    const roster = await request(server).get('/api/coach/roster').set(coachH);
     expect(roster.body).toHaveLength(1);
     expect(roster.body[0].last_logged).toBeNull();
     expect(roster.body[0].summary_7d).toEqual([]);
@@ -464,36 +476,36 @@ describe('privacy isolation — coach consent scopes', () => {
 
   it('after revoke the coach reads nothing and the client leaves the roster', async () => {
     await link({ scope_nutrition: true });
-    await request(app).post('/api/coach/revoke').set(clientH).send({ coach_user_id: coach.id }).expect(200);
+    await request(server).post('/api/coach/revoke').set(clientH).send({ coach_user_id: coach.id }).expect(200);
     for (const [method, path] of coachReads(client.id)) {
-      const res = await request(app)[method](path).set(coachH).send({});
+      const res = await request(server)[method](path).set(coachH).send({});
       expect({ path, status: res.status }).toEqual({ path, status: 403 });
     }
-    const roster = await request(app).get('/api/coach/roster').set(coachH);
+    const roster = await request(server).get('/api/coach/roster').set(coachH);
     expect(roster.body).toEqual([]);
   });
 
   it('a coach link never opens the client\'s data through the regular /api routes', async () => {
     await link({ scope_nutrition: true, scope_training: true, scope_weight: true });
     for (const path of ['/api/recipes', `/api/log?date=${DAY}`, '/api/body-weights', '/api/gym/templates', '/api/supplements']) {
-      const res = await request(app).get(path).set(coachH);
+      const res = await request(server).get(path).set(coachH);
       expect({ path, leaked: bodyText(res).includes('Client') }).toEqual({ path, leaked: false });
     }
   });
 
   it('only the client can answer a coach suggestion addressed to them', async () => {
     await link({ scope_nutrition: true });
-    const s = await request(app).post(`/api/coach/clients/${client.id}/suggestions`).set(coachH)
+    const s = await request(server).post(`/api/coach/clients/${client.id}/suggestions`).set(coachH)
       .send({ for_date: DAY, note: 'more protein' });
     expect(s.status).toBe(201);
 
     const strangerH = authHeader(db, stranger.id);
-    const inbox = await request(app).get('/api/coach/suggestions').set(strangerH);
+    const inbox = await request(server).get('/api/coach/suggestions').set(strangerH);
     expect(inbox.body).toEqual([]);
-    const patch = await request(app).patch(`/api/coach/suggestions/${s.body.id}`).set(strangerH)
+    const patch = await request(server).patch(`/api/coach/suggestions/${s.body.id}`).set(strangerH)
       .send({ status: 'dismissed' });
     expect(patch.status).toBe(404);
-    const coachPatch = await request(app).patch(`/api/coach/suggestions/${s.body.id}`).set(coachH)
+    const coachPatch = await request(server).patch(`/api/coach/suggestions/${s.body.id}`).set(coachH)
       .send({ status: 'applied' });
     expect(coachPatch.status).toBe(404);
   });
@@ -512,6 +524,7 @@ function exportSections(body, prefix = '') {
 
 describe('privacy isolation — data export (GET /api/me/export)', () => {
   let app;
+  let server;
   let db;
   let alice;
   let bob;
@@ -549,23 +562,26 @@ describe('privacy isolation — data export (GET /api/me/export)', () => {
 
   beforeEach(async () => {
     ({ app, db } = buildTestApp());
+    server = await listenTestServer(app);
     alice = createUser(db, 'alice@export.test');
     bob = createUser(db, 'bob@export.test');
-    A = await seedUser(app, db, alice, 'Alice');
-    B = await seedUser(app, db, bob, 'Bob');
+    A = await seedUser(server, db, alice, 'Alice');
+    B = await seedUser(server, db, bob, 'Bob');
     for (const [user, tag] of [[alice, 'Alice'], [bob, 'Bob']]) {
       const h = authHeader(db, user.id);
-      await request(app).put('/api/goals').set(h)
+      await request(server).put('/api/goals').set(h)
         .send({ effective_start_date: '2026-08-01', goals: [{ weekday: 1, calories_min: 2000, calories_max: 2400 }] })
         .expect(200);
-      await request(app).put('/api/profile').set(h).send({ height_cm: tag === 'Alice' ? 170 : 190 }).expect(200);
+      await request(server).put('/api/profile').set(h).send({ height_cm: tag === 'Alice' ? 170 : 190 }).expect(200);
       const w = writes.logBodyWeight(db, user.id, { weight: 81, unit: 'kg', date: '2026-08-04' });
       expect(w.error).toBeUndefined();
     }
   });
 
+  afterEach(() => closeTestServer(server));
+
   it('A\'s export holds every section of A\'s data and none of B\'s rows', async () => {
-    const res = await request(app).get('/api/me/export').set(A.h);
+    const res = await request(server).get('/api/me/export').set(A.h);
     expect(res.status).toBe(200);
     expect(res.headers['content-disposition']).toMatch(/^attachment; filename="flops-export-\d{4}-\d{2}-\d{2}\.json"$/);
     const sections = exportSections(res.body);
@@ -580,7 +596,7 @@ describe('privacy isolation — data export (GET /api/me/export)', () => {
   });
 
   it('B\'s export holds none of A\'s rows', async () => {
-    const res = await request(app).get('/api/me/export').set(B.h);
+    const res = await request(server).get('/api/me/export').set(B.h);
     expect(res.status).toBe(200);
     expect(res.body.nutrition.profile.height_cm).toBe(190);
     expectOnlyOwnRows(res.body, bob.id, 'Alice');
@@ -591,12 +607,12 @@ describe('privacy isolation — data export (GET /api/me/export)', () => {
   });
 
   it('soft-deleted rows stay out of the export', async () => {
-    await request(app).delete(`/api/recipes/${A.recipeId}`).set(A.h).expect(204);
-    await request(app).delete(`/api/log/${A.entryId}`).set(A.h).expect(204);
-    await request(app).delete(`/api/diet-phases/${A.phaseId}`).set(A.h);
-    await request(app).delete(`/api/supplements/${A.supplementId}`).set(A.h);
-    await request(app).delete(`/api/gym/templates/${A.templateId}`).set(A.h);
-    const res = await request(app).get('/api/me/export').set(A.h);
+    await request(server).delete(`/api/recipes/${A.recipeId}`).set(A.h).expect(204);
+    await request(server).delete(`/api/log/${A.entryId}`).set(A.h).expect(204);
+    await request(server).delete(`/api/diet-phases/${A.phaseId}`).set(A.h);
+    await request(server).delete(`/api/supplements/${A.supplementId}`).set(A.h);
+    await request(server).delete(`/api/gym/templates/${A.templateId}`).set(A.h);
+    const res = await request(server).get('/api/me/export').set(A.h);
     const s = exportSections(res.body);
     expect(s['nutrition.recipes'].map(r => r.id)).not.toContain(A.recipeId);
     expect(s['nutrition.log_entries'].map(r => r.id)).not.toContain(A.entryId);
@@ -611,9 +627,9 @@ describe('privacy isolation — data export (GET /api/me/export)', () => {
     const prevJest = process.env.JEST_WORKER_ID;
     delete process.env.JEST_WORKER_ID;
     try {
-      const none = await request(app).get('/api/me/export');
+      const none = await request(server).get('/api/me/export');
       expect(none.status).toBe(401);
-      const bad = await request(app).get('/api/me/export').set({ Authorization: 'Bearer not-a-real-token' });
+      const bad = await request(server).get('/api/me/export').set({ Authorization: 'Bearer not-a-real-token' });
       expect(bad.status).toBe(401);
       for (const res of [none, bad]) {
         expect(bodyText(res)).not.toMatch(/Alice|Bob/);
@@ -626,13 +642,13 @@ describe('privacy isolation — data export (GET /api/me/export)', () => {
   it('a coach link does not widen either side\'s export', async () => {
     const coach = createUser(db, 'coach@export.test');
     const coachH = authHeader(db, coach.id);
-    await request(app).patch('/api/auth/me').set(coachH).send({ is_coach: true, display_name: 'CoachName' }).expect(200);
-    const invite = await request(app).get('/api/coach/invite-code').set(coachH);
-    await request(app).post('/api/coach/link').set(A.h)
+    await request(server).patch('/api/auth/me').set(coachH).send({ is_coach: true, display_name: 'CoachName' }).expect(200);
+    const invite = await request(server).get('/api/coach/invite-code').set(coachH);
+    await request(server).post('/api/coach/link').set(A.h)
       .send({ invite_code: invite.body.invite_code, scope_nutrition: true, scope_training: true, scope_weight: true })
       .expect(201);
 
-    const coachExport = await request(app).get('/api/me/export').set(coachH);
+    const coachExport = await request(server).get('/api/me/export').set(coachH);
     expect(coachExport.status).toBe(200);
     expectOnlyOwnRows(coachExport.body, coach.id, 'Alice');
     expect(coachExport.body.coach_links).toEqual([
@@ -644,14 +660,14 @@ describe('privacy isolation — data export (GET /api/me/export)', () => {
     ]);
     expect(bodyText(coachExport)).not.toContain('alice@export.test');
 
-    const clientExport = await request(app).get('/api/me/export').set(A.h);
+    const clientExport = await request(server).get('/api/me/export').set(A.h);
     expectOnlyOwnRows(clientExport.body, alice.id, 'Bob');
     expect(clientExport.body.coach_links).toEqual([
       expect.objectContaining({ coach_user_id: coach.id, client_user_id: alice.id, role: 'client' }),
     ]);
     expect(bodyText(clientExport)).not.toMatch(/CoachName|coach@export\.test/);
 
-    const bobExport = await request(app).get('/api/me/export').set(B.h);
+    const bobExport = await request(server).get('/api/me/export').set(B.h);
     expect(bobExport.body.coach_links).toEqual([]);
   });
 });
