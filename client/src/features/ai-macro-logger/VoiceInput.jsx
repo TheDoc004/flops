@@ -43,7 +43,7 @@ export default function VoiceInput({ onTranscript }) {
   }
 
   return (
-    <div style={{ display: 'inline-block' }}>
+    <div className="ai-voice">
       <button
         type="button"
         className={
@@ -62,7 +62,7 @@ export default function VoiceInput({ onTranscript }) {
             : (<><span aria-hidden="true">🎤</span> Speak a meal</>)}
       </button>
       {error && (
-        <p className="error" style={{ margin: '6px 0 0', fontSize: 13 }}>{error}</p>
+        <p className="error ai-voice__error">{error}</p>
       )}
     </div>
   );

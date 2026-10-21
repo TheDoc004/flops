@@ -1746,6 +1746,457 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
   background: var(--color-bg);
 }
 
+/* ── AI logger (page + Today modal) ──
+   Everything here is scoped to .ai-logger / .ai-logger-modal and its own
+   ai-* classes. Rhythm: 16px between sections, 8px inside them; every control
+   is at least 44px tall; data-driven colours (source, confidence) stay inline. */
+.ai-logger-modal {
+  width: min(600px, 94vw);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.ai-logger-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-bottom: var(--space-8);
+}
+.ai-logger-modal__title { margin: 0; }
+.ai-logger-modal .modal-close-x {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: -8px -10px -8px 0;
+}
+.ai-logger-modal__intro {
+  margin: 0 0 var(--space-16);
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+/* Inside the dialog the dialog is the surface: no card within a card. */
+.ai-logger-modal .ai-logger__card {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+html[data-notebook-day] .ai-logger-modal .ai-logger__card { background: transparent; }
+
+.ai-logger__title { margin-bottom: var(--space-6); }
+.ai-logger__subtitle { margin-bottom: var(--space-16); }
+.ai-logger__card { margin-bottom: var(--space-16); }
+.ai-logger__section-title { margin: 0 0 var(--space-12); }
+.ai-logger__panel-title {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+.ai-logger__label {
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+.ai-logger__hint {
+  margin: 0 0 var(--space-12);
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+.ai-logger__note {
+  margin: var(--space-6) 0 0;
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+}
+.ai-logger__micro {
+  margin: 0;
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+}
+.ai-logger__micro--warn { color: var(--color-warning-ink); }
+.ai-logger__error { margin: var(--space-12) 0 0; }
+.ai-logger__stack { display: flex; flex-direction: column; gap: var(--space-8); }
+
+/* Buttons: one height for every action row, a compact-but-44px size for
+   in-panel actions, and an equal-width split for paired actions. */
+.ai-logger .btn-primary,
+.ai-logger .btn-secondary { min-height: var(--touch-target); }
+.ai-logger__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  margin-top: var(--space-12);
+}
+.ai-logger__actions .btn-primary,
+.ai-logger__actions .btn-secondary { min-height: 48px; font-weight: 700; }
+.ai-logger__actions--split > * { flex: 1 1 0; min-width: 0; }
+.ai-logger__actions--split .ai-voice .btn-secondary { width: 100%; }
+.ai-logger__btn-sm {
+  flex-shrink: 0;
+  padding: 0 var(--space-14);
+  font-size: var(--text-secondary);
+}
+.ai-logger__btn-lg {
+  width: 100%;
+  min-height: 56px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.ai-logger__choice { justify-content: flex-start; text-align: left; }
+.ai-logger__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target);
+  margin: var(--space-2) 0 -10px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-caption);
+  color: var(--color-link);
+  text-decoration: underline;
+  text-align: left;
+}
+
+/* Description box + voice */
+.ai-logger__desc { position: relative; }
+.ai-logger__desc textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.ai-logger__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-10);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.82);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+.ai-logger__overlay .btn-spinner { margin-right: 0; }
+.ai-voice { display: inline-block; }
+.ai-voice__error { margin: var(--space-6) 0 0; font-size: var(--text-secondary); }
+
+/* Conversation */
+.ai-logger .ai-chat-thread { margin-bottom: var(--space-12); }
+
+/* Matched recipe */
+.ai-logger__match {
+  margin-bottom: var(--space-12);
+  padding: var(--space-12);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-primary-subtle);
+}
+.ai-logger__match-name {
+  font-size: var(--text-section);
+  font-weight: 700;
+  color: var(--color-primary-ink);
+}
+.ai-logger__match-meta {
+  margin-top: var(--space-4);
+  font-size: var(--text-caption);
+  color: var(--color-primary);
+}
+.ai-logger__applied {
+  margin-bottom: var(--space-12);
+  padding: var(--space-12);
+  border: 1px solid var(--status-hit-border);
+  border-radius: var(--radius-md);
+  background: #ecfdf5;
+  font-size: var(--text-secondary);
+  color: var(--status-hit-text);
+}
+.ai-logger__applied ul { margin: var(--space-6) 0 0; padding-left: 18px; }
+.ai-logger__keep {
+  margin-bottom: var(--space-12);
+  padding: var(--space-12);
+  border-radius: var(--radius-md);
+}
+.ai-logger__keep .ai-logger__hint { margin: var(--space-2) 0 var(--space-8); }
+.ai-logger__keep-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-10);
+}
+.ai-logger__keep-label {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: var(--text-secondary);
+  color: var(--color-text-body);
+}
+.ai-logger__keep-done {
+  flex-shrink: 0;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--status-hit-text);
+}
+.ai-logger__servings { max-width: 160px; margin-bottom: var(--space-12); }
+.ai-logger__ai-badge {
+  display: inline-block;
+  margin-left: var(--space-8);
+  padding: 1px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-secondary-bg);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+.ai-logger__hint .ai-logger__ai-badge { margin-left: 0; }
+.ai-logger__final { margin-bottom: var(--space-16); }
+.ai-logger__final-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-10);
+  padding: var(--space-8) 0;
+  border-bottom: 1px solid var(--color-divider-strong);
+  font-size: var(--text-secondary);
+}
+.ai-logger__final-name { min-width: 0; font-weight: 500; color: var(--color-text-strong); }
+.ai-logger__final-amount { margin-left: var(--space-8); font-weight: 400; color: var(--color-text-muted); }
+.ai-logger__final-cal {
+  flex-shrink: 0;
+  color: var(--color-text-body);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Recipe fix-ups ("couldn't apply") */
+.ai-fixups {
+  margin-bottom: var(--space-12);
+  padding: var(--space-12);
+  border: 1px solid var(--status-partial-border);
+  border-radius: var(--radius-md);
+  background: #fffbeb;
+  font-size: var(--text-secondary);
+  color: var(--color-warning-ink);
+}
+.ai-fixups__list { display: flex; flex-direction: column; gap: var(--space-8); margin-top: var(--space-8); }
+.ai-fixups__item { padding-top: var(--space-8); border-top: 1px solid #fde68a; }
+.ai-fixups__line { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-8) var(--space-10); }
+.ai-fixups__text { flex: 1 1 200px; min-width: 0; }
+.ai-fixups__reason { color: #a16207; }
+.ai-fixups__picker {
+  margin-top: var(--space-8);
+  padding: var(--space-12);
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+.ai-fixups__question {
+  margin-bottom: var(--space-8);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.ai-fixups__search { width: 100%; margin-bottom: var(--space-8); }
+.ai-fixups__empty { margin: 0 0 var(--space-8); color: var(--color-text-muted); }
+.ai-fixups__chips { display: flex; flex-wrap: wrap; gap: var(--space-6); margin-bottom: var(--space-8); }
+.ai-fixups__chip {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-14);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: #fff;
+  font: inherit;
+  font-size: var(--text-secondary);
+  color: var(--color-text-strong);
+  cursor: pointer;
+}
+.ai-fixups__chip.is-picked { border-color: #059669; background: #ecfdf5; }
+.ai-fixups__amount { display: flex; align-items: center; gap: var(--space-8); }
+.ai-fixups__amount label { margin: 0; font-size: var(--text-secondary); }
+.ai-fixups__qty { width: 90px; }
+.ai-fixups__unit { width: 80px; }
+.ai-fixups .ai-logger__actions { margin-top: var(--space-8); }
+
+/* Freeform estimate */
+.ai-logger__confidence {
+  display: inline-block;
+  margin-bottom: var(--space-12);
+  padding: 6px var(--space-12);
+  border: 1px solid;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-secondary);
+  font-weight: 600;
+}
+.ai-logger__rows { display: flex; flex-direction: column; gap: var(--space-8); }
+.ai-logger__row {
+  overflow: hidden;
+  border: 1px solid;
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+}
+.ai-logger__row-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--touch-target);
+  padding: var(--space-6) var(--space-10);
+  cursor: pointer;
+}
+.ai-logger__row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--space-6);
+}
+.ai-logger__row-title {
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--color-text-strong);
+  overflow-wrap: anywhere;
+}
+.ai-logger__row-amount { font-size: var(--text-caption); color: var(--color-text-muted); white-space: nowrap; }
+.ai-logger__row-macros {
+  flex-shrink: 0;
+  font-size: var(--text-caption);
+  color: var(--color-text-strong);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ai-logger__row-macros.is-gap { color: #b45309; }
+.ai-logger__row-source {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ai-logger__row-caret {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.ai-logger__row-caret.is-open { transform: rotate(180deg); }
+.ai-logger__row-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  padding: var(--space-10);
+  border-top: 1px solid;
+  background: var(--color-surface);
+}
+.ai-logger__subpanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-10);
+  border-radius: var(--radius-md);
+}
+.ai-logger__subpanel select { width: 100%; }
+.ai-logger__field-label {
+  margin: 0;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+.ai-logger__fields { display: grid; grid-template-columns: 1fr; gap: var(--space-8); }
+.ai-logger__fields--two { grid-template-columns: 1fr 1fr; }
+.ai-logger__basis-kind { font-weight: 400; color: var(--color-text-muted); }
+.ai-logger__basis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: var(--space-8);
+}
+.ai-logger__basis-result { font-size: var(--text-caption); color: var(--color-text-strong); }
+.ai-logger__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--touch-target);
+  margin: 0;
+  font-size: var(--text-secondary);
+  color: var(--color-text-body);
+  cursor: pointer;
+}
+.ai-logger__check input { width: 18px; height: 18px; }
+.ai-logger__warn {
+  margin: var(--space-10) 0 0;
+  padding: var(--space-10) var(--space-12);
+  border: 1px solid var(--status-partial-border);
+  border-radius: var(--radius-md);
+  background: #fffbeb;
+  font-size: var(--text-secondary);
+  color: var(--color-warning-ink);
+}
+.ai-logger__row-editor .ai-logger__warn { margin: 0; }
+.ai-logger__warn-action { margin-top: var(--space-8); }
+.ai-logger__totals {
+  margin-top: var(--space-16);
+  padding: var(--space-12);
+  border: 1px solid #145239;
+  border-radius: var(--radius-md);
+  background: #0f3d2e;
+}
+.ai-logger__totals strong { color: #6ee7b7; }
+.ai-logger__totals-line {
+  margin-top: var(--space-4);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: #ecfdf5;
+  font-variant-numeric: tabular-nums;
+}
+.ai-logger__prep-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-12);
+}
+.ai-logger__prep-hint { margin: var(--space-6) 0 var(--space-10); }
+.ai-logger__prep-toggle { width: 100%; min-height: 48px; margin-top: var(--space-12); font-weight: 700; }
+.ai-logger__count { width: 90px; }
+.ai-logger__assumptions {
+  margin: var(--space-16) 0 0;
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+.ai-logger__assumptions strong { color: var(--color-text-body); }
+
+/* Follow-up, date and finishing actions */
+.ai-logger .ai-followup-panel { margin-top: var(--space-16); }
+.ai-followup-panel__label {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+.ai-followup-panel__row { display: flex; gap: var(--space-8); margin-top: var(--space-8); }
+.ai-followup-panel__row input { flex: 1; min-width: 0; min-height: var(--touch-target); }
+.ai-followup-panel__row .btn-primary { flex-shrink: 0; font-weight: 700; }
+.ai-logger__date {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-top: var(--space-16);
+}
+.ai-logger__date label { margin: 0; font-size: var(--text-secondary); }
+.ai-logger__date input[type="date"] { width: 170px; min-height: var(--touch-target); }
+.prep-panel .ai-logger__date { margin-top: var(--space-10); }
+.ai-logger__finish { display: flex; flex-direction: column; gap: var(--space-12); margin-top: var(--space-16); }
+.ai-logger__finish .ai-logger__date { margin-top: 0; }
+.ai-logger__nothing { margin-top: var(--space-8); }
+.ai-logger__start-over { align-self: flex-start; }
+
 /* ── Receipt list: the editable ingredients inside Log Meal ──
    One line per ingredient — name left, amount + unit right — so a whole recipe
    fits on screen and you can check portions and reach the Log button without
