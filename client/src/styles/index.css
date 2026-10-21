@@ -3636,3 +3636,7 @@ html[data-notebook-day] .mcp-source-badge {
 @media (prefers-reduced-motion: reduce) {
   .meal-panel-right, .meal-panel-left, .meal-micro-fill { animation: none; }
 }
+
+/* Barcode scanner: a full-screen native <dialog> that paints its own dim, so
+   the browser backdrop stays clear (no double tint over the form below). */
+.barcode-scan-dialog::backdrop { background: transparent; }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cameraAvailable, startBarcodeScan } from './barcodeReader';
 import { isValidGtin } from './gtin';
 import { lookupBarcode as lookupBarcodeApi } from '@shared/api/barcode';
@@ -16,6 +16,7 @@ import { lookupBarcode as lookupBarcodeApi } from '@shared/api/barcode';
  * with no camera permission, and the fastest fix when a barcode is scuffed.
  */
 export default function BarcodeScannerModal({ onClose, onProduct, lookup = lookupBarcodeApi }) {
+  const dialogRef = useRef(null);
   const videoRef = useRef(null);
   // Guards against a second decode landing while the first lookup is in flight.
   const busyRef = useRef(false);
@@ -98,24 +99,46 @@ export default function BarcodeScannerModal({ onClose, onProduct, lookup = looku
     };
   }, []);
 
+  // A native modal dialog joins the top layer, so the scanner draws above a
+  // form that is itself a showModal() dialog. No z-index can do that.
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    // No close() on unmount: removing the element takes it out of the top layer.
+  }, []);
+
   const manualReady = isValidGtin(manualCode);
   const showCamera = phase === 'starting' || phase === 'scanning' || phase === 'looking_up';
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      ref={dialogRef}
+      className="barcode-scan-dialog"
       aria-labelledby="barcode-scan-title"
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 200,
+        width: '100%',
+        height: '100%',
+        maxWidth: 'none',
+        maxHeight: 'none',
+        margin: 0,
+        border: 'none',
+        borderRadius: 0,
+        boxShadow: 'none',
         background: 'rgba(0,0,0,0.45)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 16,
       }}
+      // Escape: close through the same path as ✕ so the camera stops.
+      onCancel={e => {
+        e.preventDefault();
+        onClose?.();
+      }}
+      // Chrome may close without a cancel event (repeated Escape); still unmount.
+      onClose={() => onClose?.()}
       onMouseDown={e => {
         if (e.target === e.currentTarget) onClose?.();
       }}
@@ -243,6 +266,6 @@ export default function BarcodeScannerModal({ onClose, onProduct, lookup = looku
           <button type="button" className="btn-secondary" onClick={() => onClose?.()}>Cancel</button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }
