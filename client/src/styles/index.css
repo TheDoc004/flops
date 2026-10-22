@@ -3640,3 +3640,118 @@ html[data-notebook-day] .mcp-source-badge {
 /* Barcode scanner: a full-screen native <dialog> that paints its own dim, so
    the browser backdrop stays clear (no double tint over the form below). */
 .barcode-scan-dialog::backdrop { background: transparent; }
+
+/* ── Barcode scanner card (BarcodeScannerModal) ──
+   One column read top to bottom: title, how-to line, viewfinder, notice,
+   typed entry, Cancel. Sections are spaced by whitespace plus one warm rule
+   above the typed entry. Every control is a full 44px touch target. */
+.barcode-modal {
+  width: 100%;
+  max-width: 460px;
+  max-height: 88vh;
+  margin: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.barcode-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+.barcode-modal__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.barcode-modal .modal-close-x {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) 0;
+}
+.barcode-modal__hint {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+.barcode-modal__viewfinder {
+  position: relative;
+  margin-top: var(--space-12);
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #000;
+}
+.barcode-modal__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.barcode-modal__guide {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 50%;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: rgba(239, 68, 68, 0.9);
+  transform: translateY(-1px);
+}
+.barcode-modal__status {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: var(--space-8) var(--space-12);
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+}
+.barcode-modal__notice {
+  margin-top: var(--space-12);
+  padding: var(--space-10) var(--space-12);
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--status-partial-text);
+  background: var(--status-partial-bg);
+  border: 1px solid var(--status-partial-border);
+  border-radius: var(--radius-md);
+}
+.barcode-modal__manual {
+  margin-top: var(--space-16);
+  padding-top: var(--space-16);
+  border-top: 1px solid var(--color-divider-warm);
+}
+.barcode-modal__label {
+  display: block;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.barcode-modal__entry {
+  display: flex;
+  gap: var(--space-8);
+  margin-top: var(--space-10);
+}
+.barcode-modal__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.barcode-modal__lookup { flex: 0 0 auto; min-width: 104px; }
+.barcode-modal__invalid {
+  margin: var(--space-8) 0 0;
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-warning-ink);
+}
+.barcode-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-20);
+}

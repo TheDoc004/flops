@@ -143,62 +143,22 @@ export default function BarcodeScannerModal({ onClose, onProduct, lookup = looku
         if (e.target === e.currentTarget) onClose?.();
       }}
     >
-      <div
-        className="card"
-        style={{ maxWidth: 460, width: '100%', margin: 0, maxHeight: '88vh', overflowY: 'auto' }}
-        onMouseDown={e => e.stopPropagation()}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <h3 id="barcode-scan-title" style={{ margin: 0 }}>Scan a barcode</h3>
+      <div className="card barcode-modal" onMouseDown={e => e.stopPropagation()}>
+        <div className="barcode-modal__head">
+          <h3 id="barcode-scan-title" className="barcode-modal__title">Scan a barcode</h3>
           <button type="button" className="modal-close-x" aria-label="Close" onClick={() => onClose?.()}>✕</button>
         </div>
 
         {showCamera && (
           <>
-            <p style={{ margin: '4px 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            <p className="barcode-modal__hint">
               Hold the barcode inside the frame. It scans on its own — no button to press.
             </p>
-            <div
-              style={{
-                position: 'relative',
-                background: '#000',
-                borderRadius: 10,
-                overflow: 'hidden',
-                aspectRatio: '4 / 3',
-              }}
-            >
-              <video
-                ref={videoRef}
-                muted
-                playsInline
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
+            <div className="barcode-modal__viewfinder">
+              <video ref={videoRef} muted playsInline className="barcode-modal__video" />
               {/* Aiming guide — a barcode centred on this line reads fastest. */}
-              <div
-                aria-hidden="true"
-                style={{
-                  position: 'absolute',
-                  left: '10%',
-                  right: '10%',
-                  top: '50%',
-                  height: 2,
-                  background: 'rgba(239,68,68,0.9)',
-                  transform: 'translateY(-1px)',
-                }}
-              />
-              <div
-                role="status"
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  padding: '8px 12px',
-                  fontSize: 13,
-                  color: '#fff',
-                  background: 'rgba(0,0,0,0.55)',
-                }}
-              >
+              <div aria-hidden="true" className="barcode-modal__guide" />
+              <div role="status" className="barcode-modal__status">
                 {phase === 'starting' && 'Starting camera…'}
                 {phase === 'scanning' && 'Scanning…'}
                 {phase === 'looking_up' && 'Looking up product…'}
@@ -208,37 +168,22 @@ export default function BarcodeScannerModal({ onClose, onProduct, lookup = looku
         )}
 
         {notice && (
-          <div
-            role="status"
-            style={{
-              marginTop: 12,
-              padding: '10px 12px',
-              fontSize: 13,
-              color: '#92400e',
-              background: '#fffbeb',
-              border: '1px solid #fcd34d',
-              borderRadius: 8,
-            }}
-          >
+          <div role="status" className="barcode-modal__notice">
             {notice}
           </div>
         )}
 
-        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0ede8' }}>
-          <strong style={{ display: 'block', fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
-            Type the barcode:
-          </strong>
-          <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-            The 8–13 digit number printed under the bars.
-          </p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="barcode-modal__manual">
+          <strong className="barcode-modal__label">Type the barcode:</strong>
+          <p className="barcode-modal__hint">The 8–13 digit number printed under the bars.</p>
+          <div className="barcode-modal__entry">
             <input
               value={manualCode}
               onChange={e => setManualCode(e.target.value)}
               inputMode="numeric"
               placeholder="e.g. 3017620422003"
               aria-label="Barcode number"
-              style={{ flex: '1 1 180px', minWidth: 0 }}
+              className="barcode-modal__input"
               onKeyDown={e => {
                 if (e.key === 'Enter' && manualReady) {
                   e.preventDefault();
@@ -248,7 +193,7 @@ export default function BarcodeScannerModal({ onClose, onProduct, lookup = looku
             />
             <button
               type="button"
-              className="btn-primary"
+              className="btn-primary barcode-modal__lookup"
               disabled={!manualReady || phase === 'looking_up'}
               onClick={() => void handleCode(manualCode)}
             >
@@ -256,13 +201,13 @@ export default function BarcodeScannerModal({ onClose, onProduct, lookup = looku
             </button>
           </div>
           {manualCode.trim() !== '' && !manualReady && (
-            <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            <p className="barcode-modal__invalid">
               That number isn&apos;t a valid barcode yet — check for a missing or mistyped digit.
             </p>
           )}
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+        <div className="barcode-modal__actions">
           <button type="button" className="btn-secondary" onClick={() => onClose?.()}>Cancel</button>
         </div>
       </div>
