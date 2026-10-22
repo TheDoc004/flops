@@ -40,3 +40,20 @@ if (typeof globalThis.matchMedia !== 'function') {
     dispatchEvent() { return false; },
   });
 }
+
+// jsdom has HTMLDialogElement but no showModal()/close(). Minimal stand-ins so
+// components that open a native modal dialog render it as open in tests.
+if (typeof HTMLDialogElement !== 'undefined') {
+  if (typeof HTMLDialogElement.prototype.showModal !== 'function') {
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+  }
+  if (typeof HTMLDialogElement.prototype.close !== 'function') {
+    HTMLDialogElement.prototype.close = function close() {
+      if (!this.hasAttribute('open')) return;
+      this.removeAttribute('open');
+      this.dispatchEvent(new Event('close'));
+    };
+  }
+}
