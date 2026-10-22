@@ -25,7 +25,7 @@ _current-state_ companion to it.
 
 ## Where Diego left off (read this first)
 
-**Bug fix — barcode scanner hidden behind Add ingredient (2026-10-21, branch `noggin/flops/bug-barcode-scanner-opens-hidd-292dc7-1`):**
+**Bug fix — barcode scanner hidden behind Add ingredient (2026-10-22, branch `noggin/flops/bug-redo-for-auto-ship-barcode-292dc7-2`; supersedes `…-292dc7-1`):**
 - Library → + Add ingredient → Scan barcode opened the scanner *under* the form: the form is a
   `showModal()` dialog (browser top layer) and the scanner was a z-index 200 div, which can't draw
   above the top layer. Broken since the scanner landed (c7e16f9).
@@ -33,7 +33,8 @@ _current-state_ companion to it.
   stacks above whatever dialog is open. Escape (`cancel`) and a browser-initiated `close` both go
   through `onClose`, so the camera stops as with ✕. `.barcode-scan-dialog::backdrop` (end of
   `index.css`) is transparent since the wrapper paints its own dim. Markup, copy and scanning logic unchanged.
-- Tests: `client/e2e/barcode-scanner.spec.js` (390px, `/api/barcode/*` stubbed with a synthetic
+- Tests: `BarcodeScannerModal.layer.test.jsx` (vitest repro: inside a `showModal()` dialog the scanner
+  must be its own `<dialog>` opened with `showModal()`; fails on 78e61ed), `client/e2e/barcode-scanner.spec.js` (390px, `/api/barcode/*` stubbed with a synthetic
   product); `test-setup.js` polyfills jsdom's missing `HTMLDialogElement.showModal/close`.
 
 **UI polish 1/35 — Today at 390px (2026-10-19, branch `noggin/flops/polish-today-dashboard-390px-s-956687-1`, awaiting ✅):**
