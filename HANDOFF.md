@@ -45,6 +45,16 @@ _current-state_ companion to it.
 - Tests: `BarcodeScannerModal.layer.test.jsx` (vitest repro: inside a `showModal()` dialog the scanner
   must be its own `<dialog>` opened with `showModal()`; fails on 78e61ed), `client/e2e/barcode-scanner.spec.js` (390px, `/api/barcode/*` stubbed with a synthetic
   product); `test-setup.js` polyfills jsdom's missing `HTMLDialogElement.showModal/close`.
+**UI polish 2/35 — Log Meal modal at 390px (2026-10-20, branch `noggin/flops/polish-log-meal-modal-390px-sc-7210c1-1`, awaiting ✅):**
+- The modal's inline styles (dialog size, header, "What's in this meal" panel, substitutes subpanel,
+  meal total + "After this meal" preview) moved into `.log-meal-modal` / `.log-meal-items` /
+  `.log-meal-subs__*` / `.log-meal-total` / `.log-meal-day-preview__*` classes in `index.css`.
+- Phones (≤480px): close ✕, row ✕ and the recipe-chip ✕ are 44×44, "Reset to recipe" and substitute
+  options 44px tall; the add-food row's search spans the whole row (the 40 / g ghosts hide) so the
+  placeholder isn't clipped; dialog padding 20/16 to give the ingredient list room.
+- Per-line macros keep each letter with its number (non-breaking spaces), so "C 0.0" no longer splits.
+- Shared `slot-row` / `slot-list` changes are all scoped under `.log-meal-modal`; the supplements,
+  AI logger and meal-prep modals keep their sizing. /meal-builder renders pixel-identical before/after.
 
 **UI polish 1/35 — Today at 390px (2026-10-19, branch `noggin/flops/polish-today-dashboard-390px-s-956687-1`, awaiting ✅):**
 - One surface per Today card: `SupplementStrip` no longer draws its own `.card` inside the dashboard

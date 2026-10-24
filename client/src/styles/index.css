@@ -1864,6 +1864,170 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
   font-size: 12px;
   color: var(--color-text-muted);
 }
+
+/* ── Log Meal modal ──
+   Everything below is scoped to .log-meal-modal: the slot-row / slot-list
+   classes are shared with the supplements, AI logger and meal-prep modals,
+   which keep their own sizing. */
+.log-meal-modal {
+  width: min(560px, 94vw);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.log-meal-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-bottom: var(--space-16);
+}
+.log-meal-modal__title { margin: 0; }
+.log-meal-modal .modal-close-x {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: -8px -10px -8px 0; /* full hit area, glyph still on the padding corner */
+}
+.log-meal-items {
+  padding: var(--space-12);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-secondary-bg);
+}
+.log-meal-items__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-10);
+  min-height: 28px;
+  margin-bottom: var(--space-10);
+}
+.log-meal-items__title {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.log-meal-items__hint {
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.log-meal-items__reset {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-14);
+  font-size: var(--text-caption);
+  white-space: nowrap;
+}
+.log-meal-items__empty {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+.log-meal-line__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+  color: var(--color-text-strong);
+}
+.log-meal-line__sub-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text-strong);
+  font: inherit;
+  text-decoration: underline dotted;
+}
+.log-meal-line__macros {
+  margin-top: var(--space-2);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.log-meal-line__macros.is-ghost { opacity: 0.65; }
+.log-meal-subs__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-6);
+}
+.log-meal-subs__title { font-weight: 600; }
+.log-meal-subs__note { margin: 0; color: var(--color-text-muted); }
+.log-meal-subs__error { margin: 0 0 var(--space-6); color: #92400e; }
+.log-meal-subs__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.log-meal-subs__option {
+  justify-content: flex-start;
+  text-align: left;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-10);
+  font-size: var(--text-caption);
+}
+.log-meal-total {
+  margin-top: var(--space-10);
+  padding: var(--space-10) var(--space-12);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-primary-subtle);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--color-primary-ink);
+  font-variant-numeric: tabular-nums;
+}
+.log-meal-total__servings { color: var(--color-text-muted); }
+.log-meal-total__servings strong { color: var(--color-text-strong); }
+.log-meal-day-preview {
+  margin-top: var(--space-10);
+  padding-top: var(--space-10);
+  border-top: 1px solid color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
+}
+.log-meal-day-preview__title {
+  font-weight: 700;
+  margin-bottom: var(--space-6);
+}
+.log-meal-day-preview__rows {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+.log-meal-day-preview__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-10);
+}
+.log-meal-day-preview__label {
+  display: inline-block;
+  min-width: 28px;
+  font-weight: 600;
+}
+.log-meal-day-preview .macro-status { font-size: 11px; }
+@media (max-width: 480px) {
+  /* Phones: a little more room for the ingredient list, which is the screen. */
+  .log-meal-modal { padding: var(--space-20) var(--space-16); }
+  .log-meal-modal .slot-list__head,
+  .log-meal-modal .slot-row {
+    grid-template-columns: minmax(0, 1fr) 60px 54px var(--touch-target);
+  }
+  .log-meal-modal .slot-row__remove {
+    width: var(--touch-target);
+    height: var(--touch-target);
+  }
+  /* The search box needs the width more than the 40 / g placeholders do. */
+  .log-meal-modal .slot-row--add__search { grid-column: 1 / -1; }
+  .log-meal-modal .slot-row--add__ghost,
+  .log-meal-modal .slot-row--add__spacer { display: none; }
+  .log-meal-modal .slot-row--add__search input { min-height: var(--touch-target); }
+  .log-meal-modal .log-meal-recipe-chip .slot-row__remove { margin: -10px -10px 0 0; }
+}
 /* One name, one line: a wrapped ingredient name makes its row taller than its
    neighbours and the list stops scanning as a column of portions. */
 .slot-row__name {
