@@ -55,6 +55,18 @@ _current-state_ companion to it.
 - Per-line macros keep each letter with its number (non-breaking spaces), so "C 0.0" no longer splits.
 - Shared `slot-row` / `slot-list` changes are all scoped under `.log-meal-modal`; the supplements,
   AI logger and meal-prep modals keep their sizing. /meal-builder renders pixel-identical before/after.
+**UI polish 3/35 — AI macro logger at 390px (2026-10-21, branch `noggin/flops/polish-ai-macro-logger-390px-s-4e4675-1`, awaiting ✅):**
+- The `/ai-logger` page and the Today modal (`AiLoggerModal`) now style through one scoped block in
+  `index.css` (`.ai-logger*`, `.ai-logger-modal*`, `.ai-fixups*`, `.ai-voice*`, `.ai-followup-panel__*`),
+  placed right after `.ai-followup-panel`. Inline styles are gone except data-driven colours
+  (ingredient source, confidence). No shared, token or Log Meal rules changed.
+- Inside the modal the input/review card drops its own surface (the dialog is the surface); close ✕ is 44px.
+- Every control is ≥44px: Pick ingredient, Use this/Cancel, Keep in recipe, Not a meal prep,
+  ingredient chips, "Not this recipe?" link, row summaries and the save-to-library checkbox row.
+- Paired actions (Speak a meal + Generate estimate, Log once + Save as recipe, Log recipe + Cancel)
+  split the row equally. The estimate card's title now sits above the conversation like the recipe
+  review's, and the recipe review's "Anything to adjust?" now sits above "Log to", as in the estimate.
+- The description textarea uses the app font instead of the browser's monospace default.
 
 **UI polish 1/35 — Today at 390px (2026-10-19, branch `noggin/flops/polish-today-dashboard-390px-s-956687-1`, awaiting ✅):**
 - One surface per Today card: `SupplementStrip` no longer draws its own `.card` inside the dashboard
