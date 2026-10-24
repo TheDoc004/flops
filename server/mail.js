@@ -57,11 +57,14 @@ async function sendViaSmtp({ to, subject, text }) {
  * Send a 6-digit login code.
  * No-ops only when neither provider is configured (caller decides policy).
  */
-async function sendOtpEmail(to, code) {
-  const subject = 'Your FLOPS login code';
-  const text =
-    `Your FLOPS login code is ${code}.\n\n` +
-    `It expires in 10 minutes. If you did not request this, you can ignore this email.\n`;
+async function sendOtpEmail(to, code, { purpose = 'login' } = {}) {
+  const subject = purpose === 'delete' ? 'Your FLOPS account deletion code' : 'Your FLOPS login code';
+  const text = purpose === 'delete'
+    ? `Your code to delete your FLOPS account is ${code}.\n\n` +
+      `It expires in 10 minutes. If you did not ask to delete your account, ignore this email ` +
+      `and your account stays as it is.\n`
+    : `Your FLOPS login code is ${code}.\n\n` +
+      `It expires in 10 minutes. If you did not request this, you can ignore this email.\n`;
 
   if (process.env.RESEND_API_KEY) {
     await sendViaResend({ to, subject, text });

@@ -15,7 +15,7 @@ function createAuthMiddleware(db) {
     const token = extractBearer(req);
     let user = userFromToken(db, token);
     if (!user && (process.env.JEST_WORKER_ID || process.env.FLOPS_TEST_AUTH === '1')) {
-      user = db.prepare('SELECT * FROM users ORDER BY id ASC LIMIT 1').get();
+      user = db.prepare('SELECT * FROM users WHERE deleted_at IS NULL ORDER BY id ASC LIMIT 1').get();
     }
     if (user) req.user = user;
     next();

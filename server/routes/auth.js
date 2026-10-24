@@ -11,6 +11,9 @@ const {
 } = require('../authService');
 const { mailConfigured, sendOtpEmail } = require('../mail');
 
+// A deleted account's rows are kept (soft delete), so signing in again must not reopen them.
+const ACCOUNT_DELETED = 'This account was deleted.';
+
 function createAuthRouter(db) {
   const router = express.Router();
 
@@ -64,6 +67,7 @@ function createAuthRouter(db) {
       return res.status(401).json({ error: 'Invalid or expired code.' });
     }
     const user = findOrCreateEmailUser(db, email);
+    if (user.deleted_at) return res.status(403).json({ error: ACCOUNT_DELETED });
     const session = createSession(db, user.id);
     res.json({ token: session.token, expires_at: session.expires_at, user: publicUser(user) });
   });
@@ -101,6 +105,7 @@ function createAuthRouter(db) {
     }
 
     const user = findOrCreateAppleUser(db, { apple_sub, email, display_name });
+    if (user.deleted_at) return res.status(403).json({ error: ACCOUNT_DELETED });
     const session = createSession(db, user.id);
     res.json({ token: session.token, expires_at: session.expires_at, user: publicUser(user) });
   });
