@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   listRecipeIngredientLines,
   seedReceiptFromRecipe,
+  seedReceiptFromIngredientsJson,
   seedReceiptFromLoggedSelections,
   sumReceiptMacros,
   receiptToApiIngredients,
@@ -81,6 +82,54 @@ describe('seedReceiptFromRecipe', () => {
     const lines = seedReceiptFromRecipe(recipe, labelById, { 1: { amount: '80', unit: 'g' } });
     expect(lines[0].amount).toBe('80');
     expect(lines[0].calories).toBeCloseTo(300, 5);
+  });
+});
+
+describe('seedReceiptFromIngredientsJson', () => {
+  it('rebuilds live macros for library ingredients', () => {
+    const lines = seedReceiptFromIngredientsJson(
+      [
+        { name: 'Oats', label_ingredient_id: 1, amount: 80, unit: 'g', source: 'library' },
+        { name: 'Egg', label_ingredient_id: 3, amount: 2, unit: 'egg', source: 'library' },
+      ],
+      labelById
+    );
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({ label_ingredient_id: 1, name: 'Oats', amount: '80', unit: 'g' });
+    expect(lines[0].calories).toBeCloseTo(300, 5);
+    expect(lines[1]).toMatchObject({ label_ingredient_id: 3, name: 'Egg', amount: '2' });
+    expect(lines[1].calories).toBeCloseTo(144, 5);
+  });
+
+  it('keeps orphaned rows with stored macros when the library id is gone', () => {
+    const lines = seedReceiptFromIngredientsJson(
+      [
+        { name: 'Deleted blend', label_ingredient_id: 99, amount: 140, unit: 'g', calories: 90, protein_g: 1, carbs_g: 22, fat_g: 0.5 },
+        { name: 'Oats', label_ingredient_id: 1, amount: 40, unit: 'g' },
+      ],
+      labelById
+    );
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      name: 'Deleted blend',
+      label_ingredient_id: 99,
+      amount: '140',
+      calories: 90,
+      source: 'estimated',
+    });
+    expect(lines[1].label_ingredient_id).toBe(1);
+  });
+
+  it('parses a JSON string and returns [] for empty/invalid input', () => {
+    expect(seedReceiptFromIngredientsJson('[]', labelById)).toEqual([]);
+    expect(seedReceiptFromIngredientsJson('not-json', labelById)).toEqual([]);
+    expect(seedReceiptFromIngredientsJson(null, labelById)).toEqual([]);
+    const lines = seedReceiptFromIngredientsJson(
+      JSON.stringify([{ name: 'Oats', label_ingredient_id: 1, amount: 40, unit: 'g' }]),
+      labelById
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0].label_ingredient_id).toBe(1);
   });
 });
 
