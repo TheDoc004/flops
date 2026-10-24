@@ -25,6 +25,15 @@ _current-state_ companion to it.
 
 ## Where Diego left off (read this first)
 
+**UI polish 4/35 — Barcode scanner modal at 390px (2026-10-22, branch `noggin/flops/polish-barcode-scanner-modal-3-35367e-2`, awaiting ✅):**
+- The scanner card's inline styles moved into one `.barcode-modal` block appended at the end of
+  `index.css` (after the `::backdrop` rule). The `<dialog>` wrapper, its inline full-screen styles
+  and its showModal/cancel/close wiring are untouched; so is all scanning logic.
+- One rhythm top to bottom: title → how-to line (4px) → viewfinder (12px) → notice → warm rule →
+  typed entry → Cancel (20px). ✕ grows to 44px. The not-found notice uses the `--status-partial-*`
+  tokens instead of hardcoded ambers, and the invalid-number hint uses `--color-warning-ink` so it
+  reads as a state rather than more help text. Copy unchanged.
+
 **Bug fix — barcode scanner hidden behind Add ingredient (2026-10-22, branch `noggin/flops/bug-redo-for-auto-ship-barcode-292dc7-2`; supersedes `…-292dc7-1`):**
 - Library → + Add ingredient → Scan barcode opened the scanner *under* the form: the form is a
   `showModal()` dialog (browser top layer) and the scanner was a z-index 200 div, which can't draw
