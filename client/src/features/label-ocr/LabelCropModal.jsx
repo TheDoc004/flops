@@ -115,64 +115,52 @@ export default function LabelCropModal({ open, imageSrc, onClose, onApply }) {
     <dialog
       ref={el => { dialogRef.current = el; if (el && !el.open) el.showModal(); }}
       onClose={() => onClose?.()}
+      className="label-crop-modal"
       aria-labelledby="label-crop-title"
-      style={{ width: 'min(600px, 94vw)', maxHeight: '90vh', overflowY: 'auto' }}
       onMouseDown={e => {
         // Backdrop clicks land on the dialog element itself.
         if (e.target === dialogRef.current) dialogRef.current?.close();
       }}
     >
-      <div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <h3 id="label-crop-title" style={{ margin: 0 }}>
-            Crop to nutrition facts (optional)
-          </h3>
-          <button type="button" className="modal-close-x" aria-label="Close" onClick={() => dialogRef.current?.close()}>✕</button>
-        </div>
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-          Drag to crop around the Nutrition Facts panel.
-        </p>
-        <div
-          ref={wrapRef}
-          style={{
-            position: 'relative',
-            display: 'inline-block',
-            maxWidth: '100%',
-            cursor: 'crosshair',
-            userSelect: 'none',
-          }}
-          onMouseDown={onDown}
-        >
-          <img
-            ref={imgRef}
-            src={imageSrc}
-            alt="Crop"
-            style={{ maxWidth: '100%', height: 'auto', display: 'block', verticalAlign: 'top' }}
-            draggable={false}
+      <div className="label-crop-modal__header">
+        <h3 id="label-crop-title" className="label-crop-modal__title">
+          Crop to nutrition facts (optional)
+        </h3>
+        <button type="button" className="modal-close-x" aria-label="Close" onClick={() => dialogRef.current?.close()}>✕</button>
+      </div>
+      <p className="label-crop-modal__hint">
+        Drag to crop around the Nutrition Facts panel.
+      </p>
+      <div
+        ref={wrapRef}
+        className="label-crop-modal__canvas"
+        onMouseDown={onDown}
+      >
+        <img
+          ref={imgRef}
+          src={imageSrc}
+          alt="Crop"
+          draggable={false}
+        />
+        {box && box.width > 4 && box.height > 4 ? (
+          <div
+            className="label-crop-modal__selection"
+            style={{
+              left: box.left,
+              top: box.top,
+              width: box.width,
+              height: box.height,
+            }}
           />
-          {box && box.width > 4 && box.height > 4 ? (
-            <div
-              style={{
-                position: 'absolute',
-                left: box.left,
-                top: box.top,
-                width: box.width,
-                height: box.height,
-                border: '2px solid #2563eb',
-                boxShadow: '0 0 0 9999px rgba(0,0,0,0.35)',
-                pointerEvents: 'none',
-              }}
-            />
-          ) : null}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-          <button type="button" className="btn-secondary" onClick={() => setRect(null)}>
-            Clear selection
-          </button>
-          <button type="button" className="btn-primary" disabled={!rect} onClick={applyCrop}>
-            Use cropped image
-          </button>
-        </div>
+        ) : null}
+      </div>
+      <div className="label-crop-modal__actions">
+        <button type="button" className="btn-secondary" onClick={() => setRect(null)}>
+          Clear selection
+        </button>
+        <button type="button" className="btn-primary" disabled={!rect} onClick={applyCrop}>
+          Use cropped image
+        </button>
       </div>
     </dialog>
   );
