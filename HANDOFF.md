@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-19 (Delete my account: `DELETE /api/me` + Profile row, export gap closed — branch `noggin/flops/privacy-readiness-b-account-de-7a8b34-1`, awaiting 🔀)_
+_Last updated: 2026-10-24 (README.md + MIT LICENSE for open-source release — branch `noggin/flops/readme-mit-license-ab15dc-1`, awaiting 🔀)_
 _Last updated: 2026-10-20 (privacyIsolation "socket hang up" flake fixed in the test harness — branch `noggin/flops/stability-privacyisolation-tes-013e6a-1`, awaiting 🔀; 2026-10-19: Today 390px polish; 2026-10-18: Download my data: `GET /api/me/export` + Profile row — branch `noggin/flops/privacy-readiness-a-user-data--6ee8c6-1`, awaiting 🔀; earlier the same day: Report a problem, privacy isolation tests, demo seed)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
@@ -25,6 +25,15 @@ _current-state_ companion to it.
 ---
 
 ## Where Diego left off (read this first)
+
+**Release — README + MIT LICENSE (2026-10-24, branch `noggin/flops/readme-mit-license-ab15dc-1`, awaiting 🔀):**
+- `LICENSE`: standard MIT license, copyright "Diego Ramirez and contributors", 2026-present.
+- `README.md`: what FLOPS is, what it does, how to run locally, tech stack, tests, and the license.
+  Written in the notebook voice (no hype, no exclamation marks). Does not mention unbuilt features
+  (bridge, connector, open sign-up), deployment hosts, or personal details beyond the copyright line.
+  Links to `docs/philosophy-notebook.md` for design philosophy.
+- No other files changed. Server (510) and client (371) tests pass; Playwright e2e could not run
+  (Chromium download timed out — network issue, not code-related; the change is two text files).
 
 **UI polish 4/35 — Barcode scanner modal at 390px (2026-10-22, branch `noggin/flops/polish-barcode-scanner-modal-3-35367e-2`, awaiting ✅):**
 - The scanner card's inline styles moved into one `.barcode-modal` block appended at the end of
