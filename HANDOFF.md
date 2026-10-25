@@ -26,6 +26,12 @@ _current-state_ companion to it.
 
 ## Where Diego left off (read this first)
 
+**UI polish 5/35 — Label crop modal at 390px (2026-10-25, branch `noggin/flops/polish-label-crop-modal-390px-7b0536-1`, awaiting ✅):**
+- Inline styles in `LabelCropModal.jsx` replaced with scoped `.label-crop-modal` CSS classes appended
+  at the end of `index.css`. Design tokens for spacing, typography and colors; ✕ sized to 44px touch
+  target; image canvas gets `border-radius` and `overflow: hidden`; selection border uses
+  `--color-link` token. Pattern mirrors barcode-modal / log-meal-modal. Crop and canvas logic untouched.
+
 **UI polish 4/35 — Barcode scanner modal at 390px (2026-10-22, branch `noggin/flops/polish-barcode-scanner-modal-3-35367e-2`, awaiting ✅):**
 - The scanner card's inline styles moved into one `.barcode-modal` block appended at the end of
   `index.css` (after the `::backdrop` rule). The `<dialog>` wrapper, its inline full-screen styles

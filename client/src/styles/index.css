@@ -4370,3 +4370,63 @@ html[data-notebook-day] .mcp-source-badge {
   justify-content: flex-end;
   margin-top: var(--space-20);
 }
+
+/* ── Label crop modal (LabelCropModal) ──
+   Single column: title, hint, photo canvas with drag-to-crop, actions.
+   Mirrors the barcode-modal / log-meal-modal pattern. Scoped to
+   .label-crop-modal so it doesn't affect other Ingredients.jsx UI. */
+.label-crop-modal {
+  width: min(480px, 94vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.label-crop-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-bottom: var(--space-4);
+}
+.label-crop-modal__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.label-crop-modal .modal-close-x {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) 0;
+}
+.label-crop-modal__hint {
+  margin: 0 0 var(--space-12);
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+.label-crop-modal__canvas {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+}
+.label-crop-modal__canvas img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.label-crop-modal__selection {
+  position: absolute;
+  border: 2px solid var(--color-link);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.label-crop-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  margin-top: var(--space-16);
+  flex-wrap: wrap;
+}
