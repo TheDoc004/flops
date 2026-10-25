@@ -1,7 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-19 (Delete my account: `DELETE /api/me` + Profile row, export gap closed — branch `noggin/flops/privacy-readiness-b-account-de-7a8b34-1`, awaiting 🔀)_
-_Last updated: 2026-10-20 (privacyIsolation "socket hang up" flake fixed in the test harness — branch `noggin/flops/stability-privacyisolation-tes-013e6a-1`, awaiting 🔀; 2026-10-19: Today 390px polish; 2026-10-18: Download my data: `GET /api/me/export` + Profile row — branch `noggin/flops/privacy-readiness-a-user-data--6ee8c6-1`, awaiting 🔀; earlier the same day: Report a problem, privacy isolation tests, demo seed)_
+_Last updated: see git log for recent changes._
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -18,13 +17,12 @@ Snapshot of where the app stands so any session (human or agent) can pick up qui
 For conventions, architecture, and the phase vision, see **`CLAUDE.md`** — this file is the
 _current-state_ companion to it.
 
-> **⚠️ Canonical repo:** **`~/dev/FLOPS`**. Do **not** work from
-> `~/Documents/FLOPS workspace/` — that folder is stale / iCloud-adjacent and may
-> not match what is deployed. Start sessions from `~/dev/FLOPS`.
+> **⚠️ Canonical repo:** work from a clean clone of the repo (not a stale or
+> iCloud-synced copy). Make sure your checkout matches what is deployed before starting.
 
 ---
 
-## Where Diego left off (read this first)
+## Recent changes (read this first)
 
 **UI polish 5/35 — Label crop modal at 390px (2026-10-25, branch `noggin/flops/polish-label-crop-modal-390px-7b0536-1`, awaiting ✅):**
 - Inline styles in `LabelCropModal.jsx` replaced with scoped `.label-crop-modal` CSS classes appended
@@ -132,7 +130,7 @@ _current-state_ companion to it.
 - **Report a problem:** a quiet link under every app screen (`shared/ui/ReportProblem.jsx`) posts to
   `POST /api/problem-reports`. The table `problem_reports` holds only text, route (path only),
   app_version (server git sha), user_id, created_at and status. `GET /api/problem-reports` lists `new`
-  report rows only and needs `x-api-key: $PROBLEM_REPORTS_TOKEN`. **Diego sets that env var on Render**,
+  report rows only and needs `x-api-key: $PROBLEM_REPORTS_TOKEN`. **The admin sets that env var on Render**,
   and the inbox answers 503 until he does. Tests: `server/__tests__/problemReports.test.js`, the vitest
   for the form, and a mobile smoke step.
 - **Privacy isolation:** `server/__tests__/privacyIsolation.test.js` checks that user B can't touch A's
@@ -150,9 +148,6 @@ maintenance / recovery / other that auto-guesses from the name; optional notes; 
 list under the legend (click to edit/delete). Table `diet_phases`, logic in `server/dietPhases.js`,
 route `/api/diet-phases`. MCP: `get_diet_phases`, `add_/update_/delete_diet_phase` (+ `write_batch`,
 revert); `get_day` returns `diet_phases`. Tests: `server/__tests__/dietPhases.test.js`.
-**Diego's phases (live):** **Bulk** started **2026-09-11**, ongoing (diet phase #1, kind `bulk`,
-added via MCP `write_batch` on 2026-10-10, audit_id 196).
-
 **Status:** Active. Nutrition daily driver + Log Meal UX; MCP Phase 3 + lookup tools.
 **Part A shipped:** placeholder `grams_per_serving` (&lt;3g) no longer derives `per_100g`;
 writes reject those values; boot repair nulls unit cosmetic ids and flips rice cakes/
@@ -165,8 +160,8 @@ onion bagel (11/22/34) to unit tracking.
 `log_entries.micros_json`. History/`get_day`/`get_micronutrient_totals` prefer live
 values; legacy frozen blobs remain as fallback. `get_micronutrient_totals` returns
 coverage + `avg_daily` + `pct_of_daily_target`.
-**Micros accuracy pass (2026-10-06):** an audit of 10/06 found foods silently counted as
-zero micros (blueberries, spinach, apple had no library micros) and label blobs carrying
+**Micros accuracy pass:** an audit found some foods silently counted as
+zero micros (items without library micros) and label blobs carrying
 only the ~5 printed nutrients. Fixes: (1) `resolveEntryMicros` names uncovered rows in
 `missing_ingredients`; UI (meal + day panels), `get_day` (`micros_missing_ingredients`) and
 `get_micronutrient_totals` (`coverage.ingredients_missing_micros`) show them as "not counted".
@@ -178,31 +173,21 @@ estimate (they cover different rows) instead of label replacing estimate.
 MCP `get_ingredient` shows one row's stored micros (per serving + per 100g, `estimated_keys`,
 `zero_keys`, `absent_keys`) for tracing a meal total to its ingredient. Note: a stored 0 blocks
 the gap-fill.
-**AI-fill scaling fix (2026-10-06, second audit):** asked for a whole weighed serving ("28 g
-feta", "85 g spinach"), the estimator returned food-table values **per 100 g** as the serving
-(feta P 400 mg/28 g; spinach = USDA raw per 100 g) → salmon pasta +~490 mg P / +~440 mg K,
-breakfast +230 mg K (sourdough). `servingLine` now asks for **100 g** (macros per 100 g) and
-`scaleEstimate` scales to the stored serving. Data fixed via MCP (audit #172): feta #133
-(USDA, label sodium kept), spinach #131 (K/C/K/Fe), sourdough #136 (K), apple #139 + blueberries
-#137 (vit A — **IU stored as mcg**, 54→~3/100 g). Rigatoni/marinara/yogurt verified correct.
-Estimator prompt (`microEstimateService.js`) now says vitamin A is mcg RAE, never IU.
-Pico #109 (USDA jarred-salsa match) left as-is by choice.
-**Library re-audit (done, 2026-10-06):** every ingredient row checked via MCP `get_ingredient`.
-Older app-era rows are fine: their AI-filled keys are small (biotin/B12/D/iodine), USDA keys are right.
-The per-100g-as-serving bug only hit whole-blob AI fills (feta, spinach, sourdough — fixed above).
-Second batch fixed (audit #173): #130 TJ Tomato Basil marinara vit A 500→38.75 (IU as mcg again);
-#79 diced tomatoes thiamin 0.68→0.05 (10×); #129 tilapia EPA 200→6 / DHA 100→147; #86 fat-free
-ranch "1 mL" carried a 30 g serving's micros (sodium 269 mg/mL) → rescaled from #88 — the row also
-has a stray `grams_per_serving: 30` on a unit-tracked food, likely the cause.
-**Left for the user (need a label or a decision):** #124 Classico Alfredo ~4× high (sodium 1554 /
-Ca 280 / P 249 per 60 g — looks like a dry-mix match); #135 stew spice mix sodium 0 though it
-contains Sazón; #63/#66/#91 cream of wheat vit A 1340 mcg/100g (possibly IU); #75/#93 fruit blend
-vit C 2.7/100g (strawberry/mango/pineapple should be ~35); #49 small sourdough `grams_per_unit` 0.01;
-#132 TJ almond beverage K 300 vs ~160 typical. Not scaling errors, but wrong-food matches: #18
-protein pasta = rigatoni, #19 vodka sauce = marinara, #21 banana+strawberry = banana+blueberry.
-Minor: #8/#26 Greek yogurt estimated copper/manganese ~5× (tiny absolute); avocado sprays #41/#138
-vit E disagree (21.7 vs 0.4 per 100 g).
-**Servings per container (2026-10-06):** `label_ingredients.servings_per_container` (ingredient
+**AI-fill scaling fix:** when asked for a whole weighed serving (e.g. "28 g feta",
+"85 g spinach"), the estimator returned food-table values **per 100 g** as the serving.
+`servingLine` now asks for **100 g** (macros per 100 g) and `scaleEstimate` scales to the
+stored serving. Estimator prompt (`microEstimateService.js`) now says vitamin A is mcg RAE,
+never IU.
+**Library re-audit (done):** every ingredient row checked via MCP `get_ingredient`.
+Older app-era rows are fine: their AI-filled keys are small (biotin/B12/D/iodine), USDA keys
+are right. The per-100g-as-serving bug only hit whole-blob AI fills — affected rows were
+corrected. Common patterns found: IU-stored-as-mcg (vitamin A), overestimated values
+(e.g. thiamin 10x), incorrect EPA/DHA, and unit-tracked foods with stray `grams_per_serving`.
+**Potential data issues to watch for:** dry-mix macro matches on sauces, zero-sodium on spice
+mixes that contain salt, IU/mcg confusion on fortified cereals, low vitamin C on fruit blends,
+`grams_per_unit` near zero, wrong-food matches from ingredient name ambiguity, duplicate
+ingredient rows, and minor copper/manganese/vitamin E estimation variance.
+**Servings per container:** `label_ingredients.servings_per_container` (ingredient
 form, REST, MCP add/update; reads expose `container` totals). Meal Builder shows "+ 1 container"
 per row. Not yet in the Log Meal modal.
 
@@ -212,13 +197,13 @@ also a `write_batch` op, revertible). MCP meal writes now do limited-use account
 like `/api/log`: `log_meal` charges a use per serving (refuses when out, and refuses
 mixing a prep container with other foods); `delete_meal_entry`, `update_meal_entry`
 and `revert_mcp_write` hand uses back / re-charge them.
-**Fixed 2026-10-02:** MCP `log_meal` single-recipe logs now store the same per-serving
+**Fixed:** MCP `log_meal` single-recipe logs now store the same per-serving
 `ingredients_json` snapshot as `POST /api/log` (shared `receiptFromRecipeTemplate` in
 `recipeIngredients.js`), so their micros resolve live like app logs; recipe items keep
 the caller's `nutrition_source`. Boot repair `repairMcpRecipeEntrySnapshots` (db.js)
-backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
+backfilled older MCP recipe logs with a NULL snapshot.
 
-**2026-10-07 — MCP logging friction (found by logging from a phone session):**
+**MCP logging friction:**
 - *Shipped (PR #28):* `search_ingredients` takes `queries[]`, so a whole meal resolves in one
   call (one result group per query, `limit` per query, default 5). Write responses' `day.meals`
   is now a compact `{id, name, time_min, servings, logged}` instead of a copy of every meal's
@@ -230,8 +215,7 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   No density means no change. MCP add/update_food_item accept it (0.1–5, revertible);
   `search_ingredients` returns `grams_per_ml` + `loggable_units`. The REST route reads/writes it and
   an edit that omits it keeps it. **No UI field yet**: it is set via MCP only, though the Log Meal unit
-  picker already offers volume units once a row has one. After deploy, set soy sauce (#97) ≈ 1.2 and
-  chicken broth (#119) ≈ 1.0.
+  picker already offers volume units once a row has one.
 - *update_food_item response trimmed:* over MCP it returns `changed{field:{before,after}}` plus
   `micros_changed{nutrient:{before,after}}` instead of two full rows with raw `micros_json` (also
   per step inside `write_batch`). The audit row and the batch's stored response still keep the full
@@ -239,33 +223,31 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   `compactFoodUpdate` / `compactBatchResponse`.
 - *update_recipe:* MCP write that replaces a saved (non-prep) recipe's lines per serving and optionally
   its name; macros recomputed via `resolveReceiptForLog`; drops stale `meal_builder_meta.lines`; past
-  log entries untouched; revertible (refused if the recipe changed since). Wombo Combo (#108) had
-  broken lines ("3 g" eggs, "1 g" spray, "2 g" Kroger bread #29, Chobani yogurt) — rewrite it to
-  Diego's real breakfast with this tool.
+  log entries untouched; revertible (refused if the recipe changed since). Recipes with broken
+  ingredient lines (e.g. items showing as "3 g" or "1 g" with wrong IDs) can be corrected
+  using this tool.
 - *get_recipe per-line errors:* each line resolves on its own, so a broken line comes back with
   `error` + `hint` (the units its food can be measured in) instead of an empty `lines` array.
-  Eggs (#4) now have `grams_per_unit` 50 and the old per-slice TJ sourdough (#27) 56 g so Wombo
-  Combo (#108) lines can resolve.
+  Common unit-tracked ingredients (eggs, bread slices) need correct `grams_per_unit` values for
+  recipe lines to resolve.
 - *Maintenance calories:* read tool `estimate_maintenance` (default 28 days ending yesterday)
   infers maintenance as avg intake − weight slope × density / 7 at 3500 (all fat) and 2500 (mixed
   tissue) kcal/lb, plus ±1 SE of the slope; returns estimate, range, confidence, coverage warnings
   and the profile value. Write tool `set_maintenance_calories` (1000–6000 or null, revertible,
-  batchable; revert refuses if the Profile page changed it since). As of 2026-10-10 Diego's data
-  said ~2,800 vs a profile value of 2,500.
+  batchable; revert refuses if the Profile page changed it since).
 - *Recipes with today's amounts:* new read tool `get_recipe` (lines with label_ingredient_id, amount,
   unit, macros per serving). `log_meal` recipe items take `adjust: [{label_ingredient_id,
   quantity_g | quantity+unit | remove: true}]` (per serving), resolved through `resolveReceiptForLog`
   like the app's log-time receipt edits. One recipe plus adjust and/or extra foods is stored as ONE
   entry linked to the recipe (`insertRecipeWithChanges`, which also handles meal prep add-ons); several
-  recipes still flatten to a quick-food meal. Diego's daily breakfast is recipe #108 "Egg Toast Yogurt
-  Wombo Combo". `update_meal_entry` no longer returns `items_resolved` over MCP.
+  recipes still flatten to a quick-food meal. `update_meal_entry` no longer returns `items_resolved`
+  over MCP.
 - *Meal prep container + add-ons:* `log_meal` takes one limited recipe plus add-on foods (label
   ingredients / new foods) as ONE entry against the prep recipe, so the use counts down and is handed
   back on delete. Entry macros are per serving (totals ÷ servings); add-on rows are divided by servings
   and flagged `add_on: true` in `ingredients_json` next to the recipe snapshot, so micros count both.
   A prep with another recipe or a second prep is still refused (`MEAL_PREP_MIXED`). Default name:
-  "<prep> + <add-ons>". Prep #395 (soy chicken/russets/broccoli) has 2 honey (21 g) and 2 maple
-  (30 g, #64) containers. Maple duplicates #67/#71 were renamed "(old duplicate)".
+  "<prep> + <add-ons>".
 - *log_meal defaults for recipes:* a meal of only saved recipes / preps no longer needs `weight_basis`
   (defaults to raw) and recipe items no longer need `nutrition_source` (defaults to database — the
   lines carry their own). Single foods still require both. Unknown params get a "did you mean" hint
@@ -283,25 +265,24 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
 - *Claude app tool cache:* after a deploy that adds a tool parameter, the Claude app keeps the old
   schema until the connector is refreshed, so the direct call fails ("expected number, received
   string"). `write_batch` passes operations through unchanged and works as a fallback.
-- *Library data issues seen (not fixed):* duplicate rows (TJ sourdough #27 vs #136, avocado spray
-  #41 vs #138, 5 Greek yogurts); #49 small sourdough has `grams_per_unit` 0.01; #6 frozen
-  blueberries has 0 g protein. 
+- *Library data issues seen (not fixed):* duplicate ingredient rows, a `grams_per_unit` near zero,
+  and zero-protein entries that should have values. Check for these after data imports.
 
-**2026-10-05 — `log_body_weight` + server TZ:** MCP can write weigh-ins (lb/kg, same-date
+**`log_body_weight` + server TZ:** MCP can write weigh-ins (lb/kg, same-date
 overwrite like the Dashboard, `body_weights.source` = app|mcp, revertible, batchable) via the
 shared `server/bodyWeights.js` upsert the REST PUT now uses too. `server/index.js` defaults
 `TZ=America/Los_Angeles` (Render ran UTC, so MCP "today" flipped at 5 pm PT); also in
 `render.yaml` / deploy checklist. Known UI quirk, not changed: the Dashboard weight card saves
 to the *viewing* date and still says "Logged for today" on a past day.
 
-**2026-10-04 — unit-tracked gram weight:** unit-tracked foods have ONE gram weight,
+**Unit-tracked gram weight:** unit-tracked foods have ONE gram weight,
 `grams_per_unit` (what unitConvert, micros and the edit modal read). MCP used to scale them
 by the stray `grams_per_serving`, so macros were right but micros silently dropped (eggs
 logged as 200 g). MCP `log_meal` now uses the app's converter and takes `quantity`+`unit`
 ("4 egg"); grams without `grams_per_unit` are refused; dropped micros surface as warnings.
 **Pending:** run `server/scripts/migrateUnitGramsPerUnit.js` (dry run, then `--apply`) on
 Render to move `grams_per_serving` → `grams_per_unit` on unit rows — until then MCP can
-only log those foods by count. Since 2026-10-07 the script clears volume-unit rows (ml, cup…)
+only log those foods by count. The script also clears volume-unit rows (ml, cup…)
 instead of writing "1 ml = 1 g" over a real `grams_per_ml`. Single rows can also be cleared
 over MCP: `update_food_item {grams_per_serving: null}` is accepted on unit rows. Historical log rows are NOT rewritten (their micros heal live
 once `grams_per_unit` is set).
@@ -343,18 +324,16 @@ A personal nutrition + training tracker, built toward eventually connecting the 
 (the "bridge", Phase 3). Nutrition and Training are developed as **separate domains** —
 do not import one domain's business logic into the other.
 
-Phases: **1 Nutrition** (feature-complete for Diego's daily use), **2 Training** (gym dashboard),
+Phases: **1 Nutrition** (feature-complete for daily use), **2 Training** (gym dashboard),
 **3 Bridge** (future, not started).
 
 ---
 
 ## 2. How to run
 
-Repo root: **`~/dev/FLOPS`**. One-shot: `bash ~/dev/FLOPS/start-app.sh`. Or two terminals:
+One-shot: `bash start-app.sh` from the repo root. Or two terminals:
 
 ```bash
-cd ~/dev/FLOPS
-
 # Terminal 1 — API (port 3001)
 cd server && npm run dev
 
@@ -420,7 +399,7 @@ Save as Recipe / Meal Prep from log modal and meal ⋯ menu. Still accurate.
 
 ### Dashboard layout editor — VAULTED Oct 2026
 
-> Removed from the active app because drag/resize never behaved the way Diego wanted. The full
+> Removed from the active app because drag/resize never worked well enough. The full
 > editor (react-grid-layout canvas, edit context, toolbar, card scaling, Playwright verify harness)
 > is preserved on the branch **`archive/dashboard-layout-editor`**. `react-grid-layout` was
 > uninstalled. The notes below describe the archived code — read them before reviving it.
@@ -464,7 +443,7 @@ client/src/features/dashboard/
 - **Show/hide toggles:** in **Customizing Today** banner (not over the canvas). Greeting `h1` hidden in edit mode.
 - **Exit dialog:** centered via `showModal()` + CSS `translate(-50%, -50%)`.
 
-**Known rough edges (parked — Diego's feedback):**
+**Known rough edges (parked):**
 
 - Scaling can still feel like it "fights" the user vs. fluid document reflow (Google Docs mental model).
 - One-size-fits-all constraints were replaced with per-card rules, but **not perfect** for every card size.
@@ -501,9 +480,8 @@ pass only tested cards and picked `#04815a`, which passes on the card (4.65:1) b
 **Still open (found 2026-09-04, not changed):** in the *light* theme `--color-text-faint` and
 `--color-text-muted` are both `#6b7280` — 4.59:1 on cards but **4.15:1 on `--color-bg`**.
 
-Design canvases: contrast matrix <https://claude.ai/code/artifact/44f32c62-04be-4da5-bcf5-e163a2db33e2>,
-app review, all 14 routes + 5 chrome surfaces <https://claude.ai/code/artifact/dab937c0-3480-4304-87e9-12bb6068810a>.
-Working files in `.design/` (`gen.py` regenerates the artboards). **Note both canvases predate
+Design canvases (contrast matrix and app review across all 14 routes + 5 chrome surfaces) live in
+`.design/` (`gen.py` regenerates the artboards). **Note: the canvases predate
 `feat(typography): Nunito headings + Open Sans UI body` and still draw DM Serif — the contrast
 findings are unaffected, the type is not.**
 
@@ -539,7 +517,7 @@ Recent production commits (newest first):
 ```
 
 Working tree should be clean before starting new work. **One topic per commit**; push to `main`
-for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-commits.mdc`).
+for live deploy (see `.cursor/rules/early-ship-and-feature-commits.mdc`).
 
 ---
 
@@ -547,7 +525,7 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 
 **Not blocking daily use:**
 
-- **Dashboard layout editor UX** — functional but not polished to Diego's ideal; **parked**.
+- **Dashboard layout editor UX** — functional but not polished enough; **parked**.
 - **Email OTP / Resend** — production codes fail until Resend sending domain verified on Render.
 - **Oversized components:** `AiMacroLogger.jsx`, `Ingredients.jsx`, `MealBuilder.jsx`, `LogMealModal.jsx`.
 - **AiMacroLogger** hardcoded light-theme inline colors in review panels (notebook-day risk).
@@ -563,7 +541,7 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 
 ## 6. Parked / deliberately deferred
 
-- **Dashboard layout editor visual polish** — Diego paused here; app is usable without it.
+- **Dashboard layout editor visual polish** — paused; app is usable without it.
 - **Log Meal substitutes** — tap-name AI/heuristic swap vaulted via `SHOW_MEAL_SUBSTITUTES = false`
   in `LogMealModal.jsx`. Helpers + API remain. Swap path: ↑↓ row → ⌘⌫ remove → search add.
 - **Everyday Servings field** — hidden except for limited-use meal prep (`recipe_kind === 'limited'`)
@@ -582,21 +560,21 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - Beginner-friendly: explain non-obvious decisions; prefer the smallest change that works.
 - Mobile-first always (test mentally at 390px).
 - One topic per commit; don't bundle unrelated changes.
-- **Do not put the repo back in iCloud-synced `~/Documents`.** Start from **`~/dev/FLOPS`**.
+- **Do not put the repo in an iCloud-synced directory.** Work from a dedicated local path.
 - **HANDOFF.md is enforced** — `.claude/hooks/check-handoff.sh` blocks Stop if source changed without updating this file.
 - For UI/theming: **`docs/design-system.md`** + notebook-day section above.
-- Auto-ship: push `main` after shippable work unless Diego says "don't push".
+- Auto-ship: push `main` after shippable work unless told otherwise.
 
 ---
 
 ## 8. Picking up after the pause
 
-1. `cd ~/dev/FLOPS && git pull origin main`
+1. `git pull origin main` from the repo root.
 2. Read this file + skim **`CLAUDE.md`** for architecture.
-3. `cd server && npm run dev` + `cd client && npm run dev` (or `start-app.sh`).
-4. Log in at [useflops.com](https://www.useflops.com) — app should match `main`.
+3. `cd server && npm run dev` + `cd client && npm run dev` (or `bash start-app.sh`).
+4. Open the app and verify it matches `main`.
 5. **If resuming layout editor:** start with `client/src/features/dashboard/`, run
-   `npm run verify:layout-editor` in `client/`, read Diego's feedback in PRs #4–#11.
+   `npm run verify:layout-editor` in `client/`, read PR feedback in #4–#11.
 6. **If resuming gym:** `client/src/features/training-workouts/`, `/api/gym/*`.
 
 **Agent docs:** `AGENTS.md` (UI guide), `AGENT_WORKFLOW.md` (parallel agent rules), `CLAUDE.md` (full reference).
