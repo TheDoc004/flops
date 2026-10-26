@@ -26,6 +26,14 @@ _current-state_ companion to it.
 
 ## Recent changes (read this first)
 
+**UI polish 6/35 — Save as Recipe dialog at 390px (2026-10-26, branch `noggin/flops/polish-save-as-recipe-dialog-3-812d05-1`, awaiting ✅):**
+- Inline styles in `SaveMealAsRecipeDialog.jsx` replaced with scoped `.save-recipe-dialog` CSS
+  classes appended at the end of `index.css`. Header row with title + 44px ✕ close button matching
+  the log-meal-modal / barcode-modal / label-crop-modal pattern. Design tokens for spacing,
+  typography and colors. Meal-prep checkbox row gets `min-height: var(--touch-target)` for a reliable
+  44px hit area. Prep-split buttons flow naturally in a flex-wrap row. Save logic (`recipeReceipt`,
+  `recipePersist`, API calls) untouched; copy unchanged.
+
 **UI polish 5/35 — Label crop modal at 390px (2026-10-25, branch `noggin/flops/polish-label-crop-modal-390px-7b0536-1`, awaiting ✅):**
 - Inline styles in `LabelCropModal.jsx` replaced with scoped `.label-crop-modal` CSS classes appended
   at the end of `index.css`. Design tokens for spacing, typography and colors; ✕ sized to 44px touch

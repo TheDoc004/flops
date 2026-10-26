@@ -4430,3 +4430,90 @@ html[data-notebook-day] .mcp-source-badge {
   margin-top: var(--space-16);
   flex-wrap: wrap;
 }
+
+/* ── Save as Recipe dialog (SaveMealAsRecipeDialog) ──
+   Single column: header (title + ✕), hint, name field, meal-prep toggle,
+   optional split picker, actions. Mirrors the log-meal-modal / barcode-modal
+   pattern. Scoped to .save-recipe-dialog so it doesn't affect other modals. */
+.save-recipe-dialog {
+  width: min(420px, 94vw);
+}
+.save-recipe-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-bottom: var(--space-4);
+}
+.save-recipe-dialog__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.save-recipe-dialog .modal-close-x {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) 0;
+}
+.save-recipe-dialog__hint {
+  margin: 0 0 var(--space-16);
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+.save-recipe-dialog__label {
+  display: block;
+  margin-bottom: var(--space-6);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.save-recipe-dialog__input {
+  width: 100%;
+}
+.save-recipe-dialog__checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--touch-target);
+  margin-top: var(--space-12);
+  font-size: var(--text-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.save-recipe-dialog__prep {
+  margin-top: var(--space-10);
+}
+.save-recipe-dialog__splits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+.save-recipe-dialog__splits .prep-split {
+  flex: 1 1 auto;
+  min-width: 56px;
+  justify-content: center;
+}
+.save-recipe-dialog__custom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-top: var(--space-10);
+}
+.save-recipe-dialog__custom-label {
+  margin: 0;
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+.save-recipe-dialog__custom-input {
+  width: 80px;
+}
+.save-recipe-dialog__error {
+  margin-top: var(--space-12);
+  margin-bottom: 0;
+}
+.save-recipe-dialog__actions {
+  display: flex;
+  gap: var(--space-8);
+  margin-top: var(--space-20);
+}
