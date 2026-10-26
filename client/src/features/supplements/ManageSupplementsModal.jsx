@@ -13,21 +13,6 @@ import { MICRO_GROUPS } from '@shared/config/microNutrients';
 import { LabelCropModal } from '@features/label-ocr';
 import { formatDoseUnit } from './doseFormat';
 
-// Section headings match the ingredient form's serif treatment so the two
-// "add a thing" surfaces read as one family.
-const SECTION_HEADING = {
-  margin: '0 0 10px',
-  fontSize: 15,
-  fontWeight: 400,
-  color: 'var(--color-primary-ink)',
-  fontFamily: 'var(--font-sans)',
-  fontWeight: 600,
-};
-
-// Field labels sit at 13px, not 12px — small enough to defer to the value,
-// big enough to actually read.
-const FIELD_LABEL = { fontSize: 13, color: '#6b7280' };
-
 
 const EMPTY_FORM = {
   name: '',
@@ -384,10 +369,10 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
       <dialog
         ref={el => { dialogRef.current = el; if (el && !el.open) el.showModal(); }}
         onClose={onClose}
-        style={{ width: 'min(560px, 92vw)', maxHeight: '88vh', overflowY: 'auto' }}
+        className="manage-supplements-modal"
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
-          <h2 style={{ margin: 0 }}>Manage supplements</h2>
+        <div className="manage-supplements-modal__header">
+          <h2 className="manage-supplements-modal__title">Manage supplements</h2>
           <button type="button" className="modal-close-x" aria-label="Close" onClick={() => dialogRef.current?.close()}>
             ✕
           </button>
@@ -397,7 +382,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
 
         {/* Existing list */}
         {!loading && items.length > 0 && (
-          <h4 style={SECTION_HEADING}>Your supplements ({items.length})</h4>
+          <h4 className="manage-supplements-modal__section">Your supplements ({items.length})</h4>
         )}
         {loading ? (
           <p className="empty-state" style={{ padding: '12px 0' }}>Loading…</p>
@@ -406,60 +391,59 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
             No supplements yet — add your first below.
           </p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
+          <div className="manage-supplements-modal__list">
             {items.map(s => (
               <div
                 key={s.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-                  background: editingId === s.id ? 'var(--color-primary-subtle)' : 'var(--color-bg)', borderRadius: 8, minHeight: 44,
-                }}
+                className={`manage-supplements-modal__row${editingId === s.id ? ' manage-supplements-modal__row--editing' : ''}`}
               >
-                <div style={{ flex: '1 1 auto', minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>
+                <div className="manage-supplements-modal__row-info">
+                  <div className="manage-supplements-modal__row-name">{s.name}</div>
+                  <div className="manage-supplements-modal__row-meta">
                     {s.dose_text || 'No dose set'}
                     {s.counts_toward_macros ? ` · ${Math.round(s.calories)} cal counted` : ' · checklist only'}
                     {hasMicros(s) ? ` · ${Object.keys(s.micros).length} micro${Object.keys(s.micros).length === 1 ? '' : 's'}` : ''}
                   </div>
                 </div>
-                <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '5px 10px', minHeight: 32 }} onClick={() => startEdit(s)}>
-                  Edit
-                </button>
-                <button type="button" className="btn-danger-ghost" style={{ fontSize: 12, padding: '5px 10px', minHeight: 32 }} onClick={() => void handleDelete(s)} disabled={busy}>
-                  Remove
-                </button>
+                <div className="manage-supplements-modal__row-actions">
+                  <button type="button" className="btn-secondary" onClick={() => startEdit(s)}>
+                    Edit
+                  </button>
+                  <button type="button" className="btn-danger-ghost" onClick={() => void handleDelete(s)} disabled={busy}>
+                    Remove
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
 
         {/* Add / edit form */}
-        <form onSubmit={handleSubmit} style={{ borderTop: '1px solid #f0ede8', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form onSubmit={handleSubmit} className="manage-supplements-modal__form">
           {/* Editing is easy to miss when the form sits below the list, so say
               plainly which supplement is being changed. */}
           {editingId ? (
-            <div className="modal-highlight-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '8px 12px', borderRadius: 8 }}>
-              <span style={{ fontSize: 14 }}>
+            <div className="modal-highlight-panel manage-supplements-modal__editing-banner">
+              <span>
                 Editing <strong>{form.name || 'supplement'}</strong>
               </span>
-              <button type="button" className="btn-secondary" style={{ fontSize: 13, padding: '4px 12px', minHeight: 32 }} onClick={resetForm} disabled={busy}>
+              <button type="button" className="btn-secondary" onClick={resetForm} disabled={busy}>
                 Add a new one instead
               </button>
             </div>
           ) : (
-            <h4 style={SECTION_HEADING}>Add a supplement</h4>
+            <h4 className="manage-supplements-modal__section">Add a supplement</h4>
           )}
 
           {/* Two ways to fill this in without typing, framed as alternatives —
               you pick based on whether the product is in the database. Available
               while editing too, so an existing entry can be refreshed from a
               label rather than retyped. */}
-          <div className="modal-subpanel" style={{ padding: '12px 14px', borderRadius: 10 }}>
-            <strong style={{ display: 'block', fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
+          <div className="modal-subpanel manage-supplements-modal__lookup">
+            <strong className="manage-supplements-modal__lookup-title">
               {editingId ? 'Refresh from a label:' : 'Fill it in for me:'}
             </strong>
-            <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            <p className="manage-supplements-modal__lookup-hint">
               Search the NIH supplement label database — real label values, no photo needed.
             </p>
             <input
@@ -473,52 +457,51 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
               }}
               placeholder="e.g. Centrum Men, Nordic Naturals Omega"
               aria-label="Search supplements by name"
-              style={{ width: '100%' }}
             />
 
             {lookupBusy && (
-              <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>Searching…</p>
+              <p className="manage-supplements-modal__lookup-status">Searching…</p>
             )}
 
             {/* Preview: see the actual values before they touch the form. */}
             {preview && (
-              <div style={{ marginTop: 10, padding: '10px 12px', background: '#fff', border: '1px solid #c7d2fe', borderRadius: 8 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{preview.name}</div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+              <div className="manage-supplements-modal__preview">
+                <div className="manage-supplements-modal__preview-name">{preview.name}</div>
+                <div className="manage-supplements-modal__preview-meta">
                   {[preview.brand, preview.dose_text && `per ${preview.dose_text}`].filter(Boolean).join(' · ')}
                 </div>
 
                 {Object.keys(preview.micros || {}).length > 0 ? (
-                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '2px 12px' }}>
+                  <ul className="manage-supplements-modal__preview-grid">
                     {MICRO_GROUPS.flatMap(g => g.nutrients)
                       .filter(n => preview.micros[n.key] != null)
                       .map(n => (
-                        <li key={n.key} style={{ fontSize: 13, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                          <span style={{ color: '#4b5563' }}>{n.name}</span>
-                          <span style={{ fontWeight: 600 }}>{preview.micros[n.key]} {n.unit}</span>
+                        <li key={n.key}>
+                          <span>{n.name}</span>
+                          <span>{preview.micros[n.key]} {n.unit}</span>
                         </li>
                       ))}
                   </ul>
                 ) : (
-                  <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>
+                  <p className="manage-supplements-modal__preview-empty">
                     No micronutrients this app tracks.
                   </p>
                 )}
 
                 {preview.macros && (
-                  <p style={{ margin: '8px 0 0', fontSize: 13, color: '#4b5563' }}>
+                  <p className="manage-supplements-modal__preview-macros">
                     {Math.round(preview.macros.calories)} cal · P {preview.macros.protein_g} · C {preview.macros.carbs_g} · F {preview.macros.fat_g}
                   </p>
                 )}
                 {preview.notes && (
-                  <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#92400e', lineHeight: 1.5 }}>{preview.notes}</p>
+                  <p className="manage-supplements-modal__preview-notes">{preview.notes}</p>
                 )}
 
-                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  <button type="button" className="btn-primary" style={{ minHeight: 40 }} onClick={usePreviewedProduct}>
+                <div className="manage-supplements-modal__preview-actions">
+                  <button type="button" className="btn-primary" onClick={usePreviewedProduct}>
                     Use this product
                   </button>
-                  <button type="button" className="btn-secondary" style={{ minHeight: 40 }} onClick={() => setPreview(null)}>
+                  <button type="button" className="btn-secondary" onClick={() => setPreview(null)}>
                     Back to results
                   </button>
                 </div>
@@ -526,7 +509,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
             )}
 
             {!preview && lookupResults.length > 0 && (
-              <ul style={{ listStyle: 'none', margin: '10px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+              <ul className="manage-supplements-modal__results">
                 {lookupResults.map(hit => {
                   // The details that actually separate near-identical entries.
                   const facts = [
@@ -541,23 +524,20 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                         type="button"
                         onClick={() => void previewFromDatabase(hit.id)}
                         disabled={lookupBusy}
-                        style={{
-                          width: '100%', textAlign: 'left', background: '#fff', border: '1px solid #e5e7eb',
-                          borderRadius: 8, padding: '8px 10px', minHeight: 44, cursor: 'pointer', font: 'inherit',
-                        }}
+                        className="manage-supplements-modal__result-btn"
                       >
-                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>
+                        <span className="manage-supplements-modal__result-name">
                           {hit.name}
                           {hit.off_market && (
-                            <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 4, padding: '1px 5px' }}>
+                            <span className="manage-supplements-modal__result-badge">
                               discontinued
                             </span>
                           )}
                         </span>
-                        <span style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>
+                        <span className="manage-supplements-modal__result-detail">
                           {hit.brand || 'Unknown brand'}
                         </span>
-                        <span style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>{facts.join(' · ')}</span>
+                        <span className="manage-supplements-modal__result-detail">{facts.join(' · ')}</span>
                       </button>
 
                       {/* Same product, earlier labels — kept out of the way. */}
@@ -566,22 +546,19 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                           <button
                             type="button"
                             onClick={() => setExpandedVersions(expandedVersions === hit.id ? null : hit.id)}
-                            style={{ background: 'none', border: 'none', padding: '4px 10px', font: 'inherit', fontSize: 12, color: 'var(--color-text-muted)', cursor: 'pointer', textDecoration: 'underline' }}
+                            className="manage-supplements-modal__versions-toggle"
                           >
                             {expandedVersions === hit.id ? 'Hide' : `${hit.older_versions.length} earlier label${hit.older_versions.length === 1 ? '' : 's'}`}
                           </button>
                           {expandedVersions === hit.id && (
-                            <ul style={{ listStyle: 'none', margin: '2px 0 0 12px', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <ul className="manage-supplements-modal__versions-list">
                               {hit.older_versions.map(v => (
                                 <li key={v.id}>
                                   <button
                                     type="button"
                                     onClick={() => void previewFromDatabase(v.id)}
                                     disabled={lookupBusy}
-                                    style={{
-                                      width: '100%', textAlign: 'left', background: 'var(--color-bg)', border: '1px solid var(--color-border)',
-                                      borderRadius: 6, padding: '6px 10px', minHeight: 36, cursor: 'pointer', font: 'inherit', fontSize: 12, color: '#4b5563',
-                                    }}
+                                    className="manage-supplements-modal__version-btn"
                                   >
                                     {[v.entry_date ? `label from ${v.entry_date.slice(0, 4)}` : '', v.net_contents, v.nutrient_count ? `${v.nutrient_count} nutrients` : '', v.off_market ? 'discontinued' : '']
                                       .filter(Boolean)
@@ -600,7 +577,7 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
             )}
 
             {lookupSearched && !lookupBusy && lookupResults.length === 0 && (
-              <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
+              <p className="manage-supplements-modal__lookup-status">
                 Nothing found — it may not be in the database (it covers US products).
               </p>
             )}
@@ -609,17 +586,16 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
             {lookupQuery.trim().length >= 2 && (
               <button
                 type="button"
-                className={estimateBusy ? 'btn-secondary btn-loading' : 'btn-secondary'}
+                className={`manage-supplements-modal__estimate-btn ${estimateBusy ? 'btn-secondary btn-loading' : 'btn-secondary'}`}
                 onClick={() => void runEstimate()}
                 disabled={estimateBusy || lookupBusy || busy}
-                style={{ marginTop: 10, minHeight: 40 }}
               >
                 {estimateBusy ? 'Estimating…' : 'Estimate from the name instead'}
               </button>
             )}
 
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed #e5e7eb' }}>
-              <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            <div className="manage-supplements-modal__scan-divider">
+              <p className="manage-supplements-modal__scan-hint">
                 Not in the database? Read it off the bottle instead:
               </p>
               <input
@@ -632,10 +608,9 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
               />
               <button
                 type="button"
-                className={scanBusy ? 'btn-secondary btn-loading' : 'btn-secondary'}
+                className={`manage-supplements-modal__scan-btn ${scanBusy ? 'btn-secondary btn-loading' : 'btn-secondary'}`}
                 onClick={() => fileInputRef.current?.click()}
                 disabled={scanBusy || busy}
-                style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 8 }}
               >
                 {scanBusy ? 'Reading label…' : 'Scan Supplement Facts label'}
               </button>
@@ -643,31 +618,31 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
           </div>
 
           {scanNote && (
-            <p style={{ margin: 0, fontSize: 13, color: '#1d7a5f', background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5 }}>
+            <p className="manage-supplements-modal__scan-note">
               {scanNote}
             </p>
           )}
 
           <div>
-            <h4 style={SECTION_HEADING}>Details</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <h4 className="manage-supplements-modal__section">Details</h4>
+            <div className="manage-supplements-modal__fields">
               <div>
-                <label style={FIELD_LABEL}>Name</label>
+                <label className="manage-supplements-modal__label">Name</label>
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Whey Protein" required />
               </div>
               {/* The whole point: the label's serving and YOUR dose are
                   different things. Everything captured describes one label
                   serving, so saying you take more must scale it. */}
-              <div className="modal-subpanel" style={{ padding: '10px 12px', borderRadius: 8 }}>
-                <strong style={{ display: 'block', fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
+              <div className="modal-subpanel manage-supplements-modal__dose-panel">
+                <strong className="manage-supplements-modal__dose-title">
                   How much you take
                 </strong>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="manage-supplements-modal__dose-grid">
                   <div>
-                    <label style={FIELD_LABEL}>The label calls one serving</label>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <label className="manage-supplements-modal__label">The label calls one serving</label>
+                    <div className="manage-supplements-modal__dose-inputs">
                       <input
-                        type="number" inputMode="decimal" min="0" step="any" style={{ width: 70 }}
+                        type="number" inputMode="decimal" min="0" step="any"
                         value={form.label_serving_qty}
                         onChange={e => setForm(f => ({ ...f, label_serving_qty: e.target.value }))}
                         aria-label="Label serving amount"
@@ -677,26 +652,25 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
                         onChange={e => setForm(f => ({ ...f, label_serving_unit: e.target.value }))}
                         placeholder="softgel"
                         aria-label="Serving unit"
-                        style={{ minWidth: 0 }}
                       />
                     </div>
                   </div>
                   <div>
-                    <label style={FIELD_LABEL}>You actually take</label>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <label className="manage-supplements-modal__label">You actually take</label>
+                    <div className="manage-supplements-modal__dose-take">
                       <input
-                        type="number" inputMode="decimal" min="0" step="any" style={{ width: 70 }}
+                        type="number" inputMode="decimal" min="0" step="any"
                         value={form.dose_qty}
                         onChange={e => setForm(f => ({ ...f, dose_qty: e.target.value }))}
                         aria-label="Amount you take"
                       />
-                      <span style={{ fontSize: 14, color: 'var(--color-text-body)' }}>
+                      <span className="manage-supplements-modal__dose-unit">
                         {formatDoseUnit(form.label_serving_unit, Number(form.dose_qty))}
                       </span>
                     </div>
                   </div>
                 </div>
-                <p style={{ margin: '8px 0 0', fontSize: 13, color: doseMultiplier === 1 ? 'var(--color-text-muted)' : '#92400e', lineHeight: 1.5 }}>
+                <p className={`manage-supplements-modal__dose-note${doseMultiplier !== 1 ? ' manage-supplements-modal__dose-note--scaled' : ''}`}>
                   {doseMultiplier === 1
                     ? 'You take exactly one label serving, so the values below are counted as printed.'
                     : `You take ${+doseMultiplier.toFixed(2)}× the label serving, so everything below is multiplied by ${+doseMultiplier.toFixed(2)} when counted.`}
@@ -704,26 +678,25 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
               </div>
 
               <div>
-                <label style={FIELD_LABEL}>Dose note (optional)</label>
+                <label className="manage-supplements-modal__label">Dose note (optional)</label>
                 <input value={form.dose_text} onChange={e => setForm(f => ({ ...f, dose_text: e.target.value }))} placeholder="e.g. with breakfast" />
               </div>
             </div>
           </div>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+          <label className="manage-supplements-modal__macro-toggle">
             <input
               type="checkbox"
               checked={form.counts_toward_macros}
               onChange={e => setForm(f => ({ ...f, counts_toward_macros: e.target.checked }))}
-              style={{ width: 16, height: 16 }}
             />
             Count its calories/macros toward my daily totals
           </label>
           {form.counts_toward_macros && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))', gap: 8, marginTop: -2 }}>
+            <div className="manage-supplements-modal__macro-grid">
               {[['calories', 'Cal'], ['protein_g', 'P (g)'], ['carbs_g', 'C (g)'], ['fat_g', 'F (g)']].map(([key, label]) => (
                 <div key={key}>
-                  <label style={FIELD_LABEL}>{label}</label>
+                  <label className="manage-supplements-modal__label">{label}</label>
                   <input type="number" inputMode="decimal" min="0" step="0.1" value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
                 </div>
               ))}
@@ -731,35 +704,31 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
           )}
           {/* Micronutrients (optional) — exact label values that count toward
               your daily micros in History whenever this supplement is checked. */}
-          <div style={{ borderTop: '1px solid #f0ede8', paddingTop: 10 }}>
+          <div className="manage-supplements-modal__micros-divider">
             <button
               type="button"
               onClick={() => setMicrosOpen(o => !o)}
               aria-expanded={microsOpen}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                fontSize: 15, fontWeight: 600, color: 'var(--color-text-body)',
-              }}
+              className="manage-supplements-modal__micros-toggle"
             >
-              <span aria-hidden="true" style={{ display: 'inline-block', transform: microsOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▸</span>
+              <span aria-hidden="true" className={`manage-supplements-modal__micros-chevron${microsOpen ? ' manage-supplements-modal__micros-chevron--open' : ''}`}>▸</span>
               Micronutrients{microCount > 0 ? ` (${microCount} filled)` : ' (optional)'}
             </button>
             {microsOpen && (
-              <div style={{ marginTop: 10 }}>
-                <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+              <div className="manage-supplements-modal__micros-body">
+                <p className="manage-supplements-modal__micros-hint">
                   Enter values straight from the label. They count toward your daily micronutrients
                   (in History) on any day this supplement is checked.
                 </p>
                 {MICRO_GROUPS.map(group => (
-                  <div key={group.key} style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 6 }}>
+                  <div key={group.key} className="manage-supplements-modal__micros-group">
+                    <div className="manage-supplements-modal__micros-group-label">
                       {group.label}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
+                    <div className="manage-supplements-modal__micros-grid">
                       {group.nutrients.map(n => (
                         <div key={n.key}>
-                          <label style={FIELD_LABEL}>{n.name} ({n.unit})</label>
+                          <label className="manage-supplements-modal__label">{n.name} ({n.unit})</label>
                           <input
                             type="number" inputMode="decimal" min="0" step="any"
                             value={form.micros?.[n.key] ?? ''}
@@ -774,13 +743,13 @@ export default function ManageSupplementsModal({ onClose, onChanged }) {
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <div className="manage-supplements-modal__actions">
             {editingId && (
-              <button type="button" className="btn-secondary" style={{ minHeight: 40 }} onClick={resetForm} disabled={busy}>
+              <button type="button" className="btn-secondary" onClick={resetForm} disabled={busy}>
                 Cancel
               </button>
             )}
-            <button type="submit" className={busy ? 'btn-primary btn-loading' : 'btn-primary'} style={{ minHeight: 40, padding: '0 20px' }} disabled={busy || !form.name.trim()}>
+            <button type="submit" className={busy ? 'btn-primary btn-loading' : 'btn-primary'} disabled={busy || !form.name.trim()}>
               {editingId ? 'Save changes' : 'Add supplement'}
             </button>
           </div>

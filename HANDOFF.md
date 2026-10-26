@@ -26,6 +26,14 @@ _current-state_ companion to it.
 
 ## Recent changes (read this first)
 
+**UI polish 7/35 — Manage supplements modal at 390px (2026-10-26, branch `noggin/flops/polish-manage-supplements-moda-aca079-1`, awaiting ✅):**
+- All inline styles in `ManageSupplementsModal.jsx` moved into a scoped `.manage-supplements-modal`
+  CSS block appended at the end of `index.css`. Design tokens for spacing, typography, colors and
+  radii; `modal-close-x` sized to 44px; every interactive row and button meets the 44px touch target.
+  Supplement list rows, lookup/preview panel, dose subpanel, micronutrient expander and form actions
+  all use BEM-style classes under the one scope. Fixed the duplicate `fontWeight` key in the old
+  `SECTION_HEADING` constant (build warning eliminated). No logic, copy or behavior changes.
+
 **UI polish 5/35 — Label crop modal at 390px (2026-10-25, branch `noggin/flops/polish-label-crop-modal-390px-7b0536-1`, awaiting ✅):**
 - Inline styles in `LabelCropModal.jsx` replaced with scoped `.label-crop-modal` CSS classes appended
   at the end of `index.css`. Design tokens for spacing, typography and colors; ✕ sized to 44px touch

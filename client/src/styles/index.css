@@ -4430,3 +4430,452 @@ html[data-notebook-day] .mcp-source-badge {
   margin-top: var(--space-16);
   flex-wrap: wrap;
 }
+
+/* ── Manage supplements modal (ManageSupplementsModal) ──
+   CRUD list + add/edit form for the user's supplement definitions.
+   Scoped under .manage-supplements-modal so nothing leaks. */
+.manage-supplements-modal {
+  width: min(560px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.manage-supplements-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-bottom: var(--space-16);
+}
+.manage-supplements-modal__title { margin: 0; }
+.manage-supplements-modal .modal-close-x {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) 0;
+}
+
+/* Section headings — serif treatment matching the ingredient form. */
+.manage-supplements-modal__section {
+  margin: 0 0 var(--space-10);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-primary-ink);
+  font-family: var(--font-sans);
+}
+
+/* ── Existing-supplement list ── */
+.manage-supplements-modal__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  margin-bottom: var(--space-20);
+}
+.manage-supplements-modal__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: var(--space-8) var(--space-12);
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  min-height: var(--touch-target);
+}
+.manage-supplements-modal__row--editing {
+  background: var(--color-primary-subtle);
+}
+.manage-supplements-modal__row-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.manage-supplements-modal__row-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.manage-supplements-modal__row-meta {
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+}
+.manage-supplements-modal__row-actions {
+  display: flex;
+  gap: var(--space-6);
+  flex-shrink: 0;
+}
+.manage-supplements-modal__row-actions .btn-secondary,
+.manage-supplements-modal__row-actions .btn-danger-ghost {
+  font-size: var(--text-caption);
+  padding: var(--space-6) var(--space-10);
+  min-height: var(--touch-target);
+}
+
+/* ── Add/edit form ── */
+.manage-supplements-modal__form {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-16);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+/* Editing-banner */
+.manage-supplements-modal__editing-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  flex-wrap: wrap;
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-md);
+}
+.manage-supplements-modal__editing-banner span {
+  font-size: 14px;
+}
+.manage-supplements-modal__editing-banner .btn-secondary {
+  font-size: var(--text-secondary);
+  padding: var(--space-4) var(--space-12);
+  min-height: var(--touch-target);
+}
+
+/* ── Lookup subpanel (NIH search + scan) ── */
+.manage-supplements-modal__lookup {
+  padding: var(--space-12) var(--space-14);
+  border-radius: var(--radius-lg);
+}
+.manage-supplements-modal__lookup-title {
+  display: block;
+  font-size: var(--text-body);
+  font-weight: 600;
+  margin-bottom: var(--space-4);
+}
+.manage-supplements-modal__lookup-hint {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+.manage-supplements-modal__lookup input[type="text"],
+.manage-supplements-modal__lookup input:not([type]) {
+  width: 100%;
+}
+.manage-supplements-modal__lookup-status {
+  margin: var(--space-8) 0 0;
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+
+/* Preview card */
+.manage-supplements-modal__preview {
+  margin-top: var(--space-10);
+  padding: var(--space-10) var(--space-12);
+  background: var(--color-secondary-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.manage-supplements-modal__preview-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.manage-supplements-modal__preview-meta {
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-8);
+}
+.manage-supplements-modal__preview-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-2) var(--space-12);
+}
+.manage-supplements-modal__preview-grid li {
+  font-size: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+.manage-supplements-modal__preview-grid li span:first-child {
+  color: var(--color-text-body);
+}
+.manage-supplements-modal__preview-grid li span:last-child {
+  font-weight: 600;
+}
+.manage-supplements-modal__preview-empty {
+  margin: 0;
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+.manage-supplements-modal__preview-macros {
+  margin: var(--space-8) 0 0;
+  font-size: var(--text-secondary);
+  color: var(--color-text-body);
+}
+.manage-supplements-modal__preview-notes {
+  margin: var(--space-8) 0 0;
+  font-size: 12.5px;
+  color: var(--color-warning-ink);
+  line-height: 1.5;
+}
+.manage-supplements-modal__preview-actions {
+  display: flex;
+  gap: var(--space-8);
+  margin-top: var(--space-10);
+  flex-wrap: wrap;
+}
+.manage-supplements-modal__preview-actions .btn-primary,
+.manage-supplements-modal__preview-actions .btn-secondary {
+  min-height: var(--touch-target);
+}
+
+/* Search results list */
+.manage-supplements-modal__results {
+  list-style: none;
+  margin: var(--space-10) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-height: 300px;
+  overflow-y: auto;
+}
+.manage-supplements-modal__result-btn {
+  width: 100%;
+  text-align: left;
+  background: var(--color-secondary-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-8) var(--space-10);
+  min-height: var(--touch-target);
+  cursor: pointer;
+  font: inherit;
+}
+.manage-supplements-modal__result-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+.manage-supplements-modal__result-badge {
+  margin-left: var(--space-6);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-warning-ink);
+  background: var(--status-partial-bg);
+  border: 1px solid var(--status-partial-border);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+.manage-supplements-modal__result-detail {
+  display: block;
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+/* Older-versions toggle */
+.manage-supplements-modal__versions-toggle {
+  background: none;
+  border: none;
+  padding: var(--space-4) var(--space-10);
+  font: inherit;
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  min-height: var(--touch-target);
+}
+.manage-supplements-modal__versions-list {
+  list-style: none;
+  margin: var(--space-2) 0 0 var(--space-12);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.manage-supplements-modal__version-btn {
+  width: 100%;
+  text-align: left;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6) var(--space-10);
+  min-height: var(--touch-target);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-caption);
+  color: var(--color-text-body);
+}
+
+/* Fallback buttons (estimate, scan) */
+.manage-supplements-modal__estimate-btn {
+  margin-top: var(--space-10);
+  min-height: var(--touch-target);
+}
+.manage-supplements-modal__scan-divider {
+  margin-top: var(--space-12);
+  padding-top: var(--space-12);
+  border-top: 1px dashed var(--color-border);
+}
+.manage-supplements-modal__scan-hint {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+.manage-supplements-modal__scan-btn {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+/* Scan-note (success/info feedback) */
+.manage-supplements-modal__scan-note {
+  margin: 0;
+  font-size: var(--text-secondary);
+  color: #1d7a5f;
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  border-radius: var(--radius-md);
+  padding: var(--space-8) var(--space-10);
+  line-height: 1.5;
+}
+
+/* ── Details fields ── */
+.manage-supplements-modal__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+}
+.manage-supplements-modal__label {
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+
+/* Dose subpanel */
+.manage-supplements-modal__dose-panel {
+  padding: var(--space-10) var(--space-12);
+  border-radius: var(--radius-md);
+}
+.manage-supplements-modal__dose-title {
+  display: block;
+  font-size: var(--text-body);
+  font-weight: 600;
+  margin-bottom: var(--space-6);
+}
+.manage-supplements-modal__dose-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-10);
+}
+.manage-supplements-modal__dose-inputs {
+  display: flex;
+  gap: var(--space-6);
+}
+.manage-supplements-modal__dose-inputs input[type="number"] {
+  width: 70px;
+}
+.manage-supplements-modal__dose-inputs input:not([type="number"]) {
+  min-width: 0;
+}
+.manage-supplements-modal__dose-take {
+  display: flex;
+  gap: var(--space-6);
+  align-items: center;
+}
+.manage-supplements-modal__dose-take input[type="number"] {
+  width: 70px;
+}
+.manage-supplements-modal__dose-unit {
+  font-size: 14px;
+  color: var(--color-text-body);
+}
+.manage-supplements-modal__dose-note {
+  margin: var(--space-8) 0 0;
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+.manage-supplements-modal__dose-note--scaled {
+  color: var(--color-warning-ink);
+}
+
+/* Macro checkbox + grid */
+.manage-supplements-modal__macro-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  font-size: 14px;
+  cursor: pointer;
+  min-height: var(--touch-target);
+}
+.manage-supplements-modal__macro-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+.manage-supplements-modal__macro-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: var(--space-8);
+  margin-top: calc(-1 * var(--space-2));
+}
+
+/* ── Micronutrients expander ── */
+.manage-supplements-modal__micros-divider {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-10);
+}
+.manage-supplements-modal__micros-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-body);
+  min-height: var(--touch-target);
+}
+.manage-supplements-modal__micros-chevron {
+  display: inline-block;
+  transition: transform var(--dur-fast);
+}
+.manage-supplements-modal__micros-chevron--open {
+  transform: rotate(90deg);
+}
+.manage-supplements-modal__micros-body {
+  margin-top: var(--space-10);
+}
+.manage-supplements-modal__micros-hint {
+  margin: 0 0 var(--space-10);
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+.manage-supplements-modal__micros-group {
+  margin-bottom: var(--space-10);
+}
+.manage-supplements-modal__micros-group-label {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: var(--space-6);
+}
+.manage-supplements-modal__micros-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-8);
+}
+
+/* ── Form actions ── */
+.manage-supplements-modal__actions {
+  display: flex;
+  gap: var(--space-8);
+  justify-content: flex-end;
+}
+.manage-supplements-modal__actions .btn-primary,
+.manage-supplements-modal__actions .btn-secondary {
+  min-height: var(--touch-target);
+}
+.manage-supplements-modal__actions .btn-primary {
+  padding: 0 var(--space-20);
+}
