@@ -324,7 +324,7 @@ verified without failing a write — see `docs/mcp-connector.md`.
 | What | Where |
 |---|---|
 | **App** | [https://www.useflops.com](https://www.useflops.com) |
-| **API** | `https://flops-c6ic.onrender.com` |
+| **API** | `https://api.useflops.com` (OVH VPS, see `deploy/vps/README.md`; Render `flops-c6ic.onrender.com` retired) |
 | **Frontend host** | Vercel (`client/`, auto-deploy on push to `main`) |
 | **Backend host** | Render Web Service (`server/`, persistent disk at `/var/data/nutrition.db`) |
 | **Backup Vercel URL** | `https://flops-amber.vercel.app` |

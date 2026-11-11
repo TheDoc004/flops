@@ -3,7 +3,7 @@
 _Code scaffolding is in the repo (`render.yaml`, `client/vercel.json`, `scripts/backup-sqlite.sh`). Accounts, keys, DNS, and DB upload are yours._
 
 **Canonical app URL:** [https://useflops.com](https://useflops.com)  
-**API:** `https://flops-c6ic.onrender.com`  
+**API:** `https://api.useflops.com` — now on the OVH VPS; see [`deploy/vps/README.md`](../deploy/vps/README.md). The Render steps below are historical.  
 **Backup frontend URL:** `https://flops-amber.vercel.app` (keep until custom domain is stable)
 
 Goal: **HTTPS URL that works on phone Safari** without your laptop running.

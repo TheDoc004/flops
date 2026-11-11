@@ -3,7 +3,7 @@
 Model Context Protocol endpoint so Claude (or another agent) can analyze FLOPS data
 and write meals, foods, and supplement dose fixes directly (low-volume convenience).
 
-**URL:** `https://flops-c6ic.onrender.com/mcp`  
+**URL:** `https://api.useflops.com/mcp`  
 **Auth (either):** `Authorization: Bearer <MCP_API_TOKEN>` **or** `x-api-key: <MCP_API_TOKEN>`  
 **Transport:** Streamable HTTP (stateless)
 
@@ -31,7 +31,7 @@ Redeploy after saving. Until `MCP_API_TOKEN` is set, `/mcp` returns **503**.
 ## 2. Add the connector in Claude
 
 1. Claude → **Customize** → **Connectors** → **Add custom connector**.
-2. Name: anything (e.g. Flops). URL: `https://flops-c6ic.onrender.com/mcp`.
+2. Name: anything (e.g. Flops). URL: `https://api.useflops.com/mcp`.
 3. Authentication: **No sign-in** (not “Sign in now”).
 4. **Request headers** → add:
    - Header name: `x-api-key`
@@ -46,7 +46,7 @@ If Flops already exists and **Connect** fails with “Couldn't register with …
 ```bash
 claude mcp add --transport http \
   --header "Authorization: Bearer $MCP_API_TOKEN" \
-  flops https://flops-c6ic.onrender.com/mcp
+  flops https://api.useflops.com/mcp
 ```
 
 Optional hardening later: restrict `/mcp` to Anthropic egress `160.79.104.0/21` (see `docs/future/deployment-and-mcp.md`).
@@ -82,7 +82,7 @@ Example prompts:
 - “Using `get_intake_weight_trend`, start 2026-08-20 end 2026-09-19 split_at 2026-09-11 — am I gaining and what’s my maintenance?”
 - “Show progressive overload signals for bench press from gym progress.”
 
-**Deploy sanity (no MCP client needed):** `GET https://flops-c6ic.onrender.com/health` returns the same `git_sha` / `built_at` / `process_started_at` (no tool list). If `built_at` is new but `process_started_at` is old, the build finished and the old process is still serving.
+**Deploy sanity (no MCP client needed):** `GET https://api.useflops.com/health` returns the same `git_sha` / `built_at` / `process_started_at` (no tool list). If `built_at` is new but `process_started_at` is old, the build finished and the old process is still serving.
 
 ---
 
