@@ -148,7 +148,7 @@ _current-state_ companion to it.
 - **Report a problem:** a quiet link under every app screen (`shared/ui/ReportProblem.jsx`) posts to
   `POST /api/problem-reports`. The table `problem_reports` holds only text, route (path only),
   app_version (server git sha), user_id, created_at and status. `GET /api/problem-reports` lists `new`
-  report rows only and needs `x-api-key: $PROBLEM_REPORTS_TOKEN`. **The admin sets that env var on Render**,
+  report rows only and needs `x-api-key: $PROBLEM_REPORTS_TOKEN`. **The admin sets that env var in `/etc/flops/flops.env` on the VPS**,
   and the inbox answers 503 until he does. Tests: `server/__tests__/problemReports.test.js`, the vitest
   for the form, and a mobile smoke step.
 - **Privacy isolation:** `server/__tests__/privacyIsolation.test.js` checks that user B can't touch A's
@@ -290,7 +290,7 @@ backfilled older MCP recipe logs with a NULL snapshot.
 overwrite like the Dashboard, `body_weights.source` = app|mcp, revertible, batchable) via the
 shared `server/bodyWeights.js` upsert the REST PUT now uses too. `server/index.js` defaults
 `TZ=America/Los_Angeles` (Render ran UTC, so MCP "today" flipped at 5 pm PT); also in
-`render.yaml` / deploy checklist. Known UI quirk, not changed: the Dashboard weight card saves
+`/etc/flops/flops.env` on the VPS. Known UI quirk, not changed: the Dashboard weight card saves
 to the *viewing* date and still says "Logged for today" on a past day.
 
 **Unit-tracked gram weight:** unit-tracked foods have ONE gram weight,
@@ -312,7 +312,7 @@ verified without failing a write — see `docs/mcp-connector.md`.
 **When you return / next picks (optional):**
 
 1. **Backfill** — use `update_food_item` + `micros_per_100g` + `micros_confidence` (`medium` for USDA, `high` for labels); past meals pick them up live.
-2. **Claude connector** — after Render redeploy, call `get_server_info` (or `curl /health`) and confirm `git_sha` matches the merged commit; refresh the connector if `tool_count` looks stale client-side.
+2. **Claude connector** — after the VPS deploy (Actions → "Deploy API to VPS"), call `get_server_info` (or `curl /health`) and confirm `git_sha` matches the merged commit; refresh the connector if `tool_count` looks stale client-side.
 3. **Gym UX / progressive overload** — agent can already call `get_gym_progress`.
 4. **Dashboard layout editor** — **vaulted Oct 2026** (too wonky); see [§ Dashboard layout editor](#dashboard-layout-editor--vaulted-oct-2026).
 5. **Ops:** Resend domain verification for production OTP email (if not done yet).
@@ -326,11 +326,11 @@ verified without failing a write — see `docs/mcp-connector.md`.
 | **App** | [https://www.useflops.com](https://www.useflops.com) |
 | **API** | `https://api.useflops.com` (OVH VPS, see `deploy/vps/README.md`; Render `flops-c6ic.onrender.com` retired) |
 | **Frontend host** | Vercel (`client/`, auto-deploy on push to `main`) |
-| **Backend host** | Render Web Service (`server/`, persistent disk at `/var/data/nutrition.db`) |
+| **Backend host** | OVH VPS shared with the Minecraft server — `flops.service` behind Caddy, DB `/var/lib/flops/nutrition.db`, nightly backups (`deploy/vps/README.md`) |
 | **Backup Vercel URL** | `https://flops-amber.vercel.app` |
 
 **Workflow:** commit + push to **`main`** → Vercel production deploy within ~1 min.
-Render redeploys on push if connected to the same repo.
+Pushes touching `server/` also run `.github/workflows/deploy-vps.yml`, which deploys the API and checks `/health` reports the new SHA.
 
 **Verify a deploy:** `gh api repos/TheDoc004/flops/deployments --jq '.[0] | {env:.environment, sha:.sha[0:7], created:.created_at}'`
 
@@ -544,7 +544,7 @@ for live deploy (see `.cursor/rules/early-ship-and-feature-commits.mdc`).
 **Not blocking daily use:**
 
 - **Dashboard layout editor UX** — functional but not polished enough; **parked**.
-- **Email OTP / Resend** — production codes fail until Resend sending domain verified on Render.
+- **Email OTP / Resend** — production codes fail until a Resend sending domain is verified (key lives in `/etc/flops/flops.env` on the VPS).
 - **Oversized components:** `AiMacroLogger.jsx`, `Ingredients.jsx`, `MealBuilder.jsx`, `LogMealModal.jsx`.
 - **AiMacroLogger** hardcoded light-theme inline colors in review panels (notebook-day risk).
 - **Stale brand asset:** `flops-badge.png` (2MB amber lightbulb) clashes with navy/paper identity.

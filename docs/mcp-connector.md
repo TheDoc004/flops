@@ -11,18 +11,18 @@ and write meals, foods, and supplement dose fixes directly (low-volume convenien
 
 ---
 
-## 1. Render env vars
+## 1. Server env vars
 
-On the API web service (`flops-c6ic`), set:
+In `/etc/flops/flops.env` on the VPS (root:flops 640; `sudoedit`, then `sudo systemctl restart flops`), set:
 
 | Variable | Required | Notes |
 |---|---|---|
 | `MCP_API_TOKEN` | Yes | Long random secret (e.g. `openssl rand -hex 32`) |
 | `MCP_USER_ID` | No | FLOPS `users.id` to read/write. Defaults to the first user (owner). |
 
-Redeploy after saving. Until `MCP_API_TOKEN` is set, `/mcp` returns **503**.
+Restart after saving. Until `MCP_API_TOKEN` is set, `/mcp` returns **503**.
 
-**Build command:** Render must run `npm install && node scripts/write-build-info.js` (see `render.yaml`) so `built_at` is stamped. Runtime still falls back to `RENDER_GIT_COMMIT` for `git_sha` if the write-build-info step was skipped.
+**Build stamp:** `/opt/flops/deploy.sh` runs `node scripts/write-build-info.js` on every deploy so `built_at` / `git_sha` are stamped.
 
 **Auth note:** static token only (Bearer or `x-api-key`). No OAuth. Writes are scoped to `MCP_USER_ID` (or the first user).
 
