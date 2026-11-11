@@ -1,7 +1,7 @@
 # FLOPS — Project Context for Claude / Claude Code
 
 > **Current state snapshot:** see **`HANDOFF.md`** (last updated 2026-09-04).
-> Canonical repo: **`~/dev/FLOPS`**. Live: **https://www.useflops.com** (Vercel + Render, push `main` to deploy).
+> Canonical repo: **`~/dev/FLOPS`**. Live: **https://www.useflops.com** (Vercel frontend + API on the OVH VPS at `api.useflops.com`; push `main` to deploy both).
 > **Questlines:** work is split into tracks — **Build** (features, tracked in `HANDOFF.md`) and
 > **Release** (open source → ChatGPT/Claude connector). See **`docs/questlines/`**.
 
@@ -317,7 +317,8 @@ Phase 3 (future): Cross-app intelligence via a dedicated bridge layer. See
 
 ## Important Notes for Future Sessions
 
-- **Deploy:** push to `main` → Vercel production. API on Render (`docs/deploy-checklist.md`).
+- **Deploy:** push to `main` → Vercel production; changes under `server/` also deploy the API to the
+  OVH VPS via GitHub Actions (`.github/workflows/deploy-vps.yml`). Runbook: `deploy/vps/README.md`.
 - **HANDOFF.md** is the living current-state doc; update it when finishing a session with meaningful changes.
 - Do not add a CSS framework. Push the existing plain CSS system harder instead.
 - Recharts charts must always be wrapped in `<ResponsiveContainer width="100%" height={N}>`.
