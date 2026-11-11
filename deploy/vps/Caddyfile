@@ -7,5 +7,11 @@ api.useflops.com {
 			roll_size 10MiB
 			roll_keep 5
 		}
+		# Never write credentials to disk (Caddy only redacts Authorization/Cookie by default).
+		format filter {
+			request>headers>X-Api-Key delete
+			request>headers>Authorization delete
+			request>headers>Cookie delete
+		}
 	}
 }
