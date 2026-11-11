@@ -1,0 +1,10 @@
+[Unit]
+Description=FLOPS SQLite backup
+
+[Service]
+Type=oneshot
+User=flops
+Group=flops
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/usr/local/bin/flops-backup

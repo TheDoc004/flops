@@ -1,0 +1,36 @@
+# /etc/systemd/system/flops.service — FLOPS API on the OVH VPS (shared with minecraft.service)
+[Unit]
+Description=FLOPS API (Node)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=flops
+Group=flops
+WorkingDirectory=/opt/flops/app/server
+EnvironmentFile=/etc/flops/flops.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+RestartSec=5
+
+# Keep Minecraft first: hard RAM cap, half Minecraft's default CPU weight (100), lower IO weight.
+MemoryMax=768M
+MemoryHigh=640M
+CPUWeight=50
+IOWeight=50
+Nice=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/flops
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly FLOPS SQLite backup (03:30 PT, before mc-backup at 04:00)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
