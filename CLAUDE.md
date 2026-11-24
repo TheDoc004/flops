@@ -175,6 +175,9 @@ group.
 ### Goals
 - `GET /api/goals?date=YYYY-MM-DD` — returns versioned goals resolved for that date
 - `PUT /api/goals` — upsert a goal version (body: `{effective_start_date, goals:[]}`)
+- Storage + resolution live in `server/goals.js`, shared by the route and the MCP write tool
+  `update_goals` (new version from `start_date` ≥ today; omitted macros/weekdays carry forward;
+  ISO weekdays Mon=1…Sun=7; `day_goal_versions.source` = app|mcp). Never touched by diet phases.
 
 ### Profile
 - `GET /api/profile`

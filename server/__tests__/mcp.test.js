@@ -106,6 +106,7 @@ describe('MCP /mcp auth', () => {
         'get_profile',
         'estimate_maintenance',
         'set_maintenance_calories',
+        'update_goals',
         'get_supplements_range',
         'get_micronutrient_totals',
         'search_recipes',

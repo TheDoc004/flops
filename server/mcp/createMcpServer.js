@@ -637,6 +637,7 @@ function createFlopsMcpServer(db, userId) {
       description:
         `${WRITE_NOW} Patch an existing label ingredient. Returns only what changed: changed{field: {before, after}}, `
         + 'plus micros_changed{nutrient: {before, after}} when micros were written (get_ingredient shows the full row). '
+        + 'no_change: true means every value passed was already stored (nothing to update). '
         + 'Pass micros (per label serving) OR micros_per_100g (scaled by the serving\'s gram weight); not both. '
         + 'Gram weight: weight-tracked foods use grams_per_serving; unit-tracked foods (eggs, slices) use '
         + 'grams_per_unit = grams in ONE unit — grams_per_serving is refused on them. '
@@ -889,6 +890,52 @@ function createFlopsMcpServer(db, userId) {
     async (args) => wrapWrite(writes.setMaintenanceCalories(db, userId, args))
   );
 
+  const goalRangeSchema = z
+    .object({ min: z.number().min(0), max: z.number().min(0) })
+    .strict()
+    .nullable()
+    .optional();
+  const goalMacroShape = {
+    calories: goalRangeSchema.describe('kcal {min, max}; null clears the goal'),
+    protein_g: goalRangeSchema.describe('grams {min, max}; null clears the goal'),
+    carbs_g: goalRangeSchema.describe('grams {min, max}; null clears the goal'),
+    fat_g: goalRangeSchema.describe('grams {min, max}; null clears the goal'),
+  };
+
+  registerTool(
+    'update_goals',
+    {
+      title: 'Update macro goals',
+      description:
+        `${WRITE_NOW} Set the user's weekly macro goals (min/max ranges) when they ask. `
+        + 'This creates a NEW dated goal version that applies from start_date (default today) forward; it never edits '
+        + 'history — days before start_date keep the goals they had, and start_date in the past is refused. '
+        + 'Every version covers all 7 days: anything you omit (other macros, other weekdays) carries forward unchanged '
+        + 'from the version in effect on start_date, so "lower calories to 2200–2400 and carbs to 200–250" touches only those. '
+        + 'all_days applies to every weekday; days[] sets specific weekdays (Monday = 1 … Sunday = 7) and wins over all_days. '
+        + 'Each macro is {min, max} (same number twice for an exact goal) or null to clear it; calories in kcal, macros in grams. '
+        + 'If a version already starts on start_date (e.g. goals were saved earlier today) it is overwritten, as saving in the app does. '
+        + 'Warns (does not block) when calories are >15% off 4P + 4C + 9F. Does not touch maintenance calories '
+        + '(use set_maintenance_calories). Returns changed (per weekday before/after), the full new goals, and audit_id; '
+        + 'revert_mcp_write removes the version and restores the previous goals. Call get_goals first to see the current ranges.',
+      inputSchema: z
+        .object({
+          start_date: isoDate.optional().describe('YYYY-MM-DD first day the new goals apply (default today; not in the past)'),
+          all_days: z.object(goalMacroShape).strict().optional().describe('Ranges applied to all 7 weekdays'),
+          days: z
+            .array(z.object({ weekday: z.number().int().min(1).max(7), ...goalMacroShape }).strict())
+            .min(1)
+            .max(7)
+            .optional()
+            .describe('Per-weekday ranges (Monday = 1 … Sunday = 7); applied after all_days'),
+          operation_id: z.string().optional(),
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => wrapWrite(writes.updateGoals(db, userId, args))
+  );
+
   registerTool(
     'add_diet_phase',
     {
@@ -964,7 +1011,7 @@ function createFlopsMcpServer(db, userId) {
       title: 'Write batch',
       description:
         `${WRITE_NOW} Run multiple write ops in one all-or-nothing transaction. `
-        + 'add_food_item may set ref; later log_meal or create_meal_prep items can use that ref. Ops: add_food_item, log_meal, update_food_item, update_meal_entry, delete_meal_entry, update_supplement, create_meal_prep, update_recipe, log_body_weight, set_maintenance_calories, add_diet_phase, update_diet_phase, delete_diet_phase. Any failure rolls back all.',
+        + 'add_food_item may set ref; later log_meal or create_meal_prep items can use that ref. Ops: add_food_item, log_meal, update_food_item, update_meal_entry, delete_meal_entry, update_supplement, create_meal_prep, update_recipe, log_body_weight, set_maintenance_calories, update_goals, add_diet_phase, update_diet_phase, delete_diet_phase. Any failure rolls back all.',
       inputSchema: z
         .object({
           operations: z.array(z.record(z.string(), z.any())).min(1),

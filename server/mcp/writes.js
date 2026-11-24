@@ -20,6 +20,7 @@ const {
 const { buildMicrosBlob } = require('../microNutrients');
 const { LB_PER_KG, getBodyWeight, upsertBodyWeight } = require('../bodyWeights');
 const dietPhases = require('../dietPhases');
+const goalsLib = require('../goals');
 const {
   receiptFromRecipeTemplate,
   ingredientMacrosForAmount,
@@ -45,6 +46,7 @@ const OPS = {
   update_recipe: 'update_recipe',
   log_body_weight: 'log_body_weight',
   set_maintenance_calories: 'set_maintenance_calories',
+  update_goals: 'update_goals',
   add_diet_phase: 'add_diet_phase',
   update_diet_phase: 'update_diet_phase',
   delete_diet_phase: 'delete_diet_phase',
@@ -82,6 +84,7 @@ const WRITE_ALLOWED_KEYS = {
   ]),
   [OPS.log_body_weight]: new Set(['op', 'weight', 'unit', 'date', 'operation_id']),
   [OPS.set_maintenance_calories]: new Set(['op', 'maintenance_calories', 'operation_id']),
+  [OPS.update_goals]: new Set(['op', 'start_date', 'all_days', 'days', 'operation_id']),
   [OPS.add_diet_phase]: new Set(['op', 'kind', 'label', 'start_date', 'end_date', 'notes', 'operation_id']),
   [OPS.update_diet_phase]: new Set([
     'op', 'diet_phase_id', 'kind', 'label', 'start_date', 'end_date', 'notes', 'operation_id',
@@ -2171,6 +2174,233 @@ function revertDietPhaseResult(db, userId, result) {
   }
 }
 
+// ── Macro goals (versioned weekly ranges) ────────────────────────────────────
+// Storage is shared with /api/goals (server/goals.js). A write always lands as a
+// full 7-day version starting start_date: unspecified weekdays and macros carry
+// forward from the version in effect that day. Days before start_date keep
+// resolving to whatever version they had, so history is never rewritten.
+
+const GOAL_KCAL_TOLERANCE = 0.15;
+
+function goalRangeError(where, message) {
+  return { error: `${where}: ${message} Nothing was written.`, code: 'INVALID' };
+}
+
+/** {min, max} → validated pair; null → cleared (no goal). Returns { pair } or { error }. */
+function parseGoalRange(raw, where) {
+  if (raw === null) return { pair: { min: null, max: null } };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return goalRangeError(where, 'must be {min, max} (or null to clear).');
+  }
+  const extra = Object.keys(raw).filter(k => k !== 'min' && k !== 'max');
+  if (extra.length) return goalRangeError(where, `unknown field(s) ${extra.join(', ')} — only min and max.`);
+  const min = Number(raw.min);
+  const max = Number(raw.max);
+  if (raw.min == null || raw.max == null || !Number.isFinite(min) || !Number.isFinite(max)) {
+    return goalRangeError(where, 'needs both min and max as numbers (use the same value twice for an exact goal).');
+  }
+  if (min < 0 || max < 0) return goalRangeError(where, 'min and max cannot be negative.');
+  if (min > max) return goalRangeError(where, `min (${min}) is greater than max (${max}).`);
+  return { pair: { min, max } };
+}
+
+/** Validate a {calories?, protein_g?, …} patch. Returns { patch } or { error }. */
+function parseGoalMacros(raw, where, { allowWeekday = false } = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return goalRangeError(where, 'must be an object.');
+  const unknown = Object.keys(raw).filter(k => !goalsLib.GOAL_FIELDS.includes(k) && !(allowWeekday && k === 'weekday'));
+  if (unknown.length) {
+    return {
+      error: `${where} does not accept: ${unknown.join(', ')}. Macros are ${goalsLib.GOAL_FIELDS.join(', ')}. Nothing was written.`,
+      code: 'UNKNOWN_PARAM',
+      unknown,
+    };
+  }
+  const patch = {};
+  for (const key of goalsLib.GOAL_FIELDS) {
+    if (!(key in raw)) continue;
+    const r = parseGoalRange(raw[key], `${where}.${key}`);
+    if (r.error) return r;
+    patch[key] = r.pair;
+  }
+  if (!Object.keys(patch).length) {
+    return goalRangeError(where, `sets no macro — pass at least one of ${goalsLib.GOAL_FIELDS.join(', ')}.`);
+  }
+  return { patch };
+}
+
+function isRealIsoDate(iso) {
+  const d = new Date(`${iso}T12:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso;
+}
+
+function sameGoalRows(a, b) {
+  const byWd = new Map((b || []).map(r => [r.weekday, r]));
+  return goalsLib.WEEKDAY_RANGE.every(wd => {
+    const x = (a || []).find(r => r.weekday === wd) || {};
+    const y = byWd.get(wd) || {};
+    return goalsLib.GOAL_FIELDS.every(k =>
+      (x[`${k}_min`] ?? null) === (y[`${k}_min`] ?? null) && (x[`${k}_max`] ?? null) === (y[`${k}_max`] ?? null));
+  });
+}
+
+/** {Monday: {calories: {before: {min,max}, after: {min,max}}}} — only what moved. */
+function goalRowsDiff(beforeRows, afterRows) {
+  const out = {};
+  for (const a of afterRows) {
+    const b = beforeRows.find(r => r.weekday === a.weekday) || {};
+    for (const k of goalsLib.GOAL_FIELDS) {
+      const was = { min: b[`${k}_min`] ?? null, max: b[`${k}_max`] ?? null };
+      const now = { min: a[`${k}_min`] ?? null, max: a[`${k}_max`] ?? null };
+      if (was.min === now.min && was.max === now.max) continue;
+      const label = goalsLib.WEEKDAY_LABELS[a.weekday];
+      (out[label] ||= {})[k] = { before: was, after: now };
+    }
+  }
+  return out;
+}
+
+/** Soft check: calories vs 4P + 4C + 9F at range midpoints, grouped by identical numbers. */
+function goalKcalWarnings(rows) {
+  const mid = (r, k) => (r[`${k}_min`] != null && r[`${k}_max`] != null ? (r[`${k}_min`] + r[`${k}_max`]) / 2 : null);
+  const groups = new Map();
+  for (const r of rows) {
+    const [cal, p, c, f] = goalsLib.GOAL_FIELDS.map(k => mid(r, k));
+    if ([cal, p, c, f].some(v => v == null)) continue;
+    const implied = 4 * p + 4 * c + 9 * f;
+    if (implied <= 0 || Math.abs(cal - implied) / implied <= GOAL_KCAL_TOLERANCE) continue;
+    const msg = `calories ${round(cal, 0)} vs ${round(implied, 0)} implied by 4P + 4C + 9F (range midpoints)`;
+    if (!groups.has(msg)) groups.set(msg, []);
+    groups.get(msg).push(goalsLib.WEEKDAY_LABELS[r.weekday]);
+  }
+  return [...groups.entries()].map(([msg, days]) =>
+    `${days.join(', ')}: ${msg} — more than ${GOAL_KCAL_TOLERANCE * 100}% apart. Saved anyway; check the numbers.`);
+}
+
+function updateGoals(db, userId, args = {}, { skipAudit = false } = {}) {
+  const badKeys = rejectUnknownArgs(args, OPS.update_goals);
+  if (badKeys) return badKeys;
+  const operationId = args.operation_id ? String(args.operation_id).trim() : null;
+  return withIdempotency(db, userId, operationId, () => {
+    const today = getLocalDateISO();
+    const startDate = args.start_date == null ? today : isoDateOrNull(args.start_date);
+    if (!startDate || !isRealIsoDate(startDate)) {
+      return { error: 'start_date must be a real date as YYYY-MM-DD. Nothing was written.', code: 'INVALID_DATE' };
+    }
+    if (startDate < today) {
+      return {
+        error: `start_date ${startDate} is in the past (today is ${today}). Goal changes apply from today forward `
+          + 'so days already lived keep the goals they were compared against. Nothing was written.',
+        code: 'PAST_DATE',
+      };
+    }
+    if (args.all_days == null && args.days == null) {
+      return { error: 'Pass all_days and/or days — nothing to set. Nothing was written.', code: 'INVALID' };
+    }
+
+    let allDays = null;
+    if (args.all_days != null) {
+      const r = parseGoalMacros(args.all_days, 'all_days');
+      if (r.error) return r;
+      allDays = r.patch;
+    }
+    const perDay = new Map();
+    if (args.days != null) {
+      if (!Array.isArray(args.days) || !args.days.length) {
+        return goalRangeError('days', 'must be a non-empty array of {weekday, …macros}.');
+      }
+      for (let i = 0; i < args.days.length; i++) {
+        const d = args.days[i];
+        const wd = Number(d?.weekday);
+        if (!Number.isInteger(wd) || wd < 1 || wd > 7) {
+          return goalRangeError(`days[${i}]`, 'weekday must be 1–7 (Monday = 1 … Sunday = 7).');
+        }
+        if (perDay.has(wd)) return goalRangeError(`days[${i}]`, `weekday ${wd} appears more than once.`);
+        const r = parseGoalMacros(d, `days[${i}]`, { allowWeekday: true });
+        if (r.error) return r;
+        perDay.set(wd, r.patch);
+      }
+    }
+
+    const doWrite = () => {
+      // Carry forward from whatever is in force on start_date (that version itself if one starts that day).
+      const current = goalsLib.goalsForDate(db, userId, startDate);
+      const overwriting = current.effective_start_date === startDate;
+      const before = {
+        effective_start_date: current.effective_start_date,
+        goals: current.goals,
+        ...(overwriting ? { source: goalsLib.versionSource(db, userId, startDate) } : {}),
+      };
+
+      const rows = current.goals.map(g => {
+        const row = { weekday: g.weekday };
+        for (const k of goalsLib.GOAL_FIELDS) {
+          const pair = perDay.get(g.weekday)?.[k] || allDays?.[k]
+            || { min: g[`${k}_min`] ?? null, max: g[`${k}_max`] ?? null };
+          row[`${k}_min`] = pair.min;
+          row[`${k}_max`] = pair.max;
+        }
+        return row;
+      });
+      goalsLib.upsertVersionRows(db, userId, startDate, rows, 'mcp');
+
+      const afterGoals = goalsLib.buildGoalRowsFromDbRows(goalsLib.listRowsForVersion(db, userId, startDate));
+      const after = { effective_start_date: startDate, goals: afterGoals };
+      const changed = goalRowsDiff(current.goals, afterGoals);
+
+      const warnings = goalKcalWarnings(afterGoals);
+      const next = goalsLib.nextEffectiveStartDate(db, userId, startDate);
+      if (next) {
+        warnings.push(`A later goal version already starts ${next}; this one applies ${startDate} until the day before.`);
+      }
+      if (!Object.keys(changed).length) {
+        warnings.push(`Identical to the goals already in effect on ${startDate} — nothing changes for any day.`);
+      }
+
+      const result_row_ids = { goal_version_dates: [startDate] };
+      const response = {
+        op: OPS.update_goals,
+        effective_start_date: startDate,
+        action: overwriting ? 'overwrote' : 'created',
+        carried_forward_from: current.effective_start_date,
+        changed,
+        goals: afterGoals,
+        before,
+        after,
+        result_row_ids,
+        warnings,
+        source: 'mcp',
+      };
+      if (!skipAudit) {
+        response.audit_id = recordAudit(db, userId, {
+          op: OPS.update_goals, operationId, before, after, result_row_ids, warnings, response,
+        });
+      }
+      return response;
+    };
+    return skipAudit ? doWrite() : runWriteTx(db, doWrite);
+  });
+}
+
+/** Undo only what MCP wrote: refuse if the version was edited since (e.g. re-saved in the app). */
+function revertGoalsResult(db, userId, result) {
+  const date = result.after?.effective_start_date;
+  if (!date) {
+    throw Object.assign(new Error('update_goals audit has no after snapshot; not reverting.'), { code: 'NOT_REVERTIBLE' });
+  }
+  const now = goalsLib.buildGoalRowsFromDbRows(goalsLib.listRowsForVersion(db, userId, date));
+  if (!sameGoalRows(now, result.after.goals)) {
+    throw Object.assign(
+      new Error(`Goals starting ${date} changed after this MCP write; not reverting.`),
+      { code: 'NOT_REVERTIBLE' }
+    );
+  }
+  if (result.before?.effective_start_date === date) {
+    goalsLib.upsertVersionRows(db, userId, date, result.before.goals, result.before.source || 'app');
+  } else {
+    goalsLib.deleteVersion(db, userId, date);
+  }
+}
+
 function shapeSupplement(db, userId, id) {
   const row = db
     .prepare(
@@ -2406,6 +2636,8 @@ function writeBatch(db, userId, args = {}) {
             result = logBodyWeight(db, userId, step, { skipAudit: true });
           } else if (op === OPS.set_maintenance_calories) {
             result = setMaintenanceCalories(db, userId, step, { skipAudit: true });
+          } else if (op === OPS.update_goals) {
+            result = updateGoals(db, userId, step, { skipAudit: true });
           } else if (op === OPS.add_diet_phase) {
             result = addDietPhase(db, userId, step, { skipAudit: true });
           } else if (op === OPS.update_diet_phase) {
@@ -2439,6 +2671,7 @@ function writeBatch(db, userId, args = {}) {
           recipe_ids: results.flatMap(r => r.result_row_ids?.recipe_ids || []),
           body_weight_dates: results.flatMap(r => r.result_row_ids?.body_weight_dates || []),
           diet_phase_ids: results.flatMap(r => r.result_row_ids?.diet_phase_ids || []),
+          goal_version_dates: results.flatMap(r => r.result_row_ids?.goal_version_dates || []),
         };
         response.audit_id = recordAudit(db, userId, {
           op: OPS.write_batch,
@@ -2559,6 +2792,10 @@ function revertOneResult(db, userId, result) {
         `DELETE FROM label_ingredients WHERE id = ? AND user_id = ? AND created_via = 'mcp'`
       ).run(id, userId);
     }
+    return;
+  }
+  if (op === OPS.update_goals) {
+    revertGoalsResult(db, userId, result);
     return;
   }
   if (op === OPS.set_maintenance_calories) {
@@ -2902,6 +3139,8 @@ function compactFoodUpdate(result) {
     }
     out.micros_changed = micros;
   }
+  // Say so outright: an empty diff alone reads like a write that didn't land.
+  if (!Object.keys(changed).length && before.micros_json === after.micros_json) out.no_change = true;
   return out;
 }
 
@@ -2971,6 +3210,7 @@ module.exports = {
   updateRecipe,
   logBodyWeight,
   setMaintenanceCalories,
+  updateGoals,
   addDietPhase,
   updateDietPhase,
   deleteDietPhase,

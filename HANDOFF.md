@@ -1,6 +1,6 @@
 # FLOPS — Handoff / Current State
 
-_Last updated: 2026-10-10 (diet-phase calendar badges; MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses; meal prep add-ons; recipe adjust + get_recipe; micros AI-fill scaling fix)_
+_Last updated: 2026-11-23 (MCP `update_goals` reviewed + end-to-end MCP tests; grams_per_serving micros-rescale bug investigated + audit script; update_food_item `no_change` flag + diff/revert tests; diet-phase calendar badges; MCP batch search + compact write responses; ingredient density `grams_per_ml`; trimmed food-update responses; search ranking; rounded totals; trimmed meal-write responses; meal prep add-ons; recipe adjust + get_recipe; micros AI-fill scaling fix)_
 
 > **▶ Product north star:** FLOPS is a **notebook** — see **`docs/philosophy-notebook.md`**.
 > Viewing day does not auto-flip at midnight; coach tools are read + summarize.
@@ -133,6 +133,13 @@ backfilled older MCP recipe logs with a NULL snapshot (e.g. entry #1176).
   and the profile value. Write tool `set_maintenance_calories` (1000–6000 or null, revertible,
   batchable; revert refuses if the Profile page changed it since). As of 2026-10-10 Diego's data
   said ~2,800 vs a profile value of 2,500.
+- *Macro goals (2026-10-20, reviewed 2026-11-23):* write tool `update_goals` (`start_date` default today, `all_days`,
+  `days[{weekday 1–7}]`, each macro `{min,max}` or null). Always writes a full 7-row version; anything
+  omitted carries forward from the version in effect on `start_date`. Past `start_date` is refused
+  (`PAST_DATE`). A version already starting that day is overwritten, as the Goals page does. kcal vs
+  4P+4C+9F >15% and a later existing version only warn. Revert deletes the version (or restores the
+  overwritten one) and refuses if the version was re-saved since. Storage now lives in `server/goals.js`,
+  shared with `routes/goals.js`. New column `day_goal_versions.source` (app|mcp), which the UI does not read.
 - *Recipes with today's amounts:* new read tool `get_recipe` (lines with label_ingredient_id, amount,
   unit, macros per serving). `log_meal` recipe items take `adjust: [{label_ingredient_id,
   quantity_g | quantity+unit | remove: true}]` (per serving), resolved through `resolveReceiptForLog`
@@ -428,6 +435,16 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 
 **Not blocking daily use:**
 
+- **Changing grams_per_serving doesn't rescale stored micros (OPEN, investigated 2026-10-17).**
+  `micros_json` is stored per label serving, so 100 g → 30 g reinterprets every micro (×3.33 per gram).
+  It affects both `updateFoodItem` in `server/mcp/writes.js` (and `write_batch` through it) and the app's
+  `PUT /api/label-ingredients/:id` (micros are kept whenever none are sent). Planned fix: a shared helper that
+  rescales by new/old grams while keeping `filled_keys`/`completed_at`/confidence, and that's skipped when the
+  call passes micros. If either weight is null or a placeholder, it warns instead. Unit-tracked rows are not
+  rescaled (micros are per unit count). Revert already restores grams and micros together.
+  Read-only audit: `node server/scripts/auditUnscaledMicros.js --db=<prod db>`. A live MCP check (audits since
+  2026-09-27) found ids 120 (fixed by hand), 77, 78 and 79. All four look rewritten since, but confirm them.
+
 - **Dashboard layout editor UX** — functional but not polished to Diego's ideal; **parked**.
 - **Email OTP / Resend** — production codes fail until Resend sending domain verified on Render.
 - **Oversized components:** `AiMacroLogger.jsx`, `Ingredients.jsx`, `MealBuilder.jsx`, `LogMealModal.jsx`.
@@ -438,7 +455,7 @@ for live deploy (Diego's workflow — see `.cursor/rules/early-ship-and-feature-
 - **`client/package-lock.json` out of sync** with `package.json` (`npm ci` fails: missing `esbuild@0.28.2`).
   Regenerate with `npm install` in `client/`.
 
-**Tests (Oct 2026):** server ~462 Jest; client ~381 Vitest unit. Playwright e2e specs live under
+**Tests (Nov 2026):** server ~490 Jest (gym/log suites flake occasionally under parallel Jest; pass with `--runInBand`); client ~381 Vitest unit. Playwright e2e specs live under
 `client/e2e/` and run via `npm run verify:layout-editor`, not `npm test`.
 
 ---
