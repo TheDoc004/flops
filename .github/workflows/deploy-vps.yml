@@ -1,0 +1,43 @@
+name: Deploy API to VPS
+
+# Replaces Render auto-deploy: every push to main that touches server/ (or this deploy setup)
+# SSHes into the VPS with a key that can ONLY run /opt/flops/deploy.sh (forced command).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'deploy/vps/**'
+      - '.github/workflows/deploy-vps.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Deploy over SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.FLOPS_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.FLOPS_VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/deploy_key flops@40.160.148.13
+
+      - name: Public health check
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS https://api.useflops.com/health | grep -q "${GITHUB_SHA}"; then
+              echo "live at ${GITHUB_SHA}"; exit 0
+            fi
+            sleep 3
+          done
+          echo "api.useflops.com/health does not report ${GITHUB_SHA}" >&2
+          exit 1

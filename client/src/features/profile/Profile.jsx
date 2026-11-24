@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchProfile, saveProfile } from '@shared/api/profile';
+import { fetchMyDataExport, fetchProfile, saveProfile } from '@shared/api/profile';
 import { getInviteCode, linkCoach, myCoaches, revokeCoach } from '@shared/api/coach';
 import { useAuth } from '@shared/context/AuthContext';
 import { useMacroUnits } from '@shared/context/MacroUnitsContext';
@@ -10,6 +10,8 @@ import {
   parseWeightInputToKg,
 } from '@shared/utils/bodyUnits';
 import Reveal from '@shared/ui/Reveal';
+import { clearAuthToken } from '@shared/api/base';
+import DeleteAccount from './DeleteAccount';
 
 const ACTIVITY_OPTIONS = [
   { value: '', label: '—' },
@@ -22,7 +24,7 @@ const ACTIVITY_OPTIONS = [
 
 export default function Profile() {
   const { macroUnits, setMacroUnits, bodyUnits, setBodyUnits } = useMacroUnits();
-  const { user, isCoach, updateMe, logout } = useAuth();
+  const { user, isCoach, updateMe, logout, setUser } = useAuth();
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -45,6 +47,8 @@ export default function Profile() {
   const [scopes, setScopes] = useState({ nutrition: true, training: true, weight: true });
   const [coaches, setCoaches] = useState([]);
   const [coachMsg, setCoachMsg] = useState('');
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +156,27 @@ export default function Profile() {
       setSaved(true);
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function handleDownloadData() {
+    setExportBusy(true);
+    setExportError('');
+    try {
+      const { blob, filename } = await fetchMyDataExport();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Safari reads the blob after click() returns; revoking at once can cancel it.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setExportError(err.message);
+    } finally {
+      setExportBusy(false);
     }
   }
 
@@ -315,6 +340,28 @@ export default function Profile() {
         <button type="button" className="btn-secondary" onClick={() => logout()}>
           Sign out
         </button>
+        <div className="data-export-row">
+          <div className="data-export-row__copy">
+            <div className="data-export-row__title">Download my data</div>
+            <div className="data-export-row__sub">
+              Everything in your notebook, as one file to keep.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={exportBusy}
+            onClick={() => { void handleDownloadData(); }}
+          >
+            {exportBusy ? 'Preparing…' : 'Download'}
+          </button>
+        </div>
+        {exportError && <p className="error" style={{ marginTop: 8 }}>{exportError}</p>}
+        <DeleteAccount
+          email={user?.email}
+          onDownload={() => { void handleDownloadData(); }}
+          onDeleted={() => { clearAuthToken(); setUser(null); }}
+        />
       </Reveal>
 
       <Reveal delay={50} className="card" style={{ marginBottom: 16 }}>

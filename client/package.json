@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "demo:screenshots": "playwright test -c playwright.demo.config.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

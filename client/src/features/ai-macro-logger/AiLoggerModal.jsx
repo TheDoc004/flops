@@ -23,18 +23,14 @@ export default function AiLoggerModal({ initialDate, onLogged, onClose }) {
   }
 
   return (
-    <dialog
-      ref={ref}
-      onClose={onClose}
-      style={{ width: 'min(600px, 94vw)', maxHeight: '92vh', overflowY: 'auto' }}
-    >
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
-        <h2 className="section-title" style={{ margin: 0 }}>
+    <dialog ref={ref} onClose={onClose} className="ai-logger-modal">
+      <div className="ai-logger-modal__header">
+        <h2 className="section-title ai-logger-modal__title">
           AI Estimate
         </h2>
         <button type="button" className="modal-close-x" aria-label="Close" onClick={close}>✕</button>
       </div>
-      <p style={{ margin: '0 0 16px', fontSize: 14, color: 'var(--color-text-muted)' }}>
+      <p className="ai-logger-modal__intro">
         Had a meal you didn&apos;t weigh? Describe what you ate — or name a saved recipe to pull it up.
       </p>
       <AiMacroLogger inModal initialDate={initialDate} onLogged={onLogged} onClose={close} />

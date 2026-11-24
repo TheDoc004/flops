@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Nightly-ish SQLite backup for FLOPS on Render (or any host with DB_PATH).
+# Ad-hoc SQLite backup for FLOPS (any host with DB_PATH). Production now uses
+# /usr/local/bin/flops-backup on the VPS (deploy/vps/flops-backup.sh, nightly timer).
 # Usage on Render Shell / cron:
 #   DB_PATH=/var/data/nutrition.db BACKUP_DIR=/var/data/backups bash scripts/backup-sqlite.sh
 # Then copy $BACKUP_DIR off-box (R2, scp, private GitHub release, etc.).

@@ -9,6 +9,7 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "dev:watch": "node --watch index.js",
+    "demo:seed": "node scripts/seed-demo.js",
     "test": "jest --runInBand"
   },
   "dependencies": {

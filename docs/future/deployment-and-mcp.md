@@ -8,7 +8,7 @@ propose/commit writes shipped (`source=mcp`, audit, bulk undo). See `docs/mcp-co
 | Step | Status |
 |---|---|
 | 1 Auth + rate limiting | **Done** (Bearer sessions, not shared-secret) |
-| 2 Render + Vercel deploy | **Done** (`useflops.com` + `flops-c6ic.onrender.com`) |
+| 2 Render + Vercel deploy | **Done** (`useflops.com` + `flops-c6ic.onrender.com`); API moved to the OVH VPS (`api.useflops.com`) Nov 2026 — see `deploy/vps/README.md` |
 | 3 MCP server | **Done** — reads + propose/commit writes at `/mcp` |
 
 ---

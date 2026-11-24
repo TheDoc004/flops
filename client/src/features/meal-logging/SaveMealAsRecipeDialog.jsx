@@ -59,12 +59,23 @@ export default function SaveMealAsRecipeDialog({ entry, onClose, onSaved }) {
   }
 
   return (
-    <dialog ref={ref} onClose={onClose} style={{ width: 'min(420px, 94vw)' }}>
+    <dialog ref={ref} onClose={onClose} className="save-recipe-dialog">
       <form onSubmit={handleSave}>
-        <h2 className="section-title" style={{ margin: '0 0 4px' }}>
-          {asMealPrep ? 'Save as Meal Prep' : 'Save as Recipe'}
-        </h2>
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
+        <div className="save-recipe-dialog__header">
+          <h2 className="save-recipe-dialog__title">
+            {asMealPrep ? 'Save as Meal Prep' : 'Save as Recipe'}
+          </h2>
+          <button
+            type="button"
+            className="modal-close-x"
+            aria-label="Close"
+            onClick={() => ref.current?.close()}
+          >
+            ✕
+          </button>
+        </div>
+
+        <p className="save-recipe-dialog__hint">
           {asMealPrep
             ? `Splits this meal into ${prepServings} limited uses you can log until the batch is gone.`
             : lineCount > 0
@@ -72,28 +83,19 @@ export default function SaveMealAsRecipeDialog({ entry, onClose, onSaved }) {
               : "Keeps this meal's macros as a recipe you can log again."}
         </p>
 
-        <label htmlFor="save-meal-recipe-name" style={{ fontSize: 15, fontWeight: 600 }}>
+        <label htmlFor="save-meal-recipe-name" className="save-recipe-dialog__label">
           What do you want to name {asMealPrep ? 'this meal prep' : 'this recipe'}?
         </label>
         <input
           id="save-meal-recipe-name"
+          className="save-recipe-dialog__input"
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder={asMealPrep ? 'e.g. Chicken rice prep' : 'e.g. Oat bowl v2'}
           autoFocus
         />
 
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            marginTop: 12,
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
+        <label className="save-recipe-dialog__checkbox">
           <input
             type="checkbox"
             checked={asMealPrep}
@@ -103,24 +105,24 @@ export default function SaveMealAsRecipeDialog({ entry, onClose, onSaved }) {
         </label>
 
         {asMealPrep && (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <div className="save-recipe-dialog__prep">
+            <div className="save-recipe-dialog__splits">
               {[2, 3, 4, 5, 6].map(n => (
                 <button
                   key={n}
                   type="button"
                   className={prepServings === n ? 'prep-split is-selected' : 'prep-split'}
                   onClick={() => setPrepServings(n)}
-                  style={{ flex: '1 1 auto', minWidth: 72, justifyContent: 'center' }}
                 >
                   <span className="prep-split__count">÷ {n}</span>
                 </button>
               ))}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
-              <label htmlFor="save-meal-prep-count" style={{ margin: 0, fontSize: 13 }}>Custom:</label>
+            <div className="save-recipe-dialog__custom">
+              <label htmlFor="save-meal-prep-count" className="save-recipe-dialog__custom-label">Custom:</label>
               <input
                 id="save-meal-prep-count"
+                className="save-recipe-dialog__custom-input"
                 type="number" inputMode="numeric"
                 min="2"
                 max="50"
@@ -130,15 +132,14 @@ export default function SaveMealAsRecipeDialog({ entry, onClose, onSaved }) {
                   const v = Math.floor(Number(e.target.value));
                   if (Number.isInteger(v) && v >= 2 && v <= 50) setPrepServings(v);
                 }}
-                style={{ width: 90 }}
               />
             </div>
           </div>
         )}
 
-        {error && <p className="error" style={{ marginBottom: 0 }}>{error}</p>}
+        {error && <p className="error save-recipe-dialog__error">{error}</p>}
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <div className="save-recipe-dialog__actions">
           <button
             type="submit"
             className={saving ? 'btn-primary btn-loading' : 'btn-primary'}

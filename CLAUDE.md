@@ -1,7 +1,7 @@
 # FLOPS — Project Context for Claude / Claude Code
 
 > **Current state snapshot:** see **`HANDOFF.md`** (last updated 2026-09-04).
-> Canonical repo: **`~/dev/FLOPS`**. Live: **https://www.useflops.com** (Vercel + Render, push `main` to deploy).
+> Canonical repo: **`~/dev/FLOPS`**. Live: **https://www.useflops.com** (Vercel frontend + API on the OVH VPS at `api.useflops.com`; push `main` to deploy both).
 > **Questlines:** work is split into tracks — **Build** (features, tracked in `HANDOFF.md`) and
 > **Release** (open source → ChatGPT/Claude connector). See **`docs/questlines/`**.
 
@@ -34,6 +34,13 @@ cd server && npm run dev
 # Terminal 2 — Vite dev server (port 5173)
 cd client && npm run dev
 ```
+
+**Demo data + screenshots (local only):** `cd server && npm run demo:seed` writes a fake demo
+user into `.demo/demo.db` (refuses any other path but the OS temp dir). `cd client && npm run
+demo:screenshots` reseeds, boots its own API + Vite on that DB (fails if 3001/5173 are busy, never
+reuses a running server), signs in as `demo@flops.example` via AUTH_DEV and writes one 390px PNG
+per main route to `.demo/screenshots/`. `.demo/` is gitignored. `FLOPS_PW_CHANNEL=chrome` uses an
+installed Chrome.
 
 Vite proxies `/api` → `localhost:3001` in dev. The SQLite DB lives at
 `server/nutrition.db`. There is also a stale `nutrition.db` at the root — ignore it.
@@ -233,6 +240,15 @@ Kinds are mirrored in `client/src/features/adherence/phaseMeta.js`.
 - `GET /api/diet-phases?start=&end=&today=` — phases touching the range, with `effective_end_date` + `ongoing`
 - `POST /api/diet-phases`, `PUT /api/diet-phases/:id`, `DELETE /api/diet-phases/:id` (soft delete)
 
+### Problem reports
+`problem_reports` holds only `text`, `route` (path, no query), `app_version` (server git sha), `user_id`, `created_at`, `status`. The "Report a problem" link (`shared/ui/ReportProblem.jsx`) sits under every app screen.
+- `POST /api/problem-reports` — signed-in user files a report (rate limited)
+- `GET /api/problem-reports` — reports-only inbox of `status = 'new'`; needs `x-api-key: $PROBLEM_REPORTS_TOKEN`, never a user session. 503 when the env var is unset
+
+### Data export
+- `GET /api/me/export` — the signed-in user's own rows as one JSON download (`flops-export-YYYY-MM-DD.json`): account, nutrition (`server/nutritionExport.js`), training (`server/gymExport.js`), coach links and suggestions (ids + scopes only, both directions), `mcp_write_audit` rows and problem reports. Soft-deleted rows are left out. "Download my data" on Plan → Profile. Isolation is proven in `privacyIsolation.test.js`.
+- `POST /api/me/delete-request` → `DELETE /api/me` `{code}` — account delete behind a fresh one-time code. Soft delete only: `users.deleted_at` + the same modules' `softDelete*` flags, coach links revoked, sessions removed, an `account_deletions` audit row. **Export and delete must cover the same tables** — add a new user table to both. A deleted user must never authenticate (`userFromToken`, sign-in, `/mcp`) or show up to another user.
+
 ### Barcode
 - `GET /api/barcode/:code` — proxies Open Food Facts (free, no API key) and normalizes the product into ingredient-form fields. Returns `basis` (`serving` | `serving_derived` | `100g` | `none`) so the UI can say where the numbers came from, plus `existing_ingredient` when that barcode is already saved. 404 = not on record, 502 = database unreachable.
 
@@ -304,7 +320,8 @@ Phase 3 (future): Cross-app intelligence via a dedicated bridge layer. See
 
 ## Important Notes for Future Sessions
 
-- **Deploy:** push to `main` → Vercel production. API on Render (`docs/deploy-checklist.md`).
+- **Deploy:** push to `main` → Vercel production; changes under `server/` also deploy the API to the
+  OVH VPS via GitHub Actions (`.github/workflows/deploy-vps.yml`). Runbook: `deploy/vps/README.md`.
 - **HANDOFF.md** is the living current-state doc; update it when finishing a session with meaningful changes.
 - Do not add a CSS framework. Push the existing plain CSS system harder instead.
 - Recharts charts must always be wrapped in `<ResponsiveContainer width="100%" height={N}>`.

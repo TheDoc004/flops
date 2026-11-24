@@ -7,24 +7,22 @@ export default function FollowUpComposer({ id, value, onChange, onSend, loading,
   const text = String(value || '').trim();
   return (
     <div className="ai-followup-panel modal-subpanel">
-      <label htmlFor={id} style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-body)' }}>
+      <label htmlFor={id} className="ai-followup-panel__label">
         Anything to adjust?
       </label>
-      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+      <div className="ai-followup-panel__row">
         <input
           id={id}
           value={value}
           onChange={e => onChange(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && text && !loading) onSend(text); }}
           placeholder={placeholder}
-          style={{ flex: 1, minWidth: 0, minHeight: 44 }}
         />
         <button
           type="button"
           className={loading ? 'btn-primary btn-loading' : 'btn-primary'}
           onClick={() => onSend(text)}
           disabled={loading || !text}
-          style={{ minHeight: 44, fontWeight: 700, flexShrink: 0 }}
         >
           {loading ? (<><span className="btn-spinner" aria-hidden="true" />Updating…</>) : 'Send'}
         </button>

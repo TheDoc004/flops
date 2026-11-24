@@ -29,7 +29,7 @@ function createCoachRouter(db) {
     const me = uid(req);
     const code = String(req.body?.invite_code || '').trim().toUpperCase();
     if (!code) return res.status(400).json({ error: 'Invite code required.' });
-    const coach = db.prepare('SELECT * FROM users WHERE invite_code = ? AND is_coach = 1').get(code);
+    const coach = db.prepare('SELECT * FROM users WHERE invite_code = ? AND is_coach = 1 AND deleted_at IS NULL').get(code);
     if (!coach) return res.status(404).json({ error: 'No coach found for that code.' });
     if (coach.id === me) return res.status(400).json({ error: 'You cannot link to yourself.' });
 
@@ -60,7 +60,7 @@ function createCoachRouter(db) {
         `SELECT cl.*, u.display_name AS coach_name, u.email AS coach_email
          FROM coach_links cl
          JOIN users u ON u.id = cl.coach_user_id
-         WHERE cl.client_user_id = ? AND cl.status = 'active'`
+         WHERE cl.client_user_id = ? AND cl.status = 'active' AND u.deleted_at IS NULL`
       )
       .all(me);
     res.json(rows);
@@ -87,7 +87,7 @@ function createCoachRouter(db) {
         `SELECT cl.*, u.display_name AS client_name, u.email AS client_email
          FROM coach_links cl
          JOIN users u ON u.id = cl.client_user_id
-         WHERE cl.coach_user_id = ? AND cl.status = 'active'
+         WHERE cl.coach_user_id = ? AND cl.status = 'active' AND u.deleted_at IS NULL
          ORDER BY u.display_name COLLATE NOCASE`
       )
       .all(me);
@@ -299,7 +299,7 @@ function createCoachRouter(db) {
           `SELECT s.*, u.display_name AS coach_name
            FROM coach_day_suggestions s
            JOIN users u ON u.id = s.coach_user_id
-           WHERE s.client_user_id = ? AND s.for_date = ?
+           WHERE s.client_user_id = ? AND s.for_date = ? AND u.deleted_at IS NULL
              AND s.status IN ('offered', 'snoozed')
            ORDER BY s.id DESC`
         )
@@ -310,7 +310,7 @@ function createCoachRouter(db) {
           `SELECT s.*, u.display_name AS coach_name
            FROM coach_day_suggestions s
            JOIN users u ON u.id = s.coach_user_id
-           WHERE s.client_user_id = ? AND s.status IN ('offered', 'snoozed')
+           WHERE s.client_user_id = ? AND s.status IN ('offered', 'snoozed') AND u.deleted_at IS NULL
            ORDER BY s.for_date DESC, s.id DESC LIMIT 30`
         )
         .all(me);

@@ -3,6 +3,7 @@ import { MacroUnitsProvider } from '@shared/context/MacroUnitsContext';
 import { useAuth } from '@shared/context/AuthContext';
 import Navbar from '@shared/ui/Navbar';
 import BottomNav from '@shared/ui/BottomNav';
+import ReportProblem from '@shared/ui/ReportProblem';
 import Dashboard from '@features/dashboard';
 import Recipes from '@features/recipes';
 import History from '@features/history';
@@ -56,6 +57,7 @@ function AppShell() {
           <Route path="/report" element={<Navigate to="/plan/report" replace />} />
           <Route path="/profile" element={<Navigate to="/plan/profile" replace />} />
         </Routes>
+        <ReportProblem />
       </main>
       <BottomNav />
     </>

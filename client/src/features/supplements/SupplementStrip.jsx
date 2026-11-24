@@ -94,9 +94,10 @@ export default function SupplementStrip({ date, onMacrosChange }) {
   const takenCount = rows.filter(r => r.taken).length;
 
   return (
-    <Reveal className="dash-section">
-      <div className="card" style={{ padding: '14px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: rows.length ? 10 : 0 }}>
+    <Reveal>
+      {/* The Today card around this strip is the surface; no card of its own. */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: rows.length ? 12 : 0 }}>
           <h3 className="section-title" style={{ margin: 0 }}>
             Supplements
             {rows.length > 0 && (
@@ -109,8 +110,8 @@ export default function SupplementStrip({ date, onMacrosChange }) {
               Review concern. Today only answers "did I take these?" */}
           <button
             type="button"
+            className="dash-card-link"
             onClick={() => setShowManage(true)}
-            style={{ background: 'none', border: 'none', padding: '2px 4px', cursor: 'pointer', fontSize: 13, color: 'var(--color-link)', flexShrink: 0 }}
           >
             Manage
           </button>

@@ -945,6 +945,29 @@ label {
   flex-wrap: wrap;
   align-items: center;
 }
+/* Small text links stay small but get a 44px hit area; the negative margin keeps headers compact. */
+.dash-day-meta a {
+  display: inline-block;
+  padding: 12px 0;
+  margin: -12px 0;
+}
+.dash-card-link {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: var(--touch-target);
+  margin: -10px -8px;
+  padding: 0 8px;
+  background: none;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  color: var(--color-link);
+  text-decoration: none;
+}
 .weight-row {
   display: flex;
   align-items: center;
@@ -1723,6 +1746,457 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
   background: var(--color-bg);
 }
 
+/* ── AI logger (page + Today modal) ──
+   Everything here is scoped to .ai-logger / .ai-logger-modal and its own
+   ai-* classes. Rhythm: 16px between sections, 8px inside them; every control
+   is at least 44px tall; data-driven colours (source, confidence) stay inline. */
+.ai-logger-modal {
+  width: min(600px, 94vw);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.ai-logger-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-bottom: var(--space-8);
+}
+.ai-logger-modal__title { margin: 0; }
+.ai-logger-modal .modal-close-x {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: -8px -10px -8px 0;
+}
+.ai-logger-modal__intro {
+  margin: 0 0 var(--space-16);
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+/* Inside the dialog the dialog is the surface: no card within a card. */
+.ai-logger-modal .ai-logger__card {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+html[data-notebook-day] .ai-logger-modal .ai-logger__card { background: transparent; }
+
+.ai-logger__title { margin-bottom: var(--space-6); }
+.ai-logger__subtitle { margin-bottom: var(--space-16); }
+.ai-logger__card { margin-bottom: var(--space-16); }
+.ai-logger__section-title { margin: 0 0 var(--space-12); }
+.ai-logger__panel-title {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+.ai-logger__label {
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+.ai-logger__hint {
+  margin: 0 0 var(--space-12);
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+.ai-logger__note {
+  margin: var(--space-6) 0 0;
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+}
+.ai-logger__micro {
+  margin: 0;
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+}
+.ai-logger__micro--warn { color: var(--color-warning-ink); }
+.ai-logger__error { margin: var(--space-12) 0 0; }
+.ai-logger__stack { display: flex; flex-direction: column; gap: var(--space-8); }
+
+/* Buttons: one height for every action row, a compact-but-44px size for
+   in-panel actions, and an equal-width split for paired actions. */
+.ai-logger .btn-primary,
+.ai-logger .btn-secondary { min-height: var(--touch-target); }
+.ai-logger__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  margin-top: var(--space-12);
+}
+.ai-logger__actions .btn-primary,
+.ai-logger__actions .btn-secondary { min-height: 48px; font-weight: 700; }
+.ai-logger__actions--split > * { flex: 1 1 0; min-width: 0; }
+.ai-logger__actions--split .ai-voice .btn-secondary { width: 100%; }
+.ai-logger__btn-sm {
+  flex-shrink: 0;
+  padding: 0 var(--space-14);
+  font-size: var(--text-secondary);
+}
+.ai-logger__btn-lg {
+  width: 100%;
+  min-height: 56px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.ai-logger__choice { justify-content: flex-start; text-align: left; }
+.ai-logger__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target);
+  margin: var(--space-2) 0 -10px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-caption);
+  color: var(--color-link);
+  text-decoration: underline;
+  text-align: left;
+}
+
+/* Description box + voice */
+.ai-logger__desc { position: relative; }
+.ai-logger__desc textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.ai-logger__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-10);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.82);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+.ai-logger__overlay .btn-spinner { margin-right: 0; }
+.ai-voice { display: inline-block; }
+.ai-voice__error { margin: var(--space-6) 0 0; font-size: var(--text-secondary); }
+
+/* Conversation */
+.ai-logger .ai-chat-thread { margin-bottom: var(--space-12); }
+
+/* Matched recipe */
+.ai-logger__match {
+  margin-bottom: var(--space-12);
+  padding: var(--space-12);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-primary-subtle);
+}
+.ai-logger__match-name {
+  font-size: var(--text-section);
+  font-weight: 700;
+  color: var(--color-primary-ink);
+}
+.ai-logger__match-meta {
+  margin-top: var(--space-4);
+  font-size: var(--text-caption);
+  color: var(--color-primary);
+}
+.ai-logger__applied {
+  margin-bottom: var(--space-12);
+  padding: var(--space-12);
+  border: 1px solid var(--status-hit-border);
+  border-radius: var(--radius-md);
+  background: #ecfdf5;
+  font-size: var(--text-secondary);
+  color: var(--status-hit-text);
+}
+.ai-logger__applied ul { margin: var(--space-6) 0 0; padding-left: 18px; }
+.ai-logger__keep {
+  margin-bottom: var(--space-12);
+  padding: var(--space-12);
+  border-radius: var(--radius-md);
+}
+.ai-logger__keep .ai-logger__hint { margin: var(--space-2) 0 var(--space-8); }
+.ai-logger__keep-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-10);
+}
+.ai-logger__keep-label {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: var(--text-secondary);
+  color: var(--color-text-body);
+}
+.ai-logger__keep-done {
+  flex-shrink: 0;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--status-hit-text);
+}
+.ai-logger__servings { max-width: 160px; margin-bottom: var(--space-12); }
+.ai-logger__ai-badge {
+  display: inline-block;
+  margin-left: var(--space-8);
+  padding: 1px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-secondary-bg);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+.ai-logger__hint .ai-logger__ai-badge { margin-left: 0; }
+.ai-logger__final { margin-bottom: var(--space-16); }
+.ai-logger__final-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-10);
+  padding: var(--space-8) 0;
+  border-bottom: 1px solid var(--color-divider-strong);
+  font-size: var(--text-secondary);
+}
+.ai-logger__final-name { min-width: 0; font-weight: 500; color: var(--color-text-strong); }
+.ai-logger__final-amount { margin-left: var(--space-8); font-weight: 400; color: var(--color-text-muted); }
+.ai-logger__final-cal {
+  flex-shrink: 0;
+  color: var(--color-text-body);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Recipe fix-ups ("couldn't apply") */
+.ai-fixups {
+  margin-bottom: var(--space-12);
+  padding: var(--space-12);
+  border: 1px solid var(--status-partial-border);
+  border-radius: var(--radius-md);
+  background: #fffbeb;
+  font-size: var(--text-secondary);
+  color: var(--color-warning-ink);
+}
+.ai-fixups__list { display: flex; flex-direction: column; gap: var(--space-8); margin-top: var(--space-8); }
+.ai-fixups__item { padding-top: var(--space-8); border-top: 1px solid #fde68a; }
+.ai-fixups__line { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-8) var(--space-10); }
+.ai-fixups__text { flex: 1 1 200px; min-width: 0; }
+.ai-fixups__reason { color: #a16207; }
+.ai-fixups__picker {
+  margin-top: var(--space-8);
+  padding: var(--space-12);
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+.ai-fixups__question {
+  margin-bottom: var(--space-8);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.ai-fixups__search { width: 100%; margin-bottom: var(--space-8); }
+.ai-fixups__empty { margin: 0 0 var(--space-8); color: var(--color-text-muted); }
+.ai-fixups__chips { display: flex; flex-wrap: wrap; gap: var(--space-6); margin-bottom: var(--space-8); }
+.ai-fixups__chip {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-14);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: #fff;
+  font: inherit;
+  font-size: var(--text-secondary);
+  color: var(--color-text-strong);
+  cursor: pointer;
+}
+.ai-fixups__chip.is-picked { border-color: #059669; background: #ecfdf5; }
+.ai-fixups__amount { display: flex; align-items: center; gap: var(--space-8); }
+.ai-fixups__amount label { margin: 0; font-size: var(--text-secondary); }
+.ai-fixups__qty { width: 90px; }
+.ai-fixups__unit { width: 80px; }
+.ai-fixups .ai-logger__actions { margin-top: var(--space-8); }
+
+/* Freeform estimate */
+.ai-logger__confidence {
+  display: inline-block;
+  margin-bottom: var(--space-12);
+  padding: 6px var(--space-12);
+  border: 1px solid;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-secondary);
+  font-weight: 600;
+}
+.ai-logger__rows { display: flex; flex-direction: column; gap: var(--space-8); }
+.ai-logger__row {
+  overflow: hidden;
+  border: 1px solid;
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+}
+.ai-logger__row-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--touch-target);
+  padding: var(--space-6) var(--space-10);
+  cursor: pointer;
+}
+.ai-logger__row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--space-6);
+}
+.ai-logger__row-title {
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--color-text-strong);
+  overflow-wrap: anywhere;
+}
+.ai-logger__row-amount { font-size: var(--text-caption); color: var(--color-text-muted); white-space: nowrap; }
+.ai-logger__row-macros {
+  flex-shrink: 0;
+  font-size: var(--text-caption);
+  color: var(--color-text-strong);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ai-logger__row-macros.is-gap { color: #b45309; }
+.ai-logger__row-source {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ai-logger__row-caret {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.ai-logger__row-caret.is-open { transform: rotate(180deg); }
+.ai-logger__row-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  padding: var(--space-10);
+  border-top: 1px solid;
+  background: var(--color-surface);
+}
+.ai-logger__subpanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-10);
+  border-radius: var(--radius-md);
+}
+.ai-logger__subpanel select { width: 100%; }
+.ai-logger__field-label {
+  margin: 0;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+.ai-logger__fields { display: grid; grid-template-columns: 1fr; gap: var(--space-8); }
+.ai-logger__fields--two { grid-template-columns: 1fr 1fr; }
+.ai-logger__basis-kind { font-weight: 400; color: var(--color-text-muted); }
+.ai-logger__basis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: var(--space-8);
+}
+.ai-logger__basis-result { font-size: var(--text-caption); color: var(--color-text-strong); }
+.ai-logger__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--touch-target);
+  margin: 0;
+  font-size: var(--text-secondary);
+  color: var(--color-text-body);
+  cursor: pointer;
+}
+.ai-logger__check input { width: 18px; height: 18px; }
+.ai-logger__warn {
+  margin: var(--space-10) 0 0;
+  padding: var(--space-10) var(--space-12);
+  border: 1px solid var(--status-partial-border);
+  border-radius: var(--radius-md);
+  background: #fffbeb;
+  font-size: var(--text-secondary);
+  color: var(--color-warning-ink);
+}
+.ai-logger__row-editor .ai-logger__warn { margin: 0; }
+.ai-logger__warn-action { margin-top: var(--space-8); }
+.ai-logger__totals {
+  margin-top: var(--space-16);
+  padding: var(--space-12);
+  border: 1px solid #145239;
+  border-radius: var(--radius-md);
+  background: #0f3d2e;
+}
+.ai-logger__totals strong { color: #6ee7b7; }
+.ai-logger__totals-line {
+  margin-top: var(--space-4);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: #ecfdf5;
+  font-variant-numeric: tabular-nums;
+}
+.ai-logger__prep-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-12);
+}
+.ai-logger__prep-hint { margin: var(--space-6) 0 var(--space-10); }
+.ai-logger__prep-toggle { width: 100%; min-height: 48px; margin-top: var(--space-12); font-weight: 700; }
+.ai-logger__count { width: 90px; }
+.ai-logger__assumptions {
+  margin: var(--space-16) 0 0;
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+.ai-logger__assumptions strong { color: var(--color-text-body); }
+
+/* Follow-up, date and finishing actions */
+.ai-logger .ai-followup-panel { margin-top: var(--space-16); }
+.ai-followup-panel__label {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+.ai-followup-panel__row { display: flex; gap: var(--space-8); margin-top: var(--space-8); }
+.ai-followup-panel__row input { flex: 1; min-width: 0; min-height: var(--touch-target); }
+.ai-followup-panel__row .btn-primary { flex-shrink: 0; font-weight: 700; }
+.ai-logger__date {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-top: var(--space-16);
+}
+.ai-logger__date label { margin: 0; font-size: var(--text-secondary); }
+.ai-logger__date input[type="date"] { width: 170px; min-height: var(--touch-target); }
+.prep-panel .ai-logger__date { margin-top: var(--space-10); }
+.ai-logger__finish { display: flex; flex-direction: column; gap: var(--space-12); margin-top: var(--space-16); }
+.ai-logger__finish .ai-logger__date { margin-top: 0; }
+.ai-logger__nothing { margin-top: var(--space-8); }
+.ai-logger__start-over { align-self: flex-start; }
+
 /* ── Receipt list: the editable ingredients inside Log Meal ──
    One line per ingredient — name left, amount + unit right — so a whole recipe
    fits on screen and you can check portions and reach the Log button without
@@ -1840,6 +2314,170 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
 .log-meal-recipe-chip__hint {
   font-size: 12px;
   color: var(--color-text-muted);
+}
+
+/* ── Log Meal modal ──
+   Everything below is scoped to .log-meal-modal: the slot-row / slot-list
+   classes are shared with the supplements, AI logger and meal-prep modals,
+   which keep their own sizing. */
+.log-meal-modal {
+  width: min(560px, 94vw);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.log-meal-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-bottom: var(--space-16);
+}
+.log-meal-modal__title { margin: 0; }
+.log-meal-modal .modal-close-x {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: -8px -10px -8px 0; /* full hit area, glyph still on the padding corner */
+}
+.log-meal-items {
+  padding: var(--space-12);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-secondary-bg);
+}
+.log-meal-items__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-10);
+  min-height: 28px;
+  margin-bottom: var(--space-10);
+}
+.log-meal-items__title {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.log-meal-items__hint {
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.log-meal-items__reset {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-14);
+  font-size: var(--text-caption);
+  white-space: nowrap;
+}
+.log-meal-items__empty {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+.log-meal-line__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+  color: var(--color-text-strong);
+}
+.log-meal-line__sub-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text-strong);
+  font: inherit;
+  text-decoration: underline dotted;
+}
+.log-meal-line__macros {
+  margin-top: var(--space-2);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.log-meal-line__macros.is-ghost { opacity: 0.65; }
+.log-meal-subs__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-6);
+}
+.log-meal-subs__title { font-weight: 600; }
+.log-meal-subs__note { margin: 0; color: var(--color-text-muted); }
+.log-meal-subs__error { margin: 0 0 var(--space-6); color: #92400e; }
+.log-meal-subs__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.log-meal-subs__option {
+  justify-content: flex-start;
+  text-align: left;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-10);
+  font-size: var(--text-caption);
+}
+.log-meal-total {
+  margin-top: var(--space-10);
+  padding: var(--space-10) var(--space-12);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-primary-subtle);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--color-primary-ink);
+  font-variant-numeric: tabular-nums;
+}
+.log-meal-total__servings { color: var(--color-text-muted); }
+.log-meal-total__servings strong { color: var(--color-text-strong); }
+.log-meal-day-preview {
+  margin-top: var(--space-10);
+  padding-top: var(--space-10);
+  border-top: 1px solid color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
+}
+.log-meal-day-preview__title {
+  font-weight: 700;
+  margin-bottom: var(--space-6);
+}
+.log-meal-day-preview__rows {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+.log-meal-day-preview__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-10);
+}
+.log-meal-day-preview__label {
+  display: inline-block;
+  min-width: 28px;
+  font-weight: 600;
+}
+.log-meal-day-preview .macro-status { font-size: 11px; }
+@media (max-width: 480px) {
+  /* Phones: a little more room for the ingredient list, which is the screen. */
+  .log-meal-modal { padding: var(--space-20) var(--space-16); }
+  .log-meal-modal .slot-list__head,
+  .log-meal-modal .slot-row {
+    grid-template-columns: minmax(0, 1fr) 60px 54px var(--touch-target);
+  }
+  .log-meal-modal .slot-row__remove {
+    width: var(--touch-target);
+    height: var(--touch-target);
+  }
+  /* The search box needs the width more than the 40 / g placeholders do. */
+  .log-meal-modal .slot-row--add__search { grid-column: 1 / -1; }
+  .log-meal-modal .slot-row--add__ghost,
+  .log-meal-modal .slot-row--add__spacer { display: none; }
+  .log-meal-modal .slot-row--add__search input { min-height: var(--touch-target); }
+  .log-meal-modal .log-meal-recipe-chip .slot-row__remove { margin: -10px -10px 0 0; }
 }
 /* One name, one line: a wrapped ingredient name makes its row taller than its
    neighbours and the list stops scanning as a column of portions. */
@@ -2023,6 +2661,18 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
 @media (min-width: 1536px) {
   .app-main--wide { max-width: 1440px; }
 }
+/* "Report a problem": a quiet link under every screen's content. */
+.report-problem {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-24);
+}
+.report-problem__trigger {
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+html[data-notebook-day] .report-problem__trigger { color: inherit; opacity: 0.75; }
+
 /* Clear the fixed bottom navigation bar (shown ≤768px) */
 @media (max-width: 768px) {
   .app-main {
@@ -2835,7 +3485,6 @@ html[data-notebook-day] .menu-pop-item.is-danger:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-28);
-  margin-top: var(--space-28);
 }
 .dashboard-canvas .react-resizable-handle {
   opacity: 0;
@@ -3073,6 +3722,32 @@ html[data-dash-layout-edit] nav[class*="bar"] {
   color: var(--color-primary-ink);
   border-color: var(--color-primary);
   background: var(--color-primary-subtle);
+}
+.data-export-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-surface-border);
+}
+.data-export-row__copy {
+  min-width: 0;
+}
+.data-export-row__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-body);
+  line-height: 1.3;
+}
+.data-export-row__sub {
+  font-size: 12px;
+  color: var(--color-text-faint);
+  margin-top: 2px;
+}
+.data-export-row .btn-secondary {
+  flex-shrink: 0;
 }
 html[data-notebook-day] .dashboard-card--edit {
   border-color: var(--color-surface-border);
@@ -3404,7 +4079,7 @@ html[data-notebook-day] .dashboard-card--edit {
   box-shadow: none;
   color: inherit;
   font: inherit;
-  min-height: 0;
+  min-height: var(--touch-target);
   cursor: pointer;
 }
 
@@ -3426,7 +4101,9 @@ html[data-notebook-day] .dashboard-card--edit {
 .mcp-writes-pill__dismiss {
   display: inline-flex;
   align-items: center;
-  padding: 6px 10px 6px 6px;
+  justify-content: center;
+  min-width: var(--touch-target);
+  padding: 0 10px 0 6px;
   opacity: 0.6;
 }
 
@@ -3573,4 +4250,270 @@ html[data-notebook-day] .mcp-source-badge {
 
 @media (prefers-reduced-motion: reduce) {
   .meal-panel-right, .meal-panel-left, .meal-micro-fill { animation: none; }
+}
+
+/* Barcode scanner: a full-screen native <dialog> that paints its own dim, so
+   the browser backdrop stays clear (no double tint over the form below). */
+.barcode-scan-dialog::backdrop { background: transparent; }
+
+/* ── Barcode scanner card (BarcodeScannerModal) ──
+   One column read top to bottom: title, how-to line, viewfinder, notice,
+   typed entry, Cancel. Sections are spaced by whitespace plus one warm rule
+   above the typed entry. Every control is a full 44px touch target. */
+.barcode-modal {
+  width: 100%;
+  max-width: 460px;
+  max-height: 88vh;
+  margin: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.barcode-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+.barcode-modal__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.barcode-modal .modal-close-x {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) 0;
+}
+.barcode-modal__hint {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+.barcode-modal__viewfinder {
+  position: relative;
+  margin-top: var(--space-12);
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #000;
+}
+.barcode-modal__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.barcode-modal__guide {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 50%;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: rgba(239, 68, 68, 0.9);
+  transform: translateY(-1px);
+}
+.barcode-modal__status {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: var(--space-8) var(--space-12);
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+}
+.barcode-modal__notice {
+  margin-top: var(--space-12);
+  padding: var(--space-10) var(--space-12);
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--status-partial-text);
+  background: var(--status-partial-bg);
+  border: 1px solid var(--status-partial-border);
+  border-radius: var(--radius-md);
+}
+.barcode-modal__manual {
+  margin-top: var(--space-16);
+  padding-top: var(--space-16);
+  border-top: 1px solid var(--color-divider-warm);
+}
+.barcode-modal__label {
+  display: block;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.barcode-modal__entry {
+  display: flex;
+  gap: var(--space-8);
+  margin-top: var(--space-10);
+}
+.barcode-modal__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.barcode-modal__lookup { flex: 0 0 auto; min-width: 104px; }
+.barcode-modal__invalid {
+  margin: var(--space-8) 0 0;
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-warning-ink);
+}
+.barcode-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-20);
+}
+
+/* ── Label crop modal (LabelCropModal) ──
+   Single column: title, hint, photo canvas with drag-to-crop, actions.
+   Mirrors the barcode-modal / log-meal-modal pattern. Scoped to
+   .label-crop-modal so it doesn't affect other Ingredients.jsx UI. */
+.label-crop-modal {
+  width: min(480px, 94vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.label-crop-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-bottom: var(--space-4);
+}
+.label-crop-modal__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.label-crop-modal .modal-close-x {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) 0;
+}
+.label-crop-modal__hint {
+  margin: 0 0 var(--space-12);
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+.label-crop-modal__canvas {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+}
+.label-crop-modal__canvas img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.label-crop-modal__selection {
+  position: absolute;
+  border: 2px solid var(--color-link);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.label-crop-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  margin-top: var(--space-16);
+  flex-wrap: wrap;
+}
+
+/* ── Save as Recipe dialog (SaveMealAsRecipeDialog) ──
+   Single column: header (title + ✕), hint, name field, meal-prep toggle,
+   optional split picker, actions. Mirrors the log-meal-modal / barcode-modal
+   pattern. Scoped to .save-recipe-dialog so it doesn't affect other modals. */
+.save-recipe-dialog {
+  width: min(420px, 94vw);
+}
+.save-recipe-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-bottom: var(--space-4);
+}
+.save-recipe-dialog__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.save-recipe-dialog .modal-close-x {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) 0;
+}
+.save-recipe-dialog__hint {
+  margin: 0 0 var(--space-16);
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+.save-recipe-dialog__label {
+  display: block;
+  margin-bottom: var(--space-6);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+.save-recipe-dialog__input {
+  width: 100%;
+}
+.save-recipe-dialog__checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--touch-target);
+  margin-top: var(--space-12);
+  font-size: var(--text-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.save-recipe-dialog__prep {
+  margin-top: var(--space-10);
+}
+.save-recipe-dialog__splits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+.save-recipe-dialog__splits .prep-split {
+  flex: 1 1 auto;
+  min-width: 56px;
+  justify-content: center;
+}
+.save-recipe-dialog__custom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-top: var(--space-10);
+}
+.save-recipe-dialog__custom-label {
+  margin: 0;
+  font-size: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+.save-recipe-dialog__custom-input {
+  width: 80px;
+}
+.save-recipe-dialog__error {
+  margin-top: var(--space-12);
+  margin-bottom: 0;
+}
+.save-recipe-dialog__actions {
+  display: flex;
+  gap: var(--space-8);
+  margin-top: var(--space-20);
 }
