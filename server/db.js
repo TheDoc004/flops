@@ -275,6 +275,7 @@ function createDb(dbPath) {
       fat_g_min            REAL,
       fat_g_max            REAL,
       created_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      source               TEXT NOT NULL DEFAULT 'app',
       PRIMARY KEY (user_id, effective_start_date, weekday)
     );
     CREATE TABLE IF NOT EXISTS user_profile (
@@ -682,6 +683,10 @@ function createDb(dbPath) {
   const goalVersionCols = db.prepare('PRAGMA table_info(day_goal_versions)').all().map(c => c.name);
   if (goalVersionCols.length && !goalVersionCols.includes('created_at')) {
     db.exec(`ALTER TABLE day_goal_versions ADD COLUMN created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`);
+  }
+  // Who wrote the version (app | mcp), like diet_phases.source. Nothing in the UI reads it.
+  if (goalVersionCols.length && !goalVersionCols.includes('source')) {
+    db.exec(`ALTER TABLE day_goal_versions ADD COLUMN source TEXT NOT NULL DEFAULT 'app'`);
   }
   const legacyGoalRows = db
     .prepare('SELECT user_id, weekday, calories, protein_g, carbs_g, fat_g FROM day_goals ORDER BY user_id, weekday')
